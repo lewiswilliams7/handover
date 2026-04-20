@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/scheduled-reports",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/drip-emails",
+      "schedule": "30 8 * * *"
+    }
+  ]
+}

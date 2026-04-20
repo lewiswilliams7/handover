@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Sitemap: https://gethandover.uk/sitemap.xml
+
+Disallow: /api/
+Disallow: /dashboard/
+Disallow: /join
