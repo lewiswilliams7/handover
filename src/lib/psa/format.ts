@@ -133,6 +133,16 @@ export function formatTicketsForPrompt(tickets: NormalisedTicket[]): string {
       parts.push(
         `Description: ${showDescription ? (t.description ?? "None") : "None"}`,
       );
+      if (Array.isArray(t.customfields) && t.customfields.length > 0) {
+        const cfLines = t.customfields
+          .filter((cf) => cf.value != null && cf.value !== "")
+          .map((cf) => `  ${cf.label ?? cf.name ?? "Field"}: ${cf.display ?? cf.value}`)
+          .join("\n");
+        if (cfLines) {
+          parts.push("CUSTOM FIELDS:");
+          parts.push(cfLines);
+        }
+      }
       parts.push("Notes:");
       parts.push(showNotes ? notesBlock : "  - None");
       return parts.join("\n");

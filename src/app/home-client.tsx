@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 import {
   ArrowRight,
   BarChart3,
@@ -57,8 +58,8 @@ import {
   Gift,
 } from "lucide-react";
 import confetti from "canvas-confetti";
+import { mutate } from "swr";
 
-import { BOOK_DEMO_CALENDLY_URL } from "@/lib/book-demo";
 import { createClient } from "@/lib/supabase";
 import {
   canonicalPlanId,
@@ -78,6 +79,7 @@ import {
 } from "@/lib/team-dashboard-permission";
 import { partnerWhiteLabelActive } from "@/lib/white-label";
 import { DeliveryHealthDashboard } from "@/components/delivery-health-dashboard";
+import { MarketingFooter } from "@/components/marketing-footer";
 import { ReferralsSettingsPanel } from "@/components/referrals-settings-panel";
 import { useToast } from "@/components/toasts";
 import { useCwProjects, useCwTickets, useHaloTickets } from "@/lib/psa-cache";
@@ -414,6 +416,7 @@ import { HomeRoiCalculator } from "@/components/home-roi-calculator";
 import { TestimonialMarquee } from "@/components/testimonial-marquee";
 import { ScrollRevealItem } from "@/components/scroll-reveal-item";
 import { IntegrationsPanel } from "@/components/integrations-panel";
+import { ConfigurationPanel } from "@/components/configuration-panel";
 import { invalidatePsaConnectionsCache, usePSAConnections } from "@/hooks/use-psa-connections";
 import { HaloImportModal } from "@/components/halo-import-modal";
 import { CwImportModal } from "@/components/cw-import-modal";
@@ -1615,7 +1618,9 @@ export default function Home() {
   const [clientContactName, setClientContactName] = useState("");
   const [showSuccessBanner, setShowSuccessBanner] = useState(false);
   const [showSignUpBanner, setShowSignUpBanner] = useState(false);
+  const [trialBannerDismissed, setTrialBannerDismissed] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const authChecked = mounted;
   const [dashGreeting, setDashGreeting] = useState<string | null>(null);
   const [checkoutLoadingPriceId, setCheckoutLoadingPriceId] = useState<string | null>(null);
   /** Active Stripe subscription on monthly Pro or Team price - offer portal to switch to annual */
@@ -1644,6 +1649,7 @@ export default function Home() {
   const [showPostGenProUpsell, setShowPostGenProUpsell] = useState(false);
   const sevenGenToastFiredRef = useRef(false);
   const [premiumHardLimitOpen, setPremiumHardLimitOpen] = useState(false);
+  const [hardLimitType, setHardLimitType] = useState<"trial" | "pro_monthly" | "team_monthly">("trial");
   const [scheduledReportsProPaywallOpen, setScheduledReportsProPaywallOpen] = useState(false);
   const [saveTemplateFor, setSaveTemplateFor] = useState<TemplateType | null>(null);
   const [templateNameDraft, setTemplateNameDraft] = useState("");
@@ -1676,7 +1682,7 @@ export default function Home() {
     | "referrals"
   >("profile");
   const [mainView, setMainView] = useState<
-    "generate" | "reports" | "delivery" | "integrations" | "scheduled"
+    "generate" | "reports" | "delivery" | "integrations" | "scheduled" | "configuration"
   >("generate");
   const [integrationsInitialDetail, setIntegrationsInitialDetail] = useState<
     "halo" | "connectwise" | null
@@ -1914,8 +1920,8 @@ export default function Home() {
   const [heroStat45, setHeroStat45] = useState(0);
   const [heroStat1300, setHeroStat1300] = useState(0);
   const [heroStat30, setHeroStat30] = useState(0);
-  const [heroStatsVisible, setHeroStatsVisible] = useState(false);
   const heroStatsRef = useRef<HTMLDivElement | null>(null);
+  const [heroStatsVisible, setHeroStatsVisible] = useState(false);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [haloConnected, setHaloConnected] = useState(false);
   const [haloUrl, setHaloUrl] = useState("");
@@ -2603,7 +2609,7 @@ export default function Home() {
   useEffect(() => {
     if (userEmail) {
       setHeroStat45(4);
-      setHeroStat1300(1300);
+      setHeroStat1300(1400);
       setHeroStat30(30);
       return;
     }
@@ -2617,7 +2623,19 @@ export default function Home() {
   }, [userEmail, mounted, heroStatsVisible]);
 
   useEffect(() => {
-    if (userEmail || !heroStatsRef.current) return;
+    if (userEmail || !mounted) return;
+    setHeroStatsVisible(true);
+  }, [userEmail, mounted]);
+
+  useEffect(() => {
+    if (userEmail || !mounted || !heroStatsRef.current) return;
+    const node = heroStatsRef.current;
+    const rect = node.getBoundingClientRect();
+    const inViewNow = rect.top < window.innerHeight && rect.bottom > 0;
+    if (inViewNow) {
+      setHeroStatsVisible(true);
+      return;
+    }
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((e) => e.isIntersecting)) {
@@ -2625,9 +2643,9 @@ export default function Home() {
           observer.disconnect();
         }
       },
-      { threshold: 0.35 },
+      { threshold: 0.2 },
     );
-    observer.observe(heroStatsRef.current);
+    observer.observe(node);
     return () => observer.disconnect();
   }, [userEmail, mounted]);
 
@@ -2640,6 +2658,24 @@ export default function Home() {
     const g = h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
     setDashGreeting(userFirstName ? `${g}, ${userFirstName}.` : `${g}.`);
   }, [mounted, userEmail, userFirstName]);
+
+  useEffect(() => {
+    if (userEmail && authChecked) {
+      document.body.setAttribute("data-app-shell", "true");
+    } else {
+      document.body.removeAttribute("data-app-shell");
+    }
+    return () => {
+      document.body.removeAttribute("data-app-shell");
+    };
+  }, [userEmail, authChecked]);
+
+  useEffect(() => {
+    if (!authChecked || !userEmail) return;
+    if (profileDbPlan === "free" && !trialEndsAt) {
+      router.push("/welcome");
+    }
+  }, [authChecked, userEmail, profileDbPlan, trialEndsAt, router]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -5394,6 +5430,7 @@ export default function Home() {
       ok?: boolean;
     };
     if (!res.ok) {
+      console.error("[branding] save failed:", { status: res.status, payload });
       if (res.status === 403) {
         toast({
           message: payload.error ?? "White label requires Enterprise.",
@@ -5418,6 +5455,9 @@ export default function Home() {
     if (brandLogoUrl.trim()) {
       setBrandLogoPreviewKey((k) => k + 1);
     }
+    await mutate("/api/profile");
+    await mutate("/api/profile/branding");
+    window.dispatchEvent(new Event("handover:profile-reload"));
     await refreshUsage();
   };
 
@@ -6136,6 +6176,7 @@ export default function Home() {
     }
 
     if (freeGenUsage && freeGenUsage.used >= freeGenUsage.cap) {
+      setHardLimitType("trial");
       setPremiumHardLimitOpen(true);
       return;
     }
@@ -6172,6 +6213,7 @@ export default function Home() {
 
     if (freeGenUsage && freeGenUsage.used >= freeGenUsage.cap) {
       setGenerateOptionsOpen(false);
+      setHardLimitType("trial");
       setPremiumHardLimitOpen(true);
       return;
     }
@@ -6235,6 +6277,7 @@ export default function Home() {
           "error" in data &&
           (data as { error: unknown }).error === "trial_limit_reached";
         if (trialErr) {
+          setHardLimitType("trial");
           setPremiumHardLimitOpen(true);
           return;
         }
@@ -6244,6 +6287,7 @@ export default function Home() {
           "error" in data &&
           (data as { error: unknown }).error === "limit_reached";
         if (err) {
+          setHardLimitType("pro_monthly");
           setPremiumHardLimitOpen(true);
           return;
         }
@@ -6253,6 +6297,7 @@ export default function Home() {
           "error" in data &&
           (data as { error: unknown }).error === "team_limit_reached";
         if (teamLimit) {
+          setHardLimitType("team_monthly");
           const msg =
             typeof data === "object" &&
             data !== null &&
@@ -6261,6 +6306,7 @@ export default function Home() {
               ? (data as { message: string }).message
               : "Your team has reached its monthly generation limit.";
           toast({ message: msg, variant: "error", durationMs: 8000 });
+          setPremiumHardLimitOpen(true);
           return;
         }
       }
@@ -6301,6 +6347,33 @@ export default function Home() {
       const savedGenId = typeof rawSaved === "string" ? rawSaved : null;
 
       const parsed = parseApiGenerateResult(data);
+      const condensedFlag =
+        typeof data === "object" &&
+        data !== null &&
+        "inputCondensed" in data &&
+        (data as { inputCondensed?: unknown }).inputCondensed === true;
+      const condensedFromRaw =
+        typeof data === "object" &&
+        data !== null &&
+        "inputCondensedFrom" in data
+          ? (data as { inputCondensedFrom?: unknown }).inputCondensedFrom
+          : undefined;
+      const condensedFrom =
+        typeof condensedFromRaw === "number"
+          ? condensedFromRaw
+          : typeof condensedFromRaw === "string"
+            ? Number(condensedFromRaw)
+            : NaN;
+      if (condensedFlag) {
+        toast({
+          message: "Large import condensed",
+          subtitle: `Your import was ${
+            Number.isFinite(condensedFrom) && condensedFrom > 25000 ? "very large" : "large"
+          } and was automatically condensed to fit. Some older notes may have been shortened. For best results with large imports, filter by specific client or date range.`,
+          variant: "error",
+          durationMs: 8000,
+        });
+      }
       const streakPayload = data as Record<string, unknown>;
       const streakCur = streakPayload._streakCurrent;
       const smRaw = streakPayload._streakMilestone;
@@ -6497,8 +6570,11 @@ export default function Home() {
   }, [result, visibleCoreTabsList, visibleExtendedTabsList, outputMainTab]);
 
   const filteredHistoryProjects = useMemo(() => {
-    if (selectedHistoryCollectionId === null) return projects;
-    return projects.filter((p) => p.collection_id === selectedHistoryCollectionId);
+    let filtered = projects;
+    if (selectedHistoryCollectionId !== null) {
+      filtered = filtered.filter((p) => p.collection_id === selectedHistoryCollectionId);
+    }
+    return filtered;
   }, [projects, selectedHistoryCollectionId]);
 
   const hasEnabledSchedule = useMemo(
@@ -6832,6 +6908,9 @@ export default function Home() {
     canonicalPlanForTrialBanner === "professional" ||
     canonicalPlanForTrialBanner === "team" ||
     canonicalPlanForTrialBanner === "enterprise";
+  const isPaidPlan = ["professional", "team", "enterprise"].includes(
+    normalizePlanLabel(profileDbPlan ?? ""),
+  );
 
   const normalizedPlanForTrialBanner = normalizePlanLabel(profileDbPlan ?? "");
   const planLabelIndicatesInAppTrial = normalizedPlanForTrialBanner.includes("trial");
@@ -6869,12 +6948,35 @@ export default function Home() {
     !hasProAccess &&
     !isSoloAppTrialPlanRow;
 
+  const authLoading = mounted && !onboardingProfileLoaded;
+  if (authLoading) {
+    return (
+      <div
+        className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4"
+        style={{ backgroundColor: "#080D14" }}
+      >
+        <div className="flex items-center gap-3">
+          <img src="/icon2.png" alt="" className="h-8 w-8 object-contain" />
+          <span className="text-xl font-bold text-white">Handover</span>
+        </div>
+        <div className="mt-2 h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-[#0EA5E9]" />
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-full bg-background" suppressHydrationWarning>
-      {showStickyTrialBanner ? (
+    <motion.div
+      className="min-h-full bg-transparent"
+      suppressHydrationWarning
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+    >
+      {showStickyTrialBanner && !trialBannerDismissed ? (
         <div
           className={cn(
-            "sticky top-0 z-[100] flex w-full items-center justify-between gap-2 border-b px-3 py-1.5 text-[11px] leading-snug shadow-sm sm:gap-3 sm:px-4 sm:py-2 sm:text-xs",
+            "relative z-[100] flex w-full items-center justify-between gap-2 border-b px-3 py-1.5 text-[11px] leading-snug shadow-sm sm:gap-3 sm:px-4 sm:py-2 sm:text-xs",
+            showLeftSidebar && "md:ml-[280px]",
             trialBannerExpired
               ? "border-red-500/35 bg-red-950/25 text-red-100"
               : trialBannerDaysLeft !== null && trialBannerDaysLeft <= 3
@@ -6900,6 +7002,14 @@ export default function Home() {
           >
             Upgrade
           </Link>
+          <button
+            type="button"
+            onClick={() => setTrialBannerDismissed(true)}
+            className="shrink-0 rounded p-1 text-[var(--text-primary)]/70 transition-colors hover:text-[var(--text-primary)]"
+            aria-label="Dismiss"
+          >
+            <X className="size-3.5" />
+          </button>
         </div>
       ) : null}
       {showTrialUpgradeProminentCard ? (
@@ -7330,7 +7440,7 @@ export default function Home() {
                 Create a free account to see your action list, risk log, client
                 email and status report.
               </p>
-              <Link href="/auth?tab=signup" className="mt-6 block">
+              <Link href="/auth?tab=signup&returnTo=/welcome" className="mt-6 block">
                 <Button className="w-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]">
                   Create free account
                 </Button>
@@ -7369,7 +7479,7 @@ export default function Home() {
               own notes.
             </p>
             <div className="flex flex-wrap items-center gap-2">
-              <Link href="/auth?tab=signup">
+              <Link href="/auth?tab=signup&returnTo=/welcome">
                 <Button
                   type="button"
                   className="bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
@@ -7566,7 +7676,7 @@ export default function Home() {
               <p className="text-sm text-[var(--text-secondary)]">
                 14-day free trial — no credit card required
               </p>
-              <Link href="/auth?tab=signup" className="mt-3 inline-flex w-full">
+              <Link href="/auth?tab=signup&returnTo=/welcome" className="mt-3 inline-flex w-full">
                 <Button
                   type="button"
                   className="w-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
@@ -7689,6 +7799,7 @@ export default function Home() {
         checkoutLoadingPriceId={checkoutLoadingPriceId}
         onCheckout={(id) => void startCheckout(id)}
         onContinueFree={() => setPremiumHardLimitOpen(false)}
+        limitType={hardLimitType}
         monthlyPayingPlan={stripeMonthlyPayingPlan}
         onSwitchToAnnualPortal={() => void openBillingPortal("/")}
         portalLoading={portalNavigating}
@@ -8270,22 +8381,6 @@ export default function Home() {
                 <Calendar className="size-[14px] shrink-0" aria-hidden />
                 <span className="min-w-0 truncate">Scheduled</span>
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSettingsOpen(true);
-                  setSidebarOpenMobile(false);
-                }}
-                className={cn(
-                  "flex h-8 w-full items-center gap-1.5 rounded-[var(--radius)] px-2.5 text-[12px] text-[var(--sidebar-text)] transition-colors duration-[120ms] ease-in-out",
-                  settingsOpen
-                    ? "bg-[rgba(255,255,255,0.1)] font-medium text-white"
-                    : "hover:bg-[rgba(255,255,255,0.06)]",
-                )}
-              >
-                <Settings className="size-[14px] shrink-0" aria-hidden />
-                Settings
-              </button>
             </nav>
           ) : null}
 
@@ -8319,6 +8414,24 @@ export default function Home() {
               </div>
             </div>
           ) : null}
+          <div className="mx-2.5 my-1.5 h-px bg-[rgba(255,255,255,0.06)]" />
+          <button
+            type="button"
+            onClick={() => {
+              setMainView("configuration");
+              setSettingsOpen(false);
+              setSidebarOpenMobile(false);
+            }}
+            className={cn(
+              "flex h-8 w-full items-center gap-1.5 rounded-[var(--radius)] px-2.5 text-[12px] text-[var(--sidebar-text)] transition-colors duration-[120ms] ease-in-out",
+              mainView === "configuration" && !settingsOpen
+                ? "bg-[rgba(255,255,255,0.1)] font-medium text-white"
+                : "hover:bg-[rgba(255,255,255,0.06)]",
+            )}
+          >
+            <Settings className="size-[14px] shrink-0" aria-hidden />
+            <span className="min-w-0 truncate">Configuration</span>
+          </button>
 
           {userEmail ? (
             <>
@@ -8521,7 +8634,7 @@ export default function Home() {
             </>
           ) : (
             <Link
-              href="/auth?tab=signup"
+              href="/auth?tab=signup&returnTo=/welcome"
               className="block text-center text-sm text-[var(--sidebar-text)] underline-offset-4 hover:text-white hover:underline"
             >
               Create free account
@@ -8540,6 +8653,58 @@ export default function Home() {
           </div>
         </div>
       </aside>
+      {userEmail && authChecked && showLeftSidebar && (
+        <div
+          className="fixed top-0 z-30 flex h-[52px] items-center justify-end px-4"
+          style={{
+            left: '280px',
+            right: '0px',
+            top: '0px',
+            width: 'auto',
+            backgroundColor: '#0F1C3F',
+            borderBottom: '1px solid rgba(255,255,255,0.08)',
+          }}
+        >
+          {/* Dashboard link with active underline */}
+          <Link
+            href="/"
+            className="relative mr-3 text-[13px] font-medium text-white transition-colors"
+          >
+            Dashboard
+            <span className="absolute bottom-[-18px] left-0 right-0 h-[2px] bg-[var(--accent)] rounded-full" />
+          </Link>
+
+          {/* Theme toggle */}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="flex size-7 items-center justify-center rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/[0.06] transition-colors"
+            aria-label="Toggle theme"
+          >
+            {theme === "dark" ? <Sun className="size-[14px]" /> : <Moon className="size-[14px]" />}
+          </button>
+
+          {/* Avatar */}
+          <button
+            type="button"
+            className="flex size-7 items-center justify-center rounded-full bg-[var(--accent)] text-[10px] font-semibold text-white ml-1"
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Open settings"
+          >
+            {userFirstName?.[0]?.toUpperCase() || userEmail?.[0]?.toUpperCase() || "U"}
+          </button>
+
+          {/* Settings cog */}
+          <button
+            type="button"
+            className="flex size-7 items-center justify-center rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/[0.06] transition-colors ml-1"
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Open settings"
+          >
+            <Settings className="size-[14px]" />
+          </button>
+        </div>
+      )}
         </>
       ) : null}
 
@@ -8783,7 +8948,10 @@ export default function Home() {
               </div>
               <div className="shrink-0 border-b border-[var(--border)] bg-[var(--bg-primary)] px-6 py-3">
                 {!isPaidProfileTierForTrialBanner ? (
-                  <TrialBanner className="mb-0" />
+                  <TrialBanner
+                    className="relative w-full mb-2"
+                    plan={profileTrialPlan ?? profileDbPlan ?? undefined}
+                  />
                 ) : null}
               </div>
               <div className="flex min-h-0 flex-1">
@@ -9489,12 +9657,31 @@ export default function Home() {
                 ) : null}
 
                 {settingsTab === "referrals" ? (
-                  <ReferralsSettingsPanel
-                    hasProAccess={hasProAccess}
-                    onStartCheckout={(id) => void startCheckout(id)}
-                    checkoutLoading={checkoutLoadingPriceId !== null}
-                    focusRing={focusRing}
-                  />
+                  isPaidPlan ? (
+                    <ReferralsSettingsPanel
+                      hasProAccess={hasProAccess}
+                      onStartCheckout={(id) => void startCheckout(id)}
+                      checkoutLoading={checkoutLoadingPriceId !== null}
+                      focusRing={focusRing}
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center gap-4 py-12 text-center">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#0EA5E9]/10">
+                        <Lock className="text-[#0EA5E9]" size={20} />
+                      </div>
+                      <h3 className="text-lg font-semibold text-white">Referrals are available on paid plans</h3>
+                      <p className="max-w-sm text-sm text-slate-400">
+                        Upgrade to Professional or Team to access your referral link and earn £87 for every
+                        MSP you refer.
+                      </p>
+                      <button
+                        onClick={() => setSettingsTab("profile")}
+                        className="rounded-lg bg-[#0EA5E9] px-4 py-2 text-sm font-medium text-white transition-colors duration-200 hover:bg-[#0284C7]"
+                      >
+                        View plans
+                      </button>
+                    </div>
+                  )
                 ) : null}
 
                 <div className="mt-8 border-t border-[var(--border)] pt-4">
@@ -9538,14 +9725,28 @@ export default function Home() {
 
       <div
         className={cn(
-          "ml-0 min-h-screen overflow-x-hidden bg-[var(--bg-secondary)]",
+          "relative ml-0 overflow-x-hidden",
+          !userEmail ? "bg-transparent" : "bg-[#172035]",
           showLeftSidebar && "md:ml-[280px]",
         )}
       >
+        {userEmail && mainView === "configuration" ? (
+          <div className="animate-in fade-in duration-200" style={{ 
+            position: 'fixed',
+            top: '52px',
+            left: '280px',
+            right: 0,
+            bottom: 0,
+            overflow: 'hidden',
+            zIndex: 10
+          }}>
+            <ConfigurationPanel userEmail={userEmail} plan={plan} hasProAccess={hasProAccess} />
+          </div>
+        ) : null}
         {showLeftSidebar ? (
           <div
             className={cn(
-              "sticky top-0 z-20 flex h-[52px] shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-secondary)] px-3 md:hidden",
+              "sticky top-0 z-20 flex h-[52px] shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-secondary)] px-3 hidden",
             )}
           >
             <button
@@ -9563,6 +9764,7 @@ export default function Home() {
             </button>
           </div>
         ) : null}
+        {userEmail && !isPaidProfileTierForTrialBanner ? <TrialBanner /> : null}
         <div
           className={cn(
             "flex w-full flex-col",
@@ -9570,7 +9772,7 @@ export default function Home() {
               ? "gap-4 px-3 py-4"
               : !userEmail
                 ? "gap-6 px-4 py-4 md:px-8 md:py-6"
-                : "mx-auto min-h-[min(75vh,880px)] max-w-5xl gap-6 p-6",
+        : "w-full gap-4 px-4 py-4 md:px-6 md:py-5",
           )}
         >
         {showSuccessBanner ? (
@@ -9594,75 +9796,99 @@ export default function Home() {
           </div>
         ) : null}
 
-        {userEmail && !isPaidProfileTierForTrialBanner ? <TrialBanner /> : null}
-
         {!userEmail ? (!signedOutCompactMode ? (
           <>
             <section
-              className="relative flex min-h-[calc(100vh-56px)] flex-col overflow-x-hidden border-b border-[var(--border)]/50 bg-[var(--bg-primary)] animate-in fade-in slide-in-from-bottom-4 duration-300 lg:min-h-[calc(100vh-56px)]"
+              className="relative flex flex-col overflow-hidden bg-transparent animate-in fade-in slide-in-from-bottom-4 duration-300"
             >
+              <style
+                dangerouslySetInnerHTML={{
+                  __html: `@keyframes homeHeroAmbientPulse{0%,100%{opacity:.14;transform:scale(1)}50%{opacity:.22;transform:scale(1.06)}}`,
+                }}
+              />
               <div className="home-hero-drift-layer" aria-hidden>
                 <div className="home-hero-drift-orb--a" />
                 <div className="home-hero-drift-orb--b" />
               </div>
               <div className="home-hero-dot-overlay" aria-hidden />
-              <div className="relative z-10 grid w-full min-h-0 flex-1 grid-cols-1 gap-6 px-4 py-4 md:px-6 lg:grid-cols-2 lg:items-center lg:gap-8 lg:px-8 lg:py-6">
+              <div className="pointer-events-none absolute inset-0 z-[1] overflow-hidden">
+                <div
+                  className="absolute -top-40 -right-40 h-[600px] w-[600px] rounded-full opacity-20"
+                  style={{
+                    background: "radial-gradient(circle, #0EA5E9 0%, transparent 70%)",
+                    animation: "homeHeroAmbientPulse 8s ease-in-out infinite",
+                  }}
+                />
+              </div>
+              <div className="relative z-10 grid w-full min-h-0 flex-1 grid-cols-1 gap-6 px-4 pt-12 pb-4 md:px-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:items-center lg:gap-8 lg:px-8 lg:pb-6">
                 <div className="flex min-w-0 flex-col justify-center overflow-x-hidden overflow-y-visible pr-0 md:pr-8">
                   <div className="max-w-full md:max-w-[520px]">
-                  <div
+                  <motion.div
                     className="inline-flex w-fit items-center gap-2 rounded-full px-3 py-1 text-[12px] font-medium"
                     style={{
                       backgroundColor: "rgba(56, 189, 248, 0.1)",
                       border: "1px solid rgba(56, 189, 248, 0.3)",
                       color: "var(--accent)",
                     }}
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, ease: "easeOut" }}
                   >
                     <span
                       className="handover-pulse inline-block size-2 rounded-full bg-[#22c55e]"
                       aria-hidden
                     />
                     Built for MSP delivery teams
-                  </div>
+                  </motion.div>
 
-                  <h2
-                    className="home-hero-headline-shimmer mt-5 text-[2rem] font-bold tracking-tight md:text-[56px] lg:text-[58px]"
+                  <motion.h1
+                    className="home-hero-headline-shimmer mt-5 text-4xl font-bold tracking-tight md:text-[56px] lg:text-[58px]"
                     style={{ lineHeight: 1.05 }}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: 0.1, ease: "easeOut" }}
                   >
                     The reporting tool built for MSP delivery teams
-                  </h2>
+                  </motion.h1>
 
-                  <p className="mt-4 text-[15px] leading-relaxed text-[var(--text-secondary)] md:text-[18px] md:leading-normal">
+                  <motion.p
+                    className="mt-4 text-[15px] leading-relaxed text-[var(--text-secondary)] md:text-[18px] md:leading-normal"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: 0.2, ease: "easeOut" }}
+                  >
                     The first purpose-built, out-of-the-box client delivery reporting tool for HaloPSA and ConnectWise
                     MSPs. Connect your PSA and generate your first report in 30 seconds — nothing to configure.
-                  </p>
+                  </motion.p>
                   <p className="mt-2 text-[13px] leading-relaxed text-[var(--text-muted)] md:text-[15px] md:leading-normal">
                     Free to try - no card required.
                   </p>
 
-                  <div className="mt-6 flex w-full max-w-full flex-col gap-3 md:max-w-none md:flex-row md:flex-wrap">
+                  <motion.div
+                    className="mt-6 flex w-full max-w-full flex-col gap-3 md:max-w-none md:flex-row md:flex-wrap"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: 0.3, ease: "easeOut" }}
+                  >
                     <Link
-                      href="/auth?tab=signup"
-                      className="inline-flex w-full items-center justify-center rounded-[var(--radius)] bg-[var(--accent)] px-8 py-4 text-sm font-semibold text-white transition-[transform,box-shadow] duration-200 hover:scale-[1.02] hover:bg-[var(--accent-hover)] hover:shadow-lg active:scale-[0.99] md:w-auto"
+                      href="/auth?tab=signup&returnTo=/welcome"
+                      className="bg-gradient-to-r from-[#0EA5E9] to-[#0284C7] hover:from-[#0284C7] hover:to-[#0EA5E9] text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-[#0EA5E9]/20 hover:shadow-[#0EA5E9]/30 transition-all duration-300 transform hover:scale-[1.02] inline-flex w-full items-center justify-center text-sm active:scale-[0.99] md:w-auto"
                     >
                       Start free trial
                     </Link>
                     <Link
                       href="/features"
-                      className="inline-flex w-full items-center justify-center rounded-[var(--radius)] border border-[var(--border)] px-6 py-3 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] md:w-auto"
+                      className="bg-white/[0.05] backdrop-blur-sm border border-white/[0.15] hover:bg-white/[0.08] text-white font-medium px-6 py-3 rounded-xl transition-all duration-300 inline-flex w-full items-center justify-center text-sm md:w-auto"
                     >
                       See how it works
                     </Link>
-                  </div>
-                  <div className="mt-3 flex w-full justify-center">
-                    <a
-                      href={BOOK_DEMO_CALENDLY_URL}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[13px] font-semibold text-[var(--accent)] underline-offset-4 transition-colors hover:text-[var(--accent-hover)] hover:underline"
-                    >
-                      or Book a 15-minute demo →
-                    </a>
-                  </div>
+                  </motion.div>
+                  <Link
+                    href="/demo"
+                    className="bg-white/[0.05] backdrop-blur-sm border border-white/[0.15] hover:bg-white/[0.08] text-white font-medium px-6 py-3 rounded-xl transition-all duration-300 mt-3 inline-flex w-full items-center justify-center text-sm md:w-auto md:text-center"
+                  >
+                    Book a 15-minute demo →
+                  </Link>
                   </div>
 
                   <div
@@ -9670,82 +9896,74 @@ export default function Home() {
                     className="mt-5 w-full min-w-0 border-t border-[var(--border)] pt-5"
                     data-nosnippet
                   >
-                    <div className="flex w-full min-w-0 flex-col gap-6 md:flex-row md:items-start md:gap-3">
+                    <div className="flex w-full min-w-0 flex-col items-center gap-6 md:flex-row md:flex-nowrap md:items-start md:justify-center md:gap-3">
                       <ScrollRevealItem
                         index={0}
-                        className="flex min-w-0 flex-1 px-3 text-center md:items-center"
+                        className="flex w-full min-w-0 max-w-md flex-1 flex-col items-center border-b border-[var(--border)] px-3 pb-6 text-center md:max-w-none md:border-b-0 md:pb-0 md:items-center"
                       >
                         <Clock
                           className="mb-3 size-6 text-[var(--accent)]"
                           strokeWidth={1.75}
                           aria-hidden
                         />
-                        <div
-                          className="ml-2 whitespace-nowrap text-[clamp(1.2rem,2.5vw,2rem)] font-bold leading-none tracking-tight text-[var(--accent)]"
-                        >
-                          <span>2-{heroStat45}</span>
-                          <span className="ml-1">hours</span>
+                        <div className="flex min-w-0 flex-wrap items-baseline justify-center gap-1">
+                          <div className="whitespace-nowrap text-[clamp(1.2rem,2.5vw,2rem)] font-bold leading-none tracking-tight text-[var(--accent)]">
+                            <span>2-{heroStat45}</span>
+                            <span className="ml-1">hours</span>
+                          </div>
                         </div>
                         <div
-                          className="mt-2 w-full text-[11px] text-[var(--text-secondary)]"
-                          style={{
-                            lineHeight: 1.4,
-                            display: "-webkit-box",
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: "vertical",
-                            overflow: "hidden",
-                          }}
+                          className="mt-2 w-full whitespace-nowrap text-xs text-[var(--text-secondary)]"
+                          style={{ lineHeight: 1.4 }}
                           title="saved per client per week"
                         >
-                          {"saved per client per week"}
+                          saved per client per week
                         </div>
                       </ScrollRevealItem>
                       <ScrollRevealItem
                         index={1}
-                        className="flex min-w-0 flex-1 border-y border-[var(--border)] px-3 py-6 text-center md:border-x md:border-y-0 md:py-0"
+                        className="flex w-full min-w-0 max-w-md flex-1 flex-col items-center border-b border-[var(--border)] px-3 py-6 text-center md:max-w-none md:border-x md:border-y-0 md:border-b-0 md:py-0"
                       >
                         <Zap
                           className="mb-4 size-6 text-[var(--accent)]"
                           strokeWidth={1.75}
                           aria-hidden
                         />
-                        <div
-                          className="whitespace-nowrap text-[clamp(1.2rem,2.5vw,2rem)] font-bold leading-none tracking-tight text-[var(--accent)]"
-                        >
-                          <span>£{heroStat1300.toLocaleString("en-GB")}</span>
-                          <span className="ml-1">+</span>
+                        <div className="flex min-w-0 flex-wrap items-baseline justify-center gap-1">
+                          <div className="whitespace-nowrap text-[clamp(1.2rem,2.5vw,2rem)] font-bold leading-none tracking-tight text-[var(--accent)]">
+                            <span>£{heroStat1300.toLocaleString("en-GB")}</span>
+                            <span className="ml-1">+</span>
+                          </div>
                         </div>
                         <div
-                          className="mt-2 w-full text-[11px] text-[var(--text-secondary)]"
-                          style={{
-                            lineHeight: 1.4,
-                            display: "-webkit-box",
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: "vertical",
-                            overflow: "hidden",
-                          }}
+                          className="mt-2 w-full whitespace-nowrap text-xs text-[var(--text-secondary)]"
+                          style={{ lineHeight: 1.4 }}
+                          title="saved per PM per month"
                         >
-                          {"saved per PM per month"}
+                          saved per PM per month
                         </div>
                       </ScrollRevealItem>
                       <ScrollRevealItem
                         index={2}
-                        className="flex min-w-0 flex-1 px-3 text-center"
+                        className="flex w-full min-w-0 max-w-md flex-1 flex-col items-center px-3 text-center md:max-w-none"
                       >
                         <Clock
                           className="mb-4 size-6 text-[var(--accent)]"
                           strokeWidth={1.75}
                           aria-hidden
                         />
-                        <div className="whitespace-nowrap text-[clamp(1.2rem,2.5vw,2rem)] font-bold leading-none tracking-tight text-[var(--accent)]">
-                          <span>{heroStat30}</span>
-                          <span className="ml-1">seconds</span>
+                        <div className="flex min-w-0 flex-wrap items-baseline justify-center gap-1">
+                          <div className="whitespace-nowrap text-[clamp(1.2rem,2.5vw,2rem)] font-bold leading-none tracking-tight text-[var(--accent)]">
+                            <span>{heroStat30}</span>
+                            <span className="ml-1">seconds</span>
+                          </div>
                         </div>
                         <div
-                          className="mt-2 w-full text-[10px] text-[var(--text-secondary)]"
+                          className="mt-2 w-full whitespace-nowrap text-xs text-[var(--text-secondary)]"
                           style={{ lineHeight: 1.4 }}
+                          title="PSA to client-ready"
                         >
-                          {"PSA to client-ready"}
+                          PSA to client-ready
                         </div>
                       </ScrollRevealItem>
                     </div>
@@ -9758,7 +9976,12 @@ export default function Home() {
                   </div>
                 </div>
 
-                <div className="relative flex items-center justify-center">
+                <motion.div
+                  className="relative hidden min-w-0 w-full max-w-full flex-col items-center justify-center overflow-x-hidden sm:flex"
+                  initial={{ opacity: 0, x: 40 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
+                >
                   <div
                     className="pointer-events-none absolute z-0 hidden size-[400px] rounded-full lg:block"
                     style={{
@@ -9768,20 +9991,20 @@ export default function Home() {
                     aria-hidden
                   />
                   <section
-                    className="relative z-10 w-full min-w-0 rounded-[var(--radius-lg)] bg-[var(--bg-primary)] p-4 md:p-6"
+                    className="relative z-10 w-full min-w-0 max-w-full rounded-[var(--radius-lg)] bg-white/[0.03] backdrop-blur-md border border-white/[0.07]"
                     style={{
                       border: "1.5px solid rgba(56,189,248,0.3)",
                       boxShadow:
                         "0 0 0 1px rgba(56,189,248,0.15), 0 4px 24px rgba(56,189,248,0.06), inset 0 1px 0 rgba(255,255,255,0.8)",
                     }}
                   >
-                    <div className="relative w-full">
+                    <div className="relative w-full min-w-0 max-w-full overflow-x-hidden">
                       {/* Glow effect behind the image */}
                       <div className="absolute -inset-4 bg-gradient-to-r from-cyan-500/20 via-blue-500/10 to-transparent rounded-2xl blur-2xl pointer-events-none" />
                       
                       {/* Floating animation wrapper */}
                       <div
-                        className="relative rounded-2xl overflow-hidden shadow-2xl shadow-black/60 border border-white/10"
+                        className="relative overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-2xl shadow-black/60"
                         style={{
                           animation: 'float 6s ease-in-out infinite',
                         }}
@@ -9792,8 +10015,8 @@ export default function Home() {
                         <img
                           src="/dashboard.png"
                           alt="Handover delivery health dashboard"
-                          className="w-full h-auto block"
-                          style={{ display: 'block' }}
+                          className="block h-auto w-full max-w-full"
+                          style={{ display: "block" }}
                         />
 
                         {/* Subtle bottom fade */}
@@ -9801,7 +10024,7 @@ export default function Home() {
                       </div>
                     </div>
                   </section>
-                </div>
+                </motion.div>
               </div>
 
               <button
@@ -9830,30 +10053,71 @@ export default function Home() {
             </section>
 
             <section
-              className="border-b border-[var(--border)] bg-[var(--bg-primary)] px-4 py-3 md:px-6"
+              className="bg-transparent px-4 py-3 md:px-6"
               aria-label="Trusted organisations"
             >
-              <div className="mx-auto flex max-w-[1100px] flex-col items-center justify-center gap-2 text-center md:flex-row md:flex-wrap md:gap-x-3 md:gap-y-0 md:text-[13px]">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+              <div className="flex items-center justify-center gap-6 flex-wrap">
+                <span className="text-slate-400 text-sm tracking-wide uppercase whitespace-nowrap">
                   Used by delivery teams at
                 </span>
-                <div className="flex flex-wrap items-center justify-center gap-2">
-                  <span className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2.5 py-1 text-[13px] font-medium text-[var(--text-secondary)]">
-                    IBM
-                  </span>
-                  <span className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2.5 py-1 text-[13px] font-medium text-[var(--text-secondary)]">
-                    Computacenter
-                  </span>
-                </div>
-                <span className="text-[12px] text-[var(--text-muted)]">
+
+                <img
+                  src="/ibm.png"
+                  alt="IBM"
+                  className="h-8 object-contain opacity-70 grayscale hover:opacity-100 hover:grayscale-0 transition-all duration-200"
+                />
+
+                <img
+                  src="/computacenter.png"
+                  alt="Computacenter"
+                  className="h-10 object-contain opacity-70 grayscale brightness-150 hover:opacity-100 transition-all duration-200"
+                />
+
+                <span className="text-slate-400 text-sm tracking-wide uppercase whitespace-nowrap">
                   and MSP delivery teams worldwide
                 </span>
+
+                {/* Divider */}
+                <div className="h-10 w-px bg-white/10" />
+
+                {/* HaloPSA Technology Alliance Partner */}
+                <a href="/partners/halopsa" className="flex flex-col items-center gap-1 opacity-60 hover:opacity-100 transition-all duration-200 cursor-pointer">
+                  <div className="flex items-center justify-center">
+                    <img
+                      src="/halo.png"
+                      alt="HaloPSA"
+                      className="h-5 object-contain grayscale hover:grayscale-0 transition-all duration-200"
+                    />
+                  </div>
+                  <span className="text-slate-400 text-[9px] uppercase tracking-wider whitespace-nowrap">
+                    Technology Alliance Partner
+                  </span>
+                </a>
+
+                {/* Divider */}
+                <div className="h-8 w-px bg-white/10 mx-2" />
+
+                {/* ConnectWise Marketplace */}
+                <a href="/partners/connectwise" className="flex flex-col items-center gap-1 opacity-60 hover:opacity-100 transition-all duration-200 cursor-pointer">
+                  <img
+                    src="/connectwise.png"
+                    alt="ConnectWise"
+                    className="h-8 object-contain grayscale brightness-150 hover:grayscale-0 transition-all duration-200"
+                  />
+                  <span className="text-slate-300 text-[10px] uppercase tracking-wider whitespace-nowrap">
+                    Marketplace Partner
+                  </span>
+                </a>
               </div>
             </section>
 
-            <section
-              className="mx-auto max-w-[1100px] overflow-x-hidden border-t border-[var(--border)]/40 bg-[color-mix(in_srgb,var(--bg-secondary)_35%,transparent)] px-4 pt-8 md:pt-10"
+            <motion.section
+              className="mx-auto max-w-[1100px] overflow-x-hidden bg-transparent px-4 pt-8 md:pt-10"
               aria-label="How it works"
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-80px" }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
             >
               <ScrollRevealItem index={0} className="text-center">
                 <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)] md:text-3xl">
@@ -9861,41 +10125,35 @@ export default function Home() {
                 </h2>
               </ScrollRevealItem>
 
-              <div className="relative mt-8 md:hidden">
-                <div
-                  className="absolute left-[19px] top-3 bottom-3 w-px bg-[var(--accent)]/40"
-                  aria-hidden
-                />
-                <div className="space-y-8 pl-12">
-                  <ScrollRevealItem index={1} className="relative text-left">
-                    <span className="absolute -left-[29px] top-0 flex size-10 items-center justify-center rounded-full border-2 border-[var(--accent)]/80 bg-[var(--bg-primary)] shadow-sm">
-                      <Plug className="size-[22px] shrink-0 text-[#0EA5E9]" strokeWidth={1.75} aria-hidden />
-                    </span>
-                    <p className="font-bold text-[var(--text-primary)]">Connect or paste</p>
-                    <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                      Connect HaloPSA or paste your meeting notes directly
-                    </p>
-                  </ScrollRevealItem>
-                  <ScrollRevealItem index={2} className="relative text-left">
-                    <span className="absolute -left-[29px] top-0 flex size-10 items-center justify-center rounded-full border-2 border-[var(--accent)]/80 bg-[var(--bg-primary)] shadow-sm">
-                      <Sparkles className="size-[22px] shrink-0 text-[#0EA5E9]" strokeWidth={1.75} aria-hidden />
-                    </span>
-                    <p className="font-bold text-[var(--text-primary)]">Generate in 30 seconds</p>
-                    <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                      Handover reads your data and generates 5 professional outputs simultaneously
-                    </p>
-                  </ScrollRevealItem>
-                  <ScrollRevealItem index={3} className="relative text-left">
-                    <span className="absolute -left-[29px] top-0 flex size-10 items-center justify-center rounded-full border-2 border-[var(--accent)]/80 bg-[var(--bg-primary)] shadow-sm">
-                      <Send className="size-[22px] shrink-0 text-[#0EA5E9]" strokeWidth={1.75} aria-hidden />
-                    </span>
-                    <p className="font-bold text-[var(--text-primary)]">Send or push back</p>
-                    <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                      Send the client email, export to Excel, or push back to HaloPSA or ConnectWise
-                      automatically
-                    </p>
-                  </ScrollRevealItem>
-                </div>
+              <div className="mt-8 flex flex-col items-center gap-10 md:hidden">
+                <ScrollRevealItem index={1} className="flex w-full max-w-md flex-col items-center text-center">
+                  <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-sm">
+                    <Plug className="size-[22px] shrink-0 text-[#0EA5E9]" strokeWidth={1.75} aria-hidden />
+                  </span>
+                  <p className="mt-4 font-bold text-[var(--text-primary)]">Connect or paste</p>
+                  <p className="mt-2 text-sm text-[var(--text-secondary)]">
+                    Connect HaloPSA or paste your meeting notes directly
+                  </p>
+                </ScrollRevealItem>
+                <ScrollRevealItem index={2} className="flex w-full max-w-md flex-col items-center text-center">
+                  <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-sm">
+                    <Sparkles className="size-[22px] shrink-0 text-[#0EA5E9]" strokeWidth={1.75} aria-hidden />
+                  </span>
+                  <p className="mt-4 font-bold text-[var(--text-primary)]">Generate in 30 seconds</p>
+                  <p className="mt-2 text-sm text-[var(--text-secondary)]">
+                    Handover reads your data and generates 5 professional outputs simultaneously
+                  </p>
+                </ScrollRevealItem>
+                <ScrollRevealItem index={3} className="flex w-full max-w-md flex-col items-center text-center">
+                  <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-sm">
+                    <Send className="size-[22px] shrink-0 text-[#0EA5E9]" strokeWidth={1.75} aria-hidden />
+                  </span>
+                  <p className="mt-4 font-bold text-[var(--text-primary)]">Send or push back</p>
+                  <p className="mt-2 text-sm text-[var(--text-secondary)]">
+                    Send the client email, export to Excel, or push back to HaloPSA or ConnectWise
+                    automatically
+                  </p>
+                </ScrollRevealItem>
               </div>
 
               <div className="mx-auto mt-10 hidden max-w-[1000px] items-stretch gap-3 md:flex">
@@ -9903,7 +10161,7 @@ export default function Home() {
                   index={1}
                   className="flex h-full min-w-0 flex-1 flex-col items-center px-2 text-center"
                 >
-                  <span className="flex size-12 shrink-0 items-center justify-center rounded-full border-2 border-[var(--accent)]/80 bg-[var(--bg-primary)] shadow-sm">
+                  <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-sm">
                     <Plug className="size-[22px] shrink-0 text-[#0EA5E9]" strokeWidth={1.75} aria-hidden />
                   </span>
                   <p className="mt-4 font-bold text-[var(--text-primary)]">Connect or paste</p>
@@ -9920,7 +10178,7 @@ export default function Home() {
                   index={2}
                   className="flex h-full min-w-0 flex-1 flex-col items-center px-2 text-center"
                 >
-                  <span className="flex size-12 shrink-0 items-center justify-center rounded-full border-2 border-[var(--accent)]/80 bg-[var(--bg-primary)] shadow-sm">
+                  <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-sm">
                     <Sparkles className="size-[22px] shrink-0 text-[#0EA5E9]" strokeWidth={1.75} aria-hidden />
                   </span>
                   <p className="mt-4 font-bold text-[var(--text-primary)]">Generate in 30 seconds</p>
@@ -9937,7 +10195,7 @@ export default function Home() {
                   index={3}
                   className="flex h-full min-w-0 flex-1 flex-col items-center px-2 text-center"
                 >
-                  <span className="flex size-12 shrink-0 items-center justify-center rounded-full border-2 border-[var(--accent)]/80 bg-[var(--bg-primary)] shadow-sm">
+                  <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-sm">
                     <Send className="size-[22px] shrink-0 text-[#0EA5E9]" strokeWidth={1.75} aria-hidden />
                   </span>
                   <p className="mt-4 font-bold text-[var(--text-primary)]">Send or push back</p>
@@ -9947,11 +10205,15 @@ export default function Home() {
                   </p>
                 </ScrollRevealItem>
               </div>
-            </section>
+            </motion.section>
 
-            <section
+            <motion.section
               ref={mockupSectionRef}
-              className="overflow-x-hidden border-t border-[var(--border)]/35 bg-[var(--bg-primary)] px-4 pt-10 md:px-0 md:pt-14"
+              className="overflow-x-hidden bg-transparent px-4 pt-10 md:px-0 md:pt-14"
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-80px" }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
             >
               <ScrollRevealItem index={0} className="text-center">
                 <h3 className="text-xl font-semibold text-[var(--text-primary)] md:text-2xl">
@@ -9962,25 +10224,25 @@ export default function Home() {
                 </p>
               </ScrollRevealItem>
 
-              <div className="relative mx-auto mt-10 w-full min-w-0 max-w-[960px] overflow-x-hidden md:overflow-visible">
+              <div className="relative mx-auto mt-10 w-full min-w-0 max-w-[960px] overflow-x-hidden rounded-2xl border border-white/[0.06] bg-white/[0.03] p-4 backdrop-blur-md md:overflow-visible md:p-6">
                 <HeroProductMockup variant="full" className="relative z-10 mt-0" />
                 <div
-                  className="home-mockup-float-badge--1 pointer-events-none absolute z-20 hidden rounded-[8px] border border-[var(--accent)] bg-[var(--bg-secondary)] px-3 py-2 text-[13px] font-medium shadow-[0_4px_16px_rgba(0,0,0,0.3)] md:block"
-                  style={{ top: -16, right: -24 }}
+                  className="home-mockup-float-badge--1 pointer-events-none absolute z-20 hidden rounded-[8px] border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm px-3 py-2 text-[13px] font-medium md:block"
+                  style={{ top: 16, right: 16 }}
                   aria-hidden
                 >
                   ⚡ Generated in 28 seconds
                 </div>
                 <div
-                  className="home-mockup-float-badge--2 pointer-events-none absolute z-20 hidden rounded-[8px] border border-[#22c55e] bg-[var(--bg-secondary)] px-3 py-2 text-[13px] font-medium text-[var(--text-primary)] shadow-[0_4px_16px_rgba(0,0,0,0.3)] md:block"
-                  style={{ bottom: 24, left: -24 }}
+                  className="home-mockup-float-badge--2 pointer-events-none absolute z-20 hidden rounded-[8px] border border-[#22c55e] bg-white/[0.04] backdrop-blur-sm px-3 py-2 text-[13px] font-medium text-[var(--text-primary)] md:block"
+                  style={{ bottom: 16, left: 16 }}
                   aria-hidden
                 >
                   <span className="text-[#22c55e]">✓</span> Pushed to HaloPSA / ConnectWise
                 </div>
                 <div
-                  className="home-mockup-float-badge--3 pointer-events-none absolute z-20 hidden rounded-[8px] border border-[var(--accent)] bg-[var(--bg-secondary)] px-3 py-2 text-[13px] font-medium shadow-[0_4px_16px_rgba(0,0,0,0.3)] md:block"
-                  style={{ top: 40, left: -24 }}
+                  className="home-mockup-float-badge--3 pointer-events-none absolute z-20 hidden rounded-[8px] border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm px-3 py-2 text-[13px] font-medium md:block"
+                  style={{ bottom: 56, left: 16 }}
                   aria-hidden
                 >
                   📧 Sent to client
@@ -9993,19 +10255,29 @@ export default function Home() {
                 </p>
               </ScrollRevealItem>
 
-            </section>
+            </motion.section>
 
-            <section className="border-t border-[var(--border)]/45 bg-[var(--bg-secondary)] px-4 py-10 md:px-6 md:py-12 lg:py-16">
-              <div className="mx-auto flex max-w-[720px] justify-center px-0 sm:px-2 md:px-4">
+            <motion.section
+              className="bg-transparent px-4 py-10 md:px-6 md:py-12 lg:py-16"
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-80px" }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
+            >
+              <div className="mx-auto flex min-w-0 max-w-[720px] justify-center rounded-2xl border border-white/[0.06] bg-white/[0.03] px-3 py-4 backdrop-blur-md sm:px-2 md:px-4 md:py-5">
                 <HomeRoiCalculator variant="full" className="mt-0" />
               </div>
-            </section>
+            </motion.section>
 
-            <section
-              className="border-t border-[var(--border)]/45 bg-[var(--bg-primary)] px-4 py-12 md:px-6 md:py-14 lg:py-20"
+            <motion.section
+              className="bg-transparent py-12 md:py-14 lg:py-20"
               aria-label="Testimonials"
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-80px" }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
             >
-              <div className="mx-auto max-w-[960px] overflow-x-hidden">
+              <div className="mx-auto mb-10 max-w-[960px] px-6 text-center">
                 <ScrollRevealItem index={0} className="text-center">
                   <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)] md:text-3xl">
                     What delivery professionals say
@@ -10014,22 +10286,23 @@ export default function Home() {
                     From PMs and SDMs at leading IT organisations
                   </p>
                 </ScrollRevealItem>
-                <ScrollRevealItem index={1} className="mt-10 block">
+              </div>
+              <div className="w-full overflow-hidden">
+                <ScrollRevealItem index={1} className="block">
                   <TestimonialMarquee />
                 </ScrollRevealItem>
               </div>
-            </section>
+            </motion.section>
 
             <section
-              className="w-full border-t border-[var(--border)] px-4 py-12 md:px-6 md:py-14 lg:py-16"
+              className="w-full px-4 py-12 md:px-6 md:py-14 lg:py-16"
               style={{
-                background:
-                  "linear-gradient(135deg, rgba(15,23,42,0.98) 0%, rgba(15,23,42,0.92) 100%)",
+                background: "transparent",
               }}
               aria-label="Sign up to generate reports"
             >
               <div
-                className="mx-auto max-w-[720px] rounded-[var(--radius-lg)] border p-5 shadow-xl sm:p-8 md:p-10"
+                className="mx-auto max-w-[720px] rounded-2xl border border-white/[0.06] bg-white/[0.03] p-5 shadow-xl backdrop-blur-md sm:p-8 md:p-10"
                 style={{
                   borderColor: "color-mix(in srgb, var(--accent) 40%, transparent)",
                   background:
@@ -10044,14 +10317,14 @@ export default function Home() {
                 </p>
                 <div className="mt-8 flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
                   <Link
-                    href="/auth?tab=signup"
-                    className="inline-flex w-full flex-1 items-center justify-center rounded-[var(--radius)] bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-white shadow-md transition-[transform,box-shadow] hover:bg-[var(--accent-hover)] hover:shadow-lg active:scale-[0.98] md:w-auto"
+                    href="/auth?tab=signup&returnTo=/welcome"
+                    className="bg-gradient-to-r from-[#0EA5E9] to-[#0284C7] hover:from-[#0284C7] hover:to-[#0EA5E9] text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-[#0EA5E9]/20 hover:shadow-[#0EA5E9]/30 transition-all duration-300 transform hover:scale-[1.02] inline-flex w-full flex-1 items-center justify-center text-sm active:scale-[0.98] md:w-auto"
                   >
                     Start free trial →
                   </Link>
                   <Link
                     href="/pricing"
-                    className="py-1 text-center text-sm font-medium text-[var(--accent)] underline-offset-4 hover:underline md:px-4"
+                    className="bg-white/[0.05] backdrop-blur-sm border border-white/[0.15] hover:bg-white/[0.08] text-white font-medium px-6 py-3 rounded-xl transition-all duration-300 py-1 text-center text-sm md:px-4"
                   >
                     Compare plans and pricing →
                   </Link>
@@ -10335,7 +10608,6 @@ export default function Home() {
                         <p className="mt-1 text-[13px] text-[var(--text-secondary)]">
                           Last 5 sent reports
                         </p>
-
                         {reportHistoryLoading ? (
                           <div className="mt-4 flex justify-center py-4">
                             <Loader2 className="size-5 animate-spin text-[var(--accent)]" aria-hidden />
@@ -11474,7 +11746,7 @@ export default function Home() {
           ) : userEmail &&
             mainView === "delivery" &&
             deliveryDashboardAccess !== "none" ? (
-            <div key="delivery" className="relative min-h-[min(75vh,880px)] animate-in fade-in duration-200">
+            <div key="delivery" className="relative animate-in fade-in duration-200">
               <div
                 className={cn(
                   !hasProAccess &&
@@ -11632,7 +11904,8 @@ export default function Home() {
           ) : (
           <>
             {userEmail && mainView === "reports" ? (
-              <div className="mb-6 w-full rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-5 shadow-[0_1px_3px_rgba(0,0,0,0.06)] md:p-8">
+              <>
+                <div className="mb-6 w-full rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-5 shadow-[0_1px_3px_rgba(0,0,0,0.06)] md:p-8">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">
                   Quarterly business review
                 </p>
@@ -11653,9 +11926,9 @@ export default function Home() {
                     usageHint={qbrUsageHint}
                   />
                 </div>
-              </div>
+                </div>
+              </>
             ) : null}
-
             {(!userEmail || mainView === "generate") ? (
             userEmail && soloGenerationLocked ? (
               <div className="mb-6 flex min-h-[320px] w-full flex-col items-center justify-center gap-4 rounded-[var(--radius-lg)] border border-red-500/35 bg-red-600 px-6 py-10 text-center text-white shadow-lg">
@@ -11672,16 +11945,16 @@ export default function Home() {
             ) : (
             <>
             {userEmail && !result && !isGenerating && dashGreeting ? (
-              <div className="mb-5 flex flex-col justify-between gap-3 border-b border-[var(--border)] pb-4 sm:flex-row sm:items-end">
+              <div className="mb-3 flex flex-col justify-between gap-2 border-b border-[var(--border)] pb-3 sm:flex-row sm:items-center">
                 <div>
-                  <p className="text-[18px] font-semibold text-[var(--text-primary)]">
+                  <p className="text-[16px] font-semibold text-[var(--text-primary)]">
                     {dashGreeting}
                   </p>
-                  <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+                  <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">
                     Paste your notes or import from HaloPSA to get started.
                   </p>
                 </div>
-                <p className="shrink-0 text-[12px] text-[var(--text-muted)]">
+                <p className="shrink-0 text-[11px] text-[var(--text-muted)]">
                   {new Date().toLocaleDateString("en-GB", {
                     weekday: "long",
                     day: "numeric",
@@ -13309,9 +13582,10 @@ export default function Home() {
               </TabsContent>
             ))}
 
-            <div
-              className="sticky bottom-0 z-10 flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[var(--border)] bg-[var(--bg-primary)] px-4 py-3"
-            >
+            {mainView !== "configuration" && (
+              <div
+                className="sticky bottom-0 z-10 flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[var(--border)] bg-[var(--bg-primary)] px-4 py-3"
+              >
               {psaConnections.primary && psaConnections.multiple ? (
                 <details className="relative">
                   <summary
@@ -13400,7 +13674,7 @@ export default function Home() {
                               <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-secondary)]">
                                 Sign up free to export your outputs. No credit card required.
                               </p>
-                              <Link href="/auth?tab=signup" className="mt-3 block">
+                              <Link href="/auth?tab=signup&returnTo=/welcome" className="mt-3 block">
                                 <Button type="button" className="w-full rounded-[var(--radius)] bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]">
                                   Create free account
                                 </Button>
@@ -13883,7 +14157,8 @@ export default function Home() {
               >
                 {copiedKey === "all_outputs" ? "Copied!" : "Copy all outputs"}
               </Button>
-            </div>
+              </div>
+            )}
           </Tabs>
             {userEmail && showPostGenReferralFooter ? (
               <div className="flex items-center justify-between gap-3 border-t border-[var(--border)] bg-[var(--bg-secondary)]/40 px-4 py-2">
@@ -13957,7 +14232,7 @@ export default function Home() {
                 <p className="text-[13px] text-[var(--text-secondary)]">
                   Sign up free to save your results — no credit card required
                 </p>
-                <Link href="/auth?tab=signup" className="inline-flex shrink-0">
+                <Link href="/auth?tab=signup&returnTo=/welcome" className="inline-flex shrink-0">
                   <Button
                     type="button"
                     className="h-10 rounded-[var(--radius)] bg-[var(--accent)] px-5 text-[13px] font-semibold text-white hover:bg-[var(--accent-hover)]"
@@ -13972,8 +14247,10 @@ export default function Home() {
 
       </div>
       </div>
+      <MarketingFooter />
       <FirstRunOnboardingOverlay
         open={onboardingOverlayOpen}
+        isTrial={!!trialEndsAt}
         welcomeFirstName={onboardingWelcomeFirst}
         profileJobTitle={profileJobTitle}
         profileCompanyName={profileCompanyName}
@@ -14046,6 +14323,6 @@ export default function Home() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </motion.div>
   );
 }

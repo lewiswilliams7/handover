@@ -65,6 +65,7 @@ import {
   TEAM_MEMBER_INVITES_BLOCKED_MESSAGE,
   isTeamPlan,
 } from "@/lib/plans";
+import { normalizePlanLabel } from "@/lib/utils/getPlan";
 
 type OverviewMember = {
   id: string;
@@ -708,6 +709,7 @@ export function TeamDashboardClient() {
   const genLimit = team.generation_limit || 1;
   const genUsed = team.generation_count ?? 0;
   const genPct = Math.min(100, Math.round((genUsed / genLimit) * 100));
+  const isEnterprisePlan = normalizePlanLabel(team.plan ?? "") === "enterprise";
   const now = new Date();
   const monthName = now.toLocaleString("default", { month: "long", year: "numeric" });
 
@@ -761,7 +763,7 @@ export function TeamDashboardClient() {
                   {seatsUsed}
                   <span className="text-lg font-semibold text-[var(--text-muted)]">
                     {" "}
-                    / {seatLimitDisplay}
+                    {isEnterprisePlan ? "/ Unlimited" : `/ ${seatLimitDisplay}`}
                   </span>
                 </p>
                 <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
@@ -771,47 +773,62 @@ export function TeamDashboardClient() {
               {isTeamPlan(team.plan) && atTeamSeatPurchaseCap ? (
                 <EnterpriseSeatsUpgradeMessage className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)]/50 px-3 py-2" />
               ) : null}
-              <button
-                type="button"
-                disabled={billingLoading || teamBuyStripeLoading}
-                onClick={() => {
-                  if (atTeamSeatPurchaseCap) {
-                    setEnterpriseSeatsModalOpen(true);
-                    return;
-                  }
-                  if (isTeamPlan(team.plan)) {
-                    if (data.hasStripeCustomer) {
-                      void openBillingPortal("/dashboard/team");
+              {!isEnterprisePlan ? (
+                <button
+                  type="button"
+                  disabled={billingLoading || teamBuyStripeLoading}
+                  onClick={() => {
+                    if (atTeamSeatPurchaseCap) {
+                      setEnterpriseSeatsModalOpen(true);
                       return;
                     }
-                    setTeamBuyBillingPeriod("monthly");
-                    setTeamBuyBillingModalOpen(true);
-                  } else {
-                    void openBillingPortal("/dashboard/team");
-                  }
-                }}
-                className="w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-left text-xs font-medium text-[var(--accent)] transition-colors hover:bg-[var(--sidebar-hover)] disabled:opacity-50"
-              >
-                Buy more seats →
-              </button>
+                    if (isTeamPlan(team.plan)) {
+                      if (data.hasStripeCustomer) {
+                        void openBillingPortal("/dashboard/team");
+                        return;
+                      }
+                      setTeamBuyBillingPeriod("monthly");
+                      setTeamBuyBillingModalOpen(true);
+                    } else {
+                      void openBillingPortal("/dashboard/team");
+                    }
+                  }}
+                  className="w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-left text-xs font-medium text-[var(--accent)] transition-colors hover:bg-[var(--sidebar-hover)] disabled:opacity-50"
+                >
+                  Buy more seats →
+                </button>
+              ) : null}
             </div>
             </ScrollRevealItem>
             <ScrollRevealItem index={1} className="min-w-0">
             <CardMouseSpotlight className={cn(cardShell, "p-5")} style={elevateCardStyle}>
               <Zap className="size-5 text-[var(--accent)]" strokeWidth={1.75} aria-hidden />
-              <p className="mt-4 text-3xl font-bold tabular-nums tracking-tight text-[var(--text-primary)]">
-                {genUsed}
-                <span className="text-lg font-semibold text-[var(--text-muted)]">
-                  {" "}
-                  / {genLimit}
-                </span>
-              </p>
-              <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
-                Generations (billing period)
-              </p>
-              <p className="mt-2 text-[11px] leading-snug text-[var(--text-muted)]">
-                200 generations per seat per month, pooled across your team
-              </p>
+              {!isEnterprisePlan ? (
+                <>
+                  <p className="mt-4 text-3xl font-bold tabular-nums tracking-tight text-[var(--text-primary)]">
+                    {genUsed}
+                    <span className="text-lg font-semibold text-[var(--text-muted)]">
+                      {" "}
+                      / {genLimit}
+                    </span>
+                  </p>
+                  <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                    Generations (billing period)
+                  </p>
+                  <p className="mt-2 text-[11px] leading-snug text-[var(--text-muted)]">
+                    200 generations per seat per month, pooled across your team
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="mt-4 text-3xl font-bold tabular-nums tracking-tight text-[var(--text-primary)]">
+                    Unlimited
+                  </p>
+                  <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                    Generations (billing period)
+                  </p>
+                </>
+              )}
             </CardMouseSpotlight>
             </ScrollRevealItem>
             <ScrollRevealItem index={2} className="min-w-0">
@@ -847,12 +864,16 @@ export function TeamDashboardClient() {
             <p className="mt-3 text-sm text-[var(--text-secondary)]">
               Team-wide generation count vs your plan limit this billing period.
             </p>
-            <div className="mt-5 h-2.5 w-full overflow-hidden rounded-full bg-[var(--bg-secondary)]">
-              <AnimatedFillBar targetPercent={genPct} barClassName="bg-[var(--accent)]" />
-            </div>
-            <p className="mt-2 text-xs text-[var(--text-muted)]">
-              {genUsed} of {genLimit} used ({genPct}%)
-            </p>
+            {!isEnterprisePlan ? (
+              <>
+                <div className="mt-5 h-2.5 w-full overflow-hidden rounded-full bg-[var(--bg-secondary)]">
+                  <AnimatedFillBar targetPercent={genPct} barClassName="bg-[var(--accent)]" />
+                </div>
+                <p className="mt-2 text-xs text-[var(--text-muted)]">
+                  {genUsed} of {genLimit} used ({genPct}%)
+                </p>
+              </>
+            ) : null}
           </section>
           </ScrollRevealItem>
 

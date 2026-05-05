@@ -39,10 +39,12 @@ import {
 } from "@/lib/owner-cell-format";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { useToast } from "@/components/toasts";
 
 const VIEW_STORAGE_KEY = "delivery-health-view";
 
-type ViewMode = "all" | "projects" | "tickets";
+type ViewMode = "all" | "projects" | "tickets" | "overdue";
 
 type StatusPortfolioFilter =
   | "all"
@@ -333,6 +335,7 @@ export function DeliveryHealthDashboard({
 }: Props) {
   const psaConnections = usePSAConnections();
   const cwEnabled = psaConnections.connectwise;
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState<DeliveryHealthApiResponse | null>(null);
@@ -352,6 +355,20 @@ export function DeliveryHealthDashboard({
   const [priorityPortfolioFilter, setPriorityPortfolioFilter] =
     useState<PriorityPortfolioFilter>("all");
   const [slaPortfolioFilter, setSlaPortfolioFilter] = useState<SlaPortfolioFilter>("all");
+  const [selectedForChase, setSelectedForChase] = useState<Set<number>>(new Set());
+  const [chaseModalOpen, setChaseModalOpen] = useState(false);
+  const [chaseNoteTemplate, setChaseNoteTemplate] = useState(
+    "Hi @{engineer}, this ticket is overdue and requires your attention. Please update with your current status and expected resolution date.",
+  );
+  const [chasingInFlight, setChasingInFlight] = useState(false);
+  const [chaseSearchQuery, setChaseSearchQuery] = useState("");
+  const [chaseOwnerFilter, setChaseOwnerFilter] = useState<string>("all");
+  const [ownerDropdownOpen, setOwnerDropdownOpen] = useState(false);
+  const [autoChaseDays, setAutoChaseDays] = useState<number>(3);
+  const [autoChasEnabled, setAutoChasEnabled] = useState(false);
+  const [defaultChaseMessage, setDefaultChaseMessage] = useState(
+    "Hi @{engineer}, this ticket is overdue and requires your attention. Please update with your current status and expected resolution date. Thank you.",
+  );
 
   useEffect(() => {
     if (data?.access !== "full" && ragFilter === "sla_at_risk") {
@@ -362,7 +379,7 @@ export function DeliveryHealthDashboard({
   useEffect(() => {
     try {
       const v = localStorage.getItem(VIEW_STORAGE_KEY);
-      if (v === "projects" || v === "tickets" || v === "all") setViewMode(v);
+      if (v === "projects" || v === "tickets" || v === "all" || v === "overdue") setViewMode(v);
     } catch {
       /* ignore */
     }
@@ -456,6 +473,33 @@ export function DeliveryHealthDashboard({
     priorityPortfolioFilter,
     slaPortfolioFilter,
   ]);
+
+  const overdueRows = useMemo(() => {
+    let rows = (data?.rows ?? []).filter(
+      (r) => r.daysToTarget !== null && r.daysToTarget < 0 && r.owner !== null,
+    );
+    if (chaseSearchQuery.trim()) {
+      const q = chaseSearchQuery.trim().toLowerCase();
+      rows = rows.filter(
+        (r) =>
+          r.name?.toLowerCase().includes(q) ||
+          r.clientName?.toLowerCase().includes(q) ||
+          r.owner?.toLowerCase().includes(q),
+      );
+    }
+    if (chaseOwnerFilter !== "all") {
+      rows = rows.filter((r) => r.owner === chaseOwnerFilter);
+    }
+    return rows;
+  }, [data, chaseSearchQuery, chaseOwnerFilter]);
+
+  const allOverdueOwners = useMemo(() => {
+    const owners = new Set<string>();
+    (data?.rows ?? [])
+      .filter((r) => r.daysToTarget !== null && r.daysToTarget < 0 && r.owner)
+      .forEach((r) => owners.add(r.owner!));
+    return Array.from(owners).sort();
+  }, [data]);
 
   const dynamicStatusOptions = useMemo(() => {
     const base = new Set(["new", "in progress", "on hold", "resolved", "closed"]);
@@ -765,6 +809,104 @@ export function DeliveryHealthDashboard({
       detailCloseTimerRef.current = null;
     }, 200);
   }, []);
+
+  const handleOverdueChase = useCallback(
+    async (ticket: {
+      id: number | string;
+      title: string;
+      assignedEngineer?: string;
+      source: "halopsa" | "connectwise";
+    }) => {
+      if (!ticket.assignedEngineer) {
+        toast({
+          message: "No engineer assigned to this ticket",
+          variant: "error",
+          durationMs: 3000,
+        });
+        return;
+      }
+
+      const note = `Hi @${ticket.assignedEngineer}, this ticket is overdue and requires your attention. Please update the ticket with your current status and expected resolution date. Thank you.`;
+
+      try {
+        const res = await fetch("/api/psa/chase-ticket", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            ticketId: ticket.id,
+            note,
+            source: ticket.source,
+          }),
+        });
+
+        if (!res.ok) throw new Error("Failed to push chase note");
+
+        toast({
+          message: "Chase note sent",
+          subtitle: `Internal note pushed to ticket with @${ticket.assignedEngineer}`,
+          variant: "success",
+          durationMs: 4000,
+        });
+      } catch {
+        toast({
+          message: "Failed to send chase note",
+          variant: "error",
+          durationMs: 3000,
+        });
+      }
+    },
+    [toast],
+  );
+
+  const handleBulkChase = useCallback(async () => {
+    if (selectedForChase.size === 0) return;
+    setChasingInFlight(true);
+    const toChase = overdueRows.filter((r) => selectedForChase.has(r.id));
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const ticket of toChase) {
+      const note = chaseNoteTemplate.replace("{engineer}", ticket.owner ?? "team");
+      try {
+        const res = await fetch("/api/psa/chase-ticket", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            ticketId: ticket.id,
+            note,
+            source: ticket.source,
+          }),
+        });
+        if (res.ok) successCount += 1;
+        else failCount += 1;
+      } catch {
+        failCount += 1;
+      }
+    }
+
+    setChasingInFlight(false);
+    setChaseModalOpen(false);
+    setSelectedForChase(new Set());
+
+    if (successCount > 0) {
+      toast({
+        message: `${successCount} chase note${successCount > 1 ? "s" : ""} sent`,
+        subtitle: failCount > 0 ? `${failCount} failed — check PSA connection` : undefined,
+        variant: "success",
+        durationMs: 4000,
+      });
+    } else {
+      toast({
+        message: "Failed to send chase notes",
+        subtitle: "Check your PSA connection and try again.",
+        variant: "error",
+        durationMs: 4000,
+      });
+    }
+  }, [chaseNoteTemplate, overdueRows, selectedForChase, toast]);
 
   const targetCell = (row: DeliveryHealthRow) => {
     if (row.daysToTarget == null) return <span className="text-[var(--text-muted)]"> - </span>;
@@ -1080,6 +1222,21 @@ export function DeliveryHealthDashboard({
                   >
                     Projects ({(data?.rows ?? []).filter((r) => r.kind === "project").length})
                   </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={viewMode === "overdue"}
+                    className={cn(
+                      "rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all duration-200 ease-out",
+                      viewMode === "overdue"
+                        ? "bg-amber-500 text-white shadow-sm"
+                        : "text-[var(--text-muted)] hover:text-[var(--text-primary)]",
+                      focusRing,
+                    )}
+                    onClick={() => setViewMode("overdue")}
+                  >
+                    Overdue ({(data?.rows ?? []).filter((r) => r.daysToTarget !== null && r.daysToTarget < 0).length})
+                  </button>
                 </div>
               </div>
 
@@ -1212,7 +1369,332 @@ export function DeliveryHealthDashboard({
                 </div>
               ) : null}
 
-              {loading ? (
+              {viewMode === "overdue" ? (
+                <div className="flex flex-col gap-4 p-4">
+                  <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={autoChasEnabled}
+                            onCheckedChange={(v) => setAutoChasEnabled(Boolean(v))}
+                          />
+                          <span className="text-[13px] font-medium text-[var(--text-primary)]">Auto-chase</span>
+                        </div>
+                        {autoChasEnabled && (
+                          <div className="flex items-center gap-2 text-[13px] text-[var(--text-secondary)]">
+                            <span>after</span>
+                            <input
+                              type="number"
+                              min={1}
+                              max={30}
+                              value={autoChaseDays}
+                              onChange={(e) => setAutoChaseDays(Number(e.target.value))}
+                              className="w-14 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1 text-center text-[13px] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-amber-400"
+                            />
+                            <span>days overdue</span>
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const msg = window.prompt(
+                            "Default chase message (use {engineer} for name):",
+                            defaultChaseMessage,
+                          );
+                          if (msg !== null) setDefaultChaseMessage(msg);
+                          setChaseNoteTemplate(msg ?? defaultChaseMessage);
+                        }}
+                        className="text-[12px] text-[var(--text-muted)] underline-offset-2 transition-colors hover:text-[var(--text-primary)] hover:underline"
+                      >
+                        Edit default message
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative min-w-[180px] flex-1">
+                      <input
+                        type="text"
+                        value={chaseSearchQuery}
+                        onChange={(e) => setChaseSearchQuery(e.target.value)}
+                        placeholder="Search tickets, clients..."
+                        className="w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-1.5 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                      />
+                    </div>
+
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setOwnerDropdownOpen((v) => !v)}
+                        className="flex items-center gap-2 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-1.5 text-[13px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+                      >
+                        {chaseOwnerFilter === "all" ? "All engineers" : `@${chaseOwnerFilter}`}
+                        <svg className="size-3.5" viewBox="0 0 20 20" fill="currentColor">
+                          <path
+                            fillRule="evenodd"
+                            d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      </button>
+                      {ownerDropdownOpen && (
+                        <div className="absolute left-0 top-full z-20 mt-1 w-52 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] py-1 shadow-xl">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setChaseOwnerFilter("all");
+                              setOwnerDropdownOpen(false);
+                            }}
+                            className={cn(
+                              "w-full px-3 py-1.5 text-left text-[13px] transition-colors hover:bg-[var(--bg-secondary)]",
+                              chaseOwnerFilter === "all"
+                                ? "font-medium text-[var(--accent)]"
+                                : "text-[var(--text-primary)]",
+                            )}
+                          >
+                            All engineers
+                          </button>
+                          {allOverdueOwners.map((owner) => (
+                            <button
+                              key={owner}
+                              type="button"
+                              onClick={() => {
+                                setChaseOwnerFilter(owner);
+                                setOwnerDropdownOpen(false);
+                              }}
+                              className={cn(
+                                "w-full px-3 py-1.5 text-left text-[13px] transition-colors hover:bg-[var(--bg-secondary)]",
+                                chaseOwnerFilter === owner
+                                  ? "font-medium text-[var(--accent)]"
+                                  : "text-[var(--text-primary)]",
+                              )}
+                            >
+                              @{owner}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 rounded-[var(--radius-lg)] border border-amber-500/20 bg-amber-500/[0.06] px-4 py-2.5">
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedForChase.size === overdueRows.length && overdueRows.length > 0}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedForChase(new Set(overdueRows.map((r) => r.id)));
+                          } else {
+                            setSelectedForChase(new Set());
+                          }
+                        }}
+                        className="rounded border-amber-400/50"
+                      />
+                      <span className="text-[13px] text-[var(--text-secondary)]">
+                        {selectedForChase.size > 0
+                          ? `${selectedForChase.size} selected`
+                          : `${overdueRows.length} overdue ticket${overdueRows.length !== 1 ? "s" : ""}`}
+                      </span>
+                    </div>
+                    {selectedForChase.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setChaseModalOpen(true)}
+                        className="rounded-[var(--radius)] bg-amber-500 px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-amber-400"
+                      >
+                        Chase {selectedForChase.size} selected →
+                      </button>
+                    )}
+                  </div>
+
+                  {overdueRows.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 text-center">
+                      <p className="text-[15px] font-medium text-[var(--text-primary)]">No overdue tickets</p>
+                      <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+                        {chaseSearchQuery || chaseOwnerFilter !== "all"
+                          ? "No tickets match your filters."
+                          : "All tickets are within their target dates."}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {overdueRows.map((row) => (
+                        <div
+                          key={row.id}
+                          className={cn(
+                            "flex cursor-pointer items-center gap-3 rounded-[var(--radius-lg)] border px-4 py-3 transition-all duration-150",
+                            selectedForChase.has(row.id)
+                              ? "border-amber-400/40 bg-amber-500/[0.08]"
+                              : "border-[var(--border)] bg-[var(--bg-primary)] hover:border-[var(--border-subtle)] hover:bg-[var(--bg-secondary)]",
+                          )}
+                          onClick={() => {
+                            const next = new Set(selectedForChase);
+                            if (next.has(row.id)) next.delete(row.id);
+                            else next.add(row.id);
+                            setSelectedForChase(next);
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedForChase.has(row.id)}
+                            onChange={() => {}}
+                            className="pointer-events-none shrink-0 rounded border-[var(--border)]"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[13px] font-medium text-[var(--text-primary)]">{row.name}</p>
+                            <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-muted)]">
+                              <span>{row.clientName}</span>
+                              {row.owner && (
+                                <>
+                                  <span>·</span>
+                                  <span className="text-[var(--text-secondary)]">@{row.owner}</span>
+                                </>
+                              )}
+                              <span>·</span>
+                              <span className="font-medium text-red-400">
+                                {Math.abs(row.daysToTarget ?? 0)} days overdue
+                              </span>
+                              {row.priorityName && (
+                                <>
+                                  <span>·</span>
+                                  <span>{row.priorityName}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          {row.haloTicketUrl && (
+                            <a
+                              href={row.haloTicketUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="shrink-0 rounded border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+                            >
+                              View →
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {chaseModalOpen && (
+                    <div
+                      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 pt-16"
+                      style={{ backgroundColor: "rgba(0,0,0,0.7)" }}
+                      onClick={(e) => {
+                        if (e.target === e.currentTarget) setChaseModalOpen(false);
+                      }}
+                    >
+                      <div className="w-full max-w-lg rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] shadow-2xl">
+                        <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
+                          <div>
+                            <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">
+                              Chase {selectedForChase.size} overdue ticket{selectedForChase.size !== 1 ? "s" : ""}
+                            </h2>
+                            <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">
+                              An internal note will be pushed to each selected ticket in your PSA.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setChaseModalOpen(false)}
+                            className="rounded-md p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]"
+                          >
+                            <svg className="size-4" viewBox="0 0 20 20" fill="currentColor">
+                              <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                            </svg>
+                          </button>
+                        </div>
+
+                        <div className="px-5 pt-4">
+                          <label className="mb-1.5 block text-[12px] font-medium text-[var(--text-secondary)]">
+                            Note to send{" "}
+                            <span className="font-normal text-[var(--text-muted)]">
+                              — use {"{engineer}"} to insert their name
+                            </span>
+                          </label>
+                          <textarea
+                            value={chaseNoteTemplate}
+                            onChange={(e) => setChaseNoteTemplate(e.target.value)}
+                            rows={4}
+                            className="w-full resize-none rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-[13px] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                          />
+                        </div>
+
+                        <div className="px-5 pb-2 pt-3">
+                          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                            Tickets ({selectedForChase.size})
+                          </p>
+                          <div className="flex max-h-48 flex-col gap-1.5 overflow-y-auto pr-1">
+                            {overdueRows
+                              .filter((r) => selectedForChase.has(r.id))
+                              .map((r) => (
+                                <div
+                                  key={r.id}
+                                  className="flex items-center gap-2 rounded-[var(--radius)] bg-[var(--bg-secondary)] px-3 py-2"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-[12px] font-medium text-[var(--text-primary)]">
+                                      {r.name}
+                                    </p>
+                                    <p className="text-[11px] text-[var(--text-muted)]">
+                                      @{r.owner ?? "unassigned"} · {r.clientName} ·{" "}
+                                      <span className="text-red-400">
+                                        {Math.abs(r.daysToTarget ?? 0)}d overdue
+                                      </span>
+                                    </p>
+                                  </div>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 border-t border-[var(--border)] px-5 py-4">
+                          <button
+                            type="button"
+                            onClick={() => setChaseModalOpen(false)}
+                            disabled={chasingInFlight}
+                            className="rounded-[var(--radius)] border border-[var(--border)] px-4 py-2 text-[13px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleBulkChase()}
+                            disabled={chasingInFlight}
+                            className="flex items-center gap-2 rounded-[var(--radius)] bg-amber-500 px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-amber-400 disabled:opacity-50"
+                          >
+                            {chasingInFlight && (
+                              <svg className="size-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                                <circle
+                                  className="opacity-25"
+                                  cx="12"
+                                  cy="12"
+                                  r="10"
+                                  stroke="currentColor"
+                                  strokeWidth="4"
+                                />
+                                <path
+                                  className="opacity-75"
+                                  fill="currentColor"
+                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                                />
+                              </svg>
+                            )}
+                            {chasingInFlight
+                              ? "Sending..."
+                              : `Send ${selectedForChase.size} note${selectedForChase.size !== 1 ? "s" : ""}`}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : loading ? (
                 <div className="w-full overflow-x-auto md:overflow-visible">
                   <table className="w-full table-fixed border-collapse text-left text-[13px]">
                     <thead>
@@ -1305,7 +1787,7 @@ export function DeliveryHealthDashboard({
                         <col style={{ width: "10%" }} />
                         <col style={{ width: "10%" }} />
                         <col style={{ width: "10%" }} />
-                        <col style={{ width: "80px" }} />
+                        <col style={{ width: "120px" }} />
                       </colgroup>
                       <thead>
                         <tr className="border-b border-[var(--border)]">
@@ -1324,6 +1806,14 @@ export function DeliveryHealthDashboard({
                       </thead>
                       <tbody>
                         {sortedClientRows.map((row) => {
+                          const representativeTicket = row.rows.find((r) => r.kind === "ticket");
+                          const canChase =
+                            representativeTicket != null &&
+                            representativeTicket.owner != null &&
+                            (
+                              (representativeTicket.daysToTarget != null && representativeTicket.daysToTarget < 0) ||
+                              (representativeTicket.daysToTarget == null && representativeTicket.rag === "red")
+                            );
                           return (
                             <tr
                               key={row.clientName}
@@ -1416,7 +1906,7 @@ export function DeliveryHealthDashboard({
                                 <span className="text-slate-400">Not scheduled</span>
                               </td>
                               <td className="px-3 py-2.5 align-top">
-                                <div className="flex items-center justify-center">
+                                <div className="flex flex-col items-center gap-1">
                                   <button
                                     type="button"
                                     title="View"

@@ -21,7 +21,7 @@ export default function BlogIndexPage() {
 
   return (
     <MarketingPageLayout>
-      <section className="relative z-[1] overflow-hidden bg-[var(--bg-primary)] px-6 py-12 md:px-8 md:py-20">
+      <section className="relative z-[1] overflow-hidden bg-transparent px-6 py-12 md:px-8 md:py-20">
         <MarketingHeroAmbient />
         <div className="relative z-[1] mx-auto w-full max-w-[1100px]">
           <div className="mx-auto max-w-[720px] animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -33,7 +33,7 @@ export default function BlogIndexPage() {
         </div>
       </section>
 
-      <section className="relative z-[1] border-t border-[var(--border)] bg-[var(--bg-secondary)] px-6 py-12 md:px-8 md:py-20">
+      <section className="relative z-[1] bg-transparent px-6 py-12 md:px-8 md:py-20">
         <div className="mx-auto w-full max-w-[1100px]">
           <BlogIndexClient posts={posts} />
         </div>

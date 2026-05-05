@@ -11,7 +11,8 @@ function normalizeHaloBase(url: string): string {
 }
 
 async function probeHaloClientsApi(base: string, accessToken: string): Promise<Response> {
-  return fetch(
+  // Try /api/Clients first
+  const clientsRes = await fetch(
     `${base}/api/Clients?pageinate=true&page_size=1&page_no=1&includeinactive=false`,
     {
       headers: {
@@ -21,6 +22,36 @@ async function probeHaloClientsApi(base: string, accessToken: string): Promise<R
       cache: "no-store",
     },
   );
+
+  // If 404, try /api/Customer as fallback (some on-prem versions use different endpoint)
+  if (clientsRes.status === 404) {
+    const customerRes = await fetch(
+      `${base}/api/Customer?pageinate=true&page_size=1&page_no=1`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        cache: "no-store",
+      },
+    );
+    if (customerRes.ok) return customerRes;
+
+    // Try /api/tickets as final fallback — if this works the API is live
+    const ticketsRes = await fetch(
+      `${base}/api/tickets?pageinate=true&page_size=1&page_no=1`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        cache: "no-store",
+      },
+    );
+    return ticketsRes;
+  }
+
+  return clientsRes;
 }
 
 export async function GET() {
@@ -72,6 +103,13 @@ export async function GET() {
       invalidateHaloTokenCache(creds);
       token = await getHaloToken(creds);
       res = await probeHaloClientsApi(base, token);
+    }
+
+    if (res.status === 404) {
+      return NextResponse.json(
+        { error: "HaloPSA API endpoint not found (404). Please ensure your API application has read permissions enabled in HaloPSA under Configuration > Integrations > HaloPSA API. If you are on an on-prem instance, verify the API is enabled and accessible." },
+        { status: 400 },
+      );
     }
 
     if (!res.ok) {

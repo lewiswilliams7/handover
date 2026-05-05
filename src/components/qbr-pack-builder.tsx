@@ -463,6 +463,25 @@ export function QbrPackBuilder({
     halopsa: true,
     connectwise: true,
   });
+  const [qbrSelectedClients, setQbrSelectedClients] = useState<string[]>([]);
+  const [qbrExpandedClients, setQbrExpandedClients] = useState<Set<string>>(new Set());
+  const [qbrAvailableClients, setQbrAvailableClients] = useState<
+    Array<{
+      name: string;
+      id: number | string;
+      source: "halopsa" | "connectwise";
+      tickets: Array<{ id: number | string; title: string }>;
+    }>
+  >([]);
+  const [qbrClientsLoading, setQbrClientsLoading] = useState(true);
+  const [clientTickets, setClientTickets] = useState<Record<string, Array<{ id: number; title: string }>>>({});
+  const [loadingTickets, setLoadingTickets] = useState<Record<string, boolean>>({});
+  const [clientExpandTab, setClientExpandTab] = useState<Record<string, "tickets" | "projects">>({});
+  const [clientProjects, setClientProjects] = useState<Record<string, Array<{ id: number; title: string }>>>({});
+  const [loadingProjects, setLoadingProjects] = useState<Record<string, boolean>>({});
+  const [selectedTicketIds, setSelectedTicketIds] = useState<Set<string>>(new Set());
+  const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());
+  const [clientSearch, setClientSearch] = useState("");
   const [dateRange, setDateRange] = useState<"last_30_days" | "last_60_days" | "last_90_days" | "custom">(
     "last_90_days",
   );
@@ -484,6 +503,148 @@ export function QbrPackBuilder({
     const u = brandLogoUrlProp?.trim();
     if (u) setBrandLogoUrl(u);
   }, [brandLogoUrlProp]);
+
+  useEffect(() => {
+    if (!sources.halopsa && !sources.connectwise) {
+      setQbrAvailableClients([]);
+      setQbrSelectedClients([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchClients = async () => {
+      setQbrClientsLoading(true);
+      try {
+        const result: Array<{
+          name: string;
+          id: number | string;
+          source: "halopsa" | "connectwise";
+          tickets: Array<{ id: number | string; title: string }>;
+        }> = [];
+
+        if (sources.halopsa) {
+          let page = 1;
+          let hasMore = true;
+          while (hasMore) {
+            const res = await fetch(`/api/halo/clients?page=${page}&page_size=100`, { credentials: "same-origin" });
+            if (!res.ok) break;
+            const json = (await res.json()) as { clients?: Array<{ id: number; name: string }>; hasMore?: boolean };
+            const arr = json.clients ?? [];
+            arr.forEach((c) => {
+              result.push({ name: c.name, id: c.id, source: "halopsa", tickets: [] });
+            });
+            hasMore = json.hasMore === true && arr.length > 0;
+            page++;
+            if (page > 20) break;
+          }
+        }
+
+        if (sources.connectwise) {
+          try {
+            const res = await fetch('/api/cw/clients', { credentials: 'same-origin' })
+            if (res.ok) {
+              const json = await res.json() as { clients?: Array<{ id: number; name: string }> }
+              const arr = json.clients ?? []
+              arr.forEach(c => {
+                result.push({ name: c.name, id: c.id, source: 'connectwise', tickets: [] })
+              })
+            }
+          } catch (e) {
+            console.error('[qbr cw clients]', e)
+          }
+        }
+
+        if (!cancelled) {
+          setQbrAvailableClients(result);
+        }
+      } catch (e) {
+        console.error("[qbr fetchClients]", e);
+      } finally {
+        if (!cancelled) setQbrClientsLoading(false);
+      }
+    };
+
+    void fetchClients();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sources.halopsa, sources.connectwise]);
+
+  const loadTicketsForClient = async (
+    clientId: number | string,
+    source: "halopsa" | "connectwise",
+  ) => {
+    const key = `${source}:${String(clientId)}`
+    if (clientTickets[key] || loadingTickets[key]) return
+    setLoadingTickets(prev => ({ ...prev, [key]: true }))
+    try {
+      let tickets: Array<{ id: number; title: string }> = []
+      if (source === "halopsa") {
+        const res = await fetch("/api/halo/tickets", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ type: "tickets", clientId, count: 50 }),
+        })
+        if (res.ok) {
+          const data = await res.json() as { tickets?: Array<{ id: number; summary?: string }> }
+          tickets = (data.tickets ?? []).map(t => ({ id: t.id, title: t.summary || String(t.id) }))
+        }
+      } else {
+        const res = await fetch(`/api/cw/tickets?companyId=${clientId}&count=50`, {
+          credentials: "same-origin",
+        })
+        if (res.ok) {
+          const data = await res.json() as { tickets?: Array<{ id: number; title?: string; summary?: string }> } | Array<{ id: number; title?: string; summary?: string }>
+          const arr = Array.isArray(data) ? data : (data.tickets ?? [])
+          tickets = arr.map(t => ({ id: t.id, title: t.title || t.summary || String(t.id) }))
+        }
+      }
+      setClientTickets(prev => ({ ...prev, [key]: tickets }))
+    } catch (e) {
+      console.error("[loadTickets]", e)
+    } finally {
+      setLoadingTickets(prev => ({ ...prev, [key]: false }))
+    }
+  };
+
+  const loadProjectsForClient = async (
+    clientId: number | string,
+    source: "halopsa" | "connectwise",
+  ) => {
+    const key = `${source}:${String(clientId)}`
+    if (clientProjects[key] || loadingProjects[key]) return
+    setLoadingProjects(prev => ({ ...prev, [key]: true }))
+    try {
+      let projects: Array<{ id: number; title: string }> = []
+      if (source === "halopsa") {
+        const res = await fetch(`/api/halo/projects?clientId=${clientId}`, {
+          credentials: "same-origin",
+        })
+        if (res.ok) {
+          const data = await res.json() as Array<{ id: number; summary?: string; name?: string }> | { projects?: Array<{ id: number; summary?: string; name?: string }> }
+          const arr = Array.isArray(data) ? data : (data.projects ?? [])
+          projects = arr.map(p => ({ id: p.id, title: p.summary || p.name || String(p.id) }))
+        }
+      } else {
+        const res = await fetch(`/api/cw/projects?companyId=${clientId}`, {
+          credentials: "same-origin",
+        })
+        if (res.ok) {
+          const data = await res.json() as { projects?: Array<{ id: number; name?: string; summary?: string }> } | Array<{ id: number; name?: string; summary?: string }>
+          const arr = Array.isArray(data) ? data : (data.projects ?? [])
+          projects = arr.map(p => ({ id: p.id, title: p.name || p.summary || String(p.id) }))
+        }
+      }
+      setClientProjects(prev => ({ ...prev, [key]: projects }))
+    } catch (e) {
+      console.error("[loadProjects]", e)
+    } finally {
+      setLoadingProjects(prev => ({ ...prev, [key]: false }))
+    }
+  };
 
   const canGenerate = useMemo(
     () =>
@@ -583,7 +744,8 @@ export function QbrPackBuilder({
     return () => {
       cancelled = true;
     };
-  }, [step, canGenerate, sources.halopsa, sources.connectwise, dateRange, customFrom, customTo]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, canGenerate, sources.halopsa, sources.connectwise, dateRange, customFrom, customTo, qbrSelectedClients.join(","), Array.from(selectedTicketIds).join(","), Array.from(selectedProjectIds).join(",")]);
 
   async function fetchTicketsAndProjects(fromIso: string, toIso: string): Promise<{ tickets: TicketRow[]; projects: ProjectRow[] }> {
     const tickets: TicketRow[] = [];
@@ -613,7 +775,77 @@ export function QbrPackBuilder({
       const d = new Date(String(t.dateoccurred ?? "")).getTime();
       return Number.isFinite(d) && d >= fromMs && d <= toMs;
     });
-    return { tickets: filteredTickets, projects };
+    // Filter by selected clients if any are chosen
+    const selectedClientIds = qbrSelectedClients
+      .map(key => {
+        const parts = key.split(":");
+        return parts.slice(1).join(":");
+      });
+
+    const filteredByClient = selectedClientIds.length === 0
+      ? filteredTickets
+      : filteredTickets.filter(t => {
+          const raw = t as unknown as {
+            clientId?: number | null
+            client?: { name?: string | null } | null
+            client_id?: number | null
+            client_name?: string | null
+          };
+          const ticketClientId = String(raw.clientId ?? raw.client_id ?? "");
+          return selectedClientIds.includes(ticketClientId);
+        });
+
+    const filteredProjectsByClient = selectedClientIds.length === 0
+      ? projects
+      : projects.filter(p => {
+          const raw = p as unknown as {
+            clientId?: number | null
+            client?: { name?: string | null } | null
+            client_id?: number | null
+            client_name?: string | null
+          };
+          const projectClientId = String(raw.clientId ?? raw.client_id ?? "");
+          return selectedClientIds.includes(projectClientId);
+        });
+
+    // If specific tickets are selected for any client, filter to just those
+    const hasSpecificTickets = selectedTicketIds.size > 0
+    const finalTickets = !hasSpecificTickets
+      ? filteredByClient
+      : filteredByClient.filter(t => {
+          // Check if any specific tickets selected for this ticket's client
+          const raw = t as unknown as { clientId?: number | null }
+          const clientId = String(raw.clientId ?? "")
+          const matchingClientKey = qbrSelectedClients.find(k => k.endsWith(`:${clientId}`))
+          if (!matchingClientKey) return true // no specific selection for this client
+          const hasClientSpecific = Array.from(selectedTicketIds).some(k => k.startsWith(matchingClientKey))
+          if (!hasClientSpecific) return true // client selected but no specific tickets — include all
+          return selectedTicketIds.has(`${matchingClientKey}:${t.id}`)
+        })
+
+    const hasSpecificProjects = selectedProjectIds.size > 0
+    const finalProjects = !hasSpecificProjects
+      ? filteredProjectsByClient
+      : filteredProjectsByClient.filter(p => {
+          const raw = p as unknown as { clientId?: number | null }
+          const clientId = String(raw.clientId ?? "")
+          const matchingClientKey = qbrSelectedClients.find(k => k.endsWith(`:${clientId}`))
+          if (!matchingClientKey) return true
+          const hasClientSpecific = Array.from(selectedProjectIds).some(k => k.startsWith(matchingClientKey))
+          if (!hasClientSpecific) return true
+          return selectedProjectIds.has(`${matchingClientKey}:${p.id}`)
+        })
+
+    console.log('[qbr filter debug]', {
+      selectedClientIds,
+      qbrSelectedClients,
+      firstTicketClientId: filteredTickets[0] ? (filteredTickets[0] as any).clientId : 'no tickets',
+      firstTicketClient: filteredTickets[0] ? (filteredTickets[0] as any).client : 'no tickets',
+      filteredByClientCount: filteredByClient.length,
+      totalTickets: filteredTickets.length,
+    })
+
+    return { tickets: finalTickets, projects: finalProjects }
   }
 
   function coerceQbrRisksArray(raw: unknown): Array<{ risk: string; impact: string; mitigation: string }> {
@@ -1619,7 +1851,7 @@ export function QbrPackBuilder({
 
   const builder = (
     <>
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-5 md:p-6">
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-5 md:p-8 max-w-4xl">
         {usageHint ? <p className="mb-4 text-xs text-[var(--text-muted)]">{usageHint}</p> : null}
         <div className="mb-5 flex flex-wrap gap-2">
           {([
@@ -1641,22 +1873,237 @@ export function QbrPackBuilder({
         </div>
 
         {step === 1 ? (
-          <div className="grid gap-5 md:grid-cols-2">
-            <div>
-              <h3 className="text-lg font-semibold text-[var(--text-primary)]">Select PSA Sources</h3>
-              <p className="mt-1 text-sm text-[var(--text-secondary)]">Choose which connected PSA systems feed this QBR pack.</p>
+          <>
+            <div className="grid gap-5 md:grid-cols-2">
+              <div>
+                <h3 className="text-lg font-semibold text-[var(--text-primary)]">Select PSA Sources</h3>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">Choose which connected PSA systems feed this QBR pack.</p>
+              </div>
+              <div className="space-y-3">
+                <label className="flex items-center justify-between rounded-lg border border-[var(--border)] p-3">
+                  <span className="text-sm font-medium">HaloPSA</span>
+                  <Switch checked={sources.halopsa} onCheckedChange={(v) => setSources((s) => ({ ...s, halopsa: Boolean(v) }))} />
+                </label>
+                <label className="flex items-center justify-between rounded-lg border border-[var(--border)] p-3">
+                  <span className="text-sm font-medium">ConnectWise</span>
+                  <Switch checked={sources.connectwise} onCheckedChange={(v) => setSources((s) => ({ ...s, connectwise: Boolean(v) }))} />
+                </label>
+              </div>
             </div>
-            <div className="space-y-3">
-              <label className="flex items-center justify-between rounded-lg border border-[var(--border)] p-3">
-                <span className="text-sm font-medium">HaloPSA</span>
-                <Switch checked={sources.halopsa} onCheckedChange={(v) => setSources((s) => ({ ...s, halopsa: Boolean(v) }))} />
-              </label>
-              <label className="flex items-center justify-between rounded-lg border border-[var(--border)] p-3">
-                <span className="text-sm font-medium">ConnectWise</span>
-                <Switch checked={sources.connectwise} onCheckedChange={(v) => setSources((s) => ({ ...s, connectwise: Boolean(v) }))} />
-              </label>
-            </div>
-          </div>
+            {(qbrAvailableClients.length > 0 || qbrClientsLoading) && (
+              <div className="mt-6 border-t border-[var(--border)] pt-5">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={qbrSelectedClients.length === qbrAvailableClients.length && qbrAvailableClients.length > 0}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setQbrSelectedClients(qbrAvailableClients.map((c) => `${c.source}:${String(c.id)}`));
+                        } else {
+                          setQbrSelectedClients([]);
+                        }
+                      }}
+                      className="rounded border-[var(--border)] accent-[var(--accent)]"
+                    />
+                    <span className="text-[13px] font-semibold text-[var(--text-primary)]">
+                      Clients
+                    </span>
+                    {qbrSelectedClients.length > 0 && (
+                      <span className="rounded-full bg-[var(--accent)]/15 px-2 py-0.5 text-[11px] font-medium text-[var(--accent)]">
+                        {qbrSelectedClients.length} selected
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[11px] text-[var(--text-muted)]">
+                    {qbrAvailableClients.length} clients
+                  </span>
+                </div>
+
+                <input
+                  type="text"
+                  placeholder="Search clients..."
+                  value={clientSearch}
+                  onChange={(e) => setClientSearch(e.target.value)}
+                  className="mb-2 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1.5 text-[12px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                  id="qbr-client-search"
+                />
+
+                {qbrClientsLoading ? (
+                  <div className="flex items-center gap-2 py-6 text-[13px] text-[var(--text-muted)]">
+                    <svg className="size-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Loading clients...
+                  </div>
+                ) : (
+                  <div className="overflow-y-auto rounded-[var(--radius-lg)] border border-[var(--border)]" style={{ maxHeight: "260px" }}>
+                    {qbrAvailableClients
+                      .filter((c) => !clientSearch || c.name.toLowerCase().includes(clientSearch.toLowerCase()))
+                      .map((client, idx) => {
+                        const clientKey = `${client.source}:${String(client.id)}`;
+                        const isSelected = qbrSelectedClients.includes(clientKey);
+                        const isExpanded = qbrExpandedClients.has(clientKey);
+                        const tickets = clientTickets[clientKey] ?? [];
+                        const isLoadingTickets = loadingTickets[clientKey] ?? false;
+                        return (
+                          <div key={clientKey} className={cn(idx > 0 && "border-t border-[var(--border)]")}>
+                            <div
+                              className={cn(
+                                "flex cursor-pointer select-none items-center gap-3 px-3 py-2.5 transition-colors",
+                                isSelected
+                                  ? "bg-[var(--accent)]/[0.07]"
+                                  : "hover:bg-[var(--bg-secondary)]",
+                              )}
+                              onClick={() => setQbrSelectedClients((prev) =>
+                                isSelected ? prev.filter((id) => id !== clientKey) : [...prev, clientKey]
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {}}
+                                className="pointer-events-none shrink-0 rounded accent-[var(--accent)]"
+                              />
+                              <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--text-primary)]">
+                                {client.name}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setQbrExpandedClients((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(clientKey)) {
+                                      next.delete(clientKey);
+                                    } else {
+                                      next.add(clientKey);
+                                      void loadTicketsForClient(client.id, client.source);
+                                    setClientExpandTab((prev) => ({ ...prev, [clientKey]: "tickets" }));
+                                    }
+                                    return next;
+                                  });
+                                }}
+                                className={cn(
+                                  "flex shrink-0 items-center justify-center rounded p-1 transition-colors",
+                                  isExpanded
+                                    ? "text-[var(--accent)]"
+                                    : "text-[var(--text-muted)] hover:text-[var(--text-primary)]",
+                                )}
+                                title="Show tickets and projects"
+                              >
+                                <svg
+                                  className={cn("size-3.5 transition-transform duration-200", isExpanded && "rotate-180")}
+                                  viewBox="0 0 20 20"
+                                  fill="currentColor"
+                                >
+                                  <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                                </svg>
+                              </button>
+                            </div>
+
+                            {isExpanded && (
+                              <div className="border-t border-[var(--border)]/60 bg-[var(--bg-secondary)]/50">
+                                <div className="flex border-b border-[var(--border)]/60 px-3">
+                                  {(["tickets", "projects"] as const).map((tab) => (
+                                    <button
+                                      key={tab}
+                                      type="button"
+                                      onClick={() => {
+                                        setClientExpandTab((prev) => ({ ...prev, [clientKey]: tab }));
+                                        if (tab === "tickets") void loadTicketsForClient(client.id, client.source);
+                                        if (tab === "projects") void loadProjectsForClient(client.id, client.source);
+                                      }}
+                                      className={cn(
+                                        "border-b-2 -mb-px px-3 py-2 text-[12px] font-medium transition-colors",
+                                        (clientExpandTab[clientKey] ?? "tickets") === tab
+                                          ? "border-[var(--accent)] text-[var(--accent)]"
+                                          : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)]",
+                                      )}
+                                    >
+                                      {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                                    </button>
+                                  ))}
+                                </div>
+                                <div className="max-h-48 overflow-y-auto px-3 py-2">
+                                  {(clientExpandTab[clientKey] ?? "tickets") === "tickets" ? (
+                                    loadingTickets[clientKey] ? (
+                                      <p className="py-2 text-[12px] text-[var(--text-muted)]">Loading tickets...</p>
+                                    ) : (clientTickets[clientKey] ?? []).length === 0 ? (
+                                      <p className="py-2 text-[12px] text-[var(--text-muted)]">No open tickets found</p>
+                                    ) : (
+                                      <div className="flex flex-col gap-0.5">
+                                        {(clientTickets[clientKey] ?? []).map((ticket) => (
+                                          <label key={ticket.id} className="flex cursor-pointer items-center gap-2.5 rounded px-2 py-1.5 hover:bg-[var(--bg-primary)] transition-colors">
+                                            <input
+                                              type="checkbox"
+                                              checked={selectedTicketIds.has(`${clientKey}:${ticket.id}`)}
+                                              onChange={e => {
+                                                const ticketKey = `${clientKey}:${ticket.id}`
+                                                setSelectedTicketIds(prev => {
+                                                  const next = new Set(prev)
+                                                  if (e.target.checked) {
+                                                    next.add(ticketKey)
+                                                    // Auto-select parent client
+                                                    setQbrSelectedClients(c => c.includes(clientKey) ? c : [...c, clientKey])
+                                                  } else {
+                                                    next.delete(ticketKey)
+                                                  }
+                                                  return next
+                                                })
+                                              }}
+                                              className="shrink-0 rounded accent-[var(--accent)]"
+                                            />
+                                            <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-secondary)]">{ticket.title}</span>
+                                          </label>
+                                        ))}
+                                      </div>
+                                    )
+                                  ) : (
+                                    loadingProjects[clientKey] ? (
+                                      <p className="py-2 text-[12px] text-[var(--text-muted)]">Loading projects...</p>
+                                    ) : (clientProjects[clientKey] ?? []).length === 0 ? (
+                                      <p className="py-2 text-[12px] text-[var(--text-muted)]">No projects found</p>
+                                    ) : (
+                                      <div className="flex flex-col gap-0.5">
+                                        {(clientProjects[clientKey] ?? []).map((project) => (
+                                          <label key={project.id} className="flex cursor-pointer items-center gap-2.5 rounded px-2 py-1.5 hover:bg-[var(--bg-primary)] transition-colors">
+                                            <input
+                                              type="checkbox"
+                                              checked={selectedProjectIds.has(`${clientKey}:${project.id}`)}
+                                              onChange={e => {
+                                                const projectKey = `${clientKey}:${project.id}`
+                                                setSelectedProjectIds(prev => {
+                                                  const next = new Set(prev)
+                                                  if (e.target.checked) {
+                                                    next.add(projectKey)
+                                                    setQbrSelectedClients(c => c.includes(clientKey) ? c : [...c, clientKey])
+                                                  } else {
+                                                    next.delete(projectKey)
+                                                  }
+                                                  return next
+                                                })
+                                              }}
+                                              className="shrink-0 rounded accent-[var(--accent)]"
+                                            />
+                                            <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-secondary)]">{project.title}</span>
+                                          </label>
+                                        ))}
+                                      </div>
+                                    )
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         ) : null}
 
         {step === 2 ? (

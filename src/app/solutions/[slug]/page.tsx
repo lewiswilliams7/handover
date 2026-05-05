@@ -51,7 +51,7 @@ export default async function SolutionSlugPage({ params }: Props) {
             Coming soon. This page has been scaffolded and will be populated with full role/use-case copy.
           </p>
 
-          <div className="mt-8 rounded-[var(--radius-lg)] border border-[var(--border)] border-l-[3px] border-l-[#0EA5E9] bg-[var(--bg-primary)] p-5">
+          <div className="mt-8 rounded-[var(--radius-lg)] border border-white/[0.08] border-l-[3px] border-l-[#0EA5E9] bg-white/[0.04] backdrop-blur-sm p-5">
             <h2 className="text-lg font-medium text-[var(--text-primary)]">Placeholder Structure</h2>
             <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-[var(--text-secondary)]">
               <li>Problem context for this audience/use case</li>

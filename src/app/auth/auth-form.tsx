@@ -514,7 +514,7 @@ export function AuthForm({
 
   return (
     <div className="relative z-[1] mx-auto flex min-h-[calc(100vh-56px)] w-full max-w-[440px] items-center px-4 py-8 sm:py-10">
-      <div className="auth-card-shell w-full rounded-[var(--radius-lg)] p-4 sm:p-8 animate-in fade-in zoom-in-95 duration-200">
+      <div className="auth-card-shell w-full rounded-2xl border border-white/[0.10] bg-white/[0.05] p-4 backdrop-blur-xl sm:p-8 animate-in fade-in zoom-in-95 duration-200">
         {initialConfirmationExpired ? (
           <div className="space-y-4 text-[var(--text-primary)]">
             <p className="text-[16px] font-semibold leading-snug">This confirmation link has expired.</p>

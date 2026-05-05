@@ -19,5 +19,12 @@ export type NormalisedTicket = {
   timeLogged: number;
   description: string | null;
   notes: NormalisedNote[];
+  customfields?: Array<{
+    id?: number;
+    name?: string;
+    label?: string;
+    value?: string | number | null;
+    display?: string | null;
+  }> | null;
   source: "halopsa" | "connectwise" | "manual";
 };

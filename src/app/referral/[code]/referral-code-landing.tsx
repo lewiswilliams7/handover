@@ -93,9 +93,9 @@ export function ReferralCodeLanding({
               No commitment - cancel before month 2 and pay nothing.
               <br />
               {firstName && valid ? (
-                <>{firstName} earns £105 when you stay.</>
+                <>{firstName} earns £87 when you stay.</>
               ) : (
-                <>Your referrer earns £105 when you stay.</>
+                <>Your referrer earns £87 when you stay.</>
               )}
             </p>
 
@@ -184,7 +184,7 @@ export function ReferralCodeLanding({
               <li className="flex gap-2">
                 <span className="mt-0.5 shrink-0 font-semibold text-[var(--text-secondary)]">5.</span>
                 <span>
-                  When you pay for month 2, {termsName} earns £105 - that&apos;s 3 months free on
+                  When you pay for month 2, {termsName} earns £87 - that&apos;s 3 months free on
                   their account as a thank you
                 </span>
               </li>

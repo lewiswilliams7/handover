@@ -797,7 +797,7 @@ export async function sendReferralRewardEmail(
   const { error } = await resend.emails.send({
     from: opts?.from ?? defaultTransactionalFrom(),
     to: to.trim(),
-    subject: "You earned £105 - someone you referred just subscribed",
+    subject: "You earned £87 - someone you referred just subscribed",
     html,
   });
 

@@ -241,7 +241,7 @@ export default function HaloPsaIntegrationPage() {
         }}
       />
 
-      <section className="relative z-[1] overflow-hidden bg-[var(--bg-primary)] px-6 py-12 md:px-8 md:py-20">
+      <section className="relative z-[1] overflow-hidden bg-transparent px-6 py-12 md:px-8 md:py-20">
         <MarketingHeroAmbient />
         <div className="relative z-[1] mx-auto w-full max-w-[1100px]">
           <ScrollRevealItem index={0} className="block">
@@ -342,7 +342,7 @@ export default function HaloPsaIntegrationPage() {
         </div>
       </section>
 
-      <section className="relative z-[1] border-t border-[var(--border)] bg-[var(--bg-secondary)] px-6 py-12 md:px-8 md:py-20">
+      <section className="relative z-[1] bg-transparent px-6 py-12 md:px-8 md:py-20">
         <div className="mx-auto w-full max-w-[1100px]">
           <ScrollRevealItem index={1} className="block">
             <section
@@ -418,7 +418,7 @@ export default function HaloPsaIntegrationPage() {
         </div>
       </section>
 
-      <section className="relative z-[1] border-t border-[var(--border)] bg-[var(--bg-primary)] px-6 py-12 md:px-8 md:py-20">
+      <section className="relative z-[1] bg-transparent px-6 py-12 md:px-8 md:py-20">
         <div className="mx-auto w-full max-w-[1100px]">
           <ScrollRevealItem index={2} className="block">
             <section
@@ -548,7 +548,7 @@ export default function HaloPsaIntegrationPage() {
         </div>
       </section>
 
-      <section className="relative z-[1] border-t border-[var(--border)] bg-[var(--bg-secondary)] px-6 py-12 md:px-8 md:py-20">
+      <section className="relative z-[1] bg-transparent px-6 py-12 md:px-8 md:py-20">
         <div className="mx-auto w-full max-w-[1100px]">
           <ScrollRevealItem index={3} className="block">
             <section
@@ -600,7 +600,7 @@ export default function HaloPsaIntegrationPage() {
         </div>
       </section>
 
-      <section className="relative z-[1] border-t border-[var(--border)] bg-[var(--bg-primary)] px-6 py-12 md:px-8 md:py-20">
+      <section className="relative z-[1] bg-transparent px-6 py-12 md:px-8 md:py-20">
         <div className="mx-auto w-full max-w-[1100px]">
           <ScrollRevealItem index={4} className="block">
             <section
@@ -666,12 +666,12 @@ export default function HaloPsaIntegrationPage() {
         </div>
       </section>
 
-      <section className="relative z-[1] border-t border-[var(--border)] halo-secure-noise px-6 py-12 md:px-8 md:py-20">
+      <section className="relative z-[1] halo-secure-noise px-6 py-12 md:px-8 md:py-20">
         <div className="mx-auto w-full max-w-[1100px]">
           <ScrollRevealItem index={5} className="block">
             <section
               className={cn(
-                "integration-card-glass rounded-[var(--radius-lg)] border border-[var(--border)]/80 bg-[var(--bg-primary)]/80 p-8 backdrop-blur-sm",
+                "integration-card-glass rounded-xl bg-white/[0.03] backdrop-blur-md border border-white/[0.07] p-8",
                 cardTransition,
               )}
             >
@@ -715,7 +715,7 @@ export default function HaloPsaIntegrationPage() {
         </div>
       </section>
 
-      <section className="relative z-[1] border-t border-[var(--border)] bg-[var(--bg-primary)] px-6 py-12 md:px-8 md:py-20">
+      <section className="relative z-[1] bg-transparent px-6 py-12 md:px-8 md:py-20">
         <div className="mx-auto w-full max-w-[1100px]">
           <ScrollRevealItem index={6} className="block">
             <section
@@ -735,7 +735,7 @@ export default function HaloPsaIntegrationPage() {
                   <ScrollRevealItem key={label} index={idx + 1} className="min-w-0">
                     <div
                       className={cn(
-                        "flex flex-col gap-2 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-4",
+                        "flex flex-col gap-2 rounded-xl bg-white/[0.03] backdrop-blur-md border border-white/[0.07] p-4",
                         cardTransition,
                         "hover:border-[color-mix(in_srgb,var(--accent)_28%,var(--border))] hover:shadow-md",
                       )}
@@ -756,7 +756,7 @@ export default function HaloPsaIntegrationPage() {
         </div>
       </section>
 
-      <section className="relative z-[1] border-t border-[var(--border)] bg-[var(--bg-secondary)] px-6 py-12 md:px-8 md:py-20">
+      <section className="relative z-[1] bg-transparent px-6 py-12 md:px-8 md:py-20">
         <div className="mx-auto w-full max-w-[1100px]">
           <ScrollRevealItem index={7} className="block">
             <section
@@ -821,12 +821,12 @@ export default function HaloPsaIntegrationPage() {
         </div>
       </section>
 
-      <section className="relative z-[1] border-t border-[var(--border)] bg-[var(--sidebar-bg)] px-6 py-12 text-center md:px-8 md:py-20">
+      <section className="relative z-[1] bg-transparent px-6 py-12 text-center md:px-8 md:py-20">
         <div className="mx-auto w-full max-w-[1100px]">
           <ScrollRevealItem index={8} className="block">
-            <section className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-8 text-center">
+            <section className="rounded-[var(--radius-lg)] border border-white/[0.07] bg-white/[0.03] p-8 text-center backdrop-blur-md">
               {!signedIn ? (
-                <Link href="/auth?tab=signup">
+                <Link href="/auth?tab=signup&returnTo=/welcome">
                   <Button className="bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]">
                     Start free trial
                   </Button>
@@ -855,7 +855,7 @@ export default function HaloPsaIntegrationPage() {
         </div>
       </section>
 
-      <section className="relative z-[1] border-t border-[var(--border)] bg-[var(--bg-primary)] px-6 py-8 text-center md:px-8">
+      <section className="relative z-[1] bg-transparent px-6 py-8 text-center md:px-8">
         <p className="text-[13px] text-[var(--text-muted)]">
           Looking for a HaloPSA reporting tool?{" "}
           <Link

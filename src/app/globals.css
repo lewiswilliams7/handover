@@ -110,12 +110,12 @@
 }
 
 .dark {
-  --bg-primary: #0f172a;
-  --bg-secondary: #1e293b;
+  --bg-primary: #1e2d47;
+  --bg-secondary: #263552;
   --bg-tertiary: #334155;
-  --sidebar-bg: #020617;
-  --sidebar-hover: #0f172a;
-  --sidebar-border: #1e293b;
+  --sidebar-bg: #1a2540;
+  --sidebar-hover: #243058;
+  --sidebar-border: #2d3f5e;
   --sidebar-text: #64748b;
   --sidebar-text-active: #ffffff;
   --accent: #38bdf8;
@@ -124,8 +124,8 @@
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
   --text-muted: #475569;
-  --border: #1e293b;
-  --border-subtle: #1e293b;
+  --border: #2d3f5e;
+  --border-subtle: #243352;
 
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
@@ -139,7 +139,8 @@
     @apply outline-ring/50;
   }
   body {
-    @apply bg-[var(--bg-secondary)] text-[var(--text-primary)];
+    @apply text-[var(--text-primary)];
+    background: transparent;
     font-weight: 400;
     font-size: 15px;
     line-height: 1.7;
@@ -330,11 +331,11 @@
 
 @layer components {
   .pricing-card-glass {
-    background: rgba(255, 255, 255, 0.03);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+    border: none !important;
   }
 
   .home-mockup-float-badge--1 {
@@ -900,13 +901,45 @@
 
   .pricing-card-inner {
     border-radius: 18px;
-    background: var(--bg-secondary);
+    background: linear-gradient(
+      160deg,
+      rgba(255, 255, 255, 0.08) 0%,
+      rgba(255, 255, 255, 0.03) 30%,
+      rgba(255, 255, 255, 0.01) 60%,
+      rgba(255, 255, 255, 0.04) 100%
+    );
+    backdrop-filter: blur(40px) saturate(1.6);
+    -webkit-backdrop-filter: blur(40px) saturate(1.6);
     height: 100%;
     width: 100%;
     position: relative;
     z-index: 2;
     overflow: hidden;
-    box-shadow: 0 4px 24px rgba(15, 28, 63, 0.08);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      inset 1px 0 0 rgba(255, 255, 255, 0.08),
+      inset -1px 0 0 rgba(255, 255, 255, 0.02),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.02),
+      0 8px 40px rgba(0, 0, 0, 0.45);
+  }
+
+  .pricing-card-inner::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.35) 30%,
+      rgba(255, 255, 255, 0.5) 50%,
+      rgba(255, 255, 255, 0.35) 70%,
+      transparent 100%
+    );
+    pointer-events: none;
+    z-index: 3;
   }
 
   .pricing-card-wrapper.pricing-card-pro {
@@ -1029,15 +1062,11 @@
   }
 
   /* Pricing: Pro card premium (individual tab only) */
-  .pricing-pro-premium-dots {
-    pointer-events: none;
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    border-radius: inherit;
-    background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
-    background-size: 28px 28px;
-    opacity: 0.03;
+  .pricing-pro-premium-dots,
+  .pricing-team-premium-dots,
+  .pricing-enterprise-premium-dots,
+  [class*="premium-dots"] {
+    display: none !important;
   }
   .pricing-pro-premium-badge {
     display: inline-flex;
@@ -1130,19 +1159,6 @@
     gap: 0.5rem;
   }
 
-  .pricing-team-premium-dots {
-    pointer-events: none;
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    border-radius: inherit;
-    background-image: radial-gradient(
-      circle at 1px 1px,
-      rgba(168, 85, 247, 0.15) 1px,
-      transparent 0
-    );
-    background-size: 24px 24px;
-  }
   .pricing-team-title-gradient {
     background: linear-gradient(135deg, #a855f7, #7c3aed, #6d28d9);
     -webkit-background-clip: text;
@@ -1170,19 +1186,6 @@
     }
   }
 
-  .pricing-enterprise-premium-dots {
-    pointer-events: none;
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    border-radius: inherit;
-    background-image: radial-gradient(
-      circle at 1px 1px,
-      rgba(245, 158, 11, 0.12) 1px,
-      transparent 0
-    );
-    background-size: 24px 24px;
-  }
   .pricing-enterprise-name-gradient,
   .pricing-enterprise-lets-talk-gradient {
     background: linear-gradient(
@@ -1820,5 +1823,24 @@ nav.h-14 img[alt="Handover"] {
 @media (prefers-reduced-motion: reduce) {
   .testimonial-marquee-track {
     animation: none;
+  }
+}
+
+body[data-app-shell='true'] {
+  background-color: #172035 !important;
+}
+
+body[data-app-shell='true'] canvas {
+  display: none !important;
+}
+
+@media (max-width: 767px) {
+  body {
+    background-color: #080D14 !important;
+  }
+
+  /* Ensure all transparent marketing sections have a fallback */
+  .page-route-fade {
+    background-color: #080D14;
   }
 }

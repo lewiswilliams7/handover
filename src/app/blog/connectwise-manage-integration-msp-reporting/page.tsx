@@ -105,7 +105,7 @@ export default function ConnectWiseManageIntegrationBlogPage() {
             className="mt-0"
             style={{ borderTop: "1px solid var(--border)", marginTop: "1.5rem", paddingTop: "2rem" }}
           >
-            <figure className="mb-8 overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] shadow-sm">
+            <figure className="mb-8 overflow-hidden rounded-[var(--radius-lg)] border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-sm">
               <Image
                 src="/images/connectwise.png"
                 alt="ConnectWise Manage integration with Handover MSP reporting platform"

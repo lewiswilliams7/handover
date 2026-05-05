@@ -62,7 +62,7 @@ export default function FeaturesPage() {
     >
       {/* Hero */}
       <section
-        className="relative overflow-hidden bg-[var(--bg-primary)] px-6 py-12 md:px-8 md:py-20"
+        className="relative overflow-hidden bg-transparent px-6 py-12 md:px-8 md:py-20"
       >
         <MarketingHeroAmbient />
         <div
@@ -130,7 +130,7 @@ export default function FeaturesPage() {
             </div>
           </div>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-            <Link href="/auth?tab=signup">
+            <Link href="/auth?tab=signup&returnTo=/welcome">
               <Button
                 size="lg"
                 className="rounded-[var(--radius)] bg-[var(--accent)] px-8 text-white hover:bg-[var(--accent-hover)]"
@@ -156,7 +156,7 @@ export default function FeaturesPage() {
 
       {/* Pain points */}
       <section
-        className="relative z-[1] bg-[var(--bg-secondary)] px-6 py-12 md:px-8 md:py-20"
+        className="relative z-[1] bg-transparent px-6 py-12 md:px-8 md:py-20"
         style={{ borderTop: "1px solid var(--border)" }}
       >
         <div className="mx-auto w-full max-w-[1100px]">
@@ -166,7 +166,7 @@ export default function FeaturesPage() {
           </h2>
           <div className="mt-10 grid gap-6 md:grid-cols-3">
             <ScrollRevealItem index={0} className="min-w-0">
-            <CardMouseSpotlight className="feature-page-card rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-sm">
+            <CardMouseSpotlight className="feature-page-card rounded-[var(--radius-lg)] bg-white/[0.03] backdrop-blur-md border border-white/[0.07] p-6 shadow-sm">
               <PainIcon>
                 <Clock className="size-6" strokeWidth={1.75} aria-hidden />
               </PainIcon>
@@ -181,7 +181,7 @@ export default function FeaturesPage() {
             </CardMouseSpotlight>
             </ScrollRevealItem>
             <ScrollRevealItem index={1} className="min-w-0">
-            <CardMouseSpotlight className="feature-page-card rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-sm">
+            <CardMouseSpotlight className="feature-page-card rounded-[var(--radius-lg)] bg-white/[0.03] backdrop-blur-md border border-white/[0.07] p-6 shadow-sm">
               <PainIcon>
                 <FileText className="size-6" strokeWidth={1.75} aria-hidden />
               </PainIcon>
@@ -195,7 +195,7 @@ export default function FeaturesPage() {
             </CardMouseSpotlight>
             </ScrollRevealItem>
             <ScrollRevealItem index={2} className="min-w-0">
-            <CardMouseSpotlight className="feature-page-card rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-sm">
+            <CardMouseSpotlight className="feature-page-card rounded-[var(--radius-lg)] bg-white/[0.03] backdrop-blur-md border border-white/[0.07] p-6 shadow-sm">
               <PainIcon>
                 <AlertTriangle className="size-6" strokeWidth={1.75} aria-hidden />
               </PainIcon>
@@ -215,7 +215,7 @@ export default function FeaturesPage() {
 
       {/* Features grid */}
       <section
-        className="relative z-[1] bg-[var(--bg-primary)] px-6 py-12 md:px-8 md:py-20"
+        className="relative z-[1] bg-transparent px-6 py-12 md:px-8 md:py-20"
         style={{ borderTop: "1px solid var(--border)" }}
       >
         <div className="mx-auto w-full max-w-[1100px]">
@@ -324,7 +324,7 @@ export default function FeaturesPage() {
             ).map((card, i) => (
               <ScrollRevealItem key={card.title} index={i} className="min-w-0">
               <CardMouseSpotlight
-                className="feature-page-card flex flex-col rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-6"
+                className="feature-page-card flex flex-col rounded-[var(--radius-lg)] bg-white/[0.03] backdrop-blur-md border border-white/[0.07] p-6"
               >
                 <span className="inline-flex w-fit rounded-full border border-[var(--border)] bg-[var(--bg-primary)] px-2.5 py-0.5 text-xs font-medium text-[var(--text-secondary)]">
                   {card.badge}
@@ -395,7 +395,7 @@ export default function FeaturesPage() {
       </section>
 
       <section
-        className="relative z-[1] bg-[var(--bg-secondary)] px-6 py-12 md:px-8 md:py-20"
+        className="relative z-[1] bg-transparent px-6 py-12 md:px-8 md:py-20"
         style={{ borderTop: "1px solid var(--border)" }}
       >
         <div className="mx-auto w-full max-w-[1100px]">
@@ -421,7 +421,7 @@ export default function FeaturesPage() {
 
       {/* Integrations */}
       <section
-        className="relative z-[1] bg-[var(--bg-primary)] px-6 py-12 md:px-8 md:py-20"
+        className="relative z-[1] bg-transparent px-6 py-12 md:px-8 md:py-20"
         style={{ borderTop: "1px solid var(--border)" }}
       >
         <div className="mx-auto w-full max-w-[1100px]">
@@ -432,7 +432,7 @@ export default function FeaturesPage() {
           </ScrollRevealItem>
           <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             <ScrollRevealItem index={0} className="min-w-0">
-            <CardMouseSpotlight className="feature-page-card flex flex-col rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-sm">
+            <CardMouseSpotlight className="feature-page-card flex flex-col rounded-[var(--radius-lg)] bg-white/[0.03] backdrop-blur-md border border-white/[0.07] p-6 shadow-sm">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <img
@@ -462,7 +462,7 @@ export default function FeaturesPage() {
             </CardMouseSpotlight>
             </ScrollRevealItem>
             <ScrollRevealItem index={1} className="min-w-0">
-            <CardMouseSpotlight className="feature-page-card flex flex-col rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-sm">
+            <CardMouseSpotlight className="feature-page-card flex flex-col rounded-[var(--radius-lg)] bg-white/[0.03] backdrop-blur-md border border-white/[0.07] p-6 shadow-sm">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <img
@@ -492,7 +492,7 @@ export default function FeaturesPage() {
             </CardMouseSpotlight>
             </ScrollRevealItem>
             <ScrollRevealItem index={2} className="min-w-0">
-            <CardMouseSpotlight className="feature-page-card flex flex-col rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-sm">
+            <CardMouseSpotlight className="feature-page-card flex flex-col rounded-[var(--radius-lg)] bg-white/[0.03] backdrop-blur-md border border-white/[0.07] p-6 shadow-sm">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-lg font-semibold text-[var(--text-primary)]">Zapier</h3>
                 <span className="rounded-full bg-[var(--bg-secondary)] px-2.5 py-0.5 text-xs font-medium text-[var(--text-muted)]">
@@ -510,7 +510,7 @@ export default function FeaturesPage() {
             </CardMouseSpotlight>
             </ScrollRevealItem>
             <ScrollRevealItem index={3} className="min-w-0">
-            <CardMouseSpotlight className="feature-page-card flex flex-col rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-sm">
+            <CardMouseSpotlight className="feature-page-card flex flex-col rounded-[var(--radius-lg)] bg-white/[0.03] backdrop-blur-md border border-white/[0.07] p-6 shadow-sm">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-lg font-semibold text-[var(--text-primary)]">CSV / Excel</h3>
                 <span className="rounded-full bg-[var(--accent)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--accent)]">
@@ -532,7 +532,7 @@ export default function FeaturesPage() {
       </section>
 
       <section
-        className="relative z-[1] bg-[var(--bg-secondary)] px-6 py-12 md:px-8 md:py-20"
+        className="relative z-[1] bg-transparent px-6 py-12 md:px-8 md:py-20"
         style={{ borderTop: "1px solid var(--border)" }}
       >
         <div className="mx-auto w-full max-w-[1100px]">
@@ -543,7 +543,7 @@ export default function FeaturesPage() {
           </ScrollRevealItem>
           <div className="mt-10 grid gap-6 md:grid-cols-3">
             <ScrollRevealItem index={0} className="min-w-0">
-            <CardMouseSpotlight className="feature-page-card rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-6">
+            <CardMouseSpotlight className="feature-page-card rounded-[var(--radius-lg)] bg-white/[0.03] backdrop-blur-md border border-white/[0.07] p-6">
               <div className="flex size-10 items-center justify-center rounded-[var(--radius)] bg-[var(--bg-primary)] text-[var(--accent)]">
                 <Shield className="size-5" aria-hidden />
               </div>
@@ -557,7 +557,7 @@ export default function FeaturesPage() {
             </CardMouseSpotlight>
             </ScrollRevealItem>
             <ScrollRevealItem index={1} className="min-w-0">
-            <CardMouseSpotlight className="feature-page-card rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-6">
+            <CardMouseSpotlight className="feature-page-card rounded-[var(--radius-lg)] bg-white/[0.03] backdrop-blur-md border border-white/[0.07] p-6">
               <div className="flex size-10 items-center justify-center rounded-[var(--radius)] bg-[var(--bg-primary)] text-[var(--accent)]">
                 <Lock className="size-5" aria-hidden />
               </div>
@@ -571,7 +571,7 @@ export default function FeaturesPage() {
             </CardMouseSpotlight>
             </ScrollRevealItem>
             <ScrollRevealItem index={2} className="min-w-0">
-            <CardMouseSpotlight className="feature-page-card rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-6">
+            <CardMouseSpotlight className="feature-page-card rounded-[var(--radius-lg)] bg-white/[0.03] backdrop-blur-md border border-white/[0.07] p-6">
               <div className="flex size-10 items-center justify-center rounded-[var(--radius)] bg-[var(--bg-primary)] text-[var(--accent)]">
                 <EyeOff className="size-5" aria-hidden />
               </div>
@@ -590,7 +590,7 @@ export default function FeaturesPage() {
 
       {/* How it works */}
       <section
-        className="relative z-[1] bg-[var(--bg-primary)] px-6 py-12 md:px-8 md:py-20"
+        className="relative z-[1] bg-transparent px-6 py-12 md:px-8 md:py-20"
         style={{ borderTop: "1px solid var(--border)" }}
       >
         <div className="mx-auto w-full max-w-[1100px]">
@@ -653,7 +653,7 @@ export default function FeaturesPage() {
           <p className="mt-4 text-[var(--sidebar-text)]">
             Join MSP teams saving hours every week on reporting and client communications.
           </p>
-          <Link href="/auth?tab=signup" className="mt-8 inline-block">
+          <Link href="/auth?tab=signup&returnTo=/welcome" className="mt-8 inline-block">
             <Button
               size="lg"
               className="rounded-[var(--radius)] bg-[var(--accent)] px-8 text-white hover:bg-[var(--accent-hover)]"
@@ -676,7 +676,7 @@ export default function FeaturesPage() {
       </section>
 
       <section
-        className="relative z-[1] bg-[var(--bg-secondary)] px-6 py-8 text-center md:px-8"
+        className="relative z-[1] bg-transparent px-6 py-8 text-center md:px-8"
         style={{ borderTop: "1px solid var(--border)" }}
       >
         <div className="mx-auto w-full max-w-[1100px]">

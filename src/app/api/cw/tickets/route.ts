@@ -104,7 +104,7 @@ function normalizeCwPriorityName(raw: unknown): string | null {
   return "Medium";
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   let connection: { siteUrl: string; hasHeaders: boolean } | null = null;
   try {
     const supabase = await createServerClient();
@@ -130,8 +130,12 @@ export async function GET() {
       getCWAuthHeaders(user.id),
     ]);
     connection = { siteUrl: conn.siteUrl, hasHeaders: Boolean(headers) };
-    const conditions = encodeURIComponent(CW_OPEN_ONLY_CONDITIONS);
-    const url = `${conn.siteUrl}/v4_6_release/apis/3.0/service/tickets?conditions=${conditions}&pageSize=100`;
+    const requestUrl = new URL(request.url);
+    const keyword = requestUrl.searchParams.get("keyword")?.trim().toLowerCase() ?? "";
+    const companyId = requestUrl.searchParams.get("companyId")?.trim() ?? ""
+    const companyCondition = companyId ? ` and company/id=${companyId}` : ""
+    const conditions = encodeURIComponent(`${CW_OPEN_ONLY_CONDITIONS}${companyCondition}`)
+    const url = `${conn.siteUrl}/v4_6_release/apis/3.0/service/tickets?conditions=${conditions}&pageSize=100`
     const res = await fetch(url, { headers, cache: "no-store" });
     const text = await res.text();
     if (!res.ok) {
@@ -156,8 +160,14 @@ export async function GET() {
       });
       return mapCwRowToTicket(row);
     });
+    const keywordFiltered = keyword
+      ? tickets.filter((t) =>
+          (t.summary ?? "").toLowerCase().includes(keyword) ||
+          (t.client?.name ?? "").toLowerCase().includes(keyword),
+        )
+      : tickets;
 
-    return NextResponse.json({ tickets });
+    return NextResponse.json({ tickets: keywordFiltered });
   } catch (e) {
     console.log("[cw/tickets] error:", e);
     console.log("[cw/tickets] connection:", connection);

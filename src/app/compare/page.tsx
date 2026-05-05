@@ -55,7 +55,7 @@ export default function ComparePage() {
               Compare what you&apos;re doing now vs what&apos;s possible with Handover
             </p>
             <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-              <Link href="/auth?tab=signup">
+              <Link href="/auth?tab=signup&returnTo=/welcome">
                 <Button
                   size="lg"
                   className="rounded-[var(--radius)] bg-[var(--accent)] px-8 text-white hover:bg-[var(--accent-hover)]"
@@ -183,7 +183,7 @@ export default function ComparePage() {
             <h2 className="text-2xl font-bold text-white md:text-4xl">
               Stop paying £13,000 a year in PM time for something that takes 60 seconds.
             </h2>
-            <Link href="/auth?tab=signup" className="mt-10 inline-block">
+            <Link href="/auth?tab=signup&returnTo=/welcome" className="mt-10 inline-block">
               <Button
                 size="lg"
                 className="rounded-[var(--radius)] bg-[var(--accent)] px-8 text-white hover:bg-[var(--accent-hover)]"

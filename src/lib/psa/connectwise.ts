@@ -1,5 +1,22 @@
 import type { NormalisedNote, NormalisedTicket } from "@/lib/psa/types";
 
+async function pLimit<T>(
+  tasks: (() => Promise<T>)[],
+  concurrency: number
+): Promise<T[]> {
+  const results: T[] = new Array(tasks.length)
+  let index = 0
+  const worker = async () => {
+    while (index < tasks.length) {
+      const i = index++
+      results[i] = await tasks[i]()
+    }
+  }
+  const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, worker)
+  await Promise.all(workers)
+  return results
+}
+
 export type ConnectWiseConnection = {
   /** e.g. "https://na.myconnectwise.net" */
   siteUrl: string;
@@ -40,6 +57,14 @@ type CwTicketNoteRow = {
   internalAnalysisFlag?: boolean | null;
   resolutionFlag?: boolean | null;
   member?: { name?: string | null } | null;
+};
+type CwTicketCustomFieldRow = {
+  caption?: string | null;
+  name?: string | null;
+  value?: string | number | null;
+  entryValue?: string | number | null;
+  displayValue?: string | null;
+  id?: number | null;
 };
 
 export function normalizeConnectWiseSiteUrl(url: string): string {
@@ -133,6 +158,7 @@ export async function fetchCWServiceTickets(
   conn: ConnectWiseConnection,
   companyIds: number[],
   dateFrom?: string,
+  keyword?: string,
 ): Promise<NormalisedTicket[]> {
   if (companyIds.length === 0) return [];
 
@@ -147,13 +173,24 @@ export async function fetchCWServiceTickets(
   const data: unknown = await res.json();
   const tickets = parseCwListPayload<CwServiceTicketRow>(data);
 
-  const withNotes = await Promise.all(
-    tickets.map(async (t) => {
+  const withNotes = await pLimit(
+    tickets.map((t) => async () => {
       const id = typeof t.id === "number" && Number.isFinite(t.id) ? t.id : 0;
-      const notes = id > 0 ? await fetchCWTicketNotes(conn, id) : [];
-      return normaliseCWTicket(t, notes, "ticket");
+      const [notes, customfields] = id > 0
+        ? await Promise.all([fetchCWTicketNotes(conn, id), fetchCWTicketCustomFields(conn, id)])
+        : [[], []];
+      return normaliseCWTicket(t, notes, "ticket", customfields);
     }),
+    8
   );
+  if (keyword?.trim()) {
+    const kw = keyword.trim().toLowerCase();
+    return withNotes.filter((t) =>
+      (t.title ?? "").toLowerCase().includes(kw) ||
+      (t.description ?? "").toLowerCase().includes(kw) ||
+      (t.client ?? "").toLowerCase().includes(kw)
+    );
+  }
   return withNotes;
 }
 
@@ -199,10 +236,41 @@ async function fetchCWTicketNotes(
   return mapped;
 }
 
+async function fetchCWTicketCustomFields(
+  conn: ConnectWiseConnection,
+  ticketId: number,
+): Promise<NonNullable<NormalisedTicket["customfields"]>> {
+  try {
+    const res = await cwFetch(
+      conn,
+      `/service/tickets/${ticketId}/customFields`,
+    );
+    const data: unknown = await res.json();
+    const rows = parseCwListPayload<CwTicketCustomFieldRow>(data);
+    return rows.map((row) => {
+      const valueRaw = row.value ?? row.entryValue ?? null;
+      const value =
+        typeof valueRaw === "string" || typeof valueRaw === "number" || valueRaw == null
+          ? valueRaw
+          : String(valueRaw);
+      const displayRaw = row.displayValue;
+      return {
+        name: typeof row.name === "string" ? row.name : undefined,
+        label: typeof row.caption === "string" ? row.caption : (typeof row.name === "string" ? row.name : undefined),
+        value,
+        display: typeof displayRaw === "string" || displayRaw == null ? displayRaw : String(displayRaw),
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
 function normaliseCWTicket(
   t: CwServiceTicketRow,
   notes: NormalisedNote[],
   type: "ticket" | "project",
+  customfields: NonNullable<NormalisedTicket["customfields"]> = [],
 ): NormalisedTicket {
   const id =
     typeof t.id === "number" && Number.isFinite(t.id) ? String(t.id) : "0";
@@ -254,6 +322,7 @@ function normaliseCWTicket(
     timeLogged: hours,
     description: desc,
     notes,
+    customfields,
     source: "connectwise",
   };
 }

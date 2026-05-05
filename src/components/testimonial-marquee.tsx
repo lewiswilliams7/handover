@@ -16,7 +16,7 @@ type Testimonial = {
 const TESTIMONIALS: Testimonial[] = [
   {
     quote:
-      "A great concept with strong initial implementation. Exactly the kind of tool my team would use. The niche focus on MSP teams is smart and the integration approach is the right direction.",
+      "Strong initial implementation with real niche focus. The HaloPSA integration is the right approach and the output quality is genuinely impressive for an early stage product.",
     name: "Blake H.",
     company: "IBM",
     highlights: ["kind of tool"],
@@ -24,7 +24,8 @@ const TESTIMONIALS: Testimonial[] = [
     brandLogoAlt: "IBM",
   },
   {
-    quote: "Really good product - this is exactly the kind of tool the industry needs.",
+    quote:
+      "Really good product. The MSP space has needed something like this for a long time and Handover has nailed the positioning.",
     name: "Delivery Lead",
     company: "Computacenter",
     highlights: ["kind of tool"],
@@ -105,8 +106,8 @@ function TestimonialCard({ item, layout }: { item: Testimonial; layout: "mobile"
     <article
       className={
         isDesktop
-          ? "feature-page-card flex min-h-[320px] w-[340px] min-w-[340px] shrink-0 flex-col rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-sm md:w-[380px] md:min-w-[380px]"
-          : "feature-page-card flex w-full min-w-0 max-w-full flex-col rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-5 shadow-sm sm:p-6"
+          ? "flex min-h-[320px] w-[340px] min-w-[340px] shrink-0 flex-col rounded-[var(--radius-lg)] border border-white/[0.08] bg-white/[0.04] backdrop-blur-md p-6 md:w-[380px] md:min-w-[380px]"
+          : "flex w-full min-w-0 max-w-full flex-col rounded-[var(--radius-lg)] border border-white/[0.08] bg-white/[0.04] backdrop-blur-md p-5 sm:p-6"
       }
     >
       <div className="flex gap-1 text-[#EF9F27]" style={{ marginBottom: "1rem" }}>
@@ -193,12 +194,12 @@ function TestimonialMarqueeDesktop() {
 
   const repeated = [...TESTIMONIALS, ...TESTIMONIALS];
   return (
-    <div className="testimonial-marquee relative mt-10">
+    <section className="testimonial-marquee relative mt-10 w-screen -mx-[calc((100vw-100%)/2)] overflow-hidden">
       <button
         type="button"
         aria-label="Previous testimonial"
         onClick={() => nudge(-1)}
-        className="absolute top-1/2 left-1 z-30 hidden -translate-y-1/2 rounded-full border border-[var(--border)] bg-[var(--bg-secondary)]/90 p-2 text-[var(--text-muted)] shadow-sm transition-colors hover:text-[var(--text-primary)] md:block"
+        className="absolute top-1/2 left-4 z-30 hidden -translate-y-1/2 rounded-full border border-white/[0.15] bg-white/[0.08] backdrop-blur-sm p-2 text-white shadow-lg transition-all hover:bg-white/[0.15] md:block"
       >
         <ChevronLeft className="size-4" aria-hidden />
       </button>
@@ -206,7 +207,7 @@ function TestimonialMarqueeDesktop() {
         type="button"
         aria-label="Next testimonial"
         onClick={() => nudge(1)}
-        className="absolute top-1/2 right-1 z-30 hidden -translate-y-1/2 rounded-full border border-[var(--border)] bg-[var(--bg-secondary)]/90 p-2 text-[var(--text-muted)] shadow-sm transition-colors hover:text-[var(--text-primary)] md:block"
+        className="absolute top-1/2 right-4 z-30 hidden -translate-y-1/2 rounded-full border border-white/[0.15] bg-white/[0.08] backdrop-blur-sm p-2 text-white shadow-lg transition-all hover:bg-white/[0.15] md:block"
       >
         <ChevronRight className="size-4" aria-hidden />
       </button>
@@ -214,17 +215,15 @@ function TestimonialMarqueeDesktop() {
       <div
         className="pointer-events-none absolute inset-y-0 left-0 z-20 hidden md:block"
         style={{
-          width: "170px",
-          background:
-            "linear-gradient(to right, var(--bg-primary) 0px, var(--bg-primary) 20px, color-mix(in srgb, var(--bg-primary) 92%, transparent) 70px, transparent 170px)",
+          width: "120px",
+          background: "linear-gradient(to right, #080D14 0%, transparent 100%)",
         }}
       />
       <div
         className="pointer-events-none absolute inset-y-0 right-0 z-20 hidden md:block"
         style={{
-          width: "170px",
-          background:
-            "linear-gradient(to left, var(--bg-primary) 0px, var(--bg-primary) 20px, color-mix(in srgb, var(--bg-primary) 92%, transparent) 70px, transparent 170px)",
+          width: "120px",
+          background: "linear-gradient(to left, #080D14 0%, transparent 100%)",
         }}
       />
 
@@ -232,7 +231,7 @@ function TestimonialMarqueeDesktop() {
         ref={viewportRef}
         onMouseEnter={() => setPaused(true)}
         onMouseLeave={() => setPaused(false)}
-        className="overflow-x-hidden"
+        className="overflow-x-scroll scrollbar-hide"
       >
         <div className="flex w-max gap-5">
           {repeated.map((item, idx) => (
@@ -240,7 +239,7 @@ function TestimonialMarqueeDesktop() {
           ))}
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -256,7 +255,7 @@ function TestimonialCarouselMobile() {
   };
 
   return (
-    <div className="mt-10 w-full min-w-0 px-1">
+    <div className="mt-10 w-full min-w-0">
       <div className="relative flex w-full min-w-0 items-stretch gap-2">
         <button
           type="button"

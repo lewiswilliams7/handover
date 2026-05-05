@@ -53,7 +53,44 @@ export async function ensureTeamWorkspaceForTeamTrialOwner(userId: string): Prom
     return true;
   }
 
+  // Auto-provision workspace for enterprise plan users with no team yet
   if (!needsTeamTrialWorkspace) {
+    if (planNorm === "enterprise" && !tid) {
+      const name =
+        typeof p.company_name === "string" && p.company_name.trim()
+          ? p.company_name.trim()
+          : typeof p.brand_name === "string" && p.brand_name.trim()
+            ? p.brand_name.trim()
+            : "My Team";
+
+      const { data: team, error: insErr } = await admin
+        .from("teams")
+        .insert({
+          name,
+          plan: "enterprise",
+          owner_id: userId,
+          generation_limit: 999999,
+          seat_limit: 999,
+          subscription_status: "active",
+        })
+        .select("id")
+        .single();
+
+      if (insErr || !team?.id) {
+        console.error("[ensureTeamTrialWorkspace] enterprise teams insert:", insErr);
+        return false;
+      }
+
+      await admin.from("team_members").insert({
+        team_id: team.id,
+        user_id: userId,
+        role: "owner",
+        invited_by: userId,
+        permissions: {},
+      });
+
+      await admin.from("profiles").update({ team_id: team.id }).eq("id", userId);
+    }
     return true;
   }
 

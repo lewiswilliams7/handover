@@ -128,10 +128,10 @@ export function ReferralsSettingsPanel({
             />
           </div>
           <h3 className="text-[16px] font-bold text-[var(--text-primary)]">
-            Refer &amp; Earn £105 per referral
+            Refer &amp; Earn £87 per referral
           </h3>
           <p className="mt-2 max-w-sm text-[13px] leading-relaxed text-[var(--text-muted)]">
-            Upgrade to Pro to access the referral programme and start earning £105 for every MSP you
+            Upgrade to Pro to access the referral programme and start earning £87 for every MSP you
             refer to Handover.
           </p>
           <div
@@ -142,7 +142,7 @@ export function ReferralsSettingsPanel({
             <ol className="mt-2 list-decimal space-y-2 pl-5 text-[13px] text-[var(--text-secondary)]">
               <li>Share your link with MSP delivery teams</li>
               <li>They sign up and try Handover free for their first month</li>
-              <li>When they subscribe, you earn £105 (3 months free)</li>
+              <li>When they subscribe, you earn £87 (3 months free)</li>
             </ol>
           </div>
           <Link
@@ -175,7 +175,7 @@ export function ReferralsSettingsPanel({
       <div>
         <h3 className="text-[15px] font-bold text-[var(--text-primary)]">Refer &amp; Earn</h3>
         <p className="mt-1 text-[13px] text-[var(--text-secondary)]">
-          Earn £105 for every MSP you refer to Handover.
+          Earn £87 for every MSP you refer to Handover.
         </p>
       </div>
 
@@ -222,7 +222,7 @@ export function ReferralsSettingsPanel({
         <ol className="mt-2 list-decimal space-y-2 pl-5 text-[13px] text-[var(--text-secondary)]">
           <li>Share your link with MSP delivery teams</li>
           <li>They sign up and try Handover free for their first month</li>
-          <li>When they subscribe, you earn £105 (3 months free)</li>
+          <li>When they subscribe, you earn £87 (3 months free)</li>
         </ol>
       </div>
 
@@ -279,7 +279,7 @@ export function ReferralsSettingsPanel({
                       })}
                     </td>
                     <td className="px-3 py-2 text-[var(--text-secondary)]">
-                      {r.status === "rewarded" ? "£105" : " - "}
+                      {r.status === "rewarded" ? "£87" : " - "}
                     </td>
                   </tr>
                 ))}

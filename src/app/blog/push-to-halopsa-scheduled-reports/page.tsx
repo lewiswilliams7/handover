@@ -163,7 +163,7 @@ export default function PushToHaloScheduledReportsPage() {
                     Compare plans & pricing
                   </Link>
                   <Link
-                    href="/auth?tab=signup"
+                    href="/auth?tab=signup&returnTo=/welcome"
                     className="inline-flex items-center rounded-[var(--radius)] border border-[var(--border)] px-6 py-3 text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]"
                   >
                     Start free trial

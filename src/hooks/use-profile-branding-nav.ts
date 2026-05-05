@@ -54,7 +54,15 @@ export function useProfileBrandingNav(): ProfileBrandingNav {
       void load();
     });
 
-    return () => subscription.unsubscribe();
+    const onProfileReload = () => {
+      void load();
+    };
+    window.addEventListener("handover:profile-reload", onProfileReload);
+
+    return () => {
+      window.removeEventListener("handover:profile-reload", onProfileReload);
+      subscription.unsubscribe();
+    };
   }, []);
 
   return { brandName, brandLogoUrl, whiteLabelMode, loaded };

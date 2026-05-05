@@ -91,12 +91,16 @@ export function CwImportModal({ open, onOpenChange, connectwiseConnected, onImpo
   const [ticketRows, setTicketRows] = useState<CwTicket[]>([]);
   const [projectRows, setProjectRows] = useState<CwProject[]>([]);
   const [search, setSearch] = useState("");
+  const [keyword, setKeyword] = useState("");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [expandedTicketIds, setExpandedTicketIds] = useState<number[]>([]);
   const [expandedProjectIds, setExpandedProjectIds] = useState<number[]>([]);
   const [ticketNotesById, setTicketNotesById] = useState<Record<number, CwNote[]>>({});
+  const [projectNotesById, setProjectNotesById] = useState<Record<number, CwNote[]>>({});
   const [notesLoadingById, setNotesLoadingById] = useState<Record<number, boolean>>({});
+  const [projectNotesLoadingById, setProjectNotesLoadingById] = useState<Record<number, boolean>>({});
   const [selectedNotesById, setSelectedNotesById] = useState<Record<number, Record<string, boolean>>>({});
+  const [selectedProjectNotesById, setSelectedProjectNotesById] = useState<Record<number, Record<string, boolean>>>({});
   const [loadedOnce, setLoadedOnce] = useState(false);
   const debouncedSearch = useDebouncedValue(search, 220);
   const {
@@ -119,9 +123,13 @@ export function CwImportModal({ open, onOpenChange, connectwiseConnected, onImpo
     setExpandedTicketIds([]);
     setExpandedProjectIds([]);
     setTicketNotesById({});
+    setProjectNotesById({});
     setNotesLoadingById({});
+    setProjectNotesLoadingById({});
     setSelectedNotesById({});
+    setSelectedProjectNotesById({});
     setSearch("");
+    setKeyword("");
     setError(null);
   }, [open]);
 
@@ -157,8 +165,18 @@ export function CwImportModal({ open, onOpenChange, connectwiseConnected, onImpo
     setLoading(true);
     setError(null);
     try {
+      const keywordTrimmed = keyword.trim();
       const [ticketData, projectData] = await Promise.all([
-        refreshTickets(),
+        keywordTrimmed
+          ? fetch(`/api/cw/tickets?keyword=${encodeURIComponent(keywordTrimmed)}`, {
+              credentials: "same-origin",
+              cache: "no-store",
+            }).then(async (res) => {
+              const payload = (await res.json().catch(() => ({}))) as { tickets?: CwTicket[]; error?: string };
+              if (!res.ok) throw new Error(payload.error ?? "Failed to load tickets.");
+              return payload as { tickets?: CwTicket[] };
+            })
+          : refreshTickets(),
         refreshProjects(),
       ]);
       const rawTickets = Array.isArray(ticketData?.tickets)
@@ -167,10 +185,17 @@ export function CwImportModal({ open, onOpenChange, connectwiseConnected, onImpo
       const rawProjects = Array.isArray(projectData?.projects)
         ? (projectData.projects as CwProject[])
         : [];
+      const filteredProjects = keywordTrimmed
+        ? rawProjects.filter((p) =>
+            (p.name ?? "").toLowerCase().includes(keywordTrimmed.toLowerCase()) ||
+            (p.description ?? "").toLowerCase().includes(keywordTrimmed.toLowerCase()) ||
+            (p.client?.name ?? "").toLowerCase().includes(keywordTrimmed.toLowerCase()),
+          )
+        : rawProjects;
       // Service board tickets only; project-linked tickets belong under Projects.
       const serviceTickets = rawTickets.filter((t) => Number(t.cwProjectId ?? 0) <= 0);
       setTicketRows(serviceTickets);
-      setProjectRows(rawProjects);
+      setProjectRows(filteredProjects);
       setLoadedOnce(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load ConnectWise items.");
@@ -231,10 +256,35 @@ export function CwImportModal({ open, onOpenChange, connectwiseConnected, onImpo
     }
   }
 
-  function toggleProjectExpanded(id: number) {
+  async function toggleProjectExpanded(id: number) {
     setExpandedProjectIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
+    if (projectNotesById[id] || projectNotesLoadingById[id]) return;
+    setProjectNotesLoadingById((prev) => ({ ...prev, [id]: true }));
+    try {
+      const res = await fetch(`/api/cw/ticket-detail?id=${id}`);
+      const data = (await res.json().catch(() => ({}))) as {
+        notes?: CwNote[];
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error ?? "Failed to load project notes.");
+      const notes = Array.isArray(data.notes) ? data.notes : [];
+      setProjectNotesById((prev) => ({ ...prev, [id]: notes }));
+      setSelectedProjectNotesById((prev) => ({
+        ...prev,
+        [id]: Object.fromEntries(notes.map((n) => [n.id, false])),
+      }));
+    } catch (e) {
+      setProjectNotesById((prev) => ({ ...prev, [id]: [] }));
+      toast({
+        message: "Could not load project notes",
+        subtitle: e instanceof Error ? e.message : "Unknown error",
+        variant: "error",
+      });
+    } finally {
+      setProjectNotesLoadingById((prev) => ({ ...prev, [id]: false }));
+    }
   }
 
   function toggleNote(ticketId: number, noteId: string, checked: boolean) {
@@ -249,6 +299,21 @@ export function CwImportModal({ open, onOpenChange, connectwiseConnected, onImpo
     setSelectedNotesById((prev) => ({
       ...prev,
       [ticketId]: Object.fromEntries(notes.map((n) => [n.id, checked])),
+    }));
+  }
+
+  function toggleProjectNote(projectId: number, noteId: string, checked: boolean) {
+    setSelectedProjectNotesById((prev) => ({
+      ...prev,
+      [projectId]: { ...(prev[projectId] ?? {}), [noteId]: checked },
+    }));
+  }
+
+  function toggleAllProjectNotes(projectId: number, checked: boolean) {
+    const notes = projectNotesById[projectId] ?? [];
+    setSelectedProjectNotesById((prev) => ({
+      ...prev,
+      [projectId]: Object.fromEntries(notes.map((n) => [n.id, checked])),
     }));
   }
 
@@ -280,11 +345,20 @@ export function CwImportModal({ open, onOpenChange, connectwiseConnected, onImpo
       .join("\n\n");
     const projectBody = selectedProjects
       .map((p) => {
-        const noteLines = (p.notes ?? [])
-          .map((n) => `  - [${n.date ?? "Unknown"}] ${n.author}: ${n.content || " - "}`)
+        const combinedProjectItems = [
+          ...(Array.isArray(projectNotesById[p.id]) ? projectNotesById[p.id] : []),
+          ...(Array.isArray((p as any).tasks) ? (p as any).tasks : []),
+        ];
+        const noteLines = combinedProjectItems
+          .filter((n: any) => (n.content != null ? selectedProjectNotesById[p.id]?.[n.id] === true : true))
+          .map((n: any) =>
+            n.content != null
+              ? `  - [${n.date ?? "Unknown"}] ${n.author}: ${n.content || " - "}`
+              : `  - #${n.id} ${n.summary ?? "Untitled task"} (${n.status ?? "Unknown"})`,
+          )
           .join("\n");
-        const taskLines = (p.tasks ?? [])
-          .map((t) => `  - #${t.id} ${t.summary} (${t.status})`)
+        const taskLines = (Array.isArray((p as any).tasks) ? (p as any).tasks : [])
+          .map((t: any) => `  - #${t.id} ${t.summary} (${t.status})`)
           .join("\n");
         const memberLines = (p.teamMembers ?? [])
           .map((m) => `  - ${m.name}${m.role ? ` (${m.role})` : ""}`)
@@ -298,7 +372,7 @@ export function CwImportModal({ open, onOpenChange, connectwiseConnected, onImpo
           `Project manager: ${p.projectmanager?.name ?? "Unassigned"}`,
           `Target date: ${p.targetdate ?? "None"}`,
           `Description: ${p.description ?? "None"}`,
-          "Project notes:",
+          "Project notes/updates:",
           noteLines || "  - None",
           "Project tickets/tasks:",
           taskLines || "  - None",
@@ -391,6 +465,18 @@ export function CwImportModal({ open, onOpenChange, connectwiseConnected, onImpo
             onChange={(e) => setSearch(e.target.value)}
             placeholder={mode === "tickets" ? "Search tickets..." : "Search projects..."}
           />
+          <div>
+            <label className="mb-1 block text-[12px] text-[var(--text-secondary)]">
+              Filter by keyword or project name (optional)
+            </label>
+            <input
+              type="text"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              placeholder={'e.g. "bako project" or "firewall"'}
+              className="w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+            />
+          </div>
           {error ? (
             <div className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">
               {error}
@@ -408,6 +494,13 @@ export function CwImportModal({ open, onOpenChange, connectwiseConnected, onImpo
             ) : null}
             {rows.map((row) => {
               const title = mode === "tickets" ? (row as CwTicket).summary : (row as CwProject).name;
+              const projectTasks =
+                mode === "projects"
+                  ? [
+                      ...(Array.isArray(projectNotesById[row.id]) ? projectNotesById[row.id] : []),
+                      ...(Array.isArray((row as any).tasks) ? (row as any).tasks : []),
+                    ]
+                  : [];
               return (
                 <button
                   key={`${mode}-${row.id}`}
@@ -416,7 +509,7 @@ export function CwImportModal({ open, onOpenChange, connectwiseConnected, onImpo
                     if (mode === "tickets") {
                       void toggleTicketExpanded(row.id);
                     } else {
-                      toggleProjectExpanded(row.id);
+                      void toggleProjectExpanded(row.id);
                     }
                   }}
                   className={cn(
@@ -426,15 +519,19 @@ export function CwImportModal({ open, onOpenChange, connectwiseConnected, onImpo
                       : "border-[var(--border)]",
                   )}
                 >
-                  {mode === "tickets" ? (
-                    <span className="mt-0.5 text-[var(--text-muted)]">
-                      {expandedTicketIds.includes(row.id) ? (
+                  <span className="mt-0.5 text-[var(--text-muted)]">
+                    {mode === "tickets" ? (
+                      expandedTicketIds.includes(row.id) ? (
                         <ChevronDown className="size-4" />
                       ) : (
                         <ChevronRight className="size-4" />
-                      )}
-                    </span>
-                  ) : null}
+                      )
+                    ) : expandedProjectIds.includes(row.id) ? (
+                      <ChevronDown className="size-4" />
+                    ) : (
+                      <ChevronRight className="size-4" />
+                    )}
+                  </span>
                   <Checkbox
                     checked={selectedIds.includes(row.id)}
                     onCheckedChange={() => toggleOne(row.id)}
@@ -457,26 +554,48 @@ export function CwImportModal({ open, onOpenChange, connectwiseConnected, onImpo
                     ) : null}
                     {mode === "projects" && expandedProjectIds.includes(row.id) ? (
                       <div className="mt-2 space-y-1 rounded border border-[var(--border)] bg-[var(--bg-secondary)]/40 p-2 text-xs">
-                        <p className="font-medium text-[var(--text-primary)]">Project notes</p>
-                        {(row as CwProject).notes?.length ? (
-                          (row as CwProject).notes!.map((note) => (
-                            <div key={note.id} className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-2">
-                              <p className="text-[11px] font-medium text-[var(--text-primary)]">
-                                {note.author} · {note.date ? new Date(note.date).toLocaleString("en-GB") : "Unknown"}
-                              </p>
-                              <p className="mt-1 whitespace-pre-wrap text-xs text-[var(--text-secondary)]">
-                                {note.content || " - "}
-                              </p>
-                            </div>
-                          ))
+                        {projectNotesLoadingById[row.id] ? (
+                          <p className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+                            <Loader2 className="size-3.5 animate-spin" />
+                            Loading notes...
+                          </p>
+                        ) : (projectNotesById[row.id] ?? []).length === 0 ? (
+                          <p className="text-xs text-[var(--text-muted)]">No notes</p>
                         ) : (
-                          <p className="text-[var(--text-muted)]">No notes</p>
+                          <>
+                            <label className="mb-1 flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                              <Checkbox
+                                checked={(projectNotesById[row.id] ?? []).every((n) => selectedProjectNotesById[row.id]?.[n.id] === true)}
+                                onCheckedChange={(v) => toggleAllProjectNotes(row.id, Boolean(v))}
+                              />
+                              Select all notes
+                            </label>
+                            {(projectNotesById[row.id] ?? []).map((note) => (
+                              <div key={note.id} className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-2">
+                                <label className="mb-1 flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                                  <Checkbox
+                                    checked={selectedProjectNotesById[row.id]?.[note.id] === true}
+                                    onCheckedChange={(v) => toggleProjectNote(row.id, note.id, Boolean(v))}
+                                  />
+                                  Include note
+                                </label>
+                                <p className="text-[11px] font-medium text-[var(--text-primary)]">
+                                  {note.author} · {note.date ? new Date(note.date).toLocaleString("en-GB") : "Unknown"}
+                                </p>
+                                <p className="mt-1 whitespace-pre-wrap text-xs text-[var(--text-secondary)]">
+                                  {note.content || " - "}
+                                </p>
+                              </div>
+                            ))}
+                          </>
                         )}
                         <p className="pt-1 font-medium text-[var(--text-primary)]">Project tickets/tasks</p>
-                        {(row as CwProject).tasks?.length ? (
-                          (row as CwProject).tasks!.map((task) => (
-                            <p key={task.id} className="text-[var(--text-secondary)]">
-                              #{task.id} {task.summary} ({task.status})
+                        {projectTasks.length ? (
+                          projectTasks.map((task: any, idx: number) => (
+                            <p key={`${task.id ?? "project-task"}-${idx}`} className="text-[var(--text-secondary)]">
+                              {task.content != null
+                                ? `${task.author ?? "Unknown"}: ${task.content || " - "}`
+                                : `#${task.id} ${task.summary ?? "Untitled task"} (${task.status ?? "Unknown"})`}
                             </p>
                           ))
                         ) : (

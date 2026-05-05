@@ -216,6 +216,18 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.8,
     },
     {
+      url: "https://gethandover.uk/partners/halopsa",
+      lastModified: today,
+      changeFrequency: "monthly",
+      priority: 0.7,
+    },
+    {
+      url: "https://gethandover.uk/partners/connectwise",
+      lastModified: today,
+      changeFrequency: "monthly",
+      priority: 0.7,
+    },
+    {
       url: "https://gethandover.uk/blog",
       lastModified: today,
       changeFrequency: "weekly",

@@ -538,7 +538,7 @@ export function IntegrationsPanel({
               gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
             }}
           >
-            <div className="pro-card-wrapper min-w-0 rounded-[var(--radius-lg)] shadow-[0_8px_32px_rgba(56,189,248,0.1)]">
+            <div className="integration-card-glow min-w-0">
               <CardMouseSpotlight className="pro-card-content integration-card-glass relative flex min-h-full flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/80 bg-[var(--bg-primary)] p-6 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:border-[rgba(56,189,248,0.35)] hover:shadow-[0_4px_20px_rgba(56,189,248,0.08)]">
                 {!isPro ? proLockCard : null}
                 <div className="mb-4 flex items-start justify-between gap-3">
@@ -569,7 +569,7 @@ export function IntegrationsPanel({
               </CardMouseSpotlight>
             </div>
 
-            <div className="pro-card-wrapper min-w-0 rounded-[var(--radius-lg)] shadow-[0_8px_32px_rgba(56,189,248,0.1)]">
+            <div className="integration-card-glow min-w-0">
               <CardMouseSpotlight className="pro-card-content integration-card-glass relative flex min-h-full flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/80 bg-[var(--bg-primary)] p-6 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:border-[rgba(56,189,248,0.35)] hover:shadow-[0_4px_20px_rgba(56,189,248,0.08)]">
                 {!isPro ? proLockCard : null}
                 <div className="mb-4 flex items-start justify-between gap-3">
@@ -624,7 +624,7 @@ export function IntegrationsPanel({
             className="grid gap-5"
             style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}
           >
-            <div className="pro-card-wrapper min-w-0 rounded-[var(--radius-lg)] shadow-[0_8px_32px_rgba(56,189,248,0.1)]">
+            <div className="integration-card-glow min-w-0">
               <CardMouseSpotlight className="pro-card-content integration-card-glass relative flex min-h-full flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/80 bg-[var(--bg-primary)] p-6 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:border-[rgba(56,189,248,0.35)] hover:shadow-[0_4px_20px_rgba(56,189,248,0.08)]">
                 {!isPro ? proLockCard : null}
                 <div className="mb-4 flex items-start justify-between gap-3">
@@ -654,7 +654,7 @@ export function IntegrationsPanel({
                 </Button>
               </CardMouseSpotlight>
             </div>
-            <div className="pro-card-wrapper min-w-0 rounded-[var(--radius-lg)] shadow-[0_8px_32px_rgba(56,189,248,0.1)]">
+            <div className="integration-card-glow min-w-0">
               <CardMouseSpotlight className="pro-card-content integration-card-glass relative flex min-h-full flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/80 bg-[var(--bg-primary)] p-6 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:border-[rgba(56,189,248,0.35)] hover:shadow-[0_4px_20px_rgba(56,189,248,0.08)]">
                 {!isPro ? proLockCard : null}
                 <div className="mb-4 flex items-start justify-between gap-3">
@@ -706,7 +706,7 @@ export function IntegrationsPanel({
             className="grid gap-5"
             style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}
           >
-            <div className="pro-card-wrapper min-w-0 rounded-[var(--radius-lg)] opacity-90 shadow-[0_8px_32px_rgba(56,189,248,0.1)]">
+            <div className="integration-card-glow opacity-50">
               <CardMouseSpotlight className="pro-card-content integration-card-glass relative flex min-h-full flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/80 bg-[var(--bg-primary)] p-6">
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <img
@@ -755,7 +755,7 @@ export function IntegrationsPanel({
             className="grid gap-5"
             style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}
           >
-            <div className="pro-card-wrapper min-w-0 rounded-[var(--radius-lg)] opacity-[0.72] shadow-[0_8px_32px_rgba(56,189,248,0.06)]">
+            <div className="integration-card-glow opacity-50">
               <CardMouseSpotlight className="pro-card-content integration-card-glass relative flex min-h-full flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/80 bg-[var(--bg-primary)] p-6">
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <img
@@ -779,7 +779,7 @@ export function IntegrationsPanel({
                 </a>
               </CardMouseSpotlight>
             </div>
-            <div className="pro-card-wrapper min-w-0 rounded-[var(--radius-lg)] opacity-[0.72] shadow-[0_8px_32px_rgba(56,189,248,0.06)]">
+            <div className="integration-card-glow opacity-50">
               <CardMouseSpotlight className="pro-card-content integration-card-glass relative flex min-h-full flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/80 bg-[var(--bg-primary)] p-6">
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <img
@@ -802,7 +802,7 @@ export function IntegrationsPanel({
                 </a>
               </CardMouseSpotlight>
             </div>
-            <div className="pro-card-wrapper min-w-0 rounded-[var(--radius-lg)] shadow-[0_8px_32px_rgba(56,189,248,0.1)]">
+            <div className="integration-card-glow">
               <CardMouseSpotlight className="pro-card-content integration-card-glass relative flex min-h-full flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/80 bg-[var(--bg-primary)] p-6 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:border-[rgba(56,189,248,0.35)] hover:shadow-[0_4px_20px_rgba(56,189,248,0.08)]">
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div
@@ -925,6 +925,25 @@ export function IntegrationsPanel({
                             value={haloUrlInput}
                             onChange={(e) => setHaloUrlInput(e.target.value)}
                           />
+                          <p className="mt-1.5 text-[11px] text-[var(--text-muted)] leading-relaxed">
+                            Enter your HaloPSA instance URL without any path suffix. Examples:{" "}
+                            <span className="text-[var(--text-secondary)] font-medium">
+                              https://halo.yourcompany.com
+                            </span>{" "}
+                            or{" "}
+                            <span className="text-[var(--text-secondary)] font-medium">
+                              https://yourcompany.halopsa.com
+                            </span>
+                            . Do not include /halo or any subfolder path. For on-prem instances ensure your API
+                            application is enabled under Configuration → Integrations → HaloPSA API.
+                          </p>
+                          <a
+                            href="/integrations/halopsa"
+                            target="_blank"
+                            className="mt-1 inline-block text-[11px] text-[var(--accent)] hover:underline"
+                          >
+                            View setup guide →
+                          </a>
                         </div>
                         <div className="space-y-2">
                           <label className="text-[13px] font-medium text-[var(--text-secondary)]">

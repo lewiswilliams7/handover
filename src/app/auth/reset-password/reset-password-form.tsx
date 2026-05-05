@@ -120,7 +120,7 @@ export function ResetPasswordForm() {
   if (linkError || !sessionReady) {
     return (
       <div className="relative z-[1] mx-auto w-full max-w-[440px] px-4 py-8 sm:py-10">
-        <div className="auth-card-shell w-full rounded-[var(--radius-lg)] p-4 sm:p-8 animate-in fade-in zoom-in-95 duration-200">
+        <div className="auth-card-shell w-full rounded-2xl border border-white/[0.10] bg-white/[0.05] p-4 backdrop-blur-xl sm:p-8 animate-in fade-in zoom-in-95 duration-200">
           <p className="text-[15px] leading-relaxed text-[var(--text-secondary)]">
             This reset link is invalid or has expired. Please request a new one from the sign-in
             page.
@@ -140,7 +140,7 @@ export function ResetPasswordForm() {
   if (success) {
     return (
       <div className="relative z-[1] mx-auto w-full max-w-[440px] px-4 py-8 sm:py-10">
-        <div className="auth-card-shell w-full rounded-[var(--radius-lg)] p-4 sm:p-8 animate-in fade-in zoom-in-95 duration-200">
+        <div className="auth-card-shell w-full rounded-2xl border border-white/[0.10] bg-white/[0.05] p-4 backdrop-blur-xl sm:p-8 animate-in fade-in zoom-in-95 duration-200">
           <p className="text-[15px] leading-relaxed text-[var(--text-primary)]" role="status">
             Password updated successfully.
           </p>
@@ -152,7 +152,7 @@ export function ResetPasswordForm() {
 
   return (
     <div className="relative z-[1] mx-auto w-full max-w-[440px] px-4 py-8 sm:py-10">
-      <div className="auth-card-shell w-full rounded-[var(--radius-lg)] p-4 sm:p-8 animate-in fade-in zoom-in-95 duration-200">
+      <div className="auth-card-shell w-full rounded-2xl border border-white/[0.10] bg-white/[0.05] p-4 backdrop-blur-xl sm:p-8 animate-in fade-in zoom-in-95 duration-200">
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <h2 className="text-lg font-semibold tracking-tight text-[var(--text-primary)]">
             New password

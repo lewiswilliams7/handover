@@ -34,28 +34,31 @@ function PriorityBadge({ level }: { level: "high" | "medium" }) {
   return <Badge className={cls}>{level === "high" ? "High" : "Medium"}</Badge>;
 }
 
-const MOCK_ROWS: { task: string; owner: string; unassigned?: boolean; pri: "high" | "medium" }[] =
+const MOCK_ROWS: { task: string; owner: string; pri: "high" | "medium"; status: "In Progress" | "Planned" }[] =
   [
     {
-      task: "Chase Skyline IT Solutions - firewall licence delivery",
-      owner: "Dave",
+      task: "Complete Skyline firewall cutover and validate failover routes",
+      owner: "James Thornton",
       pri: "high",
+      status: "In Progress",
     },
     {
-      task: "Complete Fernwood Academy 3CX configuration",
-      owner: "Luke",
+      task: "Finalize Fernwood 3CX handset profiles and close UAT actions",
+      owner: "Sarah Mitchell",
       pri: "medium",
+      status: "In Progress",
     },
     {
-      task: "Progress Greystone Group Cloud Migration phase 2",
-      owner: "Luke",
+      task: "Progress Greystone cloud migration phase 2 build checklist",
+      owner: "James Thornton",
       pri: "medium",
+      status: "In Progress",
     },
     {
-      task: "Assign engineer to Thornfield Solutions - network replacement",
-      owner: "Unassigned",
-      unassigned: true,
+      task: "Prepare Thornfield network replacement runbook for scheduled window",
+      owner: "Sarah Mitchell",
       pri: "high",
+      status: "Planned",
     },
   ];
 
@@ -178,14 +181,13 @@ export function HeroProductMockup({
                         isCompact ? "text-sm" : "",
                       )}
                     >
-                      {row.unassigned ? (
-                        <span className="text-muted-foreground">Unassigned</span>
-                      ) : (
-                        row.owner
-                      )}
+                      {row.owner}
                     </TableCell>
                     <TableCell>
-                      <PriorityBadge level={row.pri} />
+                      <div className="flex items-center gap-2">
+                        <PriorityBadge level={row.pri} />
+                        <span className="text-xs text-[var(--text-muted)]">{row.status}</span>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -304,20 +306,58 @@ Best regards`}
                   Executive summary
                 </p>
                 <p className="mt-1 text-[var(--text-primary)]">
-                  This quarter delivered stable service performance and improved delivery cadence across key client projects.
+                  Q1 2026 delivered stable service performance across all active accounts. Ticket volume decreased 19% quarter on quarter, with average response times improving to under 2 hours. Two major infrastructure projects progressed to completion with no SLA breaches recorded. Key focus areas for Q2 include the Azure AD migration programme and planned network refresh at Clearview Solutions.
                 </p>
               </div>
               <div className="rounded-md border border-[var(--border)] p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
                   Delivery trend
                 </p>
-                <div className="mt-2 h-20 w-full rounded bg-[var(--bg-secondary)] p-2">
-                  <div className="flex h-full items-end gap-2">
-                    <span className="w-1/5 rounded-t bg-[var(--accent)]/45" style={{ height: "38%" }} />
-                    <span className="w-1/5 rounded-t bg-[var(--accent)]/55" style={{ height: "48%" }} />
-                    <span className="w-1/5 rounded-t bg-[var(--accent)]/65" style={{ height: "56%" }} />
-                    <span className="w-1/5 rounded-t bg-[var(--accent)]/75" style={{ height: "66%" }} />
-                    <span className="w-1/5 rounded-t bg-[var(--accent)]/90" style={{ height: "78%" }} />
+                <div className="mt-2 rounded bg-[var(--bg-secondary)] p-2">
+                  <div className="grid grid-cols-[28px_1fr] gap-2">
+                    <div className="flex h-28 flex-col justify-between text-[10px] text-[var(--text-muted)]">
+                      <span>40</span>
+                      <span>30</span>
+                      <span>20</span>
+                      <span>10</span>
+                      <span>0</span>
+                    </div>
+                    <div className="relative h-28">
+                      <div className="absolute inset-0 flex flex-col justify-between" aria-hidden>
+                        <div className="border-t border-[var(--border)]/60" />
+                        <div className="border-t border-[var(--border)]/50" />
+                        <div className="border-t border-[var(--border)]/45" />
+                        <div className="border-t border-[var(--border)]/40" />
+                        <div className="border-t border-[var(--border)]/40" />
+                      </div>
+                      <div className="absolute inset-0 flex items-end gap-2 px-1">
+                        {[
+                          { month: "Dec", value: 28, cls: "bg-[var(--accent)]/45" },
+                          { month: "Jan", value: 31, cls: "bg-[var(--accent)]/55" },
+                          { month: "Feb", value: 24, cls: "bg-[var(--accent)]/65" },
+                          { month: "Mar", value: 19, cls: "bg-[var(--accent)]/75" },
+                          { month: "Apr", value: 22, cls: "bg-[var(--accent)]/90" },
+                        ].map((point) => (
+                          <div key={point.month} className="flex w-1/5 flex-col items-center justify-end">
+                            <span className="mb-1 text-[10px] text-[var(--text-primary)]">{point.value}</span>
+                            <span
+                              className={cn("w-full rounded-t", point.cls)}
+                              style={{ height: `${(point.value / 40) * 100}%` }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-2 grid grid-cols-[28px_1fr] gap-2">
+                    <span className="text-[10px] text-[var(--text-muted)]" />
+                    <div className="flex items-center gap-2 px-1 text-[10px] text-[var(--text-muted)]">
+                      <span className="w-1/5 text-center">Dec</span>
+                      <span className="w-1/5 text-center">Jan</span>
+                      <span className="w-1/5 text-center">Feb</span>
+                      <span className="w-1/5 text-center">Mar</span>
+                      <span className="w-1/5 text-center">Apr</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -325,11 +365,40 @@ Best regards`}
                 <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
                   Project status
                 </p>
-                <div className="mt-2 flex items-center justify-between rounded bg-[var(--bg-secondary)] px-3 py-2">
-                  <span className="text-[var(--text-primary)]">Greystone Cloud Migration - Phase 2</span>
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
-                    Amber
-                  </span>
+                <div className="mt-2 space-y-2">
+                  <div className="rounded bg-[var(--bg-secondary)] px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[var(--text-primary)]">Azure AD Migration — Phase 2</span>
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
+                        Amber
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-[var(--text-muted)]">
+                      On track with minor delays to user provisioning stage
+                    </p>
+                  </div>
+                  <div className="rounded bg-[var(--bg-secondary)] px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[var(--text-primary)]">Network Infrastructure Refresh</span>
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-900">
+                        Green
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-[var(--text-muted)]">
+                      Completed ahead of schedule
+                    </p>
+                  </div>
+                  <div className="rounded bg-[var(--bg-secondary)] px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[var(--text-primary)]">M365 Licensing Audit</span>
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-900">
+                        Green
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-[var(--text-muted)]">
+                      All licensing reviewed and renewed
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>

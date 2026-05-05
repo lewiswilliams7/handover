@@ -347,7 +347,7 @@ export function HomeRoiCalculator({
       {resultsBlock}
 
       <Link
-        href="/auth?tab=signup"
+        href="/auth?tab=signup&returnTo=/welcome"
         className="mt-8 flex w-full min-h-[48px] items-center justify-center rounded-[var(--radius)] bg-[var(--accent)] px-4 py-3.5 text-center text-sm font-semibold leading-snug text-white shadow-lg transition-[transform,box-shadow] duration-200 hover:bg-[var(--accent-hover)] hover:shadow-xl active:scale-[0.98] sm:text-[15px]"
       >
         Save £{animMoneyYear.toLocaleString("en-GB")} this year - start free today →

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
 import { getPlanTierServer, verifyUserPlan } from "@/lib/server/verifyUserPlan";
 import { createServerClient } from "@/lib/supabase/server";
@@ -7,10 +8,14 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createServerClient();
+    const sessionSupabase = await createServerClient();
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await sessionSupabase.auth.getUser();
     if (!user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

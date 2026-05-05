@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import {
   AlertTriangle,
   Check,
+  ChevronLeft,
   ChevronDown,
   ChevronRight,
   Flag,
@@ -243,7 +244,7 @@ function buildEmptyNoteSelection(items: Array<HaloTicket | HaloProject>): Record
   for (const item of items) {
     const per: Record<string, boolean> = {};
     for (const n of item.notes ?? []) {
-      per[noteKey(n)] = false;
+      per[noteKey(n as HaloNote)] = false;
     }
     noteMap[String(item.id)] = per;
   }
@@ -304,6 +305,7 @@ export function HaloImportModal({
   const [error, setError] = useState<string | null>(null);
   const [demoMode, setDemoMode] = useState(false);
   const [ticketSearch, setTicketSearch] = useState("");
+  const [keyword, setKeyword] = useState("");
   const [clientsLoading, setClientsLoading] = useState(false);
   const { data: haloTicketsCached, mutate: refreshHaloTickets } = useHaloTickets(open);
   const { data: haloProjectsCached, mutate: refreshHaloProjects } = useHaloProjects(open);
@@ -343,6 +345,7 @@ export function HaloImportModal({
     setExpandedIds([]);
     setSelectedNotes({});
     setClientSearch("");
+    setKeyword("");
     setTicketSearch("");
     setAllClientsSelected(false);
     setPickedClients([]);
@@ -741,6 +744,14 @@ export function HaloImportModal({
         const projectData = (haloProjectsCached ??
           (await refreshHaloProjects())) as { projects?: HaloProject[] } | undefined;
         let projectRows = Array.isArray(projectData?.projects) ? projectData.projects : [];
+        const kw = keyword.trim().toLowerCase();
+        if (kw) {
+          projectRows = projectRows.filter((p) =>
+            (p.name ?? "").toLowerCase().includes(kw) ||
+            (p.description ?? "").toLowerCase().includes(kw) ||
+            (p.client?.name ?? "").toLowerCase().includes(kw),
+          );
+        }
         if (clientIdsPayload && clientIdsPayload.length > 0) {
           const selectedClientNames = new Set(
             clients.filter((c) => clientIdsPayload.includes(c.id)).map((c) => c.name.toLowerCase()),
@@ -749,11 +760,22 @@ export function HaloImportModal({
             selectedClientNames.has((p.client?.name ?? "").toLowerCase()),
           );
         }
-        setProjects(projectRows);
+        const detailedProjects = await Promise.all(
+          projectRows.map(async (p) => {
+            const dr = await fetch(`/api/halo/ticket-details?id=${p.id}`);
+            const dd = (await dr.json()) as { ticket?: HaloTicket; error?: string };
+            if (!dr.ok || !dd.ticket) throw new Error(dd.error ?? `Failed to fetch project ${p.id}`);
+            return {
+              ...p,
+              notes: Array.isArray(dd.ticket.notes) ? dd.ticket.notes : [],
+            };
+          }),
+        );
+        setProjects(detailedProjects);
         setTickets([]);
         void refreshHaloProjects();
         setSelectedIds([]);
-        setSelectedNotes(buildEmptyNoteSelection(projectRows));
+        setSelectedNotes(buildEmptyNoteSelection(detailedProjects));
         setStep(2);
         return;
       }
@@ -764,6 +786,7 @@ export function HaloImportModal({
         ? (cachedResult.tickets as HaloTicket[])
         : [];
       const selectedClientIdSet = new Set(clientIdsPayload ?? []);
+      const keywordLower = keyword.trim().toLowerCase();
       const fromMs = Date.parse(`${resolvedRange.from}T00:00:00.000Z`);
       const toMs = Date.parse(`${resolvedRange.to}T23:59:59.999Z`);
       const baseTickets =
@@ -775,7 +798,14 @@ export function HaloImportModal({
                 selectedClientIdSet.size === 0 || (Number.isFinite(cid) && selectedClientIdSet.has(cid));
               const inDateScope =
                 Number.isFinite(occurred) && occurred >= fromMs && occurred <= toMs;
-              return inClientScope && inDateScope;
+              const inKeywordScope =
+                !keywordLower ||
+                (t.summary ?? "").toLowerCase().includes(keywordLower) ||
+                (t.details ?? "").toLowerCase().includes(keywordLower) ||
+                String((t as Record<string, unknown>).category_1 ?? "").toLowerCase().includes(keywordLower) ||
+                String((t as Record<string, unknown>).category_2 ?? "").toLowerCase().includes(keywordLower) ||
+                (t.client?.name ?? "").toLowerCase().includes(keywordLower);
+              return inClientScope && inDateScope && inKeywordScope;
             })
           : [];
       let resolvedTickets = baseTickets;
@@ -789,6 +819,7 @@ export function HaloImportModal({
             dateFrom: resolvedRange.from,
             dateTo: resolvedRange.to,
             count: limit,
+            keyword: keyword.trim() || undefined,
           }),
         });
         const data = (await res.json()) as { tickets?: HaloTicket[]; error?: string };
@@ -879,19 +910,24 @@ export function HaloImportModal({
     if (!item) return;
     const next: Record<string, boolean> = { ...(selectedNotes[String(itemId)] ?? {}) };
     for (const n of item.notes ?? []) {
-      next[noteKey(n)] = on;
+      next[noteKey(n as HaloNote)] = on;
     }
     setSelectedNotes((prev) => ({
       ...prev,
       [String(itemId)]: next,
     }));
+    if (on && importMode === "projects") {
+      setSelectedIds((prev) =>
+        prev.includes(itemId) ? prev : [...prev, itemId],
+      );
+    }
   };
 
   const allNotesSelectedForTicket = (item: HaloTicket | HaloProject): boolean => {
     const notes = item.notes ?? [];
     if (notes.length === 0) return false;
     const map = selectedNotes[String(item.id)] ?? {};
-    return notes.every((n) => map[noteKey(n)] === true);
+    return notes.every((n) => map[noteKey(n as HaloNote)] === true);
   };
 
   const importSelected = () => {
@@ -903,13 +939,13 @@ export function HaloImportModal({
     const ticketText = selectedTickets
       .map((t, idx) => {
         const notes = (t.notes ?? [])
-          .filter((n) => selectedNotes[String(t.id)]?.[noteKey(n)] ?? false)
+          .filter((n) => selectedNotes[String(t.id)]?.[noteKey(n as HaloNote)] ?? false)
           .filter((n) => {
-            const txt = noteText(n);
+            const txt = noteText(n as HaloNote);
             if (!txt || txt.length < 10) return false;
-            if (/system|auto/i.test(noteAuthor(n))) return false;
+            if (/system|auto/i.test(noteAuthor(n as HaloNote))) return false;
             if (txt.toLowerCase() === t.summary.toLowerCase()) return false;
-            const ts = new Date(noteDate(n)).getTime();
+            const ts = new Date(noteDate(n as HaloNote)).getTime();
             if (!Number.isNaN(ts)) {
               const age = (Date.now() - ts) / (1000 * 60 * 60 * 24);
               if (age > 30) return false;
@@ -917,14 +953,14 @@ export function HaloImportModal({
             return true;
           })
           .sort((a, b) => {
-            const ta = new Date(noteDate(a)).getTime();
-            const tb = new Date(noteDate(b)).getTime();
+            const ta = new Date(noteDate(a as HaloNote)).getTime();
+            const tb = new Date(noteDate(b as HaloNote)).getTime();
             const aOk = !Number.isNaN(ta);
             const bOk = !Number.isNaN(tb);
             if (aOk && bOk && ta !== tb) return ta - tb;
             return String(a.id ?? "").localeCompare(String(b.id ?? ""));
           })
-          .map((n) => `  - [${noteDate(n)}] ${noteAuthor(n)}: ${noteText(n)}`)
+          .map((n) => `  - [${noteDate(n as HaloNote)}] ${noteAuthor(n as HaloNote)}: ${noteText(n as HaloNote)}`)
           .join("\n");
         return [
           TICKET_SECTION_RULE,
@@ -947,16 +983,16 @@ export function HaloImportModal({
     const projectText = selectedProjects
       .map((p, idx) => {
         const notes = (p.notes ?? [])
-          .filter((n) => selectedNotes[String(p.id)]?.[noteKey(n)] ?? false)
+          .filter((n) => selectedNotes[String(p.id)]?.[noteKey(n as HaloNote)] ?? false)
           .sort((a, b) => {
-            const ta = new Date(noteDate(a)).getTime();
-            const tb = new Date(noteDate(b)).getTime();
+            const ta = new Date(noteDate(a as HaloNote)).getTime();
+            const tb = new Date(noteDate(b as HaloNote)).getTime();
             const aOk = !Number.isNaN(ta);
             const bOk = !Number.isNaN(tb);
             if (aOk && bOk && ta !== tb) return ta - tb;
             return String(a.id ?? "").localeCompare(String(b.id ?? ""));
           })
-          .map((n) => `  - [${noteDate(n)}] ${noteAuthor(n)}: ${noteText(n)}`)
+          .map((n) => `  - [${noteDate(n as HaloNote)}] ${noteAuthor(n as HaloNote)}: ${noteText(n as HaloNote)}`)
           .join("\n");
         return [
           TICKET_SECTION_RULE,
@@ -1242,6 +1278,18 @@ export function HaloImportModal({
               )}
 
               <section className={importMode === "tickets" || importMode === "projects" ? "pt-2" : ""}>
+                <div className="mb-3">
+                  <label className="mb-1 block text-[12px] text-[var(--text-secondary)]">
+                    Filter by keyword or project name (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={keyword}
+                    onChange={(e) => setKeyword(e.target.value)}
+                    placeholder={'e.g. "bako project" or "firewall"'}
+                    className="w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                  />
+                </div>
                 <h3 className="text-[16px] font-semibold text-[var(--text-primary)]">Which client?</h3>
                 <p className="mt-1 text-[14px] text-[var(--text-secondary)]">
                   Select one or more clients to load their {importMode === "tickets" ? "tickets" : "projects"}
@@ -1471,6 +1519,17 @@ export function HaloImportModal({
 
           {step === 2 ? (
             <>
+              <button
+                type="button"
+                className="flex items-center gap-1 text-slate-400 hover:text-white text-sm transition-colors duration-200 mb-4"
+                onClick={() => {
+                  setStep(1);
+                  setSelectedIds([]);
+                }}
+              >
+                <ChevronLeft size={16} />
+                Back
+              </button>
               <input
                 type="text"
                 placeholder={importMode === "tickets" ? "Search tickets..." : "Search projects..."}
@@ -1540,7 +1599,7 @@ export function HaloImportModal({
                     </div>
                     <div className="space-y-2">
                       {items.map((item) => {
-                        const isTicket = true;
+                        const isTicket = importMode === "tickets";
                         const isProjectMode = importMode === "projects";
                         const t = item as HaloTicket;
                         const p = item as HaloProject;
@@ -1557,6 +1616,14 @@ export function HaloImportModal({
                           !isTicket && typeof p.description === "string" && p.description.trim()
                             ? p.description.trim()
                             : "";
+                        const projectTasks =
+                          !isTicket &&
+                          Array.isArray((p as unknown as { tasks?: unknown[] }).tasks)
+                            ? (((p as unknown as { tasks?: unknown[] }).tasks ?? []) as Array<{
+                                name?: string | null;
+                                summary?: string | null;
+                              }>)
+                            : [];
                         const ticketKindStyle =
                           isTicket
                             ? projectVsTicketBadgeStyle(isProjectMode || Boolean(t.is_project))
@@ -1689,7 +1756,7 @@ export function HaloImportModal({
                                         Progress: {p.completionpercent}%
                                       </p>
                                     ) : null}
-                                    {projectDescription ? (
+                                    {projectDescription || notes.length > 0 || projectTasks.length > 0 ? (
                                       <button
                                         type="button"
                                         className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-[var(--accent)]"
@@ -1703,7 +1770,7 @@ export function HaloImportModal({
                                         ) : (
                                           <ChevronRight className="size-3.5" />
                                         )}
-                                        Show description
+                                        Show project details
                                       </button>
                                     ) : null}
                                   </>
@@ -1735,7 +1802,7 @@ export function HaloImportModal({
                                       </button>
                                     </div>
                                     {notes.map((n) => {
-                                      const k = noteKey(n);
+                                      const k = noteKey(n as HaloNote);
                                       const checked = selectedNotes[String(item.id)]?.[k] ?? false;
                                       return (
                                         <div
@@ -1792,10 +1859,10 @@ export function HaloImportModal({
                                             </span>
                                             <div className="min-w-0 flex-1">
                                               <p className="line-clamp-2 text-[13px] text-[var(--text-primary)]">
-                                                {noteText(n) || " - "}
+                                                {noteText(n as HaloNote) || " - "}
                                               </p>
                                               <p className="mt-1 text-[11px] text-[var(--text-muted)]">
-                                                {noteAuthor(n)} · {noteDate(n)}
+                                                {noteAuthor(n as HaloNote)} · {noteDate(n as HaloNote)}
                                               </p>
                                             </div>
                                           </div>
@@ -1806,15 +1873,156 @@ export function HaloImportModal({
                                 )}
                               </div>
                             ) : null}
-                            {!isTicket && projectDescription && expandedIds.includes(item.id) ? (
+                            {!isTicket && expandedIds.includes(item.id) ? (
                               <div
-                                className="mt-2 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-3"
+                                className="mt-2 space-y-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-3"
                                 onClick={(e) => e.stopPropagation()}
                                 onKeyDown={(e) => e.stopPropagation()}
                               >
-                                <p className="whitespace-pre-wrap text-[13px] text-[var(--text-primary)]">
-                                  {projectDescription}
-                                </p>
+                                <div>
+                                  <p className="mb-1 text-[12px] font-medium text-[var(--text-primary)]">
+                                    Description
+                                  </p>
+                                  {projectDescription ? (
+                                    <p className="whitespace-pre-wrap text-[13px] text-[var(--text-primary)]">
+                                      {projectDescription}
+                                    </p>
+                                  ) : (
+                                    <p className="text-xs text-[var(--text-muted)]">No project description.</p>
+                                  )}
+                                </div>
+                                <div>
+                                  <p className="mb-1 text-[12px] font-medium text-[var(--text-primary)]">
+                                    Project notes
+                                  </p>
+                                  {notes.length > 0 ? (
+                                    <>
+                                      <div className="flex items-center justify-between gap-2 px-1">
+                                        <span className="text-[13px] font-medium text-[var(--text-primary)]">
+                                          Notes ({notes.length})
+                                        </span>
+                                        <button
+                                          type="button"
+                                          className="cursor-pointer text-[12px] font-medium text-[var(--accent)] hover:underline"
+                                          onClick={() =>
+                                            setAllNotesForTicket(item.id, !allNotesOn)
+                                          }
+                                        >
+                                          {allNotesOn ? "Deselect all notes" : "Select all notes"}
+                                        </button>
+                                      </div>
+                                      <div className="space-y-2">
+                                        {notes.map((n) => {
+                                          const k = noteKey(n as HaloNote);
+                                          const checked = selectedNotes[String(item.id)]?.[k] ?? false;
+                                          return (
+                                            <div
+                                              key={k}
+                                              role="button"
+                                              tabIndex={0}
+                                              className="block cursor-pointer rounded border p-2 text-[13px] transition-colors"
+                                              style={{
+                                                borderColor: "var(--border)",
+                                                background: checked
+                                                  ? "rgba(56,189,248,0.04)"
+                                                  : "var(--bg-primary)",
+                                              }}
+                                              onClick={() =>
+                                                {
+                                                  const nextChecked = !checked;
+                                                  setSelectedNotes((prev) => ({
+                                                    ...prev,
+                                                    [String(item.id)]: {
+                                                      ...(prev[String(item.id)] ?? {}),
+                                                      [k]: nextChecked,
+                                                    },
+                                                  }));
+                                                  if (nextChecked) {
+                                                    setSelectedIds((prev) =>
+                                                      prev.includes(item.id) ? prev : [...prev, item.id],
+                                                    );
+                                                  }
+                                                }
+                                              }
+                                              onKeyDown={(e) => {
+                                                if (e.key === "Enter" || e.key === " ") {
+                                                  e.preventDefault();
+                                                  setSelectedNotes((prev) => ({
+                                                    ...prev,
+                                                    [String(item.id)]: {
+                                                      ...(prev[String(item.id)] ?? {}),
+                                                      [k]: !checked,
+                                                    },
+                                                  }));
+                                                  if (!checked) {
+                                                    setSelectedIds((prev) =>
+                                                      prev.includes(item.id) ? prev : [...prev, item.id],
+                                                    );
+                                                  }
+                                                }
+                                              }}
+                                            >
+                                              <div className="flex items-start gap-2">
+                                                <span
+                                                  className="mt-0.5 shrink-0"
+                                                  onClick={(e) => e.stopPropagation()}
+                                                >
+                                                  <Checkbox
+                                                    checked={checked}
+                                                    onCheckedChange={(v) =>
+                                                      {
+                                                        const isChecked = Boolean(v);
+                                                        setSelectedNotes((prev) => ({
+                                                          ...prev,
+                                                          [String(item.id)]: {
+                                                            ...(prev[String(item.id)] ?? {}),
+                                                            [k]: isChecked,
+                                                          },
+                                                        }));
+                                                        if (isChecked) {
+                                                          setSelectedIds((prev) =>
+                                                            prev.includes(item.id) ? prev : [...prev, item.id],
+                                                          );
+                                                        }
+                                                      }
+                                                    }
+                                                    aria-label="Include note"
+                                                  />
+                                                </span>
+                                                <div className="min-w-0 flex-1">
+                                                  <p className="line-clamp-2 text-[13px] text-[var(--text-primary)]">
+                                                    {noteText(n as HaloNote) || " - "}
+                                                  </p>
+                                                  <p className="mt-1 text-[11px] text-[var(--text-muted)]">
+                                                    {noteAuthor(n as HaloNote)} · {noteDate(n as HaloNote)}
+                                                  </p>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <p className="text-xs text-[var(--text-muted)]">No project notes.</p>
+                                  )}
+                                </div>
+                                <div>
+                                  <p className="mb-1 text-[12px] font-medium text-[var(--text-primary)]">
+                                    Project tickets/tasks
+                                  </p>
+                                  {projectTasks.length > 0 ? (
+                                    <div className="space-y-1.5">
+                                      {projectTasks.map((task, idx) => (
+                                        <p key={`${task.name ?? "task"}-${idx}`} className="text-[12px] text-[var(--text-secondary)]">
+                                          {task.summary || task.name || "Untitled task"}
+                                        </p>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-xs text-[var(--text-muted)]">No project tickets.</p>
+                                  )}
+                                </div>
                               </div>
                             ) : null}
                           </div>

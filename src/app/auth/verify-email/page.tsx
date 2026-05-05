@@ -7,7 +7,7 @@ import { VerifyEmailForm } from "./verify-email-form";
 
 export default function VerifyEmailPage() {
   return (
-    <div className="relative min-h-screen animate-in fade-in duration-300 overflow-hidden bg-[var(--bg-primary)]">
+    <div className="relative min-h-screen animate-in fade-in duration-300 overflow-hidden bg-transparent">
       <MarketingHeroAmbient />
       <div className="relative z-[1] mb-4 flex w-full flex-col items-center px-4 pt-10">
         <Link

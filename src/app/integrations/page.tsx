@@ -44,22 +44,14 @@ export default function IntegrationsPage() {
   return (
     <div
       className="animate-in fade-in duration-300"
-      style={{
-        background:
-          "linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 60%, var(--bg-primary) 100%)",
-        minHeight: "100vh",
-      }}
+      style={{ minHeight: "100vh" }}
     >
-      <section className="relative overflow-hidden bg-[var(--bg-primary)] px-6 py-10 md:px-8 md:py-14">
+      <section className="relative overflow-hidden bg-transparent px-6 py-10 md:px-8 md:py-14">
         <MarketingHeroAmbient />
         <div className="relative z-[1] mx-auto w-full max-w-[1100px]">
         <div
-          className="relative z-[1] mb-4 animate-in fade-in slide-in-from-bottom-4 duration-300 rounded-[var(--radius-lg)] px-8 py-10"
-          style={{
-            background:
-              "linear-gradient(135deg, rgba(15,23,42,0.97) 0%, rgba(15,23,42,0.95) 100%)",
-            padding: "2.5rem 2rem",
-          }}
+          className="relative z-[1] mb-4 animate-in fade-in slide-in-from-bottom-4 duration-300 rounded-[var(--radius-lg)] bg-white/[0.03] backdrop-blur-md border border-white/[0.07] px-8 py-10"
+          style={{ padding: "2.5rem 2rem" }}
         >
           <p
             className="text-[11px] font-semibold uppercase text-[var(--accent)]"
@@ -78,7 +70,7 @@ export default function IntegrationsPage() {
       </section>
 
       <section
-        className="relative z-[1] bg-[var(--bg-secondary)] px-6 pb-12 pt-8 md:px-8 md:pb-16 md:pt-10"
+        className="relative z-[1] bg-transparent px-6 pb-12 pt-8 md:px-8 md:pb-16 md:pt-10"
         style={{ borderTop: "1px solid var(--border)" }}
       >
         <div className="mx-auto w-full max-w-[1100px]">
@@ -94,7 +86,7 @@ export default function IntegrationsPage() {
           }}
         >
           <ScrollRevealItem disableAnimation index={0} className="min-w-0">
-          <div className="pro-card-wrapper rounded-[var(--radius-lg)] shadow-[0_8px_32px_rgba(56,189,248,0.12)]">
+          <div className="integration-card-glow">
             <CardMouseSpotlight className="pro-card-content integration-card-glass group relative flex min-h-0 flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/70 p-6 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:border-[rgba(56,189,248,0.35)] hover:shadow-[0_4px_20px_rgba(56,189,248,0.08)]">
               <div className="mb-4 flex items-start justify-between gap-3">
                 <img
@@ -124,7 +116,7 @@ export default function IntegrationsPage() {
           </ScrollRevealItem>
 
           <ScrollRevealItem disableAnimation index={1} className="min-w-0">
-          <div className="pro-card-wrapper rounded-[var(--radius-lg)] shadow-[0_8px_32px_rgba(56,189,248,0.12)]">
+          <div className="integration-card-glow">
             <CardMouseSpotlight className="pro-card-content integration-card-glass group relative flex min-h-0 flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/70 p-6 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:border-[rgba(56,189,248,0.35)] hover:shadow-[0_4px_20px_rgba(56,189,248,0.08)]">
               <div className="mb-4 flex items-start justify-between gap-3">
                 <img
@@ -207,6 +199,7 @@ export default function IntegrationsPage() {
           </ScrollRevealItem>
 
           <ScrollRevealItem disableAnimation index={4} className="min-w-0">
+          <div className="integration-card-glow">
           <CardMouseSpotlight className="integration-card-glass group relative flex flex-col rounded-[var(--radius-lg)] border border-[var(--border)]/70 p-6 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:border-[rgba(56,189,248,0.35)] hover:shadow-[0_4px_20px_rgba(56,189,248,0.08)]">
             <div className="mb-4 flex items-start justify-between gap-3">
               <img
@@ -232,6 +225,7 @@ export default function IntegrationsPage() {
               </Button>
             </Link>
           </CardMouseSpotlight>
+          </div>
           </ScrollRevealItem>
 
           <ScrollRevealItem disableAnimation index={5} className="min-w-0">
@@ -296,7 +290,7 @@ export default function IntegrationsPage() {
       </section>
 
       <section
-        className="relative z-[1] bg-[var(--bg-secondary)] px-6 py-10 md:px-8 md:py-14"
+        className="relative z-[1] bg-transparent px-6 py-10 md:px-8 md:py-14"
         style={{
           borderTop: "1px solid color-mix(in srgb, var(--accent) 18%, var(--border))",
           borderBottom: "1px solid var(--border)",
@@ -319,7 +313,7 @@ export default function IntegrationsPage() {
             }}
           >
             <ScrollRevealItem disableAnimation index={0} className="min-w-0">
-              <div className="pro-card-wrapper rounded-[var(--radius-lg)] shadow-[0_8px_32px_rgba(56,189,248,0.12)]">
+              <div className="integration-card-glow">
                 <CardMouseSpotlight className="pro-card-content integration-card-glass group relative flex min-h-0 flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/70 p-6 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:border-[rgba(56,189,248,0.35)] hover:shadow-[0_4px_20px_rgba(56,189,248,0.08)]">
                   <div className="mb-4 flex items-start justify-between gap-3">
                     <img
@@ -349,7 +343,7 @@ export default function IntegrationsPage() {
             </ScrollRevealItem>
 
             <ScrollRevealItem disableAnimation index={1} className="min-w-0">
-              <div className="pro-card-wrapper rounded-[var(--radius-lg)] shadow-[0_8px_32px_rgba(56,189,248,0.12)]">
+              <div className="integration-card-glow">
                 <CardMouseSpotlight className="pro-card-content integration-card-glass group relative flex min-h-0 flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/70 p-6 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:border-[rgba(56,189,248,0.35)] hover:shadow-[0_4px_20px_rgba(56,189,248,0.08)]">
                   <div className="mb-4 flex items-start justify-between gap-3">
                     <img

@@ -98,6 +98,21 @@ export function MarketingFooter() {
                   About
                 </Link>
               </li>
+              <li>
+                <Link href="/partners" className={linkClass}>
+                  Partners
+                </Link>
+              </li>
+              <li>
+                <Link href="/partners/halopsa" className={linkClass}>
+                  HaloPSA Partner Programme
+                </Link>
+              </li>
+              <li>
+                <Link href="/partners/connectwise" className={linkClass}>
+                  ConnectWise Marketplace Partner
+                </Link>
+              </li>
             </ul>
           </div>
 
@@ -156,6 +171,11 @@ export function MarketingFooter() {
                 </Link>
               </li>
               <li>
+                <Link href="/roadmap" className={linkClass}>
+                  Roadmap
+                </Link>
+              </li>
+              <li>
                 <Link href="/contact" className={linkClass}>
                   Contact
                 </Link>
@@ -165,6 +185,17 @@ export function MarketingFooter() {
         </div>
 
         <div className="mt-8 border-t border-[var(--sidebar-border)] pt-6">
+          <div className="mb-4 flex justify-start sm:justify-end">
+            <div className="flex items-center gap-2 opacity-50 grayscale transition-all duration-200 hover:opacity-100 hover:grayscale-0">
+              <div className="flex h-8 w-8 items-center justify-center rounded bg-white/10">
+                <span className="text-[10px] font-bold text-white">H</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-xs font-semibold leading-tight text-white">HaloPSA</span>
+                <span className="text-[10px] leading-tight text-slate-400">Technology Alliance Partner</span>
+              </div>
+            </div>
+          </div>
           <div className="flex flex-col justify-between gap-3 text-[13px] text-[var(--sidebar-text)] sm:flex-row sm:items-center">
             <p>© 2026 Handover. All rights reserved.</p>
             <p>Built for MSP delivery teams</p>

@@ -25,6 +25,8 @@ export function TrialAutoStartFromQuery() {
   const inFlightRef = useRef(false);
 
   useEffect(() => {
+    // Don't auto-start on welcome page — user is choosing their plan
+    if (pathname === "/welcome") return;
     const trial = parseTrialQueryParam(searchParams.get("trial"));
     if (!trial) return;
 

@@ -21,6 +21,7 @@ type TicketsBody = {
   dateFrom?: string;
   dateTo?: string;
   count?: number;
+  keyword?: string;
 };
 
 function logTicketsRoute(...args: unknown[]) {
@@ -108,6 +109,7 @@ export async function POST(req: Request) {
       count: body.count,
       projectId: body.projectId,
       statusId: body.statusId,
+      keyword: body.keyword,
     });
 
     let token = "";
@@ -186,6 +188,7 @@ export async function POST(req: Request) {
           count: fetchLimit,
           projectId: body.projectId,
           statusId: body.statusId,
+          keyword: body.keyword,
           includeDetails: true,
         });
         const idSet = new Set(clientIds);
@@ -238,6 +241,7 @@ export async function POST(req: Request) {
         dateFrom: body.dateFrom,
         dateTo: body.dateTo,
         count: body.count,
+        keyword: body.keyword,
         includeDetails: true,
       });
       logTicketsRoute("single batch tickets count:", tickets.length);

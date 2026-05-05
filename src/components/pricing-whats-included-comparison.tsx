@@ -34,25 +34,18 @@ type RowDef = {
  */
 const ROWS: RowDef[] = [
   {
-    id: "outputs",
-    label: "All output types",
-    professional: { kind: "tick" },
-    team: { kind: "tick" },
-    enterprise: { kind: "tick" },
+    id: "psa",
+    label: "HaloPSA + ConnectWise Integration",
+    professional: { kind: "tickSub", sub: "One PSA" },
+    team: { kind: "tickSub", sub: "Both PSAs" },
+    enterprise: { kind: "tickSub", sub: "Both PSAs" },
   },
   {
-    id: "export",
-    label: "Action/Risk/Summary Export",
-    professional: { kind: "tick" },
-    team: { kind: "tick" },
-    enterprise: { kind: "tick" },
-  },
-  {
-    id: "referral",
-    label: "Refer Friends",
-    professional: { kind: "tick" },
-    team: { kind: "tick" },
-    enterprise: { kind: "tick" },
+    id: "push",
+    label: "Push Report Notes Back to PSA",
+    professional: { kind: "text", value: "Unlimited" },
+    team: { kind: "text", value: "Unlimited" },
+    enterprise: { kind: "text", value: "Unlimited" },
   },
   {
     id: "generations",
@@ -62,78 +55,22 @@ const ROWS: RowDef[] = [
     enterprise: { kind: "text", value: "Unlimited" },
   },
   {
-    id: "team-seat-overage",
-    label: "Extra Seats (Above 5 Users)",
-    professional: { kind: "cross" },
-    team: { kind: "text", value: "£20/mo or £192/yr each" },
-    enterprise: { kind: "text", value: "Custom" },
-  },
-  {
-    id: "psa",
-    label: "HaloPSA + ConnectWise Integration",
-    professional: { kind: "tickSub", sub: "One PSA" },
-    team: { kind: "tickSub", sub: "Both PSAs" },
-    enterprise: { kind: "tickSub", sub: "Both PSAs" },
-  },
-  {
-    id: "push",
-    label: "PSA Push-Back (HaloPSA + ConnectWise)",
-    professional: { kind: "text", value: "Unlimited" },
-    team: { kind: "text", value: "Unlimited" },
-    enterprise: { kind: "text", value: "Unlimited" },
-  },
-  {
     id: "scheduled",
-    label: "Scheduled Reports With PSA Push-Back",
+    label: "Automated Scheduled Report Emails",
     professional: { kind: "text", value: "3/month" },
     team: { kind: "text", value: "Unlimited" },
     enterprise: { kind: "text", value: "Unlimited" },
   },
   {
-    id: "delivery-health",
-    label: "Delivery Health Dashboard",
-    professional: { kind: "text", value: "Full" },
-    team: { kind: "text", value: "Full" },
-    enterprise: { kind: "text", value: "Full" },
+    id: "export",
+    label: "Export All Report Outputs",
+    professional: { kind: "tick" },
+    team: { kind: "tick" },
+    enterprise: { kind: "tick" },
   },
   {
     id: "excel-pack",
-    label: "Excel report pack (17 sheets)",
-    professional: { kind: "tick" },
-    team: { kind: "tick" },
-    enterprise: { kind: "tick" },
-  },
-  {
-    id: "qbr-pack",
-    label: "QBR Pack Generator",
-    professional: { kind: "text", value: "1 per month" },
-    team: { kind: "text", value: "3 per month" },
-    enterprise: { kind: "text", value: "Unlimited" },
-  },
-  {
-    id: "ticket-panel",
-    label: "Ticket Detail Panel",
-    professional: { kind: "tick" },
-    team: { kind: "tick" },
-    enterprise: { kind: "tick" },
-  },
-  {
-    id: "email-send",
-    label: "One-Click Email Send",
-    professional: { kind: "tick" },
-    team: { kind: "tick" },
-    enterprise: { kind: "tick" },
-  },
-  {
-    id: "zapier",
-    label: "Zapier Webhook",
-    professional: { kind: "tick" },
-    team: { kind: "tick" },
-    enterprise: { kind: "tick" },
-  },
-  {
-    id: "branding",
-    label: "Custom Branding",
+    label: "Excel Report Pack (17 sheets)",
     professional: { kind: "tick" },
     team: { kind: "tick" },
     enterprise: { kind: "tick" },
@@ -146,6 +83,13 @@ const ROWS: RowDef[] = [
     enterprise: { kind: "tick" },
   },
   {
+    id: "qbr-pack",
+    label: "QBR Pack Generator",
+    professional: { kind: "text", value: "1 per month" },
+    team: { kind: "text", value: "3 per month" },
+    enterprise: { kind: "text", value: "Unlimited" },
+  },
+  {
     id: "scheduled-qbr",
     label: "Scheduled QBR Packs",
     professional: { kind: "cross" },
@@ -153,38 +97,73 @@ const ROWS: RowDef[] = [
     enterprise: { kind: "tick" },
   },
   {
-    id: "recurring-issues",
-    label: "Recurring Issues Analysis",
-    professional: { kind: "cross" },
+    id: "delivery-health",
+    label: "Delivery Health Dashboard",
+    professional: { kind: "text", value: "Full" },
+    team: { kind: "text", value: "Full" },
+    enterprise: { kind: "text", value: "Full" },
+  },
+  {
+    id: "report-history",
+    label: "Report History",
+    professional: { kind: "tick" },
     team: { kind: "tick" },
     enterprise: { kind: "tick" },
   },
   {
-    id: "period-comparison",
-    label: "Period Comparison Reporting",
-    professional: { kind: "cross" },
+    id: "ticket-panel",
+    label: "Expandable Ticket and Project Detail View",
+    professional: { kind: "tick" },
     team: { kind: "tick" },
     enterprise: { kind: "tick" },
   },
   {
-    id: "fcr-rate",
-    label: "First Contact Resolution Rate",
+    id: "email-send",
+    label: "One-Click Email Send to Client",
+    professional: { kind: "tick" },
+    team: { kind: "tick" },
+    enterprise: { kind: "tick" },
+  },
+  {
+    id: "branding",
+    label: "Custom Branding on All Outputs",
+    professional: { kind: "tick" },
+    team: { kind: "tick" },
+    enterprise: { kind: "tick" },
+  },
+  {
+    id: "white-label",
+    label: "White Label Mode",
     professional: { kind: "cross" },
     team: { kind: "tick" },
     enterprise: { kind: "tick" },
   },
   {
     id: "slack-teams",
-    label: "Slack & Teams Notifications",
+    label: "Slack and Teams Notifications",
     professional: { kind: "cross" },
     team: { kind: "tick" },
     enterprise: { kind: "tick" },
   },
   {
+    id: "shared-psa",
+    label: "Shared PSA Connection (Admin Managed)",
+    professional: { kind: "cross" },
+    team: { kind: "tick" },
+    enterprise: { kind: "tick" },
+  },
+  {
+    id: "zapier",
+    label: "Zapier Integration",
+    professional: { kind: "comingSoon" },
+    team: { kind: "comingSoon" },
+    enterprise: { kind: "comingSoon" },
+  },
+  {
     id: "writing-style",
     label: (
-      <span className="inline-flex flex-wrap items-center justify-center gap-2">
-        <span>Custom writing style per member</span>
+      <span className="inline-flex flex-wrap items-center gap-2">
+        <span>Custom Writing Style Per Member</span>
         <span
           className="rounded-full border border-[#7C3AED]/45 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#5b21b6] dark:border-violet-400/40 dark:text-violet-200"
           style={{ background: "rgba(124, 58, 237, 0.14)" }}
@@ -199,21 +178,21 @@ const ROWS: RowDef[] = [
   },
   {
     id: "team-mgmt",
-    label: "Team Management",
+    label: "Team Management and Invites",
     professional: { kind: "cross" },
     team: { kind: "tick" },
     enterprise: { kind: "tick" },
   },
   {
-    id: "white-label",
-    label: "White Label Mode",
+    id: "team-seat-overage",
+    label: "Extra Seats",
     professional: { kind: "cross" },
-    team: { kind: "tick" },
+    team: { kind: "text", value: "£20/mo or £192/yr each" },
     enterprise: { kind: "tick" },
   },
   {
     id: "client-portal",
-    label: "Client Portal",
+    label: "Client Portal with Branded Login",
     professional: { kind: "cross" },
     team: { kind: "cross" },
     enterprise: { kind: "comingSoon" },
@@ -227,7 +206,7 @@ const ROWS: RowDef[] = [
   },
   {
     id: "partner-multi",
-    label: "Partner Multi-Tenancy",
+    label: "Partner and Reseller Multi-Tenancy",
     professional: { kind: "cross" },
     team: { kind: "cross" },
     enterprise: { kind: "comingSoon" },
@@ -235,6 +214,13 @@ const ROWS: RowDef[] = [
   {
     id: "dedicated-am",
     label: "Dedicated Account Manager",
+    professional: { kind: "cross" },
+    team: { kind: "cross" },
+    enterprise: { kind: "tick" },
+  },
+  {
+    id: "onboarding",
+    label: "Onboarding Call Included",
     professional: { kind: "cross" },
     team: { kind: "cross" },
     enterprise: { kind: "tick" },
@@ -249,13 +235,6 @@ const ROWS: RowDef[] = [
   {
     id: "custom-contract",
     label: "Custom Contract",
-    professional: { kind: "cross" },
-    team: { kind: "cross" },
-    enterprise: { kind: "tick" },
-  },
-  {
-    id: "onboarding",
-    label: "Onboarding Call",
     professional: { kind: "cross" },
     team: { kind: "cross" },
     enterprise: { kind: "tick" },
@@ -317,7 +296,7 @@ export function PricingWhatsIncludedComparison({
       <p className="mt-2 text-sm text-[var(--text-secondary)]">
         Compare plans at a glance. Limits apply per billing workspace unless noted.
       </p>
-      <div className="mt-6 overflow-x-auto rounded-[var(--radius)] border border-[var(--border)] shadow-sm">
+      <div className="mt-6 space-y-3 overflow-x-clip rounded-[var(--radius)] border border-[var(--border)] shadow-sm">
         <table className="w-full min-w-[640px] border-separate border-spacing-0 text-sm">
           <colgroup>
             <col style={{ width: "40%" }} />
@@ -326,24 +305,24 @@ export function PricingWhatsIncludedComparison({
             <col style={{ width: "20%" }} />
           </colgroup>
           <thead>
-            <tr className="bg-[var(--bg-secondary)]">
-              <th className="sticky top-14 z-30 min-h-[3.25rem] border-b border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-4 text-left align-middle text-[13px] font-bold text-[var(--text-primary)] shadow-[inset_0_-1px_0_0_var(--border)]">
+            <tr className="bg-[var(--bg-secondary)] pb-4">
+              <th className="sticky top-16 z-30 min-h-[3.25rem] border-b border-[var(--border)] bg-[var(--bg-secondary)] px-3 pt-4 pb-4 text-left align-middle text-[13px] font-bold text-[var(--text-primary)] shadow-[inset_0_-1px_0_0_var(--border)]">
                 Feature
               </th>
               <th
-                className="sticky top-14 z-30 min-h-[3.25rem] border-b border-[var(--border)] px-3 py-4 text-center align-middle text-xs font-bold uppercase tracking-wide text-white shadow-[inset_0_-1px_0_0_rgba(0,0,0,0.08)]"
+                className="sticky top-16 z-30 min-h-[3.25rem] border-b border-[var(--border)] px-3 pt-4 pb-4 text-center align-middle text-xs font-bold uppercase tracking-wide text-white shadow-[inset_0_-1px_0_0_rgba(0,0,0,0.08)]"
                 style={{ background: "#2563EB" }}
               >
                 Professional
               </th>
               <th
-                className="sticky top-14 z-30 min-h-[3.25rem] border-b border-[var(--border)] px-3 py-4 text-center align-middle text-xs font-bold uppercase tracking-wide text-white shadow-[inset_0_-1px_0_0_rgba(0,0,0,0.08)]"
+                className="sticky top-16 z-30 min-h-[3.25rem] border-b border-[var(--border)] px-3 pt-4 pb-4 text-center align-middle text-xs font-bold uppercase tracking-wide text-white shadow-[inset_0_-1px_0_0_rgba(0,0,0,0.08)]"
                 style={{ background: "#7C3AED" }}
               >
                 Team
               </th>
               <th
-                className="sticky top-14 z-30 min-h-[3.25rem] border-b border-[var(--border)] px-3 py-4 text-center align-middle text-xs font-bold uppercase tracking-wide text-[#1a1508] shadow-[inset_0_-1px_0_0_rgba(0,0,0,0.06)]"
+                className="sticky top-16 z-30 min-h-[3.25rem] border-b border-[var(--border)] px-3 pt-4 pb-4 text-center align-middle text-xs font-bold uppercase tracking-wide text-[#1a1508] shadow-[inset_0_-1px_0_0_rgba(0,0,0,0.06)]"
                 style={{ background: "#C9A84C" }}
               >
                 Enterprise
@@ -351,6 +330,10 @@ export function PricingWhatsIncludedComparison({
             </tr>
           </thead>
           <tbody>
+            {/* Spacer row to clear sticky header */}
+            <tr aria-hidden className="pointer-events-none select-none">
+              <td className="h-4 border-none p-0" colSpan={4} />
+            </tr>
             {ROWS.map((row, rowIndex) => (
               <tr
                 key={row.id}
@@ -360,7 +343,9 @@ export function PricingWhatsIncludedComparison({
                     : "bg-[var(--bg-primary)] hover:bg-slate-50/90 dark:hover:bg-slate-800/40"
                 }
               >
-                <td className="border-b border-[var(--border-subtle)] px-3 py-3.5 text-left align-middle text-[13px] font-medium text-[var(--text-primary)]">
+                <td
+                  className="border-b border-[var(--border-subtle)] px-3 py-3.5 text-left align-middle text-[13px] font-medium leading-relaxed text-[var(--text-primary)]"
+                >
                   {row.label}
                 </td>
                 <td

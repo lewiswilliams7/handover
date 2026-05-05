@@ -90,7 +90,7 @@ export function VerifyEmailForm() {
 
   return (
     <div className="relative z-[1] mx-auto w-full max-w-[440px] px-4 pb-8">
-      <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)]/40 p-6 shadow-sm">
+      <div className="rounded-2xl border border-white/[0.10] bg-white/[0.05] p-6 shadow-sm backdrop-blur-xl">
         <h1 className="text-xl font-semibold text-[var(--text-primary)]">Check your email</h1>
         <p className="mt-3 text-[14px] leading-relaxed text-[var(--text-secondary)]">
           We sent a verification link to{" "}

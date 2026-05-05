@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 
 type Props = {
   open: boolean;
+  isTrial?: boolean;
   /** First name for welcome line; null → generic welcome */
   welcomeFirstName: string | null;
   profileJobTitle: string;
@@ -36,6 +37,7 @@ const enterAnim = "transition-transform duration-300 ease-out";
 
 export function FirstRunOnboardingOverlay({
   open,
+  isTrial,
   welcomeFirstName,
   profileJobTitle,
   profileCompanyName,
@@ -80,9 +82,10 @@ export function FirstRunOnboardingOverlay({
     }, 200);
   };
 
-  const welcomeLine = welcomeFirstName
-    ? `Welcome, ${welcomeFirstName} 👋`
-    : "Welcome to Handover 👋";
+  const profileStepHasInput = Boolean(
+    profileJobTitle.trim() || profileCompanyName.trim() || signatureOverride.trim(),
+  );
+  const haloStepHasInput = Boolean(haloUrl.trim() || haloClientId.trim() || haloClientSecret.trim());
 
   const dots = (
     <div className="mb-6 flex items-center justify-center gap-0">
@@ -137,9 +140,9 @@ export function FirstRunOnboardingOverlay({
         }}
       >
         {step === 1 ? (
-          <p className="mb-4 text-center text-[17px] font-semibold text-[var(--text-primary)] sm:text-lg">
-            {welcomeLine}
-          </p>
+          <h2 className="mb-4 text-center text-[17px] font-semibold text-[var(--text-primary)] sm:text-lg">
+            {isTrial ? "Welcome to your 14-day trial! 🎉" : `Welcome${welcomeFirstName ? `, ${welcomeFirstName}` : ""}!`}
+          </h2>
         ) : null}
 
         {dots}
@@ -209,7 +212,7 @@ export function FirstRunOnboardingOverlay({
                   })();
                 }}
               >
-                Next →
+                {profileStepHasInput ? "Next →" : "Skip →"}
               </Button>
             </div>
           </>
@@ -283,7 +286,7 @@ export function FirstRunOnboardingOverlay({
                 Connect HaloPSA →
               </Button>
               <Button type="button" variant="outline" onClick={() => go(3)}>
-                Skip for now - I paste notes manually →
+                {haloStepHasInput ? "Next →" : "Skip →"}
               </Button>
             </div>
             {haloConnected ? (

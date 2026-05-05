@@ -6,7 +6,7 @@ import "./globals.css";
 import { MarketingFooter } from "@/components/marketing-footer";
 import { Nav } from "@/components/nav";
 import { PageLoadOverlay } from "@/components/page-load-overlay";
-import { RouteTransition } from "@/components/route-transition";
+import { MarketingBackgroundLayer, RouteTransition } from "@/components/route-transition";
 import { ToastProvider } from "@/components/toasts";
 import { CookieConsentBar } from "@/components/cookie-consent-bar";
 import { MarketingConversionClient } from "@/components/marketing-conversion-client";
@@ -126,6 +126,7 @@ export default function RootLayout({
         />
       </Head>
       <body className="flex min-h-full flex-col" suppressHydrationWarning>
+        <MarketingBackgroundLayer />
         <ToastProvider>
           <Suspense fallback={null}>
             <TrialAutoStartFromQuery />

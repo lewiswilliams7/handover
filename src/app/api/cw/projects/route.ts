@@ -65,7 +65,7 @@ type CwProjectTeamMember = {
   role?: { name?: string | null } | null;
 };
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const supabase = await createServerClient();
     const {
@@ -89,8 +89,11 @@ export async function GET() {
       getCWConnectionForUser(user.id),
       getCWAuthHeaders(user.id),
     ]);
-    const conditions = encodeURIComponent(CW_OPEN_ONLY_CONDITIONS);
-    const url = `${conn.siteUrl}/v4_6_release/apis/3.0/project/projects?conditions=${conditions}&pageSize=100`;
+    const requestUrl = new URL(request.url)
+    const companyId = requestUrl.searchParams.get("companyId")?.trim() ?? ""
+    const companyCondition = companyId ? ` and company/id=${companyId}` : ""
+    const conditions = encodeURIComponent(`${CW_OPEN_ONLY_CONDITIONS}${companyCondition}`)
+    const url = `${conn.siteUrl}/v4_6_release/apis/3.0/project/projects?conditions=${conditions}&pageSize=100`
     const res = await fetch(url, { headers, cache: "no-store" });
     const text = await res.text();
     if (!res.ok) {

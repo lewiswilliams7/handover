@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import dynamic from "next/dynamic";
+import PageTransition from "@/components/PageTransition";
 
 const HomeClient = dynamic(() => import("./home-client"), { ssr: true });
 
@@ -13,5 +14,9 @@ export const metadata: Metadata = {
 };
 
 export default function HomePage() {
-  return <HomeClient />;
+  return (
+    <PageTransition>
+      <HomeClient />
+    </PageTransition>
+  );
 }

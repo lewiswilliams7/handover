@@ -30,7 +30,7 @@ export const BEST_HALOPSA_REPORTING_TOOLS_HTML = `
 <p>Generated outputs can be pushed directly back to HaloPSA as ticket notes automatically. Scheduled weekly reports run every Monday without anyone triggering them.</p>
 <p><strong>Pricing:</strong> Basic (14-day free trial) · Pro £29/month · Team from £35/seat/month</p>
 <p><strong>Limitations:</strong> Focused on written outputs rather than visual dashboards. If you need charts and graphs for board-level reporting, a dashboard tool is a better fit.</p>
-<p><a href="/auth?tab=signup">Start free trial →</a></p>
+<p><a href="/auth?tab=signup&returnTo=/welcome">Start free trial →</a></p>
 <hr class="blog-hr" />
 <h2 id="squared-up" class="blog-h2-anchor">2. Squared Up - Visual dashboards for HaloPSA</h2>
 <p><strong>Best for:</strong> MSPs who need visual reporting dashboards</p>
@@ -194,5 +194,5 @@ export const BEST_HALOPSA_REPORTING_TOOLS_HTML = `
 <h2 id="bottom-line" class="blog-h2-anchor">The bottom line</h2>
 <p>For MSP delivery teams who need to produce client-ready reports quickly and consistently, Handover is the only tool designed specifically for that workflow. Dashboard tools like Squared Up and analytics platforms like Renada solve different problems - important ones, but not the weekly delivery reporting problem that most MSP PMs face.</p>
 <p>If your Friday afternoons are spent writing the same client emails and action logs week after week, a purpose-built tool will save you more time than any dashboard configuration.</p>
-<p><a href="/auth?tab=signup">Start free trial — no card required →</a></p>
+<p><a href="/auth?tab=signup&returnTo=/welcome">Start free trial — no card required →</a></p>
 `.trim();

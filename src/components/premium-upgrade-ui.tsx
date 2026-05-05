@@ -29,6 +29,7 @@ type HardLimitModalProps = {
   checkoutLoadingPriceId: string | null;
   onCheckout: (priceId: string) => void;
   onContinueFree: () => void;
+  limitType?: "trial" | "pro_monthly" | "team_monthly";
   monthlyPayingPlan?: "professional" | "team" | null;
   onSwitchToAnnualPortal?: () => void;
   portalLoading?: boolean;
@@ -40,6 +41,7 @@ export function PremiumHardLimitModal({
   checkoutLoadingPriceId,
   onCheckout,
   onContinueFree,
+  limitType = "trial",
   monthlyPayingPlan = null,
   onSwitchToAnnualPortal,
   portalLoading = false,
@@ -145,10 +147,30 @@ export function PremiumHardLimitModal({
           >
             You&apos;ve reached your current plan limit
           </h2>
-          <p className="mt-2 max-w-md text-[15px] leading-relaxed text-slate-400">
-            You&apos;ve used all 10 included generations this period (trial or monthly cap). Upgrade to Pro to keep
-            generating client-ready outputs without interruption.
-          </p>
+          {limitType === "trial" ? (
+            <p className="mt-2 max-w-md text-[15px] leading-relaxed text-slate-400">
+              You&apos;ve used all your trial generations. Upgrade to Professional to continue generating client-ready
+              outputs.
+            </p>
+          ) : limitType === "pro_monthly" ? (
+            <>
+              <p className="mt-2 max-w-md text-[15px] leading-relaxed text-slate-400">
+                You&apos;ve reached your 200 generation limit for this month. Your limit resets on the 1st of each
+                month. Upgrade to Team for unlimited generations, or contact us to purchase a top-up.
+              </p>
+              <a
+                href="mailto:hello@gethandover.uk?subject=Generation%20top-up"
+                className="mt-3 inline-flex items-center rounded-[var(--radius)] border border-white/20 px-3 py-1.5 text-[12px] font-semibold text-slate-200 transition-colors hover:bg-white/10"
+              >
+                Purchase top-up
+              </a>
+            </>
+          ) : (
+            <p className="mt-2 max-w-md text-[15px] leading-relaxed text-slate-400">
+              Your team has reached its pooled generation limit for this month. Contact us to purchase additional
+              generations or upgrade your plan.
+            </p>
+          )}
         </div>
 
         <div className="relative z-[1] mt-8 grid gap-3 sm:grid-cols-3">

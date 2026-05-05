@@ -185,7 +185,7 @@ export default function HalopsaReportingPage() {
                     pushes notes back to your tickets automatically. Free to try - no card required.
                   </p>
                   <div className="mt-8 flex flex-wrap gap-3">
-                    <Link href="/auth?tab=signup">
+                    <Link href="/auth?tab=signup&returnTo=/welcome">
                       <Button
                         size="lg"
                         className="rounded-[var(--radius)] bg-[var(--accent)] px-6 font-semibold text-white hover:bg-[var(--accent-hover)]"
@@ -444,7 +444,7 @@ export default function HalopsaReportingPage() {
               Start generating HaloPSA reports in minutes
             </h2>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
-              <Link href="/auth?tab=signup" className="inline-flex sm:flex-1 sm:max-w-[260px]">
+              <Link href="/auth?tab=signup&returnTo=/welcome" className="inline-flex sm:flex-1 sm:max-w-[260px]">
                 <Button
                   size="lg"
                   className="w-full bg-[var(--accent)] px-8 font-semibold text-white hover:bg-[var(--accent-hover)]"

@@ -223,7 +223,7 @@ export default function MspWeeklyReportingCaseStudyPage() {
               Join MSP delivery teams worldwide who have already made the switch.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
-              <Link href="/auth?tab=signup">
+              <Link href="/auth?tab=signup&returnTo=/welcome">
                 <Button
                   size="lg"
                   className="w-full bg-[var(--accent)] px-8 text-white hover:bg-[var(--accent-hover)] sm:w-auto"

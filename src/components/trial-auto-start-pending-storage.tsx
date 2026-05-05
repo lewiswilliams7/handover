@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { PENDING_TRIAL_STORAGE_KEY, parseTrialQueryParam } from "@/lib/auth/trial-query";
 import { createClient } from "@/lib/supabase";
@@ -19,10 +19,13 @@ function notifyProfileReload() {
  * {@link PENDING_TRIAL_STORAGE_KEY} before redirect; we POST `/api/trial/start` once session exists.
  */
 export function TrialAutoStartFromPendingStorage() {
+  const pathname = usePathname();
   const router = useRouter();
   const inFlightRef = useRef(false);
 
   useEffect(() => {
+    // Don't auto-start on welcome page — user is choosing their plan
+    if (pathname === "/welcome") return;
     const run = async () => {
       let raw: string | null = null;
       try {
@@ -92,7 +95,7 @@ export function TrialAutoStartFromPendingStorage() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [router]);
+  }, [router, pathname]);
 
   return null;
 }

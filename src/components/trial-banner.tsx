@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { X } from "lucide-react";
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -43,10 +44,11 @@ const URGENCY_RGB: Record<Urgency, string> = {
   expired: "244, 63, 94",
 };
 
-export function TrialBanner({ className }: { className?: string }) {
+export function TrialBanner({ className, plan }: { className?: string; plan?: string }) {
   const [data, setData] = useState<TrialStatusOk | null>(null);
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -101,10 +103,12 @@ export function TrialBanner({ className }: { className?: string }) {
   if (loading || !data?.onTrial || data.daysRemaining === undefined || !data.trialEndsAt) {
     return null;
   }
+  if (dismissed) return null;
 
   const daysRemaining = data.daysRemaining;
   const seatCount = typeof data.seatCount === "number" ? data.seatCount : 3;
   const urgency = urgencyFromDays(daysRemaining);
+  const isPro = plan === "pro" || plan === "professional";
   const rgb = URGENCY_RGB[urgency];
   const dateStr = formatTrialDate(data.trialEndsAt);
   const dotPulseClass =
@@ -119,9 +123,13 @@ export function TrialBanner({ className }: { className?: string }) {
     subtext =
       "Upgrade now to keep your team's access and scheduled reports running.";
   } else {
-    headline = `${daysRemaining} day${daysRemaining === 1 ? "" : "s"} left on your team trial`;
+    headline = isPro
+      ? `${daysRemaining} day${daysRemaining === 1 ? "" : "s"} left on your Professional trial`
+      : `${daysRemaining} day${daysRemaining === 1 ? "" : "s"} left on your team trial`;
     if (urgency === "calm") {
-      subtext = `Trial ends ${dateStr}. Upgrade now to keep your team's access and scheduled reports running.`;
+      subtext = isPro
+        ? `Trial ends ${dateStr}. Upgrade to keep generating client-ready reports.`
+        : `Trial ends ${dateStr}. Upgrade now to keep your team's access and scheduled reports running.`;
     } else if (urgency === "amber") {
       subtext = "Your trial ends soon - upgrade to avoid losing access.";
     } else {
@@ -130,11 +138,15 @@ export function TrialBanner({ className }: { className?: string }) {
   }
 
   const ctaLabel =
-    urgency === "expired" ? "Restore access now →" : "Upgrade team plan →";
+    urgency === "expired"
+      ? "Restore access now →"
+      : isPro
+        ? "Upgrade to Pro →"
+        : "Upgrade team plan →";
 
   return (
     <div
-      className={cn("mb-5 backdrop-blur-md", className)}
+      className={cn("relative w-full mb-2 backdrop-blur-md", className)}
       style={
         {
           "--trial-banner-rgb": rgb,
@@ -163,6 +175,13 @@ export function TrialBanner({ className }: { className?: string }) {
           </div>
         </div>
         <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+          <button
+            onClick={() => setDismissed(true)}
+            className="ml-auto p-1 text-white/60 hover:text-white transition-colors"
+            aria-label="Dismiss"
+          >
+            <X className="size-3.5" />
+          </button>
           <Button
             type="button"
             disabled={!STRIPE_TEAM_MONTHLY_PRICE_ID || checkoutLoading}

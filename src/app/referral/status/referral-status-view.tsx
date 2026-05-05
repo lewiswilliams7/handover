@@ -249,7 +249,7 @@ export function ReferralStatusView() {
               </p>
               <StepsTimeline steps={activeSteps} />
               <p className="mx-auto mt-8 max-w-[440px] text-center text-[13px] leading-relaxed text-[var(--text-muted)]">
-                When your month 2 payment completes, {refName} will earn £105 as a thank you.
+                When your month 2 payment completes, {refName} will earn £87 as a thank you.
               </p>
             </>
           ) : null}

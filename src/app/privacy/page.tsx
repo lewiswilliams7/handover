@@ -65,6 +65,11 @@ export default function PrivacyPage() {
         <p className="mt-2">
           We use only essential cookies required to keep you signed in. We do not use advertising or tracking cookies.
         </p>
+        <p className="mt-2">
+          We use Calendly on our demo booking page to facilitate meeting scheduling. Calendly may set its own cookies and
+          processes personal data including your name and email address when you book a demo. Calendly&apos;s data
+          processing is governed by their privacy policy, available at calendly.com/legal/privacy-notice.
+        </p>
       </section>
 
       <section>

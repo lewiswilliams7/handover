@@ -196,7 +196,7 @@ export function ReferralPageContent() {
         ) : signedIn === false ? (
           <section className="relative z-[1] border-t border-[var(--border)] bg-[var(--bg-primary)] px-6 py-12 md:px-8 md:py-16">
             <div className="mx-auto max-w-[480px] text-center">
-              <Link href="/auth?tab=signup">
+              <Link href="/auth?tab=signup&returnTo=/welcome">
                 <Button
                   type="button"
                   size="lg"

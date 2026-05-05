@@ -22,7 +22,8 @@ export function CookieConsentBar() {
       <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <p className="text-[13px] text-[var(--text-secondary)]">
           We use essential cookies only to keep you signed in. No tracking or
-          advertising cookies.
+          advertising cookies. Calendly may set cookies when you use the demo
+          booking page (/demo only) to schedule a meeting.
         </p>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
           <Button

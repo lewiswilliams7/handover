@@ -275,7 +275,7 @@ export default function AboutPage() {
           <ScrollRevealItem index={0} className="block">
             <h2 className="text-3xl font-bold text-white md:text-4xl">Want to see it in action?</h2>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
-              <Link href="/auth?tab=signup" className="inline-flex sm:flex-1 sm:max-w-[260px]">
+              <Link href="/auth?tab=signup&returnTo=/welcome" className="inline-flex sm:flex-1 sm:max-w-[260px]">
                 <Button
                   size="lg"
                   className="w-full bg-[var(--accent)] px-8 font-semibold text-white hover:bg-[var(--accent-hover)]"

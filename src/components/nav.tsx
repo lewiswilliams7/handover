@@ -7,6 +7,7 @@ import {
   Activity,
   ArrowLeftRight,
   BarChart3,
+  BadgeCheck,
   CalendarClock,
   ChevronDown,
   ClipboardList,
@@ -32,7 +33,6 @@ import { startTransition, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useProfileBrandingNav } from "@/hooks/use-profile-branding-nav";
-import { BOOK_DEMO_CALENDLY_URL } from "@/lib/book-demo";
 import { createClient } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
@@ -112,6 +112,12 @@ const SOLUTIONS_BY_PSA: MegaNavItem[] = [
     href: "/solutions/halopsa",
     description: "Native integration. Works out of the box.",
     Icon: Plug,
+  },
+  {
+    label: "HaloPSA Partner Programme",
+    href: "/partners/halopsa",
+    description: "Official Technology Alliance Partner",
+    Icon: BadgeCheck,
   },
   {
     label: "ConnectWise Users",
@@ -404,18 +410,25 @@ export function Nav() {
   /** App shell (`home-client`) renders the brand in the sidebar; hide duplicate nav logo on desktop. */
   const hideNavBrandForAppShell = isSignedIn && authChecked && pathname === "/";
   /** Main app: nav must not cover the fixed sidebar (z-40); sit nav in the main column only. */
-  const appDashboardShell = isSignedIn && authChecked && pathname === "/";
+  const appDashboardShell = pathname === "/" && isSignedIn && authChecked;
+  if (appDashboardShell) return null;
 
-  return (
+  const isAppRoute = pathname.startsWith("/dashboard") || pathname.startsWith("/settings");
+
+  const navInner = (
     <nav
       className={cn(
-        "sticky top-0 z-50 h-14 w-full px-4 transition-[background-color,box-shadow,border-color,backdrop-filter] duration-300 md:px-6",
+        "h-14 w-full px-4 transition-[background-color,box-shadow,border-color,backdrop-filter] duration-300 md:px-6",
         appDashboardShell && "md:ml-[280px] md:w-[calc(100%-280px)]",
-        navScrolled
-          ? theme === "dark"
-            ? "border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-primary)_96%,transparent)] shadow-[0_4px_24px_rgba(15,28,63,0.12)] backdrop-blur-md"
-            : "border-b border-[var(--border)] bg-white/95 shadow-[0_4px_24px_rgba(15,28,63,0.08)] backdrop-blur-md"
-          : "border-b border-transparent bg-transparent",
+        isSignedIn && isAppRoute
+          ? "rounded-none border-b border-white/[0.08] bg-[#0A0F1E] shadow-none backdrop-blur-none"
+          : isSignedIn
+            ? navScrolled
+              ? theme === "dark"
+                ? "border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-primary)_96%,transparent)] shadow-[0_4px_24px_rgba(15,28,63,0.12)] backdrop-blur-md"
+                : "border-b border-[var(--border)] bg-white/95 shadow-[0_4px_24px_rgba(15,28,63,0.08)] backdrop-blur-md"
+              : "border-b border-transparent bg-transparent"
+            : "bg-white/[0.06] backdrop-blur-xl border border-white/[0.12] rounded-2xl shadow-lg shadow-black/20",
       )}
     >
       <div
@@ -602,31 +615,23 @@ export function Nav() {
                   </div>
                 </div>
                 <Link
-                  href="/roadmap"
-                  className="nav-site-link text-[var(--text-secondary)]"
-                  data-active={isNavLinkActive(pathname, "/roadmap") ? "true" : undefined}
-                >
-                  Roadmap
-                </Link>
-                <Link
                   href="/pricing"
                   className="nav-site-link text-[var(--text-secondary)]"
                   data-active={isNavLinkActive(pathname, "/pricing") ? "true" : undefined}
                 >
                   Pricing
                 </Link>
-                <a
-                  href={BOOK_DEMO_CALENDLY_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <Link
+                  href="/demo"
                   className={cn(
                     "inline-flex h-9 shrink-0 items-center justify-center rounded-[var(--radius)] border border-[var(--border)]",
                     "bg-transparent px-3.5 text-sm font-medium text-[var(--text-secondary)]",
                     "transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]",
                   )}
+                  data-active={isNavLinkActive(pathname, "/demo") ? "true" : undefined}
                 >
                   Book a demo
-                </a>
+                </Link>
                 <Link
                   href="/auth?tab=signin"
                   className="nav-site-link text-[var(--text-secondary)]"
@@ -635,7 +640,7 @@ export function Nav() {
                   Sign in
                 </Link>
                 <Link href="/signup">
-                  <Button className="rounded-[var(--radius)] bg-[var(--accent)] px-3 text-[13px] text-white hover:bg-[var(--accent-hover)] md:px-4 md:text-sm">
+                  <Button className="bg-gradient-to-r from-[#0EA5E9] to-[#0284C7] hover:from-[#0284C7] hover:to-[#0EA5E9] text-white font-semibold px-4 py-2 rounded-xl shadow-md shadow-[#0EA5E9]/20 transition-all duration-300 transform hover:scale-[1.02] text-sm">
                     Start free trial
                   </Button>
                 </Link>
@@ -771,14 +776,6 @@ export function Nav() {
                         ) : null}
                       </div>
                       <Link
-                        href="/roadmap"
-                        className="nav-site-link rounded-[var(--radius)] px-3 py-3 text-[15px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]"
-                        data-active={isNavLinkActive(pathname, "/roadmap") ? "true" : undefined}
-                        onClick={() => setGuestMenuOpen(false)}
-                      >
-                        Roadmap
-                      </Link>
-                      <Link
                         href="/pricing"
                         className="nav-site-link rounded-[var(--radius)] px-3 py-3 text-[15px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]"
                         data-active={isNavLinkActive(pathname, "/pricing") ? "true" : undefined}
@@ -786,15 +783,14 @@ export function Nav() {
                       >
                         Pricing
                       </Link>
-                      <a
-                        href={BOOK_DEMO_CALENDLY_URL}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <Link
+                        href="/demo"
                         className="rounded-[var(--radius)] px-3 py-3 text-[15px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]"
+                        data-active={isNavLinkActive(pathname, "/demo") ? "true" : undefined}
                         onClick={() => setGuestMenuOpen(false)}
                       >
                         Book a demo
-                      </a>
+                      </Link>
                       <Link
                         href="/auth?tab=signin"
                         className="nav-site-link rounded-[var(--radius)] px-3 py-3 text-[15px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]"
@@ -808,7 +804,7 @@ export function Nav() {
                         className="mt-2 block"
                         onClick={() => setGuestMenuOpen(false)}
                       >
-                        <Button className="h-11 w-full rounded-[var(--radius)] bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]">
+                        <Button className="bg-gradient-to-r from-[#0EA5E9] to-[#0284C7] hover:from-[#0284C7] hover:to-[#0EA5E9] text-white font-semibold px-4 py-2 rounded-xl shadow-md shadow-[#0EA5E9]/20 transition-all duration-300 transform hover:scale-[1.02] text-sm h-11 w-full">
                           Start free trial
                         </Button>
                       </Link>
@@ -855,5 +851,19 @@ export function Nav() {
         </div>
       </div>
     </nav>
+  );
+
+  if (!isSignedIn) {
+    return (
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[90%] max-w-5xl">
+        {navInner}
+      </div>
+    );
+  }
+
+  return (
+    <div className="sticky top-0 z-50">
+      {navInner}
+    </div>
   );
 }

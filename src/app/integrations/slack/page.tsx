@@ -25,11 +25,11 @@ export default function SlackIntegrationPage() {
 
   return (
     <MarketingPageLayout>
-      <section className="relative z-[1] overflow-hidden bg-[var(--bg-primary)] px-6 py-12 md:px-8 md:py-20">
+      <section className="relative z-[1] overflow-hidden bg-transparent px-6 py-12 md:px-8 md:py-20">
         <MarketingHeroAmbient />
         <div className="relative z-[1] mx-auto w-full max-w-[1100px]">
           <ScrollRevealItem index={0} className="block">
-            <section className="integration-card-glass animate-in fade-in slide-in-from-bottom-4 duration-300 relative overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)]/60 bg-[var(--bg-primary)] p-8">
+            <section className="integration-card-glass animate-in fade-in slide-in-from-bottom-4 duration-300 relative overflow-hidden rounded-[var(--radius-lg)] border border-white/[0.07] bg-white/[0.03] p-8 backdrop-blur-md">
               <Link
                 href="/integrations"
                 className="text-sm text-[var(--text-secondary)] transition-colors duration-200 hover:text-[var(--text-primary)]"
@@ -55,7 +55,7 @@ export default function SlackIntegrationPage() {
         </div>
       </section>
 
-      <section className="relative z-[1] border-t border-[var(--border)] bg-[var(--bg-secondary)] px-6 py-12 md:px-8 md:py-20">
+      <section className="relative z-[1] bg-transparent px-6 py-12 md:px-8 md:py-20">
         <div className="mx-auto grid w-full max-w-[1100px] gap-4">
           <ScrollRevealItem index={1} className="min-w-0">
             <CardMouseSpotlight className="integration-card-glass rounded-[var(--radius-lg)] border border-[var(--border)]/80 p-8">
@@ -82,11 +82,11 @@ export default function SlackIntegrationPage() {
         </div>
       </section>
 
-      <section className="relative z-[1] border-t border-[var(--border)] bg-[var(--sidebar-bg)] px-6 py-12 text-center md:px-8 md:py-20">
+      <section className="relative z-[1] bg-transparent px-6 py-12 text-center md:px-8 md:py-20">
         <div className="mx-auto w-full max-w-[1100px]">
           <ScrollRevealItem index={3} className="block">
-            <section className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-8 text-center">
-              <Link href={signedIn ? "/?openSettings=integrations" : "/auth?tab=signup"}>
+            <section className="rounded-[var(--radius-lg)] border border-white/[0.07] bg-white/[0.03] p-8 text-center backdrop-blur-md">
+              <Link href={signedIn ? "/?openSettings=integrations" : "/auth?tab=signup&returnTo=/welcome"}>
                 <Button className="bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]">
                   Start free trial
                 </Button>

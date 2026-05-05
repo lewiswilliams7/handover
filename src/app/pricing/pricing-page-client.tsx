@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import type { ComponentProps } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -40,9 +40,7 @@ import {
   Globe,
 } from "lucide-react";
 
-import { BOOK_DEMO_CALENDLY_URL } from "@/lib/book-demo";
 import { cn } from "@/lib/utils";
-import { useCardMouseSpotlight } from "@/hooks/use-card-mouse-spotlight";
 import { HomeRoiCalculator } from "@/components/home-roi-calculator";
 import { PricingComparisonSection } from "@/components/pricing-comparison-section";
 import { PricingPlanTick } from "@/components/pricing-plan-tick";
@@ -52,7 +50,6 @@ import { TestimonialMarquee } from "@/components/testimonial-marquee";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Card,
   CardContent,
   CardFooter,
   CardHeader,
@@ -69,29 +66,106 @@ import {
   type UserPlanFields,
 } from "@/lib/utils/getPlan";
 
-function PricingSpotlightCard({
-  subtle,
-  className,
-  ...props
-}: ComponentProps<typeof Card> & { subtle?: boolean }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useCardMouseSpotlight(ref);
+function FeatureTooltip({ children, tip }: { children: React.ReactNode; tip: string }) {
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const ref = useRef<HTMLSpanElement>(null);
+
+  const handleEnter = () => {
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    setPos({ x: rect.right + 8, y: rect.top + rect.height / 2 });
+  };
+
   return (
-    <Card
-      ref={ref}
-      className={cn(
-        "card-mouse-spotlight",
-        subtle && "card-mouse-spotlight--subtle",
-        className,
-      )}
-      {...props}
-    />
+    <>
+      <span
+        ref={ref}
+        className="cursor-default"
+        onMouseEnter={handleEnter}
+        onMouseLeave={() => setPos(null)}
+      >
+        {children}
+      </span>
+      {pos &&
+        typeof window !== "undefined" &&
+        createPortal(
+          <span
+            className="fixed z-[9999] w-56 rounded-lg border border-white/[0.10] bg-[#0A0F1C]/98 px-3 py-2 text-[11px] leading-relaxed text-white/70 shadow-xl backdrop-blur-md pointer-events-none"
+            style={{ left: pos.x, top: pos.y, transform: "translateY(-50%)" }}
+          >
+            {tip}
+          </span>,
+          document.body,
+        )}
+    </>
   );
 }
 
 const PRICING_PRO_FEATURE_ICON_CLASS = "size-[14px] shrink-0 text-[#0EA5E9]";
 const PRICING_TEAM_FEATURE_ICON_CLASS = "size-[14px] shrink-0 text-[#7C3AED]";
 const PRICING_ENT_FEATURE_ICON_CLASS = "size-[14px] shrink-0 text-[#C9A84C]";
+
+const FEATURE_TIPS: Record<string, string> = {
+  "One PSA connection (HaloPSA or ConnectWise)":
+    "Connect either HaloPSA or ConnectWise Manage as your data source. Switch PSA at any time from settings.",
+  "Unlimited manual report generation":
+    "Generate as many reports as you need on demand. No monthly cap on manual generations.",
+  "All standard output types":
+    "Includes client email, action log, risk log, executive summary, and status report — all generated simultaneously.",
+  "Up to 3 scheduled reports per month":
+    "Set up automated weekly or monthly reports that send directly to your clients on a schedule.",
+  "Basic Excel export":
+    "Export your report data as a formatted Excel file with key delivery metrics and ticket summaries.",
+  "Push notes to PSA":
+    "Write generated report content back directly into your PSA ticket notes automatically.",
+  "Delivery health dashboard":
+    "A live RAG status overview of all your client accounts showing health scores, overdue tickets, and SLA performance.",
+  "1 QBR pack per month":
+    "Generate one full quarterly business review pack per month including charts, exec summary, and project status.",
+  "Email support":
+    "Direct email support from the Handover team with responses within 1 business day.",
+  "Everything in Professional": "Includes all features from the Professional plan.",
+  "Both PSAs simultaneously (HaloPSA and ConnectWise)":
+    "Connect both HaloPSA and ConnectWise at the same time and generate reports from either within the same account.",
+  "Unlimited scheduled reports":
+    "Set up as many automated scheduled reports as you need with no monthly cap.",
+  "3 QBR packs per month":
+    "Generate up to three full QBR packs per month across your client base.",
+  "PowerPoint and PDF export":
+    "Export QBR packs and reports as branded PowerPoint slides or PDF documents ready to share with clients.",
+  "Slack and Microsoft Teams notifications":
+    "Send automatic report summary alerts to your Slack or Teams channels when reports are generated.",
+  "White label and custom branding":
+    "Apply your company logo, colours, and brand name to all report outputs and remove Handover branding entirely.",
+  "Team management and invites":
+    "Invite team members and manage access with role-based permissions across your Handover account.",
+  "Shared PSA connection (admin managed)":
+    "One PSA connection shared across the whole team, managed centrally by the account admin.",
+  "Pooled usage across team":
+    "All team members share the same generation allowances rather than having separate per-user limits.",
+  "Priority email support":
+    "Priority support queue with faster response times and dedicated assistance from the Handover team.",
+  "Everything in Team": "Includes all features from the Team plan.",
+  "Unlimited users":
+    "Add as many team members as you need with no per-user pricing above your base contract.",
+  "Unlimited QBR packs": "Generate as many QBR packs as needed with no monthly cap.",
+  "Client portal with branded login":
+    "Give your clients their own branded login portal to view reports and delivery updates directly. Coming soon.",
+  "Partner and reseller multi-tenancy":
+    "Manage multiple end-client accounts under one Handover instance — ideal for resellers and large MSP groups. Coming soon.",
+  "Custom domain support":
+    "Host Handover on your own domain for a fully white-labelled experience.",
+  "Dedicated account manager":
+    "A named Handover account manager for onboarding, quarterly reviews, and ongoing support.",
+  "Onboarding call included":
+    "A dedicated setup call with the Handover team to get your account configured and your first reports running.",
+  "SLA guarantee":
+    "Contractual uptime and response time guarantees backed by a formal service level agreement.",
+  "Custom contract":
+    "Bespoke contract terms including payment schedules, data processing agreements, and custom terms.",
+  "Custom integrations on request":
+    "Additional PSA or platform integrations built to specification for your specific workflow requirements.",
+};
 
 const professionalFeatureList: { text: string; Icon: LucideIcon }[] = [
   { text: "One PSA connection (HaloPSA or ConnectWise)", Icon: Plug },
@@ -202,6 +276,44 @@ function teamPricingTotalAnnual(seatsRaw: number): number {
     TEAM_BASE_ANNUAL_GBP +
     Math.max(0, seats - TEAM_SEAT_INCLUDED) * TEAM_EXTRA_PER_SEAT_ANNUAL_GBP
   );
+}
+
+function useAnimatedNumber(target: number, duration: number = 400) {
+  const [display, setDisplay] = useState(target);
+  const rafRef = useRef<number | null>(null);
+  const startRef = useRef<{ from: number; to: number; startTime: number } | null>(null);
+
+  useEffect(() => {
+    if (display === target) return;
+
+    const from = display;
+    const startTime = performance.now();
+    startRef.current = { from, to: target, startTime };
+
+    const animate = (now: number) => {
+      if (!startRef.current) return;
+      const elapsed = now - startRef.current.startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // Ease out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const current = Math.round(
+        startRef.current.from + (startRef.current.to - startRef.current.from) * eased,
+      );
+      setDisplay(current);
+      if (progress < 1) {
+        rafRef.current = requestAnimationFrame(animate);
+      }
+    };
+
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [target, duration, display]);
+
+  return display;
 }
 
 export function PricingPageClient() {
@@ -480,6 +592,9 @@ export function PricingPageClient() {
   /** Rounded down (never up) for displayed £/mo on annual. */
   const teamAnnualMonthlyEquiv = Math.floor(teamTotalAnnual / 12);
   const proAnnualMonthlyEquiv = Math.floor(PRO_ANNUAL_TOTAL_GBP / 12);
+  const calculatedTeamPrice =
+    billingPeriod === "annual" ? teamAnnualMonthlyEquiv : teamTotalMonthly;
+  const animatedTeamPrice = useAnimatedNumber(calculatedTeamPrice, 350);
   /** Annual vs paying monthly list for same seat count for a full year. */
   const teamAnnualSavePerYearGbp =
     teamTotalMonthly * 12 - teamTotalAnnual;
@@ -541,13 +656,13 @@ export function PricingPageClient() {
     <div
       className="animate-in fade-in duration-300"
       style={{
-        background:
-          "linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 60%, var(--bg-primary) 100%)",
         minHeight: "100vh",
+        ["--bg-secondary" as string]: "rgba(255, 255, 255, 0.03)",
+        ["--bg-primary" as string]: "rgba(255, 255, 255, 0.02)",
       }}
     >
       <PricingBillingFromQuery setBillingPeriod={setBillingPeriod} />
-      <section className="relative z-[1] overflow-hidden bg-[var(--bg-primary)] px-6 py-12 md:px-8 md:py-20">
+      <section className="relative z-[1] overflow-hidden bg-transparent px-6 py-12 md:px-8 md:py-20">
         {/* Ambient orbs - inline implementation */}
         <div
           aria-hidden
@@ -617,8 +732,8 @@ export function PricingPageClient() {
         </div>
       </section>
 
-      <section className="relative z-[1] border-t border-[var(--border)] bg-gradient-to-b from-[#F8FAFF] to-[#FFFFFF] px-6 pt-6 pb-6 md:px-8 md:pt-8 md:pb-10 dark:from-[var(--bg-secondary)] dark:to-[var(--bg-primary)]">
-        <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6">
+      <section className="relative z-[1] bg-transparent px-6 pt-6 pb-6 md:px-8 md:pt-8 md:pb-10">
+        <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6">
           <ScrollRevealItem index={0} className="mx-auto w-full max-w-[600px]">
             <p
               className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-[13px] leading-snug text-[var(--text-secondary)]"
@@ -699,15 +814,12 @@ export function PricingPageClient() {
             </div>
           </ScrollRevealItem>
 
-          <div className="grid min-w-0 grid-cols-1 gap-8 md:grid-cols-2 xl:grid-cols-[minmax(360px,1fr)_minmax(360px,1fr)_minmax(360px,1fr)] xl:items-stretch">
+          <div className="grid min-w-0 grid-cols-1 gap-6 md:grid-cols-3 xl:grid-cols-3 xl:items-start">
               <ScrollRevealItem index={0} className="min-w-0 h-full">
               <div className="pricing-card-wrapper pricing-card-pro relative z-0 flex h-full min-h-0 flex-col">
                 <div className="pricing-card-inner flex min-h-0 flex-1 flex-col">
                   <div className="pricing-pro-premium-dots" aria-hidden />
-                  <PricingSpotlightCard
-                    subtle
-                    className="pricing-card-glass relative z-[1] flex h-full min-h-0 flex-1 flex-col gap-5 rounded-[18px] border-0 bg-transparent py-6 shadow-none ring-0"
-                  >
+                  <div className="pricing-card-glass bg-white/[0.04] backdrop-blur-xl border border-white/[0.10] rounded-2xl p-8 hover:border-white/[0.20] transition-all duration-300 hover:bg-white/[0.06] relative flex h-full min-h-0 flex-1 flex-col gap-5 shadow-none ring-0">
                   <CardHeader className="!px-8 pt-2 text-center">
                     <CardTitle className="text-xl text-[#0EA5E9]">Professional</CardTitle>
                     <p className="flex flex-wrap items-baseline justify-center gap-2 leading-none">
@@ -740,88 +852,93 @@ export function PricingPageClient() {
                           <PricingPlanTick variant="professional" className="mt-0.5" />
                           <f.Icon className={cn("pricing-pro-feature-inline-icon", PRICING_PRO_FEATURE_ICON_CLASS)} strokeWidth={2} aria-hidden />
                           <span className="min-w-0 flex flex-wrap items-center gap-2 pt-0.5">
-                            <span>{f.text}</span>
+                            <FeatureTooltip tip={FEATURE_TIPS[f.text]}>
+                              <span>{f.text}</span>
+                            </FeatureTooltip>
                           </span>
                         </li>
                       ))}
                     </ul>
                   </CardContent>
                   <CardFooter className="relative z-[1] mt-auto flex-col gap-3 border-t border-[var(--border-subtle)] !px-8 pt-8 pb-6">
-                    {isSignedIn === null ? (
-                      <Button className="w-full" size="lg" disabled>
-                        <Loader2 className="size-4 animate-spin" />
-                      </Button>
-                    ) : !isSignedIn ? (
-                      <div className="flex w-full flex-col gap-2">
-                        <Link
-                          href="/signup?trial=professional"
-                          className="pricing-pro-premium-cta inline-flex min-h-12 w-full items-center justify-center rounded-[var(--radius)] bg-[var(--accent)] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-hover)]"
-                        >
-                          {welcomeRewardEligible ? "Claim your free month →" : "Start 14-day free trial"}
-                        </Link>
-                        <button
-                          type="button"
-                          disabled={checkoutLoading}
-                          onClick={() =>
-                            void startCheckout(STRIPE_PRICE_IDS.professional.monthly, {
-                              purchaseWithoutTrial: true,
-                            })
-                          }
-                          className="text-center text-[13px] font-medium text-[var(--accent)] underline-offset-4 hover:underline disabled:opacity-50"
-                        >
-                          Or buy now from £{PRO_MONTHLY_LIST_GBP}/mo
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex w-full flex-col gap-2">
-                        <Button
-                          className="pricing-pro-premium-cta w-full min-h-12 rounded-[var(--radius)]"
-                          size="lg"
-                          disabled={
-                            checkoutLoading ||
-                            professionalCardCta.variant === "current_plan" ||
-                            professionalCardCta.variant === "included_higher" ||
-                            professionalCardCta.variant === "team_workspace"
-                          }
-                          onClick={() => {
-                            if (professionalCardCta.variant === "upgrade") {
-                              void startCheckout(proPriceId, {
-                                hasActiveTrial: hasActiveAppTrialForCheckout,
-                                includeOnboardingCall:
-                                  includeOnboardingFromCheckbox(proOnboardingChecked),
-                              });
-                              return;
-                            }
-                            void startPlanTrial("professional");
-                          }}
-                        >
-                          <span className="pricing-pro-premium-cta-inner">
-                            {checkoutLoading ? (
-                              <>
-                                <Loader2 className="size-4 animate-spin" />
-                                Loading…
-                              </>
-                            ) : (
-                              professionalButtonLabel
-                            )}
-                          </span>
+                    <div className="mt-auto pt-6 flex flex-col gap-3">
+                      {isSignedIn === null ? (
+                        <Button className="w-full" size="lg" disabled>
+                          <Loader2 className="size-4 animate-spin" />
                         </Button>
-                        {professionalCardCta.variant === "start_trial" ? (
+                      ) : !isSignedIn ? (
+                        <div className="flex w-full flex-col gap-2">
+                          <Link
+                            href="/signup?trial=professional"
+                            className="bg-gradient-to-r from-[#0EA5E9] to-[#0284C7] hover:from-[#0284C7] hover:to-[#0EA5E9] text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-[#0EA5E9]/20 hover:shadow-[#0EA5E9]/30 transition-all duration-300 transform hover:scale-[1.02] pricing-pro-premium-cta inline-flex min-h-12 w-full items-center justify-center text-sm"
+                          >
+                            {welcomeRewardEligible ? "Claim your free month →" : "Start 14-day free trial"}
+                          </Link>
                           <button
                             type="button"
                             disabled={checkoutLoading}
                             onClick={() =>
-                              void startCheckout(proPriceId, {
+                              void startCheckout(STRIPE_PRICE_IDS.professional.monthly, {
                                 purchaseWithoutTrial: true,
                               })
                             }
-                            className="text-center text-[13px] font-medium text-[var(--text-muted)] underline-offset-4 hover:text-[var(--accent)] hover:underline disabled:opacity-50"
+                            className="bg-white/[0.05] backdrop-blur-sm border border-white/[0.15] hover:bg-white/[0.08] text-white font-medium px-6 py-3 rounded-xl transition-all duration-300 text-center text-[13px] underline-offset-4 hover:underline disabled:opacity-50"
                           >
                             Or buy now from £{PRO_MONTHLY_LIST_GBP}/mo
                           </button>
-                        ) : null}
-                      </div>
-                    )}
+                        </div>
+                      ) : (
+                        <div className="flex w-full flex-col gap-2">
+                          <Button
+                            className="pricing-pro-premium-cta w-full min-h-12 rounded-[var(--radius)]"
+                            size="lg"
+                            disabled={
+                              checkoutLoading ||
+                              professionalCardCta.variant === "current_plan" ||
+                              professionalCardCta.variant === "included_higher" ||
+                              professionalCardCta.variant === "team_workspace"
+                            }
+                            onClick={() => {
+                              if (professionalCardCta.variant === "upgrade") {
+                                void startCheckout(proPriceId, {
+                                  hasActiveTrial: hasActiveAppTrialForCheckout,
+                                  includeOnboardingCall:
+                                    includeOnboardingFromCheckbox(proOnboardingChecked),
+                                });
+                                return;
+                              }
+                              void startPlanTrial("professional");
+                            }}
+                          >
+                            <span className="pricing-pro-premium-cta-inner">
+                              {checkoutLoading ? (
+                                <>
+                                  <Loader2 className="size-4 animate-spin" />
+                                  Loading…
+                                </>
+                              ) : (
+                                professionalButtonLabel
+                              )}
+                            </span>
+                          </Button>
+                          {professionalCardCta.variant === "start_trial" ? (
+                            <button
+                              type="button"
+                              disabled={checkoutLoading}
+                              onClick={() =>
+                                void startCheckout(proPriceId, {
+                                  purchaseWithoutTrial: true,
+                                })
+                              }
+                              className="bg-white/[0.05] backdrop-blur-sm border border-white/[0.15] hover:bg-white/[0.08] text-white font-medium px-6 py-3 rounded-xl transition-all duration-300 text-center text-[13px] underline-offset-4 hover:underline disabled:opacity-50"
+                            >
+                              Or buy now from £{PRO_MONTHLY_LIST_GBP}/mo
+                            </button>
+                          ) : null}
+                        </div>
+                      )}
+                      <p className="mt-2 text-center text-[12px] text-white/40">No credit card required</p>
+                    </div>
                     {isSignedIn && !isEnterprisePlanUser ? (
                       <div className="mt-3 flex w-full items-start gap-2.5 rounded-[var(--radius)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/35 px-3 py-2.5 text-left">
                         <Checkbox
@@ -843,40 +960,8 @@ export function PricingPageClient() {
                         </label>
                       </div>
                     ) : null}
-                    <p className="text-center text-[12px] text-[var(--text-muted)]">
-                      No credit card required
-                    </p>
-                    <p className="text-center text-[12px] text-[var(--text-muted)]">
-                      Trusted by 40+ MSP teams
-                    </p>
-                    <p className="mt-1 text-center text-[12px] text-[var(--text-muted)]">
-                      Refer a friend, get 3 months free -{" "}
-                      <Link href="/referral" className="text-[var(--accent)] hover:underline">
-                        Learn more
-                      </Link>
-                    </p>
-                    <p className="mt-1 text-center text-[13px] italic text-[var(--text-muted)]">
-                      &ldquo;From 4 hours to 10 minutes. Every week.&rdquo;
-                      <br />
-                      <span className="inline-block pt-1">
-                        {" - Service Delivery Manager, UK MSP "}
-                        <Link
-                          href="/case-studies/msp-weekly-reporting"
-                          className="font-normal not-italic text-[var(--accent)] underline-offset-4 hover:underline"
-                        >
-                          Read case study →
-                        </Link>
-                      </span>
-                    </p>
-                    <p className="text-center text-[12px] text-[var(--text-muted)]">
-                      14-day money-back guarantee. No questions asked.
-                    </p>
-                    <p className="text-center text-[12px] text-[var(--text-muted)]">
-                      Founding member pricing available for the first 20 customers - use code
-                      FOUNDING20 at checkout
-                    </p>
                   </CardFooter>
-                </PricingSpotlightCard>
+                </div>
                 </div>
               </div>
               </ScrollRevealItem>
@@ -885,7 +970,7 @@ export function PricingPageClient() {
               <div className="pricing-card-wrapper pricing-card-team relative z-0 flex h-full min-h-0 flex-col">
                 <div className="pricing-card-inner flex min-h-0 flex-1 flex-col">
                   <div className="pricing-team-premium-dots" aria-hidden />
-                  <PricingSpotlightCard className="pricing-card-glass relative z-[1] flex h-full min-h-0 flex-1 flex-col gap-5 rounded-[18px] border-0 bg-transparent py-6 shadow-none ring-0">
+                  <div className="pricing-card-glass bg-white/[0.06] backdrop-blur-xl border border-purple-500/40 rounded-2xl p-8 hover:border-purple-500/60 transition-all duration-300 shadow-lg shadow-purple-500/10 hover:shadow-purple-500/20 scale-[1.02] relative flex h-full min-h-0 flex-1 flex-col gap-5 ring-0">
                     <div className="mx-auto mt-1 w-fit rounded-full border border-[#7C3AED]/35 bg-[#7C3AED]/12 px-3 py-1 text-center text-[11px] font-bold uppercase tracking-wide text-[#7C3AED]">
                       Most Popular
                     </div>
@@ -893,13 +978,13 @@ export function PricingPageClient() {
                       <CardTitle className="pricing-team-title-gradient text-xl">Team</CardTitle>
                       {billingPeriod === "monthly" ? (
                         <p className="pricing-team-price-size mt-3 flex flex-wrap items-baseline justify-center gap-x-1">
-                          <span className="pricing-team-price-gradient">£{teamTotalMonthly}</span>
+                          <span className="pricing-team-price-gradient">£{animatedTeamPrice}</span>
                           <span className="text-base font-normal text-[var(--text-secondary)]">/mo</span>
                         </p>
                       ) : (
                         <>
                           <p className="pricing-team-price-size mt-3 flex flex-wrap items-baseline justify-center gap-x-1">
-                            <span className="pricing-team-price-gradient">£{teamAnnualMonthlyEquiv}</span>
+                            <span className="pricing-team-price-gradient">£{animatedTeamPrice}</span>
                             <span className="text-base font-normal text-[var(--text-secondary)]">/mo</span>
                           </p>
                           <p className="mt-1 text-center text-[12px] leading-snug text-teal-600 dark:text-teal-400">
@@ -910,8 +995,8 @@ export function PricingPageClient() {
                           </p>
                         </>
                       )}
-                      <p className="mt-2 text-center text-xs text-[var(--text-muted)]">
-                        Up to 5 users included
+                      <p className="mt-2 text-center text-sm text-white/70">
+                        5 users included
                       </p>
                       <div className="mt-4 flex items-center justify-center gap-2">
                         <button
@@ -942,19 +1027,6 @@ export function PricingPageClient() {
                     </CardHeader>
                     <CardContent className="flex min-h-0 flex-1 flex-col gap-4 !px-8">
                       <div className="flex min-h-0 flex-1 flex-col gap-4">
-                        <div className="flex justify-center">
-                          <button
-                            type="button"
-                            onClick={scrollToTeamIncludes}
-                            className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)] transition-opacity duration-150 hover:opacity-[0.85]"
-                          >
-                            What&apos;s included
-                            <ChevronDown
-                              className="whats-included-chevron size-3.5 shrink-0 opacity-80"
-                              aria-hidden
-                            />
-                          </button>
-                        </div>
                         <ul className="flex min-h-0 flex-1 flex-col gap-2 text-sm text-[var(--text-primary)]">
                           {teamCardFeatures.map((f) => (
                             <li key={f.text} className="flex items-start gap-2">
@@ -964,16 +1036,18 @@ export function PricingPageClient() {
                                 strokeWidth={2}
                                 aria-hidden
                               />
-                              <span className="min-w-0">{f.text}</span>
+                              <span className="min-w-0">
+                                <FeatureTooltip tip={FEATURE_TIPS[f.text]}>
+                                  <span>{f.text}</span>
+                                </FeatureTooltip>
+                              </span>
                             </li>
                           ))}
                         </ul>
-                        <div className="pricing-team-benefits-callout">
-                          Shared PSA connection · Pooled generations · Admin controls
-                        </div>
                       </div>
                     </CardContent>
                     <CardFooter className="mt-auto flex-col gap-3 border-t !px-8 pt-8 pb-6">
+                      <div className="mt-auto pt-6 flex flex-col gap-3">
                       {isSignedIn === null ? (
                         <Button className="w-full" size="lg" disabled>
                           <Loader2 className="size-4 animate-spin" />
@@ -982,16 +1056,13 @@ export function PricingPageClient() {
                         <div className="flex w-full flex-col gap-2">
                           <Link
                             href="/signup?trial=team"
-                            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-[var(--radius)] bg-[var(--accent)] px-4 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]"
+                            className="bg-gradient-to-r from-[#0EA5E9] to-[#0284C7] hover:from-[#0284C7] hover:to-[#0EA5E9] text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-[#0EA5E9]/20 hover:shadow-[#0EA5E9]/30 transition-all duration-300 transform hover:scale-[1.02] inline-flex h-11 w-full items-center justify-center gap-2 text-sm"
                           >
                             Start 14-day free trial
                           </Link>
-                          <p className="text-center text-[12px] text-[var(--text-muted)]">
-                            No credit card required
-                          </p>
                           <Link
                             href={`/auth?tab=signup&returnTo=${encodeURIComponent("/pricing?checkout=buy-team")}`}
-                            className="text-center text-[13px] font-medium text-[#0EA5E9] underline-offset-4 hover:underline"
+                          className="bg-white/[0.05] backdrop-blur-sm border border-white/[0.15] hover:bg-white/[0.08] text-white font-medium px-6 py-3 rounded-xl transition-all duration-300 text-center text-[13px] underline-offset-4 hover:underline"
                           >
                             Or buy now from £{TEAM_BASE_MONTHLY_GBP}/mo
                           </Link>
@@ -999,14 +1070,14 @@ export function PricingPageClient() {
                       ) : teamCardCta.variant === "manage_workspace" ? (
                         <Link
                           href="/dashboard/team"
-                          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-[var(--radius)] bg-[var(--accent)] px-4 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
+                          className="bg-gradient-to-r from-[#0EA5E9] to-[#0284C7] hover:from-[#0284C7] hover:to-[#0EA5E9] text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-[#0EA5E9]/20 hover:shadow-[#0EA5E9]/30 transition-all duration-300 transform hover:scale-[1.02] inline-flex h-11 w-full items-center justify-center gap-2 text-sm"
                         >
                           Manage team
                         </Link>
                       ) : (
                         <>
                           <Button
-                            className="w-full gap-2 rounded-[var(--radius)] bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                            className="bg-gradient-to-r from-[#0EA5E9] to-[#0284C7] hover:from-[#0284C7] hover:to-[#0EA5E9] text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-[#0EA5E9]/20 hover:shadow-[#0EA5E9]/30 transition-all duration-300 transform hover:scale-[1.02] w-full gap-2"
                             size="lg"
                             disabled={
                               checkoutLoading ||
@@ -1046,7 +1117,7 @@ export function PricingPageClient() {
                                   purchaseWithoutTrial: true,
                                 })
                               }
-                              className="text-center text-[13px] font-medium text-[#0EA5E9] underline-offset-4 hover:underline disabled:opacity-50"
+                              className="bg-white/[0.05] backdrop-blur-sm border border-white/[0.15] hover:bg-white/[0.08] text-white font-medium px-6 py-3 rounded-xl transition-all duration-300 text-center text-[13px] underline-offset-4 hover:underline disabled:opacity-50"
                             >
                               Or buy now from £{TEAM_BASE_MONTHLY_GBP}/mo
                             </button>
@@ -1073,7 +1144,7 @@ export function PricingPageClient() {
                             </div>
                           ) : null}
                           <p className="text-center text-[12px] text-[var(--text-muted)]">
-                            No credit card required for the 14-day in-app trial.
+                            No credit card required
                           </p>
                           <p className="text-center text-[12px] text-[var(--text-muted)]">
                             Refer a friend, get 3 months free -{" "}
@@ -1083,13 +1154,10 @@ export function PricingPageClient() {
                           </p>
                         </>
                       )}
-                      {isSignedIn === false ? (
-                        <p className="text-center text-[12px] text-[var(--text-muted)]">
-                          14-day money-back guarantee. Promotion codes accepted at checkout.
-                        </p>
-                      ) : null}
+                      <p className="mt-2 text-center text-[12px] text-white/40">No credit card required</p>
+                      </div>
                     </CardFooter>
-                  </PricingSpotlightCard>
+                  </div>
                 </div>
               </div>
               </ScrollRevealItem>
@@ -1097,7 +1165,7 @@ export function PricingPageClient() {
               <ScrollRevealItem index={2} className="min-w-0 h-full">
               <div
                 ref={enterpriseSheenRef}
-                className="pricing-card-wrapper pricing-card-enterprise relative z-[2] flex h-full min-h-0 w-full max-w-full flex-col"
+                className="pricing-card-wrapper pricing-card-enterprise relative flex h-full min-h-0 w-full max-w-full flex-col"
                 onMouseMove={(e) => {
                   const el = enterpriseSheenRef.current;
                   if (!el) return;
@@ -1119,19 +1187,20 @@ export function PricingPageClient() {
                 <div className="pricing-card-inner flex min-h-0 flex-1 flex-col">
                   <div className="pricing-enterprise-premium-dots" aria-hidden />
                   <div className="pricing-enterprise-holo-sheen" aria-hidden />
-                  <PricingSpotlightCard
-                    subtle
-                    className="pro-card-content pricing-card-glass relative z-[2] flex h-full min-h-0 flex-1 flex-col gap-5 rounded-[18px] border-0 bg-transparent py-6 shadow-none ring-0"
-                  >
+                  <div className="pro-card-content pricing-card-glass bg-white/[0.04] backdrop-blur-xl border border-white/[0.10] rounded-2xl p-8 hover:border-white/[0.20] transition-all duration-300 hover:bg-white/[0.06] relative flex h-full min-h-0 flex-1 flex-col gap-5 shadow-none ring-0">
                   <span className="mx-auto mt-2 block w-fit rounded-full border border-[#C9A84C]/45 bg-gradient-to-r from-[#C9A84C]/18 via-[#FFD700]/14 to-[#a67c2a]/16 px-3 py-1 text-center text-[11px] font-bold uppercase tracking-wide text-[#3d3318] dark:border-[#C9A84C]/40 dark:from-[#C9A84C]/22 dark:via-[#FFD700]/16 dark:to-[#8a7028]/20 dark:text-[#f5e6a8]">
                     For larger teams
                   </span>
                   <CardHeader className="!px-8 pb-2 pt-0 text-center">
                     <CardTitle className="pricing-enterprise-name-gradient text-xl">Enterprise</CardTitle>
-                    <p className="mt-2 text-sm text-[var(--text-muted)]">Starts from £249/mo</p>
+                    <p className="mt-2 text-sm text-white/70">Starts from £249/mo</p>
                     <p className="mt-2 text-sm text-[var(--text-secondary)]">
                       Custom deployments and unlimited scale
                     </p>
+                    <div className="flex items-center gap-2 text-[13px] text-[var(--text-secondary)]">
+                      <Users className="size-3.5 text-[#C9A84C]" />
+                      <span>Unlimited users included</span>
+                    </div>
                   </CardHeader>
                   <CardContent className="flex min-h-0 flex-1 flex-col gap-3 !px-8">
                     <ul className="flex flex-col gap-2.5 text-sm text-[var(--text-primary)]">
@@ -1149,33 +1218,49 @@ export function PricingPageClient() {
                             <PricingPlanTick variant="enterprise" className="mt-0.5" />
                           )}
                           <f.Icon className={cn("mt-0.5", PRICING_ENT_FEATURE_ICON_CLASS)} strokeWidth={2} aria-hidden />
-                          <span className="min-w-0">{f.text}</span>
+                          <span className="min-w-0">
+                            <FeatureTooltip tip={FEATURE_TIPS[f.text]}>
+                              <span>{f.text}</span>
+                            </FeatureTooltip>
+                          </span>
                         </li>
                       ))}
                     </ul>
                   </CardContent>
                   <CardFooter className="mt-auto flex-col gap-3 border-t border-[var(--border-subtle)] bg-transparent !px-8 pt-8 pb-6">
-                    <div className="mt-auto flex w-full flex-col gap-2">
+                    <div className="mt-auto pt-6 flex flex-col gap-3">
                       <Link
                         href="/contact/sales?plan=enterprise"
-                        className="inline-flex h-12 w-full items-center justify-center rounded-[var(--radius)] bg-[var(--accent)] px-4 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-[var(--accent-hover)]"
+                        className="bg-gradient-to-r from-[#0EA5E9] to-[#0284C7] hover:from-[#0284C7] hover:to-[#0EA5E9] text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-[#0EA5E9]/20 hover:shadow-[#0EA5E9]/30 transition-all duration-300 transform hover:scale-[1.02] inline-flex h-12 w-full items-center justify-center text-sm"
                       >
                         Contact Sales
                       </Link>
-                      <a
-                        href={BOOK_DEMO_CALENDLY_URL}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-center text-[13px] text-[var(--text-muted)] underline-offset-4 transition-colors hover:text-[var(--accent)] hover:underline"
+                      <Link
+                        href="/demo"
+                        className="text-center text-[13px] text-[#C9A84C] underline-offset-4 transition-colors hover:text-[#FFD700] hover:underline"
                       >
                         or Book a demo call →
-                      </a>
+                      </Link>
                     </div>
                   </CardFooter>
-                </PricingSpotlightCard>
+                </div>
                 </div>
               </div>
               </ScrollRevealItem>
+            </div>
+
+            <div className="mt-8 flex justify-center">
+              <button
+                type="button"
+                onClick={scrollToTeamIncludes}
+                className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)] transition-opacity duration-150 hover:opacity-[0.85]"
+              >
+                What&apos;s included
+                <ChevronDown
+                  className="whats-included-chevron size-3.5 shrink-0 opacity-80"
+                  aria-hidden
+                />
+              </button>
             </div>
 
             <ScrollRevealItem index={4} className="mx-auto mt-6 block w-full max-w-[720px]">
@@ -1207,19 +1292,16 @@ export function PricingPageClient() {
         </div>
       </section>
 
-      <section className="relative z-[1] border-t border-[var(--border)] bg-[var(--bg-secondary)] px-6 py-10 md:px-8 md:py-12">
+      <section className="relative z-[1] bg-transparent px-6 py-10 md:px-8 md:py-12">
         <ScrollRevealItem index={3} className="block">
           <HomeRoiCalculator variant="condensed" className="mx-auto" />
         </ScrollRevealItem>
       </section>
 
-      <section
-        className="relative z-[1] bg-[var(--bg-primary)] px-6 py-12 md:px-8 md:py-20"
-        style={{ borderTop: "1px solid var(--border)" }}
-      >
+      <section className="relative z-[1] bg-transparent px-6 py-12 md:px-8 md:py-20">
         <div className="mx-auto w-full max-w-[1200px]">
           <ScrollRevealItem index={4} className="block">
-          <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-md sm:p-8">
+          <div className="bg-white/[0.03] backdrop-blur-md border border-white/[0.07] rounded-2xl p-6 shadow-md sm:p-8">
             <PricingWhatsIncludedComparison headingId="pricing-whats-included" />
           </div>
           </ScrollRevealItem>
@@ -1230,10 +1312,7 @@ export function PricingPageClient() {
         <PricingComparisonSection />
       </ScrollRevealItem>
 
-      <section
-        className="relative z-[1] bg-[var(--bg-secondary)] px-6 py-12 md:px-8 md:py-20"
-        style={{ borderTop: "1px solid var(--border)" }}
-      >
+      <section className="relative z-[1] bg-transparent px-6 py-12 md:px-8 md:py-20">
         <div className="mx-auto w-full max-w-[1200px]">
           <ScrollRevealItem index={0} className="block">
           <h2
@@ -1255,10 +1334,7 @@ export function PricingPageClient() {
         </div>
       </section>
 
-      <section
-        className="relative z-[1] bg-[var(--bg-primary)] px-6 py-12 md:px-8 md:py-20"
-        style={{ borderTop: "1px solid var(--border)" }}
-      >
+      <section className="relative z-[1] bg-transparent px-6 py-12 md:px-8 md:py-20">
         <div className="mx-auto w-full max-w-[1200px]">
           <ScrollRevealItem index={0} className="block">
           <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6 sm:p-8">
@@ -1279,10 +1355,7 @@ export function PricingPageClient() {
         </div>
       </section>
 
-      <section
-        className="relative z-[1] bg-[var(--bg-secondary)] px-6 py-12 md:px-8 md:py-20"
-        style={{ borderTop: "1px solid var(--border)" }}
-      >
+      <section className="relative z-[1] bg-transparent px-6 py-12 md:px-8 md:py-20">
         <div className="mx-auto w-full max-w-[1200px]">
           <ScrollRevealItem index={0} className="block">
           <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] px-4 py-4">
@@ -1312,10 +1385,7 @@ export function PricingPageClient() {
         </div>
       </section>
 
-      <section
-        className="relative z-[1] bg-[var(--bg-primary)] px-6 py-8 text-center md:px-8 md:py-12"
-        style={{ borderTop: "1px solid var(--border)" }}
-      >
+      <section className="relative z-[1] bg-transparent px-6 py-8 text-center md:px-8 md:py-12">
         <div className="mx-auto w-full max-w-[1200px]">
           <ScrollRevealItem index={0} className="block">
           <p className="text-center text-sm text-[var(--text-secondary)]">

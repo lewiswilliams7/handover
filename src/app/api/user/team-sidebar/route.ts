@@ -49,6 +49,12 @@ export async function GET() {
       return NextResponse.json({ showTeamSidebarLink: false });
     }
 
+    // Enterprise plan owners always get the team link
+    // regardless of team_members row
+    if (p === "enterprise") {
+      return NextResponse.json({ showTeamSidebarLink: true });
+    }
+
     const { data: rows } = await admin
       .from("team_members")
       .select("id")

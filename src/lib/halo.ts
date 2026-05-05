@@ -8,7 +8,7 @@ const HALO_TICKETS_LIST_FIELDS =
   "id,summary,status,priority,client,agent,manager,team,dateoccurred,targetdate,timetaken," +
   "details,description,tickettype,tickettype_id,use,main_project_id,projectinternaltask," +
   "client_id,clientid,assignedto,assigned_to,technician,who,who_agentid,actionby_agent_id," +
-  "category_1,category_2,category1,category2";
+  "category_1,category_2,category1,category2,customfields";
 
 function applyHaloTicketsListEnrichment(
   url: URL,
@@ -24,6 +24,25 @@ import {
 } from "@/lib/psa/format";
 import type { NormalisedNote, NormalisedTicket } from "@/lib/psa/types";
 import { stripHtmlToPlainText } from "@/lib/utils";
+
+async function pLimit<T>(
+  tasks: (() => Promise<T>)[],
+  concurrency: number
+): Promise<T[]> {
+  const results: T[] = new Array(tasks.length)
+  let index = 0
+
+  const worker = async () => {
+    while (index < tasks.length) {
+      const i = index++
+      results[i] = await tasks[i]()
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, worker)
+  await Promise.all(workers)
+  return results
+}
 
 export interface HaloCredentials {
   haloUrl: string;
@@ -222,6 +241,38 @@ function pickPrimaryAgentName(ticket: Record<string, unknown>): string | null {
     if (n) return n;
   }
   return strField(ticket.agentname) ?? strField(ticket.agent_name) ?? null;
+}
+
+function resolveProjectOwnerLikeDashboard(
+  ticket: HaloTicket,
+  agentsById?: Map<number, string>,
+): string {
+  const raw = ticket as unknown as Record<string, unknown>;
+  const manager = pickManagerName(raw);
+  if (manager) return manager;
+
+  const agent = pickPrimaryAgentName(raw);
+  if (agent) return agent;
+
+  const technician = pickNestedPersonName(raw.technician);
+  if (technician) return technician;
+
+  const assigned = pickNestedPersonName(raw.assignedto ?? raw.assigned_to);
+  if (assigned) return assigned;
+
+  const whoRaw = raw.who_agentid ?? raw.who_agent_id;
+  const whoAgentId =
+    typeof whoRaw === "number" && Number.isFinite(whoRaw)
+      ? whoRaw
+      : typeof whoRaw === "string"
+        ? Number.parseInt(whoRaw, 10)
+        : NaN;
+  if (Number.isFinite(whoAgentId) && whoAgentId > 0 && agentsById?.has(whoAgentId)) {
+    const resolved = agentsById.get(whoAgentId);
+    if (resolved && resolved.trim()) return resolved.trim();
+  }
+
+  return "Unassigned";
 }
 
 /** Delivery health Owner column: projects - manager → lead → assignedto. */
@@ -649,6 +700,37 @@ export function mapTicket(
       : null);
 
   const classification = classifyHaloTicketType(ticket, ticketTypes);
+  const customfieldsRaw = ticket.customfields;
+  const customfields = Array.isArray(customfieldsRaw)
+    ? customfieldsRaw
+        .map((cf) => {
+          if (!cf || typeof cf !== "object") return null;
+          const o = cf as Record<string, unknown>;
+          const idRaw = o.id;
+          const id =
+            typeof idRaw === "number"
+              ? idRaw
+              : typeof idRaw === "string"
+                ? Number.parseInt(idRaw, 10)
+                : undefined;
+          const valueRaw = o.value;
+          const value =
+            typeof valueRaw === "string" || typeof valueRaw === "number" || valueRaw == null
+              ? valueRaw
+              : String(valueRaw);
+          const displayRaw = o.display;
+          const display =
+            typeof displayRaw === "string" || displayRaw == null ? displayRaw : String(displayRaw);
+          return {
+            id: Number.isFinite(id as number) ? (id as number) : undefined,
+            name: strField(o.name) ?? undefined,
+            label: strField(o.label) ?? undefined,
+            value,
+            display,
+          };
+        })
+        .filter((cf): cf is NonNullable<typeof cf> => cf !== null)
+    : null;
 
   const actionByRaw =
     ticket.actionby_agent_id ??
@@ -721,6 +803,7 @@ export function mapTicket(
     actions: Array.isArray(ticket.actions) ? (ticket.actions as HaloTicket["actions"]) : null,
     latestnote: strField(ticket.latestnote) ?? null,
     notes,
+    customfields,
   };
 }
 
@@ -1007,6 +1090,14 @@ export interface HaloTicket {
   actions?: Array<{ description?: string | null; name?: string | null }> | null;
   latestnote?: string | null;
   notes?: HaloNote[];
+  /** Custom fields array from HaloPSA when includedetails=true */
+  customfields?: Array<{
+    id?: number;
+    name?: string;
+    label?: string;
+    value?: string | number | null;
+    display?: string | null;
+  }> | null;
 }
 
 export interface HaloClient {
@@ -1585,6 +1676,7 @@ export async function getHaloTickets(
     dateFrom?: string;
     dateTo?: string;
     count?: number;
+    keyword?: string;
     /** Request only id + client fields from Halo (smaller payloads for counts). */
     minimalTicketPayload?: boolean;
   } & { includeDetails?: boolean },
@@ -1595,6 +1687,24 @@ export async function getHaloTickets(
   const pageSize = 50;
   const headers = {
     Authorization: `Bearer ${token}`,
+  };
+  const applyKeywordFilter = (input: HaloTicket[]): HaloTicket[] => {
+    if (!filters.keyword?.trim()) return input;
+    const kw = filters.keyword.trim().toLowerCase();
+    return input.filter((t) => {
+      const summary = (t.summary ?? "").toLowerCase();
+      const details = (t.details ?? "").toLowerCase();
+      const category1 = (t.category_1 ?? "").toLowerCase();
+      const category2 = (t.category_2 ?? "").toLowerCase();
+      const clientName = (t.client?.name ?? "").toLowerCase();
+      return (
+        summary.includes(kw) ||
+        details.includes(kw) ||
+        category1.includes(kw) ||
+        category2.includes(kw) ||
+        clientName.includes(kw)
+      );
+    });
   };
 
   const runLegacyPath = async (): Promise<HaloTicket[]> => {
@@ -1638,17 +1748,19 @@ export async function getHaloTickets(
       const r0 = rawTickets[0] as Record<string, unknown>;
       console.log("[HaloPSA] list (legacy) first ticket raw agent:", r0.agent ?? null);
     }
-    if (tickets.length === 0) {
+    const keywordFiltered = applyKeywordFilter(tickets);
+    if (keywordFiltered.length === 0) {
       throw new Error(
         "No tickets found with the current filters. Try expanding the date range or changing the status filters.",
       );
     }
     if (filters.includeDetails) {
-      return Promise.all(
-        tickets.map((t) => getTicketDetails(baseUrl, token, t.id)),
+      return pLimit(
+        keywordFiltered.map((t) => () => getTicketDetails(baseUrl, token, t.id)),
+        8
       );
     }
-    return tickets;
+    return keywordFiltered;
   };
 
   let allRaw: unknown[] = [];
@@ -1719,18 +1831,20 @@ export async function getHaloTickets(
     const r0 = sliced[0] as Record<string, unknown>;
     console.log("[HaloPSA] list first ticket raw agent:", r0.agent ?? null);
   }
-  if (tickets.length === 0) {
+  const keywordFiltered = applyKeywordFilter(tickets);
+  if (keywordFiltered.length === 0) {
     throw new Error(
       "No tickets found with the current filters. Try expanding the date range or changing the status filters.",
     );
   }
   if (filters.includeDetails) {
-    const details = await Promise.all(
-      tickets.map((t) => getTicketDetails(baseUrl, token, t.id)),
+    const details = await pLimit(
+      keywordFiltered.map((t) => () => getTicketDetails(baseUrl, token, t.id)),
+      8
     );
     return details;
   }
-  return tickets;
+  return keywordFiltered;
 }
 
 export async function getHaloClients(token: string, haloUrl: string): Promise<HaloClient[]> {
@@ -1804,7 +1918,7 @@ export async function getHaloProjects(
     dateTo?: string;
     count?: number;
   },
-): Promise<any[]> {
+): Promise<HaloProject[]> {
   normalizeHaloUrl(haloUrl);
 
   const clientIds =
@@ -1822,23 +1936,50 @@ export async function getHaloProjects(
       count: Math.max(filters?.count ?? 0, 3000),
     });
     const projectTickets = allTickets.filter((t) => t.is_project === true);
+    const projectTaskTickets = allTickets.filter((t) => t.is_project_task === true);
+    let agentsById = new Map<number, string>();
+    try {
+      const agents = await getHaloAgents(haloUrl, token);
+      agentsById = new Map<number, string>(agents.map((a) => [a.id, a.name]));
+    } catch {
+      agentsById = new Map<number, string>();
+    }
     console.log("[projects] Total ticket records fetched:", allTickets.length);
     console.log("[projects] Project-type ticket records:", projectTickets.length);
+    console.log("[projects] Project-task ticket records:", projectTaskTickets.length);
 
-    return projectTickets.map((t) => ({
-      id: t.id,
-      name: t.summary ?? `Ticket ${t.id}`,
-      status: { name: t.status?.name ?? "Unknown" },
-      clientId: t.clientId ?? null,
-      client: t.client ?? null,
-      description: t.details ?? null,
-      projectmanager: t.agent ?? null,
-      startdate: t.dateoccurred ?? null,
-      targetdate: t.targetdate ?? null,
-      completionpercent: undefined,
-      tasks: null,
-      notes: t.notes ?? [],
-    }));
+    return projectTickets.map((t) => {
+      const childTasks = projectTaskTickets.filter((task) => {
+        const parentId =
+          typeof task.parent_project_id === "number" && Number.isFinite(task.parent_project_id)
+            ? task.parent_project_id
+            : null;
+        return parentId === t.id;
+      });
+      const managerName = resolveProjectOwnerLikeDashboard(t, agentsById);
+
+      return {
+        id: t.id,
+        name: t.summary ?? `Ticket ${t.id}`,
+        status: { name: t.status?.name ?? "Unknown" },
+        clientId: t.clientId ?? null,
+        client: t.client ?? null,
+        description: t.summary ?? (t as unknown as { name?: string | null }).name ?? null,
+        projectmanager:
+          managerName && managerName !== "Unassigned" ? { name: managerName } : null,
+        startdate: t.dateoccurred ?? null,
+        targetdate: t.targetdate ?? null,
+        completionpercent: undefined,
+        tasks: childTasks.map((task) => ({
+          name: task.summary ?? null,
+          summary:
+            [task.status?.name?.trim(), task.summary?.trim(), task.agent?.name?.trim()]
+              .filter(Boolean)
+              .join(" · ") || task.summary || null,
+        })),
+        notes: t.notes ?? [],
+      };
+    });
   };
 
   const now = Date.now();
@@ -2271,6 +2412,7 @@ export function haloTicketToNormalised(
     timeLogged: t.timetaken != null ? Number(t.timetaken) : 0,
     description: t.details ?? null,
     notes: (t.notes ?? []).map(mapHaloNoteToNormalised),
+    customfields: t.customfields ?? null,
     source: "halopsa",
     ticketTypeName:
       (t.ticket_type_name && t.ticket_type_name.trim()) ||

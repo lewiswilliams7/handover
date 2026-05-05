@@ -28,7 +28,7 @@ export default function WeeklyClientReportingPage() {
     <MarketingPageLayout>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
-      <section className="marketing-page-hero relative overflow-hidden bg-[var(--bg-primary)] px-6 py-12 md:px-8 md:py-20">
+      <section className="marketing-page-hero relative overflow-hidden bg-transparent px-6 py-12 md:px-8 md:py-20">
         <MarketingHeroAmbient />
         <div className="relative z-[1] mx-auto w-full max-w-[1000px]">
           <div className="rounded-[var(--radius-lg)] border border-[rgba(56,189,248,0.28)] bg-[rgba(15,23,42,0.68)] px-6 py-8 shadow-[0_20px_60px_-22px_rgba(56,189,248,0.35)] md:px-10 md:py-10">
@@ -38,7 +38,7 @@ export default function WeeklyClientReportingPage() {
             </h1>
             <div className="mt-6">
               <Link
-                href="/auth?tab=signup"
+                href="/auth?tab=signup&returnTo=/welcome"
                 className="inline-flex items-center rounded-[var(--radius)] bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]"
               >
                 Start your free trial
@@ -154,17 +154,17 @@ export default function WeeklyClientReportingPage() {
             </p>
           </section>
 
-          <section className="rounded-[var(--radius-lg)] border border-[var(--border)] border-l-[3px] border-l-[#0EA5E9] bg-[var(--bg-primary)] p-6">
+          <section className="rounded-[var(--radius-lg)] border border-white/[0.08] border-l-[3px] border-l-[#0EA5E9] bg-white/[0.04] backdrop-blur-sm p-6">
             <h2 className="text-2xl font-semibold text-[var(--text-primary)]">Works With HaloPSA and ConnectWise Manage</h2>
             <p className="mt-3">
               Connect your PSA in minutes. Select your clients. Set your schedule. Your first automated weekly report
               goes out this week.
             </p>
-            <Link href="/auth?tab=signup" className="marketing-page-bottom-cta mt-5 inline-flex items-center">
+            <Link href="/auth?tab=signup&returnTo=/welcome" className="marketing-page-bottom-cta mt-5 inline-flex items-center">
               Start your free trial at gethandover.uk
             </Link>
           </section>
-          <section className="rounded-[var(--radius-lg)] border border-[var(--border)] border-l-[3px] border-l-[#0EA5E9] bg-[var(--bg-primary)] p-6">
+          <section className="rounded-[var(--radius-lg)] border border-white/[0.08] border-l-[3px] border-l-[#0EA5E9] bg-white/[0.04] backdrop-blur-sm p-6">
             <h3 className="text-xl font-semibold text-[var(--text-primary)]">Features that power this</h3>
             <p className="mt-2 text-sm">
               <a href="/features/automated-reports" className="text-[var(--accent)] hover:underline">Automated Client Reports</a>

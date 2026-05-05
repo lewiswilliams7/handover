@@ -13,9 +13,9 @@ export const metadata: Metadata = {
 export default function CsvGuidePage() {
   return (
     <MarketingPageLayout>
-      <section className="relative z-[1] bg-[var(--bg-primary)] px-6 py-12 md:px-8 md:py-20">
+      <section className="relative z-[1] bg-transparent px-6 py-12 md:px-8 md:py-20">
         <div className="mx-auto w-full max-w-[1100px]">
-        <div className="mx-auto max-w-4xl rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-8">
+        <div className="mx-auto max-w-4xl rounded-[var(--radius-lg)] border border-white/[0.07] bg-white/[0.03] p-8 backdrop-blur-md">
           <Link href="/integrations" className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
             ← Integrations
           </Link>
@@ -32,7 +32,7 @@ export default function CsvGuidePage() {
             <li>Click Generate Outputs to produce actions, risks, summary, and updates.</li>
           </ol>
 
-          <p className="mt-6 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-3 text-sm text-[var(--text-secondary)]">
+          <p className="mt-6 rounded-xl border border-white/[0.07] bg-white/[0.03] p-3 text-sm text-[var(--text-secondary)] backdrop-blur-md">
             Handover automatically detects ticket CSV format and extracts structured insights.
           </p>
 

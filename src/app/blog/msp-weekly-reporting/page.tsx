@@ -145,7 +145,7 @@ export default function MspWeeklyReportingPage() {
             </p>
 
             <ol className="grid gap-4">
-              <li className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-5">
+              <li className="rounded-[var(--radius)] border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm p-5">
                 <span className="font-bold text-[var(--text-primary)]">
                   1. Current status
                 </span>
@@ -155,7 +155,7 @@ export default function MspWeeklyReportingPage() {
                   blocked. Clients want this first, not buried in paragraph three.
                 </span>
               </li>
-              <li className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-5">
+              <li className="rounded-[var(--radius)] border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm p-5">
                 <span className="font-bold text-[var(--text-primary)]">
                   2. Progress this week
                 </span>
@@ -165,7 +165,7 @@ export default function MspWeeklyReportingPage() {
                   migration complete&quot; is useful. &quot;Good progress made&quot; is not.
                 </span>
               </li>
-              <li className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-5">
+              <li className="rounded-[var(--radius)] border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm p-5">
                 <span className="font-bold text-[var(--text-primary)]">
                   3. Actions and owners
                 </span>
@@ -175,7 +175,7 @@ export default function MspWeeklyReportingPage() {
                   back to. If it is not specific it is not useful.
                 </span>
               </li>
-              <li className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-5">
+              <li className="rounded-[var(--radius)] border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm p-5">
                 <span className="font-bold text-[var(--text-primary)]">
                   4. Risks and blockers
                 </span>
@@ -186,7 +186,7 @@ export default function MspWeeklyReportingPage() {
                   resolve does not.
                 </span>
               </li>
-              <li className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-5">
+              <li className="rounded-[var(--radius)] border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm p-5">
                 <span className="font-bold text-[var(--text-primary)]">
                   5. Next steps
                 </span>
@@ -306,7 +306,7 @@ export default function MspWeeklyReportingPage() {
                 </p>
                 <div className="mt-5">
                   <Link
-                    href="/auth?tab=signup"
+                    href="/auth?tab=signup&returnTo=/welcome"
                     className="inline-flex items-center rounded-[var(--radius)] bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]"
                   >
                     Start generating reports →

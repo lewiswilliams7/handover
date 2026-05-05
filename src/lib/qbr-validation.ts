@@ -147,7 +147,7 @@ export type TicketBreakdownPack = {
 };
 
 /**
- * Category: ≥3 distinct buckets with ≥2 tickets each. Else status: ≥3 distinct statuses.
+ * Category: ≥2 distinct buckets with ≥1 ticket each. Else status: ≥2 distinct statuses.
  */
 export function computeTicketBreakdownPack(tickets: QbrTicketLike[]): TicketBreakdownPack {
   const map = new Map<string, number>();
@@ -156,8 +156,8 @@ export function computeTicketBreakdownPack(tickets: QbrTicketLike[]): TicketBrea
     map.set(key, (map.get(key) ?? 0) + 1);
   }
   const entries = [...map.entries()].filter(([name]) => name !== "Unknown" && name.trim().length > 0);
-  const withMin2 = entries.filter(([, c]) => c >= 2);
-  if (withMin2.length >= 3) {
+  const withMin1 = entries.filter(([, c]) => c >= 1);
+  if (withMin1.length >= 2) {
     const rows = entries
       .sort((a, b) => b[1] - a[1])
       .slice(0, 12)
@@ -171,7 +171,7 @@ export function computeTicketBreakdownPack(tickets: QbrTicketLike[]): TicketBrea
     statusMap.set(s, (statusMap.get(s) ?? 0) + 1);
   }
   const statusDistinct = [...statusMap.keys()].filter((k) => k !== "Unknown").length;
-  if (statusDistinct >= 3) {
+  if (statusDistinct >= 2) {
     const rows = [...statusMap.entries()]
       .filter(([name]) => name !== "Unknown")
       .sort((a, b) => b[1] - a[1])
@@ -252,14 +252,14 @@ export function buildQbrValidationSnapshot(
 
   const fcrResolvedWithHistory = resolvedList.filter((t) => hasAssignmentHistory(t)).length;
 
-  const ticketVolumeOk = weeksWithTickets >= 2 && totalInWeeks >= 5;
-  const resolutionOk = resolvedWithTimeData >= 3;
-  const openVsOk = ticketCount >= 10;
+  const ticketVolumeOk = weeksWithTickets >= 1 && totalInWeeks >= 2;
+  const resolutionOk = resolvedWithTimeData >= 1;
+  const openVsOk = ticketCount >= 3;
   const projectOk = projectsWithTaskData >= 1;
-  const slaOk = slaTargetTicketCount >= 5;
-  const recurringOk = recurringMax >= 3;
-  const periodOk = prevTicketCount >= 5;
-  const fcrOk = resolvedCount >= 10 && fcrResolvedWithHistory >= 10;
+  const slaOk = slaTargetTicketCount >= 2;
+  const recurringOk = recurringMax >= 2;
+  const periodOk = prevTicketCount >= 2;
+  const fcrOk = resolvedCount >= 3 && fcrResolvedWithHistory >= 3;
 
   const hasAiScope = ticketCount >= 1 || projectCount >= 1;
 
@@ -273,23 +273,23 @@ export function buildQbrValidationSnapshot(
       ok: ticketVolumeOk,
       tooltip: ticketVolumeOk
         ? ""
-        : `Requires at least 2 weeks with ticket activity and 5 tickets total. Found ${weeksWithTickets} week(s) and ${ticketCount} ticket(s).`,
+        : `Requires at least 1 week with ticket activity and 2 tickets total. Found ${weeksWithTickets} week(s) and ${ticketCount} ticket(s).`,
     },
     resolutionPerformance: {
       ok: resolutionOk,
       tooltip: resolutionOk
         ? ""
-        : `Requires at least 3 resolved tickets with time logged. Found ${resolvedWithTimeData}.`,
+        : `Requires at least 1 resolved ticket with time logged. Found ${resolvedWithTimeData}.`,
     },
     ticketBreakdown: {
       ok: breakdownPack.ok,
       tooltip: breakdownPack.ok
         ? ""
-        : "Requires at least 3 category buckets with 2+ tickets each, or 3+ distinct statuses. Not enough variety in this period.",
+        : "Requires at least 2 category buckets with 1+ ticket each, or 2+ distinct statuses. Not enough variety in this period.",
     },
     openVsClosed: {
       ok: openVsOk,
-      tooltip: openVsOk ? "" : `Requires at least 10 tickets. Found ${ticketCount}.`,
+      tooltip: openVsOk ? "" : `Requires at least 3 tickets. Found ${ticketCount}.`,
     },
     projectStatus: {
       ok: projectOk,
@@ -301,7 +301,7 @@ export function buildQbrValidationSnapshot(
       ok: slaOk,
       tooltip: slaOk
         ? ""
-        : `Requires SLA targets on at least 5 tickets (e.g. due/target dates). Found ${slaTargetTicketCount}.`,
+        : `Requires SLA targets on at least 2 tickets (e.g. due/target dates). Found ${slaTargetTicketCount}.`,
     },
     /** Risks/actions are AI outputs — inclusion is decided after generation from returned content. */
     risksActions: {
@@ -316,19 +316,19 @@ export function buildQbrValidationSnapshot(
       ok: recurringOk,
       tooltip: recurringOk
         ? ""
-        : `Requires at least one category with 3+ tickets. Highest repeat count is ${recurringMax}.`,
+        : `Requires at least one category with 2+ tickets. Highest repeat count is ${recurringMax}.`,
     },
     periodComparison: {
       ok: periodOk,
       tooltip: periodOk
         ? ""
-        : `Requires at least 5 tickets in the previous period. Found ${prevTicketCount}.`,
+        : `Requires at least 2 tickets in the previous period. Found ${prevTicketCount}.`,
     },
     firstContactResolution: {
       ok: fcrOk,
       tooltip: fcrOk
         ? ""
-        : `Requires 10+ resolved tickets with assignment or ticket history. Resolved: ${resolvedCount}, with history: ${fcrResolvedWithHistory}.`,
+        : `Requires 3+ resolved tickets with assignment or ticket history. Resolved: ${resolvedCount}, with history: ${fcrResolvedWithHistory}.`,
     },
   };
 
