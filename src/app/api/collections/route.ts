@@ -28,7 +28,9 @@ export async function GET() {
     const { data: gens, error: gErr } = await supabase
       .from("generations")
       .select("collection_id")
-      .eq("user_id", user.id);
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(500);
 
     if (gErr) {
       console.error("[collections GET] gens", gErr.message);

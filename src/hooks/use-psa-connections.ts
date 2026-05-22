@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 
+import {
+  getPsaConnectBundle,
+  invalidatePsaConnectCache,
+  PSA_CONNECT_CACHE_TTL_MS,
+} from "@/lib/psa-connect-cache";
+
 type PsaKey = "halopsa" | "connectwise";
 
 type PsaConnections = {
@@ -9,34 +15,16 @@ type PsaConnections = {
   multiple: boolean;
 };
 
-let cachedConnections: { halopsa: boolean; connectwise: boolean } | null = null;
-let inflight: Promise<{ halopsa: boolean; connectwise: boolean }> | null = null;
-
 /** Call after Halo/CW connect or disconnect so consumers without overrides see fresh flags. */
 export function invalidatePsaConnectionsCache(): void {
-  cachedConnections = null;
+  invalidatePsaConnectCache();
 }
 
+export { PSA_CONNECT_CACHE_TTL_MS };
+
 async function fetchPsaConnections(): Promise<{ halopsa: boolean; connectwise: boolean }> {
-  if (cachedConnections) return cachedConnections;
-  if (!inflight) {
-    inflight = (async () => {
-      const [haloRes, cwRes] = await Promise.all([
-        fetch("/api/halo/connect", { method: "GET", credentials: "same-origin" }),
-        fetch("/api/cw/connect", { method: "GET", credentials: "same-origin" }),
-      ]);
-      const haloJson = (await haloRes.json().catch(() => ({}))) as { connected?: boolean };
-      const cwJson = (await cwRes.json().catch(() => ({}))) as { connected?: boolean };
-      cachedConnections = {
-        halopsa: haloJson.connected === true,
-        connectwise: cwJson.connected === true,
-      };
-      return cachedConnections;
-    })().finally(() => {
-      inflight = null;
-    });
-  }
-  return inflight;
+  const bundle = await getPsaConnectBundle();
+  return { halopsa: bundle.halopsa, connectwise: bundle.connectwise };
 }
 
 export function usePSAConnections(input?: {
@@ -45,9 +33,10 @@ export function usePSAConnections(input?: {
 }): PsaConnections {
   const hasOverride =
     typeof input?.halopsa === "boolean" || typeof input?.connectwise === "boolean";
-  const [fetched, setFetched] = useState<{ halopsa: boolean; connectwise: boolean }>(
-    cachedConnections ?? { halopsa: false, connectwise: false },
-  );
+  const [fetched, setFetched] = useState<{ halopsa: boolean; connectwise: boolean }>({
+    halopsa: false,
+    connectwise: false,
+  });
 
   useEffect(() => {
     if (hasOverride) return;
@@ -68,4 +57,3 @@ export function usePSAConnections(input?: {
     return { halopsa, connectwise, primary, multiple };
   }, [fetched.connectwise, fetched.halopsa, input?.connectwise, input?.halopsa]);
 }
-

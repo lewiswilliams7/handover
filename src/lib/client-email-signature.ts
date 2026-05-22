@@ -23,9 +23,5 @@ export function buildClientEmailSignOffBlock(
     if (company) lines.push(company);
     return lines.join("\n");
   }
-  if (company) {
-    lines.push(company);
-    return lines.join("\n");
-  }
   return "Kind regards,";
 }

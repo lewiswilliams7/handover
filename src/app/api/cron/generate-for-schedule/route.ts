@@ -16,7 +16,8 @@ import { pushHandoverOutputsToHaloTickets } from "@/lib/halo-push-note";
 import type { HaloPushOutputKey } from "@/lib/halo-push";
 import {
   normalizeEmailContentPrefs,
-  SCHEDULE_EXCEL_OPTIONAL_TAB_KEYS,
+  normalizeExcelExportEngineTabIds,
+  selectedExcelKeysFromRow,
 } from "@/lib/scheduled-email-prefs";
 import {
   buildScheduledReportEmailHtml,
@@ -527,7 +528,7 @@ export async function POST(request: Request) {
 
   const emailPrefs = normalizeEmailContentPrefs(body.emailContentPrefs);
   let attachExcel = body.attachExcel !== false;
-  const excelTabsRaw = Array.isArray(body.excelTabs)
+  let excelTabsRaw = Array.isArray(body.excelTabs)
     ? body.excelTabs.filter((x): x is string => typeof x === "string")
     : [];
 
@@ -543,6 +544,18 @@ export async function POST(request: Request) {
   }
 
   const supabase = createServiceRoleClient();
+
+  if (scheduleId.trim()) {
+    const { data: scheduleOwner, error: scheduleOwnerErr } = await supabase
+      .from("scheduled_reports")
+      .select("user_id")
+      .eq("id", scheduleId.trim())
+      .single();
+
+    if (scheduleOwnerErr || !scheduleOwner || scheduleOwner.user_id !== userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+  }
 
   let scheduleRow: Record<string, unknown> | null = null;
   if (scheduleId.trim()) {
@@ -630,6 +643,30 @@ export async function POST(request: Request) {
         : rawCwProjectIds || [],
     );
   }
+
+  if (excelTabsRaw.length === 0 && scheduleRow) {
+    const rawDb = scheduleRow.excel_tabs;
+    let parsed: unknown = rawDb;
+    if (typeof rawDb === "string") {
+      const t = rawDb.trim();
+      if (t) {
+        try {
+          parsed = JSON.parse(t);
+        } catch {
+          parsed = [];
+        }
+      } else {
+        parsed = [];
+      }
+    }
+    if (Array.isArray(parsed)) {
+      excelTabsRaw = parsed.filter((x): x is string => typeof x === "string");
+    }
+  }
+
+  const resolvedScheduleExcelTabs = normalizeExcelExportEngineTabIds(
+    selectedExcelKeysFromRow(excelTabsRaw),
+  );
 
   console.log("[scheduled] cw ticket IDs:", cwTicketIds);
   console.log("[scheduled] cw project IDs:", cwProjectIds);
@@ -948,8 +985,21 @@ export async function POST(request: Request) {
   if (emailPrefs.include_status) outputsNeeded.add("status_report");
 
   if (attachExcel) {
-    for (const k of excelTabsRaw) {
+    for (const k of resolvedScheduleExcelTabs) {
       if (CORE_TAB_SET.has(k)) outputsNeeded.add(k);
+    }
+  }
+
+  // Core outputs must always be generated so Excel (and email) have full workbook data.
+  for (const tab of CORE_TAB_SET) {
+    outputsNeeded.add(tab);
+  }
+
+  if (attachExcel) {
+    for (const key of resolvedScheduleExcelTabs) {
+      if ((EXTENDED_PM_TAB_KEYS as readonly string[]).includes(key)) {
+        outputsNeeded.add(key);
+      }
     }
   }
 
@@ -958,9 +1008,10 @@ export async function POST(request: Request) {
     coreOutputs = ["summary"];
   }
 
-  const optionalSet = new Set<string>(SCHEDULE_EXCEL_OPTIONAL_TAB_KEYS);
-  const extendedFromExcel = excelTabsRaw.filter((t) => optionalSet.has(t));
-  let extendedKeys = normalizeExtendedOutputKeys(extendedFromExcel);
+  const extendedScheduleKeys = resolvedScheduleExcelTabs.filter((t) =>
+    (EXTENDED_PM_TAB_KEYS as readonly string[]).includes(t),
+  );
+  let extendedKeys = normalizeExtendedOutputKeys(extendedScheduleKeys);
 
   if (attachExcel && extendedKeys.length === 0 && excelTabsRaw.length > 0) {
     extendedKeys = normalizeExtendedOutputKeys(
@@ -982,6 +1033,8 @@ export async function POST(request: Request) {
       ),
     );
   }
+
+  const generateEnabledTabs = [...new Set<string>([...coreOutputs, ...extendedKeys])];
 
   const now = new Date();
   const weekEnding = weekEndingSlug(now);
@@ -1016,8 +1069,8 @@ export async function POST(request: Request) {
       projectName,
       isCronJob: true,
       scheduleId,
-      selectedOutputs: coreOutputs,
-      outputPreferences: { enabledTabs: coreOutputs },
+      selectedOutputs: generateEnabledTabs,
+      outputPreferences: { enabledTabs: generateEnabledTabs },
       extendedOutputKeys: extendedKeys,
       privacyMode: false,
       cronUserId: userId,
@@ -1097,7 +1150,7 @@ export async function POST(request: Request) {
   if (attachExcel) {
     try {
       excelBuffer = await exportFullReportToBuffer(generated, projectName, {
-        selectedTabs: extendedFromExcel,
+        selectedTabs: resolvedScheduleExcelTabs,
         actionColumns: DEFAULT_ACTION_COLS,
         riskColumns: DEFAULT_RISK_COLS,
         projectName,

@@ -91,7 +91,7 @@ export function MarketingConversionClient() {
             </h2>
             <p className="mt-3 text-sm leading-relaxed text-[var(--text-secondary)]">
               Connect HaloPSA or ConnectWise and generate client updates, logs, and Excel packs in seconds -
-              pushed back to tickets on Pro. No card required.
+              pushed back to tickets on Pro. 14-day free trial — cancel anytime.
             </p>
             <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center">
               <Link

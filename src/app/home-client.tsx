@@ -13,26 +13,36 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
+  AlertTriangle,
   BarChart3,
+  Building2,
   Calendar,
+  CalendarClock,
   Check,
+  CheckSquare,
+  ClipboardList,
   CheckCircle,
   CheckCircle2,
   ChevronDown,
+  CornerDownLeft,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Database,
   Download,
   Eye,
   FileEdit,
+  FileSpreadsheet,
+  FileText,
   Globe,
-  LayoutDashboard,
+  History,
+  Home as HomeIcon,
   LayoutList,
   LayoutTemplate,
   Loader2,
   Lock,
   Mail,
   Menu,
-  MessageSquare,
   Palette,
   PenLine,
   Plug,
@@ -42,6 +52,7 @@ import {
   Shield,
   Sparkles,
   Sun,
+  TrendingUp,
   Upload,
   User,
   UserRoundPlus,
@@ -50,9 +61,10 @@ import {
   Edit2,
   Pencil,
   Play,
+  Pin,
+  PinOff,
   Trash2,
   Send,
-  Info,
   Zap,
   X,
   Gift,
@@ -79,6 +91,7 @@ import {
 } from "@/lib/team-dashboard-permission";
 import { partnerWhiteLabelActive } from "@/lib/white-label";
 import { DeliveryHealthDashboard } from "@/components/delivery-health-dashboard";
+import { DemoBanner } from "@/components/demo-banner";
 import { MarketingFooter } from "@/components/marketing-footer";
 import { ReferralsSettingsPanel } from "@/components/referrals-settings-panel";
 import { useToast } from "@/components/toasts";
@@ -108,6 +121,7 @@ import {
 import {
   STRIPE_PRO_ANNUAL_PRICE_ID,
   STRIPE_PRO_MONTHLY_PRICE_ID,
+  STRIPE_TEAM_MONTHLY_PRICE_ID,
 } from "@/lib/stripe-price-ids";
 import {
   detectImportFileFormat,
@@ -119,6 +133,7 @@ import {
 } from "@/lib/file-import";
 import {
   EXTENDED_PM_TAB_KEYS,
+  EXTENDED_PM_TAB_KEYS_EXCEL_ONLY_STRIP,
   EXTENDED_PM_TAB_LABELS,
   type ExtendedPmTabKey,
   emptyExtendedOutputsObject,
@@ -126,15 +141,25 @@ import {
 } from "@/lib/pm-output-tabs";
 import {
   DEFAULT_EMAIL_CONTENT_PREFS,
+  normalizeExcelExportEngineTabIds,
   SCHEDULE_EXCEL_CORE_KEYS,
   SCHEDULE_EXCEL_OPTIONAL_LABELS,
   SCHEDULE_EXCEL_OPTIONAL_TAB_KEYS,
+  selectedExcelKeysFromRow,
   type NormalizedEmailContentPrefs,
 } from "@/lib/scheduled-email-prefs";
 import { getDateRangeEndIso, getDateRangeStartIso } from "@/lib/scheduled-reports";
-import { APP_VERSION, BUILD_NUMBER } from "@/lib/version";
+import { APP_VERSION } from "@/lib/version";
 import { buildClientEmailSignOffBlock } from "@/lib/client-email-signature";
 import { buildDefaultClientEmailSubject } from "@/lib/client-email-send-html";
+import { DEMO_CLIENTS, DEMO_EXAMPLE_INPUT, DEMO_PROJECTS, DEMO_TICKETS } from "@/lib/demo-data";
+
+/** Signed-in shell background — shared by top bar and main content for a seamless join. */
+const SIGNED_IN_SHELL_BACKGROUND =
+  "radial-gradient(ellipse at top right, rgba(14,165,233,0.04) 0%, transparent 60%), var(--bg-primary)";
+
+/** Extended outputs shown in Excel export only — excluded from on-screen output tab strip and panels. */
+const EXCEL_ONLY_TAB_KEYS: ReadonlySet<string> = EXTENDED_PM_TAB_KEYS_EXCEL_ONLY_STRIP;
 
 /** Display titles for schedule Data-step rows (raw Halo ticket records, no extra fetch). */
 function scheduleDataStepSupportTitle(rec: Record<string, unknown>): string {
@@ -190,6 +215,20 @@ const LS_FIRST_GEN_CELEBRATED = "handover_first_gen_celebrated";
 const LS_EXCEL_EXPORTED = "handover_excel_exported";
 const LS_ONBOARDING_TABS = "handover_onboarding_explored_tabs";
 const LS_BASIC_ACTION_EXPORT = "handover_onboarding_basic_action_export";
+/** Soft cap for manual paste / PSA export text sent to /api/generate (matches server maxLength). */
+const GENERATION_INPUT_CHAR_LIMIT = 25000;
+const GENERATION_INPUT_WARN_CHARS = 22000;
+
+const GEN_PROGRESS_MESSAGES = [
+  "Reading your PSA data...",
+  "Generating action log...",
+  "Writing client email...",
+  "Finalising report...",
+] as const;
+const SS_DEMO_INPUT = "handover_demo_input";
+const SS_PRO_75_DISMISSED = "handover_pro_75_dismissed";
+const LS_PRO_TEAM_RECO_SEEN = "handover_pro_team_reco_seen";
+const PORTAL_SLUG_RE = /^[a-z0-9-]{3,30}$/;
 
 /** Defaults for export column / tab pickers (also used when localStorage is empty). */
 const EXPORT_DEFAULTS = {
@@ -289,6 +328,14 @@ const EXPORT_FULLREPORT_TAB_OPTIONS: { id: string; label: string }[] = [
 const ACTION_COL_IDS = new Set(EXPORT_ACTION_COLUMN_OPTIONS.map((o) => o.id));
 const RISK_COL_IDS = new Set(EXPORT_RISK_COLUMN_OPTIONS.map((o) => o.id));
 const FULLREPORT_TAB_IDS = new Set(EXPORT_FULLREPORT_TAB_OPTIONS.map((o) => o.id));
+
+function sanitizePortalSlug(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .slice(0, 30);
+}
 
 function toggleStringInArray(arr: string[], id: string, on: boolean): string[] {
   if (on) return arr.includes(id) ? arr : [...arr, id];
@@ -416,8 +463,15 @@ import { HomeRoiCalculator } from "@/components/home-roi-calculator";
 import { TestimonialMarquee } from "@/components/testimonial-marquee";
 import { ScrollRevealItem } from "@/components/scroll-reveal-item";
 import { IntegrationsPanel } from "@/components/integrations-panel";
-import { ConfigurationPanel } from "@/components/configuration-panel";
+import {
+  ConfigurationPanel,
+  type ConfigurationTargetSection,
+} from "@/components/configuration-panel";
+import { EnterprisePortalOnboarding } from "@/components/enterprise-portal-onboarding";
+import { EnterprisePortalClientsSection } from "@/components/enterprise-portal-clients-section";
 import { invalidatePsaConnectionsCache, usePSAConnections } from "@/hooks/use-psa-connections";
+import { invalidatePSAStatusCache, usePSAStatus } from "@/hooks/usePSAStatus";
+import { getPsaConnectBundle } from "@/lib/psa-connect-cache";
 import { HaloImportModal } from "@/components/halo-import-modal";
 import { CwImportModal } from "@/components/cw-import-modal";
 import { FirstRunOnboardingOverlay } from "@/components/first-run-onboarding";
@@ -434,6 +488,9 @@ import {
 import { PremiumHardLimitModal, ProFeatureGateModal } from "@/components/premium-upgrade-ui";
 import { UpgradePlanCards } from "@/components/upgrade-plan-cards";
 import { QbrPackBuilder } from "@/components/qbr-pack-builder";
+import { OverviewHomeView } from "@/components/overview-home-view";
+import { ChangelogView } from "@/components/changelog-view";
+import { PSAEmptyState } from "@/components/psa-empty-state";
 import {
   actionSourceDisplayLabel,
   actionSourceFullTitleForTooltip,
@@ -443,6 +500,7 @@ import {
   riskSourceDisplayLabel,
   riskSourceFullTitleForTooltip,
 } from "@/lib/ticket-source-attribution";
+import { TICKET_SECTION_RULE } from "@/lib/psa/format";
 import { stripClientEmailSeparatorLines } from "@/lib/client-email-sanitize";
 import {
   buildSmartActionsReportContext,
@@ -499,6 +557,214 @@ type ImportedHaloItem = {
   status: string;
   type: "ticket" | "project";
 };
+
+function haloClientNameFromRow(row: Record<string, unknown>): string {
+  const c = row.client as { name?: string } | undefined;
+  if (c && typeof c.name === "string" && c.name.trim()) return c.name.trim();
+  const raw = row.client_name;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : "";
+}
+
+/** Restore ConnectWise import rows from saved generation input (headers include ticket/project IDs). */
+function parseCwImportedItemsFromInput(input: string): ImportedHaloItem[] {
+  const items: ImportedHaloItem[] = [];
+  if (!input.includes("═══ TICKET #") && !input.includes("═══ PROJECT #")) return items;
+  const re =
+    /═══ (TICKET|PROJECT) #(\d+) ═══\n([\s\S]*?)(?=\n═══ (?:TICKET|PROJECT) #|$)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(input)) !== null) {
+    const kind = m[1].toLowerCase() === "project" ? "project" : "ticket";
+    const id = Number(m[2]);
+    const block = m[3] ?? "";
+    const title =
+      (kind === "project"
+        ? block.match(/^Name:\s*(.+)$/m)?.[1]?.trim()
+        : block.match(/^Title:\s*(.+)$/m)?.[1]?.trim()) ||
+      block.match(/^(?:Title|Name):\s*(.+)$/m)?.[1]?.trim() ||
+      `${kind === "project" ? "Project" : "Ticket"} ${id}`;
+    const client = block.match(/^Client:\s*(.+)$/m)?.[1]?.trim() || "Unknown";
+    const status = block.match(/^Status:\s*(.+)$/m)?.[1]?.trim() || "Open";
+    if (Number.isFinite(id)) {
+      items.push({ id, title, clientName: client, status, type: kind });
+    }
+  }
+  return items;
+}
+
+function parseHaloSectionMetaFromInput(input: string): Array<{
+  title: string;
+  clientName: string;
+  status: string;
+  type: "ticket" | "project";
+}> {
+  const out: Array<{
+    title: string;
+    clientName: string;
+    status: string;
+    type: "ticket" | "project";
+  }> = [];
+  if (!input.includes("Source: HaloPSA")) return out;
+  const sections = input.split(TICKET_SECTION_RULE).map((s) => s.trim()).filter(Boolean);
+  for (const s of sections) {
+    if (!s.includes("Source: HaloPSA")) continue;
+    const isProject = s.includes("Type: Project") || /^PROJECT \d+ of \d+/m.test(s);
+    const title =
+      (isProject ? s.match(/^Name:\s*(.+)$/m)?.[1]?.trim() : s.match(/^Title:\s*(.+)$/m)?.[1]?.trim()) ||
+      s.match(/^(?:Title|Name):\s*(.+)$/m)?.[1]?.trim();
+    const client = s.match(/^Client:\s*(.+)$/m)?.[1]?.trim();
+    const status = s.match(/^Status:\s*(.+)$/m)?.[1]?.trim() || "Open";
+    if (title && client) {
+      out.push({ title, clientName: client, status, type: isProject ? "project" : "ticket" });
+    }
+  }
+  return out;
+}
+
+function matchHaloMetaToImportedItems(
+  meta: ReturnType<typeof parseHaloSectionMetaFromInput>,
+  haloRows: Array<Record<string, unknown>>,
+): ImportedHaloItem[] {
+  const items: ImportedHaloItem[] = [];
+  for (const m of meta) {
+    const row = haloRows.find((t) => {
+      const sum = String(t.summary ?? "").trim();
+      const cname = haloClientNameFromRow(t);
+      return sum === m.title && cname === m.clientName;
+    });
+    if (row && row.id != null && Number.isFinite(Number(row.id))) {
+      items.push({
+        id: Number(row.id),
+        title: m.title,
+        clientName: m.clientName,
+        status: m.status,
+        type: m.type,
+      });
+    }
+  }
+  return items;
+}
+
+function haloImportedItemsForClientName(
+  clientName: string,
+  haloRows: Array<Record<string, unknown>>,
+  cap = 60,
+): ImportedHaloItem[] {
+  const needle = clientName.trim().toLowerCase();
+  if (!needle) return [];
+  const out: ImportedHaloItem[] = [];
+  for (const t of haloRows) {
+    if (out.length >= cap) break;
+    const cname = haloClientNameFromRow(t);
+    if (cname.trim().toLowerCase() !== needle) continue;
+    const id = Number(t.id);
+    if (!Number.isFinite(id)) continue;
+    const isProject = Boolean((t as { is_project?: boolean }).is_project);
+    out.push({
+      id,
+      title: String(t.summary ?? `Ticket ${id}`).trim() || `Ticket ${id}`,
+      clientName: cname || clientName,
+      status: String((t as { status?: { name?: string } }).status?.name ?? "Open"),
+      type: isProject ? "project" : "ticket",
+    });
+  }
+  return out;
+}
+
+function restoreImportedItemsForHistory(
+  inputText: string,
+  haloRows: Array<Record<string, unknown>> | undefined,
+): ImportedHaloItem[] {
+  const cw = parseCwImportedItemsFromInput(inputText);
+  if (cw.length > 0) return cw;
+  const rows = Array.isArray(haloRows) ? haloRows : [];
+  if (rows.length === 0) return [];
+  const meta = parseHaloSectionMetaFromInput(inputText);
+  const matched = matchHaloMetaToImportedItems(meta, rows);
+  return matched;
+}
+
+function haloInputSectionForImportedItem(
+  inputText: string,
+  item: ImportedHaloItem,
+): string | null {
+  if (!inputText.includes(TICKET_SECTION_RULE)) return null;
+  const sections = inputText.split(TICKET_SECTION_RULE).map((s) => s.trim()).filter(Boolean);
+  for (const section of sections) {
+    const title =
+      (item.type === "project"
+        ? section.match(/^Name:\s*(.+)$/m)?.[1]?.trim()
+        : section.match(/^Title:\s*(.+)$/m)?.[1]?.trim()) ||
+      section.match(/^(?:Title|Name):\s*(.+)$/m)?.[1]?.trim();
+    const client = section.match(/^Client:\s*(.+)$/m)?.[1]?.trim();
+    if (title === item.title && client === item.clientName) return section;
+  }
+  return null;
+}
+
+/** True when a Halo import row or formatted section looks internal-facing (not client email). */
+function isImportedItemInternalFacing(
+  item: ImportedHaloItem,
+  inputText: string,
+  haloRows: Array<Record<string, unknown>>,
+): boolean {
+  const row = haloRows.find((t) => Number(t.id) === item.id);
+  if (row) {
+    if (Boolean(row.projectinternaltask)) return true;
+    const ticketType = String(
+      (row as { ticket_type?: string }).ticket_type ?? "",
+    ).toLowerCase();
+    if (ticketType.includes("internal")) return true;
+    const typeName = String(
+      (row as { ticket_type_name?: string }).ticket_type_name ?? "",
+    ).toLowerCase();
+    if (typeName.includes("internal")) return true;
+    if (Boolean((row as { is_project_task?: boolean }).is_project_task)) {
+      if (typeName.includes("internal") || ticketType.includes("internal")) return true;
+    }
+    const emailToList = row.emailtolist ?? row.email_to_list;
+    if (
+      emailToList == null ||
+      emailToList === "" ||
+      (Array.isArray(emailToList) && emailToList.length === 0)
+    ) {
+      const userName = String(row.user_name ?? "").trim().toLowerCase();
+      const agentName = String(
+        (row as { agent?: { name?: string } }).agent?.name ?? "",
+      )
+        .trim()
+        .toLowerCase();
+      if (userName && agentName && userName === agentName) return true;
+    }
+  }
+
+  const section = haloInputSectionForImportedItem(inputText, item);
+  if (section) {
+    const ticketTypeLine = section.match(/^Ticket Type:\s*(.+)$/im)?.[1] ?? "";
+    if (/internal/i.test(ticketTypeLine)) return true;
+    if (/projectinternaltask|internal task/i.test(section)) return true;
+  }
+  return false;
+}
+
+function resolveClientEmailTabDisplay(
+  items: ImportedHaloItem[],
+  inputText: string,
+  haloRows: Array<Record<string, unknown>>,
+): { label: "Client Email" | "Internal Update"; showInternalBadge: boolean } {
+  if (items.length === 0) {
+    return { label: "Client Email", showInternalBadge: false };
+  }
+  let internalCount = 0;
+  let externalCount = 0;
+  for (const item of items) {
+    if (isImportedItemInternalFacing(item, inputText, haloRows)) internalCount += 1;
+    else externalCount += 1;
+  }
+  if (internalCount > 0 && externalCount === 0) {
+    return { label: "Internal Update", showInternalBadge: true };
+  }
+  return { label: "Client Email", showInternalBadge: false };
+}
 
 function parseActionFromApi(x: unknown): ActionRow {
   if (!x || typeof x !== "object") {
@@ -689,9 +955,6 @@ function parseApiGenerateResult(raw: unknown): GenerateResult {
   };
 }
 
-const EXAMPLE_INPUT =
-  "Weekly review - Skyline IT Solutions account.\nServer migration to Azure overdue by 2 weeks. Dave handling the backup but not started yet. Client called twice chasing update. Need to send them something today. Risk that old hardware fails before we finish.\nTarget completion: end of month.";
-
 const SIGNED_OUT_DEMO_RESULT: GenerateResult = {
   actions: [
     {
@@ -750,6 +1013,7 @@ function toFullReportOutputs(r: GenerateResult): FullReportOutputs {
 }
 
 const HANDOVER_OUTPUT_PREFS_KEY = "handover-output-prefs";
+const HANDOVER_EXTENDED_OUTPUT_PREFS_KEY = "handover-extended-output-prefs";
 
 type ModalOutputKey =
   | "actions"
@@ -820,17 +1084,41 @@ function saveOutputPrefs(sel: Record<ModalOutputKey, boolean>) {
 
 function defaultExtendedOutputPrefs(): Record<ExtendedPmTabKey, boolean> {
   return Object.fromEntries(
-    EXTENDED_PM_TAB_KEYS.map((k) => [k, false]),
+    EXTENDED_PM_TAB_KEYS.map((k) => [k, true]),
   ) as Record<ExtendedPmTabKey, boolean>;
+}
+
+/** Persist enabled extended PM tabs (mirrors core output prefs in localStorage). */
+function loadExtendedOutputPrefs(): Record<ExtendedPmTabKey, boolean> {
+  const fallback = defaultExtendedOutputPrefs();
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(HANDOVER_EXTENDED_OUTPUT_PREFS_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return fallback;
+    const enabled = new Set(normalizeExtendedOutputKeys(parsed));
+    if (enabled.size === 0) return fallback;
+    return Object.fromEntries(
+      EXTENDED_PM_TAB_KEYS.map((k) => [k, enabled.has(k)]),
+    ) as Record<ExtendedPmTabKey, boolean>;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveExtendedOutputPrefs(prefs: Record<ExtendedPmTabKey, boolean>) {
+  if (typeof window === "undefined") return;
+  const keys = EXTENDED_PM_TAB_KEYS.filter((k) => prefs[k]);
+  window.localStorage.setItem(HANDOVER_EXTENDED_OUTPUT_PREFS_KEY, JSON.stringify(keys));
 }
 
 function hydrateOutputPrefsFromProfile(outputPreferences: unknown): {
   core: Record<ModalOutputKey, boolean>;
   extended: Record<ExtendedPmTabKey, boolean>;
 } {
-  const extDefault = defaultExtendedOutputPrefs();
   if (!outputPreferences || typeof outputPreferences !== "object") {
-    return { core: loadOutputPrefs(), extended: extDefault };
+    return { core: loadOutputPrefs(), extended: defaultExtendedOutputPrefs() };
   }
   const raw = outputPreferences as { coreOutputs?: unknown; extendedTabs?: unknown };
 
@@ -850,11 +1138,16 @@ function hydrateOutputPrefsFromProfile(outputPreferences: unknown): {
     core = loadOutputPrefs();
   }
 
-  const extended = { ...extDefault };
-  if (Array.isArray(raw.extendedTabs)) {
+  let extended: Record<ExtendedPmTabKey, boolean>;
+  if (Array.isArray(raw.extendedTabs) && raw.extendedTabs.length > 0) {
+    extended = Object.fromEntries(
+      EXTENDED_PM_TAB_KEYS.map((k) => [k, false]),
+    ) as Record<ExtendedPmTabKey, boolean>;
     for (const k of normalizeExtendedOutputKeys(raw.extendedTabs)) {
       extended[k] = true;
     }
+  } else {
+    extended = defaultExtendedOutputPrefs();
   }
 
   return { core, extended };
@@ -884,11 +1177,43 @@ function visibleCoreTabsForResult(r: GenerateResult): ModalOutputKey[] {
   return inferred.length > 0 ? inferred : [...MODAL_OUTPUT_KEYS];
 }
 
+function hasExtendedPmTabContent(r: GenerateResult, k: ExtendedPmTabKey): boolean {
+  const v = r[k];
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === "string") return Boolean(v.trim());
+  return false;
+}
+
 function visibleExtendedTabsForResult(r: GenerateResult): ExtendedPmTabKey[] {
-  if (r._uiTabScope?.extended) {
-    return EXTENDED_PM_TAB_KEYS.filter((k) => r._uiTabScope!.extended.includes(k));
+  const extScope = r._uiTabScope?.extended;
+  let keys: ExtendedPmTabKey[];
+  if (extScope != null && extScope.length > 0) {
+    keys = EXTENDED_PM_TAB_KEYS.filter((k) => extScope.includes(k));
+  } else if (extScope != null && extScope.length === 0) {
+    keys = EXTENDED_PM_TAB_KEYS.filter((k) => hasExtendedPmTabContent(r, k));
+  } else {
+    keys = EXTENDED_PM_TAB_KEYS.filter((k) => hasExtendedPmTabContent(r, k));
   }
-  return EXTENDED_PM_TAB_KEYS.filter((k) => Boolean((r[k] ?? "").trim()));
+  return keys.filter((k) => !EXCEL_ONLY_TAB_KEYS.has(k));
+}
+
+/** Core + extended outputs for Excel export — extended IDs from content only (not _uiTabScope). */
+function generatedOutputTabIdsForExcelExport(r: GenerateResult): Set<string> {
+  const coreIds =
+    r._uiTabScope?.core && r._uiTabScope.core.length > 0
+      ? [...r._uiTabScope.core]
+      : [...visibleCoreTabsForResult(r)];
+  const extendedIds = EXTENDED_PM_TAB_KEYS.filter((k) => {
+    const val = r[k];
+    return typeof val === "string" && val.trim().length > 0;
+  });
+  return new Set<string>([...coreIds, ...extendedIds]);
+}
+
+function isExportPickerTabGenerated(tabId: string, generated: Set<string>): boolean {
+  if (tabId === "executive_summary") return generated.has("summary");
+  if (tabId === "rag_dashboard") return false;
+  return generated.has(tabId);
 }
 
 function buildActionExportMeta(projectName: string, actions: ActionRow[]): ExportMeta {
@@ -923,6 +1248,22 @@ type ProjectItem = {
   scheduled_report_id?: string | null;
 };
 
+function formatShortRelativeTime(iso: string): string {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "";
+  const diffMs = Date.now() - t;
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "just now";
+  if (mins === 1) return "1 min ago";
+  if (mins < 60) return `${mins} mins ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours === 1) return "1 hour ago";
+  if (hours < 24) return `${hours} hours ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "1 day ago";
+  return `${days} days ago`;
+}
+
 type CollectionApiRow = {
   id: string;
   name: string;
@@ -944,6 +1285,82 @@ function isUnassignedOwner(raw: string | null | undefined): boolean {
 
 function formatOwnerLabel(raw: string | null | undefined): string {
   return isUnassignedOwner(raw) ? "Unassigned" : (raw ?? "").trim();
+}
+
+function actionOwnerForQuality(a: ActionRow): string {
+  return (a.suggested_owner ?? "").trim();
+}
+
+function isMissingActionOwner(a: ActionRow): boolean {
+  const owner = actionOwnerForQuality(a);
+  if (!owner || owner === "TBC") return true;
+  return isUnassignedOwner(owner);
+}
+
+function calculateReportQuality(result: GenerateResult): {
+  score: number;
+  issues: string[];
+} {
+  const issues: string[] = [];
+  let deductions = 0;
+
+  if (result.actions && result.actions.length > 0) {
+    const missingOwners = result.actions.filter((a) => isMissingActionOwner(a)).length;
+    const missingDates = result.actions.filter(
+      (a) => !a.due_date || a.due_date.trim() === "",
+    ).length;
+    if (missingOwners > 0) {
+      issues.push(
+        `${missingOwners} action${missingOwners > 1 ? "s" : ""} missing owner`,
+      );
+      deductions += missingOwners * 8;
+    }
+    if (missingDates > 0) {
+      issues.push(
+        `${missingDates} action${missingDates > 1 ? "s" : ""} without due date`,
+      );
+      deductions += missingDates * 5;
+    }
+  } else if (result.actions && result.actions.length === 0) {
+    issues.push("No actions identified");
+    deductions += 15;
+  }
+
+  if (result.risks && result.risks.length > 0) {
+    const missingMitigation = result.risks.filter(
+      (r) => !r.mitigation || r.mitigation.trim() === "",
+    ).length;
+    if (missingMitigation > 0) {
+      issues.push(
+        `${missingMitigation} risk${missingMitigation > 1 ? "s" : ""} without mitigation`,
+      );
+      deductions += missingMitigation * 6;
+    }
+  }
+
+  return { score: Math.max(0, Math.min(100, 100 - deductions)), issues };
+}
+
+function qualityImprovementTips(issues: string[]): string[] {
+  const tips: string[] = [];
+  for (const issue of issues) {
+    if (issue.includes("missing owner")) {
+      tips.push(
+        "Assign a named owner to each action — avoid TBC, blank, or unassigned owners.",
+      );
+    } else if (issue.includes("without due date")) {
+      tips.push("Add a due date to every action so expectations are clear.");
+    } else if (issue.includes("No actions identified")) {
+      tips.push(
+        "Add more ticket detail or import from your PSA so open work items can be extracted.",
+      );
+    } else if (issue.includes("without mitigation")) {
+      tips.push("Describe how each risk will be managed or reduced before sharing.");
+    } else {
+      tips.push(`Improve: ${issue}`);
+    }
+  }
+  return tips;
 }
 
 /** Status report body often uses "(null)", em-dash, "()", "(unassigned)" for missing owners in numbered lines. */
@@ -973,36 +1390,74 @@ function renderStatusReportDisplay(text: string): ReactNode {
   );
 }
 
+function formatActionDueForCopy(due: string | null | undefined): string {
+  const d = (due ?? "").trim();
+  return d || "TBC";
+}
+
 function formatActionsForCopy(actions: ActionRow[], ticketTitles?: string[]): string {
+  if (actions.length === 0) return "";
   const showSource = (ticketTitles?.length ?? 0) >= 2;
-  return actions
-    .map((a, i) => {
-      const task = a.task ?? "-";
-      const owner = formatOwnerLabel(a.suggested_owner);
-      const pri = a.priority ?? "-";
-      let block = `${i + 1}. ${task}\n   Owner: ${owner}\n   Priority: ${pri}`;
-      if (showSource && ticketTitles) {
-        block += `\n   Source: ${actionSourceDisplayLabel(a, ticketTitles)}`;
-      }
-      return block;
-    })
-    .join("\n\n");
+  const lines = ["ACTION LOG", "──────────────────────", ""];
+  actions.forEach((a, i) => {
+    const task = (a.task ?? "").trim() || "-";
+    const owner = formatOwnerLabel(a.suggested_owner);
+    const pri = (a.priority ?? "").trim() || "-";
+    const due = formatActionDueForCopy(a.due_date);
+    lines.push(`${i + 1}. ${task}`);
+    lines.push(`   Owner: ${owner} | Priority: ${pri} | Due: ${due}`);
+    if (showSource && ticketTitles) {
+      lines.push(`   Source: ${actionSourceDisplayLabel(a, ticketTitles)}`);
+    }
+    lines.push("");
+  });
+  return lines.join("\n").trimEnd();
 }
 
 function formatRisksForCopy(risks: RiskRow[], ticketTitles?: string[]): string {
+  if (risks.length === 0) return "";
   const showSource = (ticketTitles?.length ?? 0) >= 2;
-  return risks
-    .map((r, i) => {
-      const risk = r.risk ?? "-";
-      const impact = r.impact ?? "-";
-      const mit = r.mitigation ?? "-";
-      let block = `${i + 1}. ${risk}\n   Impact: ${impact}\n   Mitigation: ${mit}`;
-      if (showSource && ticketTitles) {
-        block += `\n   Source: ${riskSourceDisplayLabel(r, ticketTitles)}`;
-      }
-      return block;
-    })
-    .join("\n\n");
+  const lines = ["RISK LOG", "──────────────────────", ""];
+  risks.forEach((r, i) => {
+    const risk = (r.risk ?? "").trim() || "-";
+    const impact = (r.impact ?? "").trim() || "-";
+    const mit = (r.mitigation ?? "").trim() || "-";
+    lines.push(`${i + 1}. ${risk}`);
+    lines.push(`   Owner: TBC | Impact: ${impact} | Probability: TBC | Status: TBC`);
+    lines.push(`   Mitigation: ${mit}`);
+    if (showSource && ticketTitles) {
+      lines.push(`   Source: ${riskSourceDisplayLabel(r, ticketTitles)}`);
+    }
+    lines.push("");
+  });
+  return lines.join("\n").trimEnd();
+}
+
+function dueDateToInputValue(due: string | null | undefined): string {
+  const s = (due ?? "").trim();
+  if (!s) return "";
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const parsed = Date.parse(s);
+  if (Number.isFinite(parsed)) {
+    const d = new Date(parsed);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+  return "";
+}
+
+function formatDueDateFromInput(isoYmd: string): string {
+  const trimmed = isoYmd.trim();
+  if (!trimmed) return "";
+  const d = new Date(`${trimmed}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return trimmed;
+  return d.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 function firstExportClientName(actions: ActionRow[]): string | null {
@@ -1063,6 +1518,13 @@ function buildMailtoLink(
 
 type ParsedClientEmailSection = { client: string | null; content: string };
 
+const CLIENT_EMAIL_HEADER_RE = /^CLIENT EMAIL\s*-\s*[^:\n]+:\s*/i;
+
+/** Strip leading CLIENT EMAIL - [Name]: header (single-client display/copy only). */
+function stripLeadingClientEmailHeader(text: string): string {
+  return text.replace(CLIENT_EMAIL_HEADER_RE, "").trim();
+}
+
 /** Splits model output into per-client sections when formatted as CLIENT EMAIL - Name: ... separated by --- */
 function parseClientEmails(emailContent: string): ParsedClientEmailSection[] {
   const text = (emailContent ?? "").trim();
@@ -1110,7 +1572,15 @@ function getOutputTabPlaintext(
       const max = Math.max(0, clientSections.length - 1);
       const idx = Math.min(activeClientEmailIndex, max);
       const s = clientSections[idx];
-      return (s?.content ?? result.client_email ?? "").trim();
+      let body = (s?.content ?? result.client_email ?? "").trim();
+      if (clientSections.length === 1) {
+        body = stripLeadingClientEmailHeader(body);
+      }
+      const subject = (result.email_subject ?? "").trim();
+      const parts: string[] = [];
+      if (subject) parts.push(`Subject: ${subject}`);
+      if (body) parts.push(body);
+      return parts.join("\n\n");
     }
     case "status_report":
       return result.status_report ?? "";
@@ -1126,6 +1596,28 @@ function toneLabel(tone: Tone): string {
   if (tone === "formal") return "Formal";
   if (tone === "friendly") return "Friendly";
   return "Professional";
+}
+
+function OutputTabEmptyState({
+  icon,
+  message,
+}: {
+  icon: ReactNode;
+  message: string;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 py-12">
+      <div className="text-[var(--text-secondary)] opacity-40 [&_svg]:h-8 [&_svg]:w-8">
+        {icon}
+      </div>
+      <div className="text-center">
+        <p className="text-[13px] text-[var(--text-secondary)]">{message}</p>
+        <p className="mt-1 text-[12px] text-[var(--text-secondary)]">
+          Try regenerating with more detailed notes for better results
+        </p>
+      </div>
+    </div>
+  );
 }
 
 function formatScheduleTs(iso: string | null | undefined): string {
@@ -1180,18 +1672,6 @@ function normalizePrefsFromApi(raw: unknown): NormalizedEmailContentPrefs {
     include_client_emails: o.include_client_emails === true,
     include_status: o.include_status === true,
   };
-}
-
-function selectedExcelKeysFromRow(raw: string[] | null | undefined): string[] {
-  const allowed = new Set<string>([
-    ...SCHEDULE_EXCEL_CORE_KEYS,
-    ...SCHEDULE_EXCEL_OPTIONAL_TAB_KEYS,
-  ]);
-  if (!Array.isArray(raw) || raw.length === 0) {
-    return [...SCHEDULE_EXCEL_CORE_KEYS, ...SCHEDULE_EXCEL_OPTIONAL_TAB_KEYS];
-  }
-  const picked = raw.filter((x): x is string => typeof x === "string" && allowed.has(x));
-  return picked.length > 0 ? picked : [...SCHEDULE_EXCEL_CORE_KEYS, ...SCHEDULE_EXCEL_OPTIONAL_TAB_KEYS];
 }
 
 const SCHEDULE_DAY_OPTIONS = [
@@ -1255,20 +1735,52 @@ function relativeTimeLabel(iso: string): string {
 function priorityBadgeClass(priority: string | null): string {
   const p = (priority ?? "").toLowerCase();
   if (p === "high") {
-    return "rounded-full border border-[rgba(239,68,68,0.2)] bg-[rgba(239,68,68,0.1)] px-2 py-0.5 text-[11px] font-medium text-[#ef4444]";
+    return "inline-flex shrink-0 items-center rounded-md border border-[rgba(239,68,68,0.25)] bg-[rgba(239,68,68,0.08)] px-1.5 py-px text-[10px] font-semibold text-[#ef4444]";
   }
   if (p === "medium") {
-    return "rounded-full border border-[rgba(245,158,11,0.2)] bg-[rgba(245,158,11,0.1)] px-2 py-0.5 text-[11px] font-medium text-[#f59e0b]";
+    return "inline-flex shrink-0 items-center rounded-md border border-[rgba(245,158,11,0.25)] bg-[rgba(245,158,11,0.08)] px-1.5 py-px text-[10px] font-semibold text-[#f59e0b]";
   }
   if (p === "low") {
-    return "rounded-full border border-[rgba(34,197,94,0.2)] bg-[rgba(34,197,94,0.1)] px-2 py-0.5 text-[11px] font-medium text-[#22c55e]";
+    return "inline-flex shrink-0 items-center rounded-md border border-[rgba(34,197,94,0.25)] bg-[rgba(34,197,94,0.08)] px-1.5 py-px text-[10px] font-semibold text-[#22c55e]";
   }
-  return "rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-muted)]";
+  return "inline-flex shrink-0 items-center rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] px-1.5 py-px text-[10px] font-semibold text-[var(--text-muted)]";
 }
 
 /** Shared keyboard-focus ring (mouse clicks stay clean). */
 const focusRing =
   "transition-all duration-[120ms] ease-in-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] focus-visible:outline-offset-2";
+
+/** Generation output tab panel — fills remaining height and scrolls internally */
+const OUTPUT_TAB_PANEL_CLASS =
+  "mt-0 flex min-h-0 flex-1 flex-col overflow-y-auto rounded-b-[var(--radius-lg)] border-x border-b border-[var(--border)] bg-[var(--bg-secondary)] p-3 outline-none";
+
+/** Inset surface wrapping Card inside each output tab */
+const OUTPUT_TAB_CONTENT_SHELL =
+  "animate-in fade-in duration-150 flex min-h-0 flex-1 flex-col overflow-y-auto rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] shadow-[inset_0_1px_0_color-mix(in_srgb,var(--border)_70%,transparent),inset_0_18px_36px_-18px_color-mix(in_srgb,var(--bg-secondary)_85%,transparent)]";
+
+const OUTPUT_TAB_CARD_CLASS =
+  "flex min-h-0 flex-1 flex-col gap-0 border-0 bg-transparent py-0 shadow-none";
+
+const OUTPUT_TAB_CARD_BODY_SCROLL =
+  "flex min-h-0 flex-1 flex-col overflow-hidden";
+
+const OUTPUT_TAB_CARD_BODY_INNER_SCROLL =
+  "min-h-0 flex-1 overflow-x-hidden overflow-y-auto";
+
+const FOLLOW_UP_ALL_CLIENTS = "__all__";
+
+/** Generation output tabs — underline active state only (no pill/box). */
+const OUTPUT_SEGMENT_TRIGGER_CLASS =
+  "relative !flex-none shrink-0 justify-center rounded-none border-0 border-b-2 border-transparent bg-transparent px-3 pb-2 pt-1 text-[13px] font-medium text-[var(--text-muted)] shadow-none transition-colors duration-150 ease-out after:!hidden hover:text-[var(--text-secondary)] data-active:border-[var(--accent)] data-active:bg-transparent data-active:text-[var(--text-primary)] data-active:shadow-none dark:data-active:bg-transparent -mb-px";
+
+const OUTPUT_REGEN_BAR_CLASS =
+  "mt-3 flex min-h-[38px] items-center gap-1.5 rounded-[var(--radius)] bg-[var(--bg-secondary)] px-2 py-1 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--border)_55%,transparent)]";
+
+const OUTPUT_REGEN_INPUT_CLASS =
+  "h-8 flex-1 border-0 bg-transparent px-2 text-[13px] leading-snug text-[var(--text-primary)] shadow-none placeholder:text-[var(--text-muted)] placeholder:opacity-65 focus-visible:ring-0 focus-visible:ring-offset-0";
+
+const OUTPUT_REGEN_BUTTON_CLASS =
+  "h-9 shrink-0 rounded-full px-3.5 text-[11px] font-semibold shadow-none";
 
 function ResultsSkeleton() {
   return (
@@ -1482,6 +1994,11 @@ export default function Home() {
   }, [userFirstName, userEmail]);
 
   const [monthCount, setMonthCount] = useState<number | null>(null);
+  const [monthlyStats, setMonthlyStats] = useState<{
+    this_month: number;
+    last_month: number;
+  } | null>(null);
+  const [monthlyStatsLoading, setMonthlyStatsLoading] = useState(false);
   const [totalGenerationCount, setTotalGenerationCount] = useState<number | null>(null);
   /** Consecutive UTC days with at least one saved generation (from profiles.current_streak). */
   const [generationStreak, setGenerationStreak] = useState(0);
@@ -1489,6 +2006,8 @@ export default function Home() {
   /** One dismissible referral line per browser session after a successful generation (output panel). */
   const [showPostGenReferralFooter, setShowPostGenReferralFooter] = useState(false);
   const [firstGenTipDismissed, setFirstGenTipDismissed] = useState<boolean | null>(null);
+  const [pro75Dismissed, setPro75Dismissed] = useState(false);
+  const [showProTeamRecommendation, setShowProTeamRecommendation] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
 
   const [input, setInput] = useState("");
@@ -1497,17 +2016,14 @@ export default function Home() {
   const [generationMailtoEmail, setGenerationMailtoEmail] = useState<string | null>(null);
   const [sendClientEmailModalOpen, setSendClientEmailModalOpen] = useState(false);
   const [smartActionsOpen, setSmartActionsOpen] = useState(false);
-  const [emailTone, setEmailTone] = useState<Tone>("professional");
+  const GENERATION_EMAIL_TONE: Tone = "professional";
   const [lastGeneratedTone, setLastGeneratedTone] = useState<Tone>("professional");
-  const [isRewritingEmail, setIsRewritingEmail] = useState(false);
-  const rewriteEmailSeqRef = useRef(0);
-  const toneRewriteBusyRef = useRef(false);
+  const demoInputAutofillDoneRef = useRef(false);
   const [lastInput, setLastInput] = useState("");
   const ticketTitlesForSourceColumn = useMemo(
     () => extractTicketTitlesFromGenerationInput((input.trim() || lastInput.trim()).trim()),
     [input, lastInput],
   );
-  const showTicketSourceColumn = ticketTitlesForSourceColumn.length >= 2;
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationLongWait, setGenerationLongWait] = useState(false);
   /** UI-only: brief "Compacting..." before fetch when input is over the soft character cap. */
@@ -1519,11 +2035,20 @@ export default function Home() {
   const [importedFileName, setImportedFileName] = useState<string | null>(null);
   const [importedFileTypeLabel, setImportedFileTypeLabel] = useState<string | null>(null);
   const [lastImportedHaloItems, setLastImportedHaloItems] = useState<ImportedHaloItem[]>([]);
+  const [lastImportSourcePsa, setLastImportSourcePsa] = useState<"halopsa" | "connectwise" | null>(null);
   const [pushModalOpen, setPushModalOpen] = useState(false);
+  /** Mobile (< md) stepped layout inside push modal; desktop ignores. */
+  const [pushModalMobileStep, setPushModalMobileStep] = useState(0);
   const [pushSelectedTicketIds, setPushSelectedTicketIds] = useState<number[]>([]);
   const [pushSelectedOutputs, setPushSelectedOutputs] = useState<
     ("client_email" | "actions" | "risks" | "summary" | "status_report")[]
   >(["summary", "actions", "risks"]);
+  const [pushSummaryScope, setPushSummaryScope] = useState<"per_ticket" | "combined_all">(
+    "combined_all",
+  );
+  const [pushStatusScope, setPushStatusScope] = useState<"per_ticket" | "combined_all">(
+    "combined_all",
+  );
   const [pushAttachExcel, setPushAttachExcel] = useState(false);
   /** Excel tabs for Halo push attachment only - excludes client_email by default. */
   const [selectedExcelTabs, setSelectedExcelTabs] = useState<string[]>([
@@ -1543,15 +2068,36 @@ export default function Home() {
     ("client_email" | "actions" | "risks" | "summary" | "status_report")[]
   >([]);
   const [result, setResult] = useState<GenerateResult | null>(null);
+  const [reportQualityTipsOpen, setReportQualityTipsOpen] = useState(false);
+  const [followUpLoading, setFollowUpLoading] = useState(false);
+  const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
+  const [followUpModalBody, setFollowUpModalBody] = useState("");
+  const [followUpModalSubject, setFollowUpModalSubject] = useState("");
+  const [followUpModalActionCount, setFollowUpModalActionCount] = useState(0);
+  const [followUpClientScope, setFollowUpClientScope] = useState<string>("");
   const [editingField, setEditingField] = useState<EditableField>(null);
   const [editingActionRow, setEditingActionRow] = useState<number | null>(null);
+  const [editingDueDateRow, setEditingDueDateRow] = useState<number | null>(null);
+  const [sessionUsesDemoData, setSessionUsesDemoData] = useState(false);
   const [editingRiskRow, setEditingRiskRow] = useState<number | null>(null);
-  const [outputMainTab, setOutputMainTab] = useState<string>("actions");
+  const [outputMainTab, setOutputMainTab] = useState<string>("client_email");
+  const outputTabScrollRef = useRef<HTMLDivElement | null>(null);
+  const [outputTabScrollEdges, setOutputTabScrollEdges] = useState({ left: false, right: false });
+  const [isInputCollapsed, setIsInputCollapsed] = useState(false);
+  const [fullReportExportPickerOpen, setFullReportExportPickerOpen] = useState(false);
+  const [schedulePrefillImportBanner, setSchedulePrefillImportBanner] = useState(false);
+  const [scheduleWizardNextFlash, setScheduleWizardNextFlash] = useState(false);
+  const scheduleWizardFlashTimerRef = useRef<number | null>(null);
+  const scheduleWizardPrevRequiredRef = useRef<number | null>(null);
   const [onboardingTabsExplored, setOnboardingTabsExplored] = useState(false);
   const [basicOnboardingActionExportDone, setBasicOnboardingActionExportDone] = useState(false);
   const [smartActionEmailBody, setSmartActionEmailBody] = useState<string | null>(null);
   const [smartActionEmailTo, setSmartActionEmailTo] = useState<string | null>(null);
   const [pushHaloHighlight, setPushHaloHighlight] = useState(false);
+  const [pushQuickActionSuccess, setPushQuickActionSuccess] = useState(false);
+  const [postOnboardingNewGenHighlight, setPostOnboardingNewGenHighlight] = useState(false);
+  const [sendEmailButtonHighlight, setSendEmailButtonHighlight] = useState(false);
+  const [genProgressMsgIx, setGenProgressMsgIx] = useState(0);
   const [activeClientEmailIndex, setActiveClientEmailIndex] = useState(0);
 
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -1602,7 +2148,8 @@ export default function Home() {
 
   const [exportLockedPromptOpen, setExportLockedPromptOpen] = useState(false);
 
-  const [generateOptionsOpen, setGenerateOptionsOpen] = useState(false);
+  const [isCheckingAuthForGenerate, setIsCheckingAuthForGenerate] = useState(false);
+  const [templateSaveCtaHighlight, setTemplateSaveCtaHighlight] = useState(false);
   const [demoModalOpen, setDemoModalOpen] = useState(false);
   const [demoTab, setDemoTab] = useState<"actions" | "risks" | "summary" | "client_email" | "status_report">("actions");
   const [lockedTeaserOpen, setLockedTeaserOpen] = useState(false);
@@ -1645,8 +2192,14 @@ export default function Home() {
   const [onboardingRequiredExplicit, setOnboardingRequiredExplicit] = useState(false);
   const [onboardingOverlayOpen, setOnboardingOverlayOpen] = useState(false);
   const lastOnboardingHydratedUserIdRef = useRef<string | null>(null);
+  const autoRestoreLastSessionRanRef = useRef(false);
   const [proFeatureGate, setProFeatureGate] = useState<string | null>(null);
   const [showPostGenProUpsell, setShowPostGenProUpsell] = useState(false);
+  /** True after user has pushed to PSA or sent client email at least once (profiles.has_completed_loop). */
+  const [hasCompletedLoop, setHasCompletedLoop] = useState(false);
+  /** When non-null, show dismissible banner above output after auto-restoring last generation. */
+  const [lastSessionRestoreBannerProject, setLastSessionRestoreBannerProject] =
+    useState<ProjectItem | null>(null);
   const sevenGenToastFiredRef = useRef(false);
   const [premiumHardLimitOpen, setPremiumHardLimitOpen] = useState(false);
   const [hardLimitType, setHardLimitType] = useState<"trial" | "pro_monthly" | "team_monthly">("trial");
@@ -1671,19 +2224,42 @@ export default function Home() {
   const [teamDashboardPermission, setTeamDashboardPermission] =
     useState<TeamDashboardPermission>("full");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<
-    | "profile"
-    | "branding"
-    | "signature"
-    | "appearance"
-    | "privacy"
-    | "writing"
-    | "outputs"
-    | "referrals"
-  >("profile");
+  const [settingsTab, setSettingsTab] = useState<"profile" | "preferences" | "referrals">(
+    "profile",
+  );
+  const [prefsAccordionOpen, setPrefsAccordionOpen] = useState<Record<string, boolean>>({});
+  const togglePrefsAccordion = useCallback((section: string) => {
+    setPrefsAccordionOpen((prev) => ({ ...prev, [section]: !prev[section] }));
+  }, []);
+  const [configurationTargetSection, setConfigurationTargetSection] =
+    useState<ConfigurationTargetSection | null>(null);
+  const clearConfigurationTargetSection = useCallback(() => {
+    setConfigurationTargetSection(null);
+  }, []);
+  const openIntegrationsInConfiguration = useCallback(
+    (opts?: { initialDetail?: "halo" | "connectwise" }) => {
+      setMainView("configuration");
+      setConfigurationTargetSection("integrations");
+      if (opts?.initialDetail) setIntegrationsInitialDetail(opts.initialDetail);
+      else setIntegrationsInitialDetail(null);
+      setSettingsOpen(false);
+      setSidebarOpenMobile(false);
+    },
+    [],
+  );
   const [mainView, setMainView] = useState<
-    "generate" | "reports" | "delivery" | "integrations" | "scheduled" | "configuration"
-  >("generate");
+    | "overview"
+    | "generate"
+    | "reports"
+    | "delivery"
+    | "scheduled"
+    | "configuration"
+    | "organisation"
+    | "changelog"
+  >("overview");
+  const [sidebarPinned, setSidebarPinned] = useState(false);
+  const [sidebarHovered, setSidebarHovered] = useState(false);
+  const [projectsBootstrapped, setProjectsBootstrapped] = useState(false);
   const [integrationsInitialDetail, setIntegrationsInitialDetail] = useState<
     "halo" | "connectwise" | null
   >(null);
@@ -1762,6 +2338,9 @@ export default function Home() {
       post_consolidated?: boolean | null;
     }>
   >([]);
+  /** Master toggle UI — not derived from `campaigns.every(enabled)` so pausing one row cannot flip it. */
+  const [scheduledReportsMasterEnabled, setScheduledReportsMasterEnabled] = useState(true);
+  const schedulesMasterSyncedRef = useRef(false);
   const [schCampaignEditorTab, setSchCampaignEditorTab] = useState(0);
   const [scheduleEditorOpen, setScheduleEditorOpen] = useState(false);
   const [scheduleEditorIsNew, setScheduleEditorIsNew] = useState(false);
@@ -1795,6 +2374,7 @@ export default function Home() {
   const [allProjects, setAllProjects] = useState<Array<Record<string, unknown>>>([]);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [dataLoading, setDataLoading] = useState(false);
+  const [demoDisabled, setDemoDisabled] = useState(false);
   const [schEmailPrefs, setSchEmailPrefs] = useState<NormalizedEmailContentPrefs>({
     ...DEFAULT_EMAIL_CONTENT_PREFS,
   });
@@ -1835,6 +2415,13 @@ export default function Home() {
   const [profileDisplayName, setProfileDisplayName] = useState("");
   const [profileJobTitle, setProfileJobTitle] = useState("");
   const [profileCompanyName, setProfileCompanyName] = useState("");
+  const [portalSlug, setPortalSlug] = useState("");
+  const [portalSlugChecking, setPortalSlugChecking] = useState(false);
+  const [portalSlugAvailable, setPortalSlugAvailable] = useState<boolean | null>(null);
+  const [portalSlugSaving, setPortalSlugSaving] = useState(false);
+  const [portalSlugCopied, setPortalSlugCopied] = useState(false);
+  const [sharePortalClientId, setSharePortalClientId] = useState<string | null>(null);
+  const [sharePortalBusy, setSharePortalBusy] = useState(false);
   const [brandName, setBrandName] = useState("");
   const [brandColour, setBrandColour] = useState(HANDOVER_BRAND_PRIMARY_HEX);
   const [brandSecondaryColour, setBrandSecondaryColour] = useState(HANDOVER_BRAND_SECONDARY_HEX);
@@ -1867,6 +2454,7 @@ export default function Home() {
   const [signatureOverride, setSignatureOverride] = useState("");
   const [writingStyle, setWritingStyle] = useState("");
   const [compactMode, setCompactMode] = useState(false);
+  const [dashboardViewMode, setDashboardViewMode] = useState<"paginated" | "continuous">("paginated");
   const [showCharacterCount, setShowCharacterCount] = useState(true);
   const [privacyMode, setPrivacyMode] = useState(false);
   const toast = useToast();
@@ -1922,6 +2510,7 @@ export default function Home() {
   const [heroStat30, setHeroStat30] = useState(0);
   const heroStatsRef = useRef<HTMLDivElement | null>(null);
   const [heroStatsVisible, setHeroStatsVisible] = useState(false);
+  const [heroDashboard3dHovered, setHeroDashboard3dHovered] = useState(false);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [haloConnected, setHaloConnected] = useState(false);
   const [haloUrl, setHaloUrl] = useState("");
@@ -1970,6 +2559,22 @@ export default function Home() {
     halopsa: haloConnected,
     connectwise: cwConnected,
   });
+  const psaStatus = usePSAStatus();
+  const noPsaConnected = !psaStatus.loading && !psaStatus.halo && !psaStatus.connectwise;
+  useEffect(() => {
+    try {
+      setDemoDisabled(window.localStorage.getItem("handover_demo_disabled") === "true");
+    } catch {
+      setDemoDisabled(false);
+    }
+  }, []);
+  const demoModeActive =
+    Boolean(userEmail) &&
+    !psaStatus.loading &&
+    !psaStatus.halo &&
+    !psaStatus.connectwise &&
+    !demoDisabled;
+  const showDemoDataBanner = demoModeActive && sessionUsesDemoData;
   const importPsaLabel =
     psaConnections.primary === "connectwise" && !psaConnections.multiple
       ? "ConnectWise"
@@ -1988,12 +2593,7 @@ export default function Home() {
   const [pushTargetPsa, setPushTargetPsa] = useState<"halopsa" | "connectwise">(
     psaConnections.primary === "connectwise" ? "connectwise" : "halopsa",
   );
-  const pushModalPsaLabel =
-    psaConnections.multiple || psaConnections.primary === "connectwise"
-      ? pushTargetPsa === "connectwise"
-        ? "ConnectWise"
-        : "HaloPSA"
-      : pushPsaLabel;
+  const pushModalPsaLabel = pushTargetPsa === "connectwise" ? "ConnectWise" : "HaloPSA";
   const lastPushedPsaLabel =
     lastPushTargetPsa === "connectwise"
       ? "ConnectWise"
@@ -2001,6 +2601,10 @@ export default function Home() {
         ? "HaloPSA"
         : pushPsaLabel;
   useEffect(() => {
+    if (lastImportSourcePsa) {
+      setPushTargetPsa(lastImportSourcePsa);
+      return;
+    }
     if (!psaConnections.multiple) {
       setSchPushDisplayPsa(
         psaConnections.primary === "connectwise" ? "connectwise" : "halopsa",
@@ -2009,7 +2613,7 @@ export default function Home() {
         psaConnections.primary === "connectwise" ? "connectwise" : "halopsa",
       );
     }
-  }, [psaConnections.multiple, psaConnections.primary]);
+  }, [psaConnections.multiple, psaConnections.primary, lastImportSourcePsa]);
 
   const refreshUsage = useCallback(async (): Promise<number | null> => {
     const supabase = createClient();
@@ -2028,8 +2632,11 @@ export default function Home() {
       setUserTeamId(null);
       setShowTeamDashboardLink(false);
       setMonthCount(null);
+      setMonthlyStats(null);
+      setMonthlyStatsLoading(false);
       setTotalGenerationCount(null);
       setGenerationStreak(0);
+      setHasCompletedLoop(false);
       setTemplates([]);
       setProjects([]);
       setCollections([]);
@@ -2048,9 +2655,9 @@ export default function Home() {
     setShowSignUpBanner(false);
 
     const PROFILE_SELECT_FULL =
-      "plan, team_id, stripe_customer_id, subscription_status, trial_ends_at, trial_plan, first_name, last_name, display_name, job_title, company_name, brand_name, brand_colour, brand_secondary_colour, brand_logo_url, white_label_mode, signature_override, custom_signoff, writing_style, privacy_mode, compact_mode, show_character_count, output_preferences, total_generations, current_streak, onboarding_completed, referred_by, slack_webhook_url, slack_notifications_enabled, teams_webhook_url, teams_notifications_enabled";
+      "plan, team_id, stripe_customer_id, subscription_status, trial_ends_at, trial_plan, first_name, last_name, display_name, job_title, company_name, brand_name, brand_colour, brand_secondary_colour, brand_logo_url, white_label_mode, signature_override, custom_signoff, writing_style, privacy_mode, compact_mode, show_character_count, dashboard_view_mode, output_preferences, total_generations, current_streak, onboarding_completed, referred_by, slack_webhook_url, slack_notifications_enabled, teams_webhook_url, teams_notifications_enabled, has_completed_loop, last_generation_at";
     const PROFILE_SELECT_FALLBACK =
-      "plan, team_id, stripe_customer_id, subscription_status, trial_ends_at, trial_plan, first_name, last_name, job_title, company_name, brand_name, brand_colour, brand_secondary_colour, brand_logo_url, white_label_mode, signature_override, custom_signoff, writing_style, privacy_mode, compact_mode, show_character_count, output_preferences, total_generations, current_streak, onboarding_completed, referred_by, slack_webhook_url, slack_notifications_enabled, teams_webhook_url, teams_notifications_enabled";
+      "plan, team_id, stripe_customer_id, subscription_status, trial_ends_at, trial_plan, first_name, last_name, job_title, company_name, brand_name, brand_colour, brand_secondary_colour, brand_logo_url, white_label_mode, signature_override, custom_signoff, writing_style, privacy_mode, compact_mode, show_character_count, output_preferences, total_generations, current_streak, onboarding_completed, referred_by, slack_webhook_url, slack_notifications_enabled, teams_webhook_url, teams_notifications_enabled, has_completed_loop, last_generation_at";
 
     let profileRes = await supabase
       .from("profiles")
@@ -2129,7 +2736,8 @@ export default function Home() {
         ? canonical.subscription_status.trim()
         : null,
     );
-    setPlan(profilePlanToUiTier(canonical));
+    const uiPlan = profilePlanToUiTier(canonical);
+    setPlan(uiPlan);
     setPlanBadgeReady(true);
 
     let showTeamLink = false;
@@ -2154,6 +2762,24 @@ export default function Home() {
     );
     setProfileJobTitle(typeof profile?.job_title === "string" ? profile.job_title : "");
     setProfileCompanyName(typeof profile?.company_name === "string" ? profile.company_name : "");
+    if (uiPlan === "enterprise") {
+      try {
+        const portalRes = await fetch("/api/portal/account", {
+          credentials: "same-origin",
+          cache: "no-store",
+        });
+        const portalBody = (await portalRes.json()) as {
+          portal?: { slug?: string | null } | null;
+        };
+        setPortalSlug(
+          typeof portalBody?.portal?.slug === "string" ? portalBody.portal.slug : "",
+        );
+      } catch {
+        setPortalSlug("");
+      }
+    } else {
+      setPortalSlug("");
+    }
     setBrandName(typeof profile?.brand_name === "string" ? profile.brand_name : "");
     setBrandColour(
       typeof profile?.brand_colour === "string" && HEX_COLOUR_6.test(profile.brand_colour.trim())
@@ -2187,12 +2813,28 @@ export default function Home() {
       typeof profile?.writing_style === "string" ? profile.writing_style : "",
     );
     setCompactMode(Boolean(profile?.compact_mode));
+    const dvmRaw =
+      profile && typeof profile === "object"
+        ? (profile as { dashboard_view_mode?: unknown }).dashboard_view_mode
+        : null;
+    setDashboardViewMode(
+      typeof dvmRaw === "string" && dvmRaw.trim().toLowerCase() === "continuous"
+        ? "continuous"
+        : "paginated",
+    );
     setShowCharacterCount(profile?.show_character_count !== false);
     setPrivacyMode(Boolean(profile?.privacy_mode));
+    setHasCompletedLoop(
+      (profile as { has_completed_loop?: boolean } | null)?.has_completed_loop === true,
+    );
 
     const hydrated = hydrateOutputPrefsFromProfile(profile?.output_preferences);
     setOutputPrefs(hydrated.core);
-    setExtendedOutputPrefs(hydrated.extended);
+    if (Object.values(hydrated.extended).every((v) => v === false)) {
+      setExtendedOutputPrefs(defaultExtendedOutputPrefs());
+    } else {
+      setExtendedOutputPrefs(hydrated.extended);
+    }
 
     const [monthRes, totalRes] = await Promise.all([
       supabase
@@ -2274,17 +2916,9 @@ export default function Home() {
     }
 
     try {
-      const res = await fetch("/api/halo/connect");
-      const data = (await res.json()) as {
-        connected?: boolean;
-        haloUrl?: string;
-        updatedAt?: string | null;
-        proRequired?: boolean;
-        autoClosureSummaryEnabled?: boolean;
-        reconnectRecommended?: boolean;
-        connectionCheckFailed?: boolean;
-        error?: string;
-      };
+      const bundle = await getPsaConnectBundle();
+      const res = { ok: bundle.halo.ok };
+      const data = bundle.halo.json;
       if (!res.ok) {
         setHaloConnected(false);
         setHaloReconnectRecommended(true);
@@ -2325,7 +2959,8 @@ export default function Home() {
           .ilike("input_text", "HaloPSA %Export%");
         setHaloImportedCount(count ?? 0);
       }
-    } catch {
+    } catch (error) {
+      console.log("[integrations] load error:", error);
       setHaloConnected(false);
       setHaloUpdatedAt(null);
       setHaloPermissionWarning(null);
@@ -2383,21 +3018,21 @@ export default function Home() {
       setCwConnected(false);
       setCwSiteUrl("");
       invalidatePsaConnectionsCache();
+      invalidatePSAStatusCache();
       return;
     }
     try {
-      const res = await fetch("/api/cw/connect");
-      const data = (await res.json()) as {
-        connected?: boolean;
-        siteUrl?: string;
-      };
+      const bundle = await getPsaConnectBundle();
+      const data = bundle.cw.json;
       setCwConnected(Boolean(data.connected));
       setCwSiteUrl(typeof data.siteUrl === "string" ? data.siteUrl : "");
       invalidatePsaConnectionsCache();
+      invalidatePSAStatusCache();
     } catch {
       setCwConnected(false);
       setCwSiteUrl("");
       invalidatePsaConnectionsCache();
+      invalidatePSAStatusCache();
     }
   }, []);
 
@@ -2411,6 +3046,7 @@ export default function Home() {
         setProjects([]);
         setProjectsOffset(0);
         setHasMoreProjects(false);
+        setProjectsBootstrapped(true);
         return;
       }
 
@@ -2439,13 +3075,103 @@ export default function Home() {
       setProjects((prev) => (append ? [...prev, ...rows] : rows));
       setProjectsOffset(offset + rows.length);
       setHasMoreProjects(isPro && rows.length === pageSize);
+      setProjectsBootstrapped(true);
     },
     [],
   );
 
+  useEffect(() => {
+    try {
+      setSidebarPinned(
+        window.localStorage.getItem("handover-sidebar-pinned") === "true",
+      );
+    } catch {
+      setSidebarPinned(false);
+    }
+  }, []);
+
+  const sidebarExpanded = sidebarPinned || sidebarHovered;
+  const sidebarMainOffsetPx = sidebarExpanded ? 280 : 56;
+
+  const toggleSidebarPinned = useCallback(() => {
+    setSidebarPinned((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(
+          "handover-sidebar-pinned",
+          next ? "true" : "false",
+        );
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
+
+  const sidebarNavLabelClass = cn(
+    "overflow-hidden whitespace-nowrap transition-opacity duration-150",
+    "max-md:opacity-100 max-md:w-auto",
+    sidebarExpanded ? "md:opacity-100 md:w-auto" : "md:w-0 md:opacity-0",
+  );
+
+  const sidebarNavItemClass = useCallback(
+    (active: boolean) =>
+      cn(
+        "relative flex h-10 w-full items-center rounded-[var(--radius)] border-l-2 text-[12px] transition-colors duration-[120ms] ease-in-out",
+        sidebarExpanded
+          ? "gap-1.5 px-2.5 max-md:gap-1.5 max-md:px-2.5 md:gap-1.5 md:px-2.5"
+          : "max-md:gap-1.5 max-md:px-2.5 md:justify-center md:gap-0 md:px-0",
+        active
+          ? "border-[var(--accent)] bg-[var(--accent)]/15 font-medium text-white"
+          : "border-transparent text-[var(--text-secondary)] hover:bg-white/5 hover:text-white",
+      ),
+    [sidebarExpanded],
+  );
+
+  const shellPageTitle = useMemo(() => {
+    if (settingsOpen) return "Settings";
+    switch (mainView) {
+      case "overview":
+        return "Overview";
+      case "generate":
+        return "Generate";
+      case "delivery":
+        return "Delivery Health";
+      case "scheduled":
+        return "Scheduled";
+      case "reports":
+        return "QBR Builder";
+      case "organisation":
+        return "Organisation";
+      case "configuration":
+        return "Configuration";
+      case "changelog":
+        return "What's new";
+      default:
+        return "Handover";
+    }
+  }, [mainView, settingsOpen]);
+
   const refreshHistory = useCallback(async () => {
     await fetchProjects(0, false);
   }, [fetchProjects]);
+
+  const markProfileLoopCompleted = useCallback(async () => {
+    try {
+      const res = await fetch("/api/profile/complete-loop", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      if (!res.ok) return;
+      setHasCompletedLoop(true);
+      void refreshUsage();
+      if (userEmail && !hasProAccess && !readUpgradePromptConsumed()) {
+        setShowPostGenProUpsell(true);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [userEmail, hasProAccess, refreshUsage]);
 
   const refreshCollections = useCallback(async () => {
     try {
@@ -2476,8 +3202,22 @@ export default function Home() {
     const max = Math.max(0, clientEmailSections.length - 1);
     const idx = Math.min(activeClientEmailIndex, max);
     const s = clientEmailSections[idx];
-    return (s?.content ?? result.client_email ?? "").trim();
+    const raw = (s?.content ?? result.client_email ?? "").trim();
+    if (clientEmailSections.length === 1) {
+      return stripLeadingClientEmailHeader(raw);
+    }
+    return raw;
   }, [result, clientEmailSections, activeClientEmailIndex]);
+
+  const followUpClientOptions = useMemo(() => {
+    if (!result?.actions?.length) return [] as string[];
+    const names = new Set<string>();
+    for (const a of result.actions) {
+      const c = (a.client_name ?? "").trim();
+      if (c) names.add(c);
+    }
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [result?.actions]);
 
   const trialInfo = useMemo(() => {
     if (!userEmail || hasProAccess || !userCreatedAt) return null;
@@ -2510,9 +3250,177 @@ export default function Home() {
     return { used, cap: 10 as const, inTrial };
   }, [userEmail, hasProAccess, userCreatedAt, totalGenerationCount, monthCount]);
 
+  const normalizedProfilePlan = useMemo(
+    () => normalizePlanLabel(profileDbPlan ?? ""),
+    [profileDbPlan],
+  );
+  const isEnterprisePlanUser = useMemo(
+    () => normalizedProfilePlan === "enterprise",
+    [normalizedProfilePlan],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!result || !userEmail || !isEnterprisePlanUser || !portalSlug.trim()) {
+      setSharePortalClientId(null);
+      return;
+    }
+    void (async () => {
+      const res = await fetch("/api/portal/clients", { credentials: "same-origin", cache: "no-store" });
+      if (!res.ok || cancelled) return;
+      const j = (await res.json().catch(() => ({}))) as {
+        clients?: Array<{ id: string; client_name: string }>;
+      };
+      const clients = j.clients ?? [];
+      const actionName =
+        (result.actions?.[0] as { client_name?: string } | undefined)?.client_name?.trim().toLowerCase() ?? "";
+      const proj = projectName.trim().toLowerCase();
+      const match = clients.find((c) => {
+        const n = (c.client_name ?? "").trim().toLowerCase();
+        return n && (n === actionName || n === proj);
+      });
+      if (!cancelled) setSharePortalClientId(match?.id ?? null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [result, projectName, userEmail, isEnterprisePlanUser, portalSlug]);
+
+  const isProfessionalPlanUser = useMemo(
+    () =>
+      normalizedProfilePlan === "professional" ||
+      normalizedProfilePlan === "professional_trial" ||
+      profileDbPlan === "professional_trial",
+    [normalizedProfilePlan, profileDbPlan],
+  );
+  const proMonthlyUsage = useMemo(() => {
+    if (!isProfessionalPlanUser) return null;
+    return Math.max(0, monthCount ?? 0);
+  }, [isProfessionalPlanUser, monthCount]);
+  const showPro75Warning = Boolean(
+    isProfessionalPlanUser &&
+      proMonthlyUsage != null &&
+      proMonthlyUsage >= 150 &&
+      proMonthlyUsage < 180 &&
+      !pro75Dismissed,
+  );
+  const showPro90Warning = Boolean(
+    isProfessionalPlanUser && proMonthlyUsage != null && proMonthlyUsage >= 180 && proMonthlyUsage < 200,
+  );
+  const showPro100Warning = Boolean(
+    isProfessionalPlanUser && proMonthlyUsage != null && proMonthlyUsage >= 200,
+  );
+
+  useEffect(() => {
+    if (!isProfessionalPlanUser || !authUserId) {
+      setPro75Dismissed(false);
+      return;
+    }
+    const monthKey = new Date().toISOString().slice(0, 7);
+    const key = `${SS_PRO_75_DISMISSED}:${authUserId}:${monthKey}`;
+    try {
+      setPro75Dismissed(window.sessionStorage.getItem(key) === "1");
+    } catch {
+      setPro75Dismissed(false);
+    }
+  }, [isProfessionalPlanUser, authUserId, monthCount]);
+
+  const dismissPro75Warning = useCallback(() => {
+    if (!authUserId) {
+      setPro75Dismissed(true);
+      return;
+    }
+    const monthKey = new Date().toISOString().slice(0, 7);
+    const key = `${SS_PRO_75_DISMISSED}:${authUserId}:${monthKey}`;
+    try {
+      window.sessionStorage.setItem(key, "1");
+    } catch {
+      /* ignore */
+    }
+    setPro75Dismissed(true);
+  }, [authUserId]);
+
+  useEffect(() => {
+    if (!isProfessionalPlanUser || !userCreatedAt || (proMonthlyUsage ?? 0) <= 150) {
+      setShowProTeamRecommendation(false);
+      return;
+    }
+    const ageDays = (Date.now() - new Date(userCreatedAt).getTime()) / (1000 * 60 * 60 * 24);
+    if (ageDays <= 14) {
+      setShowProTeamRecommendation(false);
+      return;
+    }
+    const key = authUserId ? `${LS_PRO_TEAM_RECO_SEEN}:${authUserId}` : LS_PRO_TEAM_RECO_SEEN;
+    try {
+      const seen = window.localStorage.getItem(key) === "1";
+      if (seen) {
+        setShowProTeamRecommendation(false);
+        return;
+      }
+      setShowProTeamRecommendation(true);
+      window.localStorage.setItem(key, "1");
+    } catch {
+      setShowProTeamRecommendation(true);
+    }
+  }, [isProfessionalPlanUser, userCreatedAt, proMonthlyUsage, authUserId]);
+
   useEffect(() => {
     sevenGenToastFiredRef.current = false;
   }, [authUserId]);
+
+  useEffect(() => {
+    demoInputAutofillDoneRef.current = false;
+  }, [authUserId, demoModeActive]);
+
+  useEffect(() => {
+    if (!demoModeActive) return;
+    if (!(totalGenerationCount === 0 || totalGenerationCount === null)) return;
+    if (demoInputAutofillDoneRef.current) return;
+    if (input.trim()) return;
+    let nextInput = DEMO_EXAMPLE_INPUT;
+    try {
+      const stored = window.sessionStorage.getItem(SS_DEMO_INPUT);
+      if (stored && stored.trim()) {
+        nextInput = stored;
+      }
+    } catch {
+      /* ignore */
+    }
+    demoInputAutofillDoneRef.current = true;
+    setInput(nextInput);
+    setSessionUsesDemoData(true);
+  }, [demoModeActive, totalGenerationCount, input]);
+
+  useEffect(() => {
+    if (!demoModeActive) return;
+    if (!input.trim()) return;
+    try {
+      window.sessionStorage.setItem(SS_DEMO_INPUT, input);
+    } catch {
+      /* ignore */
+    }
+  }, [demoModeActive, input]);
+
+  useEffect(() => {
+    if (psaStatus.loading) return;
+    if (!psaStatus.halo && !psaStatus.connectwise) return;
+    setSessionUsesDemoData(false);
+    try {
+      window.sessionStorage.removeItem(SS_DEMO_INPUT);
+    } catch {
+      /* ignore */
+    }
+  }, [psaStatus.loading, psaStatus.halo, psaStatus.connectwise]);
+
+  useEffect(() => {
+    if (!demoModeActive) {
+      setAllClients([]);
+      setAllTickets([]);
+      setAllProjects([]);
+      setDataLoaded(false);
+      setDataLoading(false);
+    }
+  }, [demoModeActive]);
 
   useEffect(() => {
     if (!userEmail || hasProAccess || !freeGenUsage || !authUserId) return;
@@ -2545,10 +3453,20 @@ export default function Home() {
   useEffect(() => {
     if (!userEmail) return;
     if (hasProAccess) return;
-    if (mainView === "delivery" || mainView === "scheduled") {
-      setMainView("generate");
+    if (mainView === "delivery" || mainView === "organisation") {
+      setMainView("overview");
     }
   }, [userEmail, hasProAccess, mainView]);
+
+  useEffect(() => {
+    if (!userEmail) return;
+    if (mainView !== "organisation") return;
+    if (!hasProAccess || !isEnterprisePlanUser) {
+      setMainView("overview");
+      setSidebarOpenMobile(false);
+      setSettingsOpen(false);
+    }
+  }, [userEmail, hasProAccess, isEnterprisePlanUser, mainView]);
 
   const dashStats = useMemo(() => {
     if (!userEmail) return null;
@@ -2591,6 +3509,66 @@ export default function Home() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!userEmail) {
+      setMonthlyStats(null);
+      setMonthlyStatsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setMonthlyStatsLoading(true);
+    void (async () => {
+      try {
+        const res = await fetch("/api/stats/monthly", { credentials: "same-origin" });
+        if (!res.ok) {
+          if (!cancelled) setMonthlyStats(null);
+          return;
+        }
+        const data = (await res.json()) as {
+          this_month?: unknown;
+          last_month?: unknown;
+        };
+        if (cancelled) return;
+        setMonthlyStats({
+          this_month:
+            typeof data.this_month === "number" && Number.isFinite(data.this_month)
+              ? data.this_month
+              : 0,
+          last_month:
+            typeof data.last_month === "number" && Number.isFinite(data.last_month)
+              ? data.last_month
+              : 0,
+        });
+      } catch {
+        if (!cancelled) setMonthlyStats(null);
+      } finally {
+        if (!cancelled) setMonthlyStatsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userEmail]);
+
+  useEffect(() => {
+    if (!userEmail || campaigns.length > 0) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/scheduled-reports");
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { schedules?: typeof campaigns };
+        const schedules = Array.isArray(data.schedules) ? data.schedules : [];
+        if (!cancelled) setCampaigns(schedules);
+      } catch {
+        /* overview preload — ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userEmail, campaigns.length]);
 
   useEffect(() => {
     try {
@@ -2684,9 +3662,18 @@ export default function Home() {
     void fetchProjects();
     void refreshCollections();
     setIntegrationsBootstrapping(true);
+    const integrationsBootstrapDone = { current: false };
+    const finishIntegrationsBootstrap = () => {
+      if (integrationsBootstrapDone.current) return;
+      integrationsBootstrapDone.current = true;
+      setIntegrationsBootstrapping(false);
+    };
+    window.setTimeout(finishIntegrationsBootstrap, 12_000);
     void Promise.all([refreshHaloConnection(), refreshCwConnection()])
-      .catch(() => {})
-      .finally(() => setIntegrationsBootstrapping(false));
+      .catch((error) => {
+        console.log("[integrations] load error:", error);
+      })
+      .finally(finishIntegrationsBootstrap);
 
     const {
       data: { subscription },
@@ -2696,9 +3683,18 @@ export default function Home() {
       void fetchProjects();
       void refreshCollections();
       setIntegrationsBootstrapping(true);
+      const authBootstrapDone = { current: false };
+      const finishAuthBootstrap = () => {
+        if (authBootstrapDone.current) return;
+        authBootstrapDone.current = true;
+        setIntegrationsBootstrapping(false);
+      };
+      window.setTimeout(finishAuthBootstrap, 12_000);
       void Promise.all([refreshHaloConnection(), refreshCwConnection()])
-        .catch(() => {})
-        .finally(() => setIntegrationsBootstrapping(false));
+        .catch((error) => {
+          console.log("[integrations] load error:", error);
+        })
+        .finally(finishAuthBootstrap);
     });
 
     return () => subscription.unsubscribe();
@@ -2729,6 +3725,18 @@ export default function Home() {
   }, [isGenerating]);
 
   useEffect(() => {
+    if (!isGenerating) {
+      setGenProgressMsgIx(0);
+      return;
+    }
+    setGenProgressMsgIx(0);
+    const id = window.setInterval(() => {
+      setGenProgressMsgIx((i) => (i + 1) % GEN_PROGRESS_MESSAGES.length);
+    }, 2000);
+    return () => window.clearInterval(id);
+  }, [isGenerating]);
+
+  useEffect(() => {
     if (!userEmail) {
       setOnboardingOverlayOpen(false);
       return;
@@ -2747,6 +3755,38 @@ export default function Home() {
     }
     setOnboardingOverlayOpen(true);
   }, [userEmail, onboardingProfileLoaded, onboardingRequiredExplicit, totalGenerationCount]);
+
+  useEffect(() => {
+    if (plan !== "enterprise") {
+      setPortalSlugChecking(false);
+      setPortalSlugAvailable(null);
+      return;
+    }
+    const normalized = sanitizePortalSlug(portalSlug);
+    if (!PORTAL_SLUG_RE.test(normalized)) {
+      setPortalSlugChecking(false);
+      setPortalSlugAvailable(null);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        setPortalSlugChecking(true);
+        try {
+          const res = await fetch(
+            `/api/portal/check-slug?slug=${encodeURIComponent(normalized)}`,
+            { credentials: "same-origin" },
+          );
+          const body = (await res.json()) as { available?: boolean };
+          setPortalSlugAvailable(res.ok ? body.available === true : false);
+        } catch {
+          setPortalSlugAvailable(false);
+        } finally {
+          setPortalSlugChecking(false);
+        }
+      })();
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [plan, portalSlug]);
 
   useEffect(() => {
     if (!userEmail) return;
@@ -2882,10 +3922,9 @@ export default function Home() {
         setSettingsTab("referrals");
       }
       if (openSettingsValue === "integrations") {
-        setMainView("integrations");
-        if (params.get("cw") === "1") {
-          setIntegrationsInitialDetail("connectwise");
-        }
+        openIntegrationsInConfiguration(
+          params.get("cw") === "1" ? { initialDetail: "connectwise" } : undefined,
+        );
       }
       router.replace("/", { scroll: false });
       return undefined;
@@ -2956,6 +3995,8 @@ export default function Home() {
     setUserTeamId(null);
     setShowTeamDashboardLink(false);
     setMonthCount(null);
+    setMonthlyStats(null);
+    setMonthlyStatsLoading(false);
     setTotalGenerationCount(null);
     setGenerationStreak(0);
     setProjects([]);
@@ -2993,6 +4034,55 @@ export default function Home() {
     [toast],
   );
 
+  const pushModalImportRows = useMemo(() => {
+    const haloRows = Array.isArray(cachedHaloTickets?.tickets)
+      ? (cachedHaloTickets.tickets as Array<Record<string, unknown>>)
+      : [];
+
+    if (lastImportSourcePsa === "connectwise") {
+      if (lastImportedHaloItems.length > 0) return lastImportedHaloItems;
+      return parseCwImportedItemsFromInput(input);
+    }
+
+    if (lastImportSourcePsa === "halopsa") {
+      if (lastImportedHaloItems.length > 0) return lastImportedHaloItems;
+      return restoreImportedItemsForHistory(input, haloRows);
+    }
+
+    if (lastImportedHaloItems.length > 0) return lastImportedHaloItems;
+    const fromCw = parseCwImportedItemsFromInput(input);
+    if (fromCw.length > 0) return fromCw;
+    const restored = restoreImportedItemsForHistory(input, haloRows);
+    if (restored.length > 0) return restored;
+    const clientGuess = (result?.actions?.[0]?.client_name ?? "").trim();
+    if (clientGuess && haloRows.length > 0) {
+      const fallback = haloImportedItemsForClientName(clientGuess, haloRows);
+      if (fallback.length > 0) return fallback;
+    }
+    return [];
+  }, [
+    lastImportedHaloItems,
+    lastImportSourcePsa,
+    input,
+    cachedHaloTickets?.tickets,
+    result?.actions,
+  ]);
+
+  const clientEmailTabDisplay = useMemo(() => {
+    const haloRows = Array.isArray(cachedHaloTickets?.tickets)
+      ? (cachedHaloTickets.tickets as Array<Record<string, unknown>>)
+      : [];
+    return resolveClientEmailTabDisplay(lastImportedHaloItems, input, haloRows);
+  }, [lastImportedHaloItems, input, cachedHaloTickets?.tickets]);
+
+  const showPushPsaPicker =
+    !lastImportSourcePsa && psaConnections.multiple;
+  const pushModalHeaderLabel = lastImportSourcePsa
+    ? lastImportSourcePsa === "connectwise"
+      ? "ConnectWise"
+      : "HaloPSA"
+    : pushModalPsaLabel;
+
   const openPushModal = useCallback(
     (
       presetOutputs?: ("client_email" | "actions" | "risks" | "summary" | "status_report")[],
@@ -3003,7 +4093,8 @@ export default function Home() {
         tryOpenProFeatureGate(`Push to ${pushPsaLabel}`);
         return;
       }
-      if (lastImportedHaloItems.length === 0) {
+      const rows = pushModalImportRows;
+      if (rows.length === 0) {
         toast({
           variant: "error",
           message: `Import ${pushPsaLabel} tickets first`,
@@ -3011,103 +4102,82 @@ export default function Home() {
         });
         return;
       }
-      const ids = lastImportedHaloItems.map((t) => t.id);
+      if (lastImportSourcePsa) {
+        setPushTargetPsa(lastImportSourcePsa);
+      } else if (targetPsa) {
+        setPushTargetPsa(targetPsa);
+      } else if (psaConnections.multiple) {
+        const fromCw = parseCwImportedItemsFromInput(input);
+        setPushTargetPsa(fromCw.length > 0 ? "connectwise" : "halopsa");
+      }
+      const ids = rows.map((t) => t.id);
       setPushSelectedTicketIds(ids);
+      const defaultPushOutputs: ("actions" | "risks" | "summary" | "status_report")[] = [
+        "summary",
+        "actions",
+        "risks",
+      ];
+      const initialPushOutputs =
+        presetOutputs && presetOutputs.length > 0 ? presetOutputs : defaultPushOutputs;
       setPushSelectedOutputs(
-        presetOutputs && presetOutputs.length > 0
-          ? presetOutputs
-          : ["summary", "actions", "risks"],
+        initialPushOutputs.filter(
+          (k): k is "actions" | "risks" | "summary" | "status_report" => k !== "client_email",
+        ),
       );
-      if (targetPsa) setPushTargetPsa(targetPsa);
+      setPushSummaryScope("combined_all");
+      setPushStatusScope("combined_all");
       setPushErrors([]);
+      setPushModalMobileStep(0);
       setPushModalOpen(true);
     },
-    [lastImportedHaloItems, result, toast, hasProAccess, tryOpenProFeatureGate, pushPsaLabel],
+    [
+      pushModalImportRows,
+      result,
+      toast,
+      hasProAccess,
+      tryOpenProFeatureGate,
+      pushPsaLabel,
+      lastImportSourcePsa,
+      psaConnections.multiple,
+      input,
+    ],
   );
 
-  const handlePushToHalo = useCallback(
-    (tabName: "client_email" | "actions" | "risks" | "summary" | "status_report") => {
-      openPushModal([tabName]);
-    },
-    [openPushModal],
-  );
-  const renderPushActionTrigger = useCallback(
-    (tabName: "client_email" | "actions" | "risks" | "summary" | "status_report") => {
-      if (!psaConnections.primary) return null;
-      if (psaConnections.multiple) {
-        return (
-          <details className="relative">
-            <summary
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "6px 12px",
-                fontSize: "12px",
-                fontWeight: 500,
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius)",
-                background: "transparent",
-                color: "var(--text-secondary)",
-                cursor: "pointer",
-                transition: "all 0.15s",
-                listStyle: "none",
-              }}
-            >
-              ↑ Push to PSA
-              <ChevronDown className="size-3" />
-            </summary>
-            <div className="absolute right-0 z-30 mt-1 min-w-[170px] rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] p-1 shadow-lg">
-              <button
-                type="button"
-                className="block w-full rounded px-2 py-1.5 text-left text-[12px] hover:bg-[var(--bg-secondary)]"
-                onClick={() => openPushModal([tabName], "halopsa")}
-              >
-                HaloPSA
-              </button>
-              <button
-                type="button"
-                className="block w-full rounded px-2 py-1.5 text-left text-[12px] hover:bg-[var(--bg-secondary)]"
-                onClick={() => openPushModal([tabName], "connectwise")}
-              >
-                ConnectWise
-              </button>
-            </div>
-          </details>
-        );
+  const onShareReportToPortal = useCallback(async () => {
+    if (!result || !sharePortalClientId) return;
+    setSharePortalBusy(true);
+    try {
+      const res = await fetch(`/api/portal/clients/${encodeURIComponent(sharePortalClientId)}/reports`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          title: projectName.trim() || "Handover report",
+          content: result,
+        }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        toast({
+          variant: "error",
+          message: j.error ?? "Could not share to portal.",
+          durationMs: 5000,
+        });
+        return;
       }
-      return (
-        <button
-          type="button"
-          onClick={() => handlePushToHalo(tabName)}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            padding: "6px 12px",
-            fontSize: "12px",
-            fontWeight: 500,
-            border: "1px solid var(--border)",
-            borderRadius: "var(--radius)",
-            background: "transparent",
-            color: "var(--text-secondary)",
-            cursor: "pointer",
-            transition: "all 0.15s",
-          }}
-        >
-          {`↑ Push to ${pushPsaLabel}`}
-        </button>
-      );
-    },
-    [handlePushToHalo, openPushModal, psaConnections.multiple, psaConnections.primary, pushPsaLabel],
-  );
+      toast({ message: "Shared to client portal", variant: "success", durationMs: 4000 });
+    } finally {
+      setSharePortalBusy(false);
+    }
+  }, [result, sharePortalClientId, projectName, toast]);
 
   const executePushToHalo = useCallback(async () => {
     if (!result || pushSelectedTicketIds.length === 0 || pushSelectedOutputs.length === 0) return;
     if (pushInFlightRef.current || pushLoading) return;
     pushInFlightRef.current = true;
-    const effectivePushTarget =
-      psaConnections.multiple
+    const effectivePushTarget = lastImportSourcePsa
+      ? lastImportSourcePsa
+      : psaConnections.multiple
         ? pushTargetPsa
         : psaConnections.primary === "connectwise"
           ? "connectwise"
@@ -3147,6 +4217,8 @@ export default function Home() {
           excelTabs: selectedExcelTabs,
           projectName,
           generationId: selectedProjectId,
+          pushSummaryScope,
+          pushStatusScope,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -3170,12 +4242,18 @@ export default function Home() {
       if ((data.posted ?? 0) > 0) {
         void flushAchievementToasts(["first_halo_pushback"]);
       }
+      if ((data.posted ?? 0) > 0) {
+        setPushQuickActionSuccess(true);
+      }
       if ((data.failed ?? 0) === 0) {
         setPushModalOpen(false);
         toast({
           message: `Pushed to ${pushLabel} - posted to ${data.posted ?? 0} tickets`,
           variant: "success",
         });
+        if ((data.posted ?? 0) > 0) {
+          void markProfileLoopCompleted();
+        }
       } else if ((data.posted ?? 0) > 0) {
         toast({
           message: `${data.posted ?? 0} of ${pushSelectedTicketIds.length} tickets posted successfully`,
@@ -3202,13 +4280,17 @@ export default function Home() {
     selectedExcelTabs,
     pushSelectedOutputs,
     pushSelectedTicketIds,
+    pushSummaryScope,
+    pushStatusScope,
     result,
     selectedProjectId,
     toast,
     flushAchievementToasts,
+    markProfileLoopCompleted,
     psaConnections.multiple,
     psaConnections.primary,
     pushTargetPsa,
+    lastImportSourcePsa,
   ]);
 
   const replayGenerationWebhookNotify = useCallback(async () => {
@@ -3245,15 +4327,81 @@ export default function Home() {
     return `${mins} mins ago`;
   }, [lastPushed]);
 
+  const visibleCoreTabsList = useMemo(() => {
+    if (!result) return [...MODAL_OUTPUT_KEYS];
+    return visibleCoreTabsForResult(result);
+  }, [result]);
+
+  const visibleExtendedTabsList = useMemo(() => {
+    if (!result) return [];
+    return visibleExtendedTabsForResult(result);
+  }, [result]);
+
+  const outputTabStripExtendedKeys = useMemo(
+    () => visibleExtendedTabsList.filter((k) => !EXCEL_ONLY_TAB_KEYS.has(k)),
+    [visibleExtendedTabsList],
+  );
+
+  const fullReportExcelSheetPickerOptions = useMemo(() => {
+    if (!result) return [] as { id: string; label: string }[];
+    const gen = generatedOutputTabIdsForExcelExport(result);
+    return EXPORT_FULLREPORT_TAB_OPTIONS.filter((o) => isExportPickerTabGenerated(o.id, gen));
+  }, [result]);
+
+  const scheduleWizardStep0RequiredRemaining = useMemo(() => {
+    let n = 0;
+    if (!(schName ?? "").trim()) n += 1;
+    if (schReportType !== "note_to_self" && !(schEmail ?? "").trim()) n += 1;
+    if (!schDay) n += 1;
+    if (!schTime) n += 1;
+    return n;
+  }, [schName, schEmail, schReportType, schDay, schTime]);
+
+  const scheduleWizardStep1RequiredRemaining = useMemo(() => {
+    if (!schIncludeTickets && !schIncludeProjects) return 1;
+    let n = 0;
+    if (
+      schIncludeTickets &&
+      ticketClientMode === "selected" &&
+      selectedTicketClients.length === 0 &&
+      selectedTicketIds.length === 0
+    ) {
+      n += 1;
+    }
+    if (
+      schIncludeProjects &&
+      projectClientMode === "selected" &&
+      selectedProjectClients.length === 0 &&
+      selectedProjectIds.length === 0
+    ) {
+      n += 1;
+    }
+    return n;
+  }, [
+    schIncludeTickets,
+    schIncludeProjects,
+    ticketClientMode,
+    projectClientMode,
+    selectedTicketClients.length,
+    selectedTicketIds.length,
+    selectedProjectClients.length,
+    selectedProjectIds.length,
+  ]);
+
+  const scheduleWizardRequiredRemaining =
+    schCampaignEditorTab === 0
+      ? scheduleWizardStep0RequiredRemaining
+      : schCampaignEditorTab === 1
+        ? scheduleWizardStep1RequiredRemaining
+        : 0;
+
   const handleFullReportExcelExport = useCallback(async () => {
     try {
-      console.log("[excel] Starting export");
       if (!hasProAccess) {
         tryOpenProFeatureGate("Full report pack (Excel export)");
         return;
       }
       if (!result) {
-        console.error("[excel] No outputs");
         toast({
           message: "No data to export",
           variant: "error",
@@ -3261,11 +4409,6 @@ export default function Home() {
         });
         return;
       }
-      console.log(
-        "[excel] outputs variable:",
-        typeof result,
-        result ? Object.keys(result) : "null",
-      );
       const outputs = toFullReportOutputs(result);
       const safeResult: FullReportOutputs = {
         ...outputs,
@@ -3276,38 +4419,7 @@ export default function Home() {
         (projectName || "").trim() ||
         safeResult.actions?.[0]?.project_name ||
         "Handover Report";
-      console.log("[excel] outputs type:", typeof outputs);
-      console.log("[excel] outputs keys:", Object.keys(outputs ?? {}));
-      console.log(
-        "[excel] Full outputs keys:",
-        JSON.stringify(Object.keys(outputs), null, 2),
-      );
-      console.log("[excel] actions:", outputs.actions?.length);
-      console.log("[excel] risks:", outputs.risks?.length);
-      console.log("[excel] summary:", outputs.summary?.length);
-      console.log("[excel] actions value type:", typeof outputs.actions);
-      console.log(
-        "[excel] actions sample:",
-        JSON.stringify(outputs.actions)?.substring(0, 200),
-      );
-      Object.entries(outputs).forEach(([key, val]) => {
-        console.log(
-          `[excel] ${key}:`,
-          typeof val,
-          Array.isArray(val)
-            ? `array(${val.length})`
-            : typeof val === "string"
-              ? `string(${val.length})`
-              : JSON.stringify(val)?.substring(0, 50),
-        );
-      });
-      console.log("[excel] Calling export with:", {
-        projectName: safeProjectName,
-        actionsCount: safeResult.actions.length,
-        risksCount: safeResult.risks.length,
-        selectedTabs: exportFullTabs,
-        hasBranding: true,
-      });
+      const selectedTabsForExport = normalizeExcelExportEngineTabIds(exportFullTabs ?? []);
       const supabaseExport = createClient();
       const {
         data: { user: exportUser },
@@ -3338,7 +4450,7 @@ export default function Home() {
         (input.trim() || lastInput.trim()).trim(),
       );
       await exportToExcel(safeResult, safeProjectName, {
-        selectedTabs: exportFullTabs ?? [],
+        selectedTabs: selectedTabsForExport,
         actionColumns: exportFullActionCols ?? [],
         riskColumns: exportFullRiskCols ?? [],
         clientName: safeResult.actions?.[0]?.client_name || null,
@@ -3356,7 +4468,6 @@ export default function Home() {
         riskSourceColumn: buildRiskSourceColumnForExport(safeResult.risks, titlesForExport),
         ...buildActionExportMeta(safeProjectName, safeResult.actions),
       });
-      console.log("[excel] Export completed");
       try {
         window.localStorage.setItem(LS_EXCEL_EXPORTED, "true");
       } catch {
@@ -3368,12 +4479,11 @@ export default function Home() {
         subtitle: getFullReportExportFilename(projectName),
         durationMs: 3000,
       });
+      setFullReportExportPickerOpen(false);
       setExportMenuOpen(false);
       setExportSubPanel(null);
     } catch (err: unknown) {
       const e = err instanceof Error ? err : new Error(String(err));
-      console.error("[excel] Export error:", e.message);
-      console.error("[excel] Stack:", e.stack);
       setError(e.message);
       toast({
         message: `Export failed: ${e.message}`,
@@ -3432,6 +4542,31 @@ export default function Home() {
     }
     await handleFullReportExcelExport();
   }, [hasProAccess, result, projectName, handleFullReportExcelExport, toast]);
+
+  const openFullReportExportPicker = useCallback(() => {
+    if (!result) {
+      toast({
+        message: "No data to export",
+        variant: "error",
+        durationMs: 4000,
+      });
+      return;
+    }
+    if (!hasProAccess) {
+      void runFirstGenExcelFromCelebration();
+      return;
+    }
+    const gen = generatedOutputTabIdsForExcelExport(result);
+    const allowedTabIds = EXPORT_FULLREPORT_TAB_OPTIONS.filter((o) =>
+      isExportPickerTabGenerated(o.id, gen),
+    ).map((o) => o.id);
+    const p = loadFullReportExportPrefs();
+    const nextTabs = p.tabs.filter((id) => allowedTabIds.includes(id));
+    setExportFullTabs(nextTabs.length > 0 ? nextTabs : [...allowedTabIds]);
+    setExportFullActionCols(p.actionColumns);
+    setExportFullRiskCols(p.riskColumns);
+    setFullReportExportPickerOpen(true);
+  }, [hasProAccess, result, runFirstGenExcelFromCelebration, toast]);
 
   const openBillingPortal = useCallback(
     async (returnPath = "/") => {
@@ -3629,7 +4764,7 @@ export default function Home() {
           original_output: originalOutput,
           output_type: outputType,
           instruction,
-          tone: outputType === "client_email" ? emailTone : "professional",
+          tone: outputType === "client_email" ? GENERATION_EMAIL_TONE : "professional",
           context: input,
         }),
       });
@@ -3664,108 +4799,6 @@ export default function Home() {
     }
   };
 
-  const handleToneRewrite = useCallback(
-    async (newTone: Tone) => {
-      if (!userEmail) return;
-      if (toneRewriteBusyRef.current) return;
-      if (!lastInput.trim()) return;
-
-      toneRewriteBusyRef.current = true;
-      rewriteEmailSeqRef.current += 1;
-      const seq = rewriteEmailSeqRef.current;
-      setIsRewritingEmail(true);
-      try {
-        const selectedOutputs = MODAL_OUTPUT_KEYS.filter((k) => outputPrefs[k]);
-        const extendedOutputKeys = EXTENDED_PM_TAB_KEYS.filter(
-          (k) => extendedOutputPrefs[k],
-        );
-        const res = await fetch("/api/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            input: lastInput,
-            tone: newTone,
-            projectName,
-            rewriteEmailOnly: true,
-            outputPreferences: { enabledTabs: selectedOutputs },
-            extendedOutputKeys,
-            privacyMode,
-            clientContactName: outputPrefs.client_email
-              ? clientContactName.trim() || null
-              : null,
-            clientContactEmail: outputPrefs.client_email
-              ? clientContactEmail.trim() || null
-              : null,
-          }),
-        });
-        const data: unknown = await res.json();
-        if (seq !== rewriteEmailSeqRef.current) return;
-
-        if (!res.ok) {
-          const d = data as { error?: string; details?: string };
-          const msg =
-            typeof d.details === "string" && d.details.trim()
-              ? d.details
-              : typeof d.error === "string"
-                ? d.error
-                : "Could not rewrite email.";
-          console.error("Tone rewrite failed:", msg);
-          toast({
-            message: msg,
-            variant: "error",
-            durationMs: 4000,
-          });
-          return;
-        }
-
-        const rec = data as { client_email?: unknown };
-        if (typeof rec.client_email === "string" && rec.client_email.trim()) {
-          setResult((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  client_email: stripClientEmailSeparatorLines(rec.client_email as string),
-                }
-              : prev,
-          );
-          setLastGeneratedTone(newTone);
-        }
-      } catch (err) {
-        console.error("Tone rewrite failed:", err);
-        toast({
-          message: "Tone rewrite failed. Please try again.",
-          variant: "error",
-          durationMs: 4000,
-        });
-      } finally {
-        toneRewriteBusyRef.current = false;
-        if (seq === rewriteEmailSeqRef.current) {
-          setIsRewritingEmail(false);
-        }
-      }
-    },
-    [
-      userEmail,
-      lastInput,
-      projectName,
-      outputPrefs,
-      extendedOutputPrefs,
-      privacyMode,
-      clientContactName,
-      clientContactEmail,
-    ],
-  );
-
-  const handleToneRewriteRef = useRef(handleToneRewrite);
-  handleToneRewriteRef.current = handleToneRewrite;
-
-  useEffect(() => {
-    if (!userEmail) return;
-    if (!result || !lastInput.trim()) return;
-    if (emailTone === lastGeneratedTone) return;
-    void handleToneRewriteRef.current(emailTone);
-  }, [emailTone, lastGeneratedTone, result, lastInput, userEmail]);
-
   const scheduleTicketRange = useMemo(
     () => ({
       from: getDateRangeStartIso(schDateRange),
@@ -3775,19 +4808,72 @@ export default function Home() {
   );
 
   const ticketClientOptions = useMemo(() => {
+    if (demoModeActive) {
+      const q = ticketClientSearch.trim().toLowerCase();
+      return DEMO_CLIENTS.map((c) => ({ id: c.id, name: `${c.name} (Demo)` }))
+        .filter((c) => !q || c.name.toLowerCase().includes(q))
+        .filter((c) => {
+          const baseName = c.name.replace(/\s+\(Demo\)$/i, "");
+          const dc = DEMO_CLIENTS.find((x) => x.name === baseName);
+          return (dc?.ticketCount ?? 0) > 0;
+        })
+        .sort((a, b) => {
+          const aBase = a.name.replace(/\s+\(Demo\)$/i, "");
+          const bBase = b.name.replace(/\s+\(Demo\)$/i, "");
+          const aCount = DEMO_CLIENTS.find((x) => x.name === aBase)?.ticketCount ?? 0;
+          const bCount = DEMO_CLIENTS.find((x) => x.name === bBase)?.ticketCount ?? 0;
+          return bCount - aCount || a.name.localeCompare(b.name);
+        });
+    }
     if (scheduleLoading || allClients.length === 0) return [];
     const q = ticketClientSearch.trim().toLowerCase();
+    const includePreselectedTicketClient = (c: { id: number; name: string }) =>
+      scheduleEditorOpen &&
+      schCampaignEditorTab === 1 &&
+      ticketClientMode === "selected" &&
+      selectedTicketClients.includes(c.id);
     return [...allClients]
       .filter((c) => !q || c.name.toLowerCase().includes(q))
-      .filter((c) => allTickets.some((t) => Number(t.clientId ?? t.client_id) === c.id))
+      .filter(
+        (c) =>
+          includePreselectedTicketClient(c) ||
+          allTickets.some((t) => Number(t.clientId ?? t.client_id) === c.id),
+      )
       .sort((a, b) => {
         const aCount = allTickets.filter((t) => Number(t.clientId ?? t.client_id) === a.id).length;
         const bCount = allTickets.filter((t) => Number(t.clientId ?? t.client_id) === b.id).length;
         return bCount - aCount || a.name.localeCompare(b.name);
       });
-  }, [scheduleLoading, allClients, ticketClientSearch, allTickets]);
+  }, [
+    demoModeActive,
+    scheduleLoading,
+    allClients,
+    ticketClientSearch,
+    allTickets,
+    scheduleEditorOpen,
+    schCampaignEditorTab,
+    ticketClientMode,
+    selectedTicketClients,
+  ]);
 
   const projectClientOptions = useMemo(() => {
+    if (demoModeActive) {
+      const q = projectClientSearch.trim().toLowerCase();
+      return DEMO_CLIENTS.map((c) => ({ id: c.id, name: `${c.name} (Demo)` }))
+        .filter((c) => !q || c.name.toLowerCase().includes(q))
+        .filter((c) => {
+          const baseName = c.name.replace(/\s+\(Demo\)$/i, "");
+          const dc = DEMO_CLIENTS.find((x) => x.name === baseName);
+          return (dc?.projectCount ?? 0) > 0;
+        })
+        .sort((a, b) => {
+          const aBase = a.name.replace(/\s+\(Demo\)$/i, "");
+          const bBase = b.name.replace(/\s+\(Demo\)$/i, "");
+          const aCount = DEMO_CLIENTS.find((x) => x.name === aBase)?.projectCount ?? 0;
+          const bCount = DEMO_CLIENTS.find((x) => x.name === bBase)?.projectCount ?? 0;
+          return bCount - aCount || a.name.localeCompare(b.name);
+        });
+    }
     if (scheduleLoading || allClients.length === 0) return [];
     const q = projectClientSearch.trim().toLowerCase();
     return [...allClients]
@@ -3798,7 +4884,7 @@ export default function Home() {
         const bCount = allProjects.filter((t) => Number(t.clientId ?? t.client_id) === b.id).length;
         return bCount - aCount || a.name.localeCompare(b.name);
       });
-  }, [scheduleLoading, allClients, projectClientSearch, allProjects]);
+  }, [demoModeActive, scheduleLoading, allClients, projectClientSearch, allProjects]);
 
   const upcomingRuns = useMemo(() => {
     return [...campaigns]
@@ -3811,11 +4897,146 @@ export default function Home() {
       .slice(0, 8);
   }, [campaigns]);
 
+  const scheduledPageStats = useMemo(() => {
+    const active = campaigns.filter((c) => c.enabled !== false).length;
+    const withNext = campaigns.filter((c) => c.enabled !== false && c.next_run_at);
+    let nextSend = "Not scheduled";
+    if (withNext.length > 0) {
+      const sorted = [...withNext].sort(
+        (a, b) =>
+          Date.parse(a.next_run_at ?? "") - Date.parse(b.next_run_at ?? ""),
+      );
+      nextSend = formatShortGmtDate(sorted[0]!.next_run_at);
+    }
+    const now = new Date();
+    const monthStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+    const sentThisMonth = reportHistory.filter((h) => {
+      const t = new Date(h.sent_at).getTime();
+      if (Number.isNaN(t) || t < monthStart) return false;
+      return (h.status ?? "").toLowerCase() !== "failed";
+    }).length;
+    return { active, nextSend, sentThisMonth };
+  }, [campaigns, reportHistory]);
+
+  const scheduleRecentReportsCard = useMemo(
+    () => (
+      <div className="sticky top-4 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+        <div className="flex items-center justify-between">
+          <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Recent reports</h2>
+          <span className="rounded-full bg-[var(--bg-secondary)] px-2 py-0.5 text-[11px] text-[var(--text-muted)]">
+            {reportHistory.length}
+          </span>
+        </div>
+        <p className="mt-1 text-[13px] text-[var(--text-secondary)]">Last 5 sent reports</p>
+        {reportHistoryLoading ? (
+          <ul className="mt-4 space-y-2" aria-busy>
+            {[0, 1, 2, 3].map((i) => (
+              <li
+                key={i}
+                className="animate-pulse rounded-[var(--radius)] border border-[var(--border)] p-2.5"
+              >
+                <div className="h-4 w-48 rounded bg-[var(--bg-secondary)]" />
+                <div className="mt-2 h-3 w-32 rounded bg-[var(--bg-secondary)]" />
+                <div className="mt-2 h-5 w-16 rounded-full bg-[var(--bg-secondary)]" />
+              </li>
+            ))}
+          </ul>
+        ) : reportHistory.length === 0 ? (
+          <div className="mt-4 text-sm text-[var(--text-secondary)]">
+            <p>No reports sent yet.</p>
+            <p className="mt-1">Your schedules are set up and ready to run.</p>
+          </div>
+        ) : (
+          <ul className="mt-4 space-y-2">
+            {reportHistory.slice(0, 5).map((h, idx) => (
+              <li
+                key={h.id}
+                className={cn(
+                  "rounded-[var(--radius)] border border-[var(--border)] p-2.5",
+                  idx % 2 ? "bg-[var(--bg-secondary)]/30" : "",
+                )}
+              >
+                <p className="text-sm font-semibold text-[var(--text-primary)]">
+                  {formatScheduleHistorySent(h.sent_at)}
+                </p>
+                <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
+                  {h.tickets_processed ?? 0} tickets · {h.clients_covered?.length ?? 0} clients
+                </p>
+                <span
+                  className={cn(
+                    "mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium",
+                    h.status === "failed"
+                      ? "bg-red-500/10 text-red-500"
+                      : "bg-emerald-500/10 text-emerald-500",
+                  )}
+                >
+                  {h.status === "failed" ? "Failed" : "Sent"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <h3 className="mt-5 text-[13px] font-semibold text-[var(--text-primary)]">Upcoming runs</h3>
+        {upcomingRuns.length === 0 ? (
+          <p className="mt-2 text-xs text-[var(--text-secondary)]">No upcoming runs.</p>
+        ) : (
+          <ul className="mt-2 space-y-1.5 text-xs text-[var(--text-secondary)]">
+            {upcomingRuns.map((c, idx) => (
+              <li key={c.id ?? idx}>
+                {formatScheduleTs(c.next_run_at)} - {c.name?.trim() || "Weekly Report"}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    ),
+    [reportHistory, reportHistoryLoading, upcomingRuns],
+  );
+
+  useEffect(() => {
+    if (mainView !== "scheduled") return;
+    if (scheduleLoading) return;
+    if (campaigns.length === 0) return;
+    if (schedulesMasterSyncedRef.current) return;
+    schedulesMasterSyncedRef.current = true;
+    setScheduledReportsMasterEnabled(campaigns.every((c) => c.enabled));
+  }, [mainView, scheduleLoading, campaigns]);
+
   const getTicketCountForClient = useCallback(
     (clientId: number, source: Array<Record<string, unknown>>) =>
       source.filter((t) => Number(t.clientId ?? t.client_id) === clientId).length,
     [],
   );
+
+  /** Tickets for schedule Data step row, including selected IDs not present in open-ticket cache (e.g. closed). */
+  const scheduleTicketsForClientRow = useCallback(
+    (clientId: number, clientName: string) => {
+      const base = allTickets.filter((t) => Number(t.clientId ?? t.client_id) === clientId);
+      const ghostIds = selectedTicketIds.filter((tid) => {
+        if (base.some((t) => Number(t.id) === tid)) return false;
+        return lastImportedHaloItems.some(
+          (it) =>
+            it.type === "ticket" &&
+            it.id === tid &&
+            it.clientName.trim().toLowerCase() === clientName.trim().toLowerCase(),
+        );
+      });
+      const ghosts: Array<Record<string, unknown>> = ghostIds.map((tid) => {
+        const meta = lastImportedHaloItems.find((it) => it.id === tid);
+        return {
+          id: tid,
+          summary: meta?.title ?? `Ticket ${tid}`,
+          clientId,
+          client_id: clientId,
+          status_id: 1,
+        };
+      });
+      return [...base, ...ghosts];
+    },
+    [allTickets, selectedTicketIds, lastImportedHaloItems],
+  );
+
   const canProceedStep3 =
     (schIncludeTickets &&
       (ticketClientMode === "all" ||
@@ -4059,8 +5280,42 @@ export default function Home() {
   const loadAllScheduleData = useCallback(async () => {
     setDataLoading(true);
     try {
+      if (demoModeActive) {
+        const demoClients = DEMO_CLIENTS.map((c) => ({ id: c.id, name: `${c.name} (Demo)` }));
+        const demoClientIdByName = new Map(DEMO_CLIENTS.map((c) => [c.name, c.id]));
+        const demoTickets = DEMO_TICKETS.map((t) => {
+          const clientId = demoClientIdByName.get(t.client.name) ?? 0;
+          return {
+            ...t,
+            id: Number(String(t.id).replace(/\D/g, "")) || 0,
+            clientId,
+            client_id: clientId,
+            _source: "halopsa" as const,
+            source: "halopsa" as const,
+            is_project: false,
+          };
+        });
+        const demoProjects = DEMO_PROJECTS.map((p) => {
+          const clientId = demoClientIdByName.get(p.client.name) ?? 0;
+          return {
+            ...p,
+            summary: p.name,
+            is_project: true,
+            source: "halopsa" as const,
+            clientId,
+            client_id: clientId,
+            _source: "halopsa" as const,
+          };
+        });
+        setAllClients(demoClients);
+        setAllTickets(demoTickets);
+        setAllProjects(demoProjects);
+        setDataLoaded(true);
+        return;
+      }
+
       const fetches: Promise<Response>[] = [];
-      fetches.push(fetch("/api/halo/clients?page=1&page_size=200"));
+      fetches.push(fetch("/api/halo/clients?all_pages=1&page_size=1000"));
       const [clientsRes] = await Promise.all(fetches);
       const clientsJson = clientsRes
         ? ((await clientsRes.json()) as {
@@ -4149,6 +5404,7 @@ export default function Home() {
     cachedCwTickets,
     cachedHaloTickets,
     cwConnected,
+    demoModeActive,
     haloConnected,
     refreshCwProjectsCache,
     refreshCwTicketsCache,
@@ -4157,7 +5413,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!scheduleEditorOpen) return;
-    if (schCampaignEditorTab !== 2) return;
+    if (schCampaignEditorTab !== 1) return;
     if (dataLoaded || dataLoading) return;
     void loadAllScheduleData();
   }, [scheduleEditorOpen, schCampaignEditorTab, dataLoaded, dataLoading, loadAllScheduleData]);
@@ -4168,7 +5424,7 @@ export default function Home() {
   }, [scheduleEditorOpen]);
 
   useEffect(() => {
-    if (!scheduleEditorOpen || schCampaignEditorTab !== 2) return;
+    if (!scheduleEditorOpen || schCampaignEditorTab !== 1) return;
     const wasLoaded = scheduleDataLoadedPrevRef.current;
     scheduleDataLoadedPrevRef.current = dataLoaded;
     if (!dataLoaded || wasLoaded) return;
@@ -4190,14 +5446,7 @@ export default function Home() {
       setExpandedTicketClients((prev) => {
         const next = new Set(prev);
         for (const cid of mergedArr) {
-          const has = selectedTicketIds.some((tid) => {
-            const t = allTickets.find((x) => Number(x.id) === tid);
-            return (
-              Number(t?.clientId ?? (t as Record<string, unknown> | undefined)?.client_id) ===
-              cid
-            );
-          });
-          if (has) next.add(cid);
+          next.add(cid);
         }
         return next;
       });
@@ -4220,14 +5469,7 @@ export default function Home() {
       setExpandedProjectClients((prev) => {
         const next = new Set(prev);
         for (const cid of mergedArr) {
-          const has = selectedProjectIds.some((pid) => {
-            const t = allProjects.find((x) => Number(x.id) === pid);
-            return (
-              Number(t?.clientId ?? (t as Record<string, unknown> | undefined)?.client_id) ===
-              cid
-            );
-          });
-          if (has) next.add(cid);
+          next.add(cid);
         }
         return next;
       });
@@ -4244,6 +5486,62 @@ export default function Home() {
     allProjects,
     selectedTicketClients,
     selectedProjectClients,
+  ]);
+
+  const scheduleTicketTreePrefillSyncedRef = useRef(false);
+  useEffect(() => {
+    if (!scheduleEditorOpen || schCampaignEditorTab !== 1) {
+      scheduleTicketTreePrefillSyncedRef.current = false;
+      return;
+    }
+    if (!dataLoaded || dataLoading) {
+      scheduleTicketTreePrefillSyncedRef.current = false;
+    }
+  }, [scheduleEditorOpen, schCampaignEditorTab, dataLoaded, dataLoading]);
+
+  useEffect(() => {
+    if (!scheduleEditorOpen || schCampaignEditorTab !== 1) return;
+    if (!dataLoaded || dataLoading) return;
+    if (ticketClientMode !== "selected" || selectedTicketIds.length === 0) return;
+    if (scheduleTicketTreePrefillSyncedRef.current) return;
+
+    const clientIdsFound = new Set<number>();
+    for (const tid of selectedTicketIds) {
+      const row = allTickets.find((x) => Number(x.id) === tid);
+      if (row) {
+        const cid = Number(row.clientId ?? (row as Record<string, unknown>).client_id);
+        if (Number.isFinite(cid)) clientIdsFound.add(cid);
+        continue;
+      }
+      const imp = lastImportedHaloItems.find((it) => it.type === "ticket" && it.id === tid);
+      if (imp) {
+        const nm = imp.clientName.trim().toLowerCase();
+        const match = allClients.find((c) => c.name.trim().toLowerCase() === nm);
+        if (match) clientIdsFound.add(match.id);
+      }
+    }
+    if (clientIdsFound.size === 0) return;
+
+    scheduleTicketTreePrefillSyncedRef.current = true;
+    setExpandedTicketClients((prev) => {
+      const next = new Set(prev);
+      for (const id of clientIdsFound) next.add(id);
+      return next;
+    });
+    setSelectedTicketClients((prev) => {
+      const next = new Set([...prev, ...clientIdsFound]);
+      return [...next].sort((a, b) => a - b);
+    });
+  }, [
+    scheduleEditorOpen,
+    schCampaignEditorTab,
+    dataLoaded,
+    dataLoading,
+    ticketClientMode,
+    selectedTicketIds,
+    allTickets,
+    allClients,
+    lastImportedHaloItems,
   ]);
 
   useEffect(() => {
@@ -4434,8 +5732,6 @@ export default function Home() {
         ? "note_to_self"
         : c.report_type === "internal"
           ? "internal"
-          : c.report_type === "qbr"
-            ? "qbr"
           : c.report_type === "note_to_self"
             ? "note_to_self"
             : "external";
@@ -4530,9 +5826,13 @@ export default function Home() {
     setScheduleEditorOpen(true);
   };
 
-  const refreshCampaigns = async () => {
+  const refreshCampaigns = async (): Promise<typeof campaigns | null> => {
     try {
       const res = await fetch("/api/scheduled-reports");
+      if (!res.ok) {
+        console.error("[refreshCampaigns] fetch failed:", res.status, res.statusText);
+        return null;
+      }
       const data = (await res.json()) as {
         schedules?: typeof campaigns;
         schedule?: typeof campaigns[number];
@@ -4547,11 +5847,62 @@ export default function Home() {
         void flushAchievementToasts(["first_scheduled_report_sent"]);
       }
       return next;
-    } catch {
-      setCampaigns([]);
-      return [];
+    } catch (e) {
+      console.error("[refreshCampaigns] fetch error:", e);
+      return null;
     }
   };
+
+  const buildSchedulePatchPayload = useCallback(
+    (
+      c: (typeof campaigns)[number],
+      overrides?: { enabled?: boolean },
+    ) => ({
+      schedule_id: c.id,
+      enabled: overrides?.enabled !== undefined ? overrides.enabled : c.enabled,
+      schedule_day: c.schedule_day,
+      schedule_time: c.schedule_time,
+      email_to: c.email_to,
+      email_cc: c.email_cc ?? null,
+      email_bcc: c.email_bcc ?? null,
+      date_range: c.date_range,
+      client_ids: Array.isArray(c.client_ids) ? c.client_ids : [],
+      email_content_prefs: c.email_content_prefs ?? DEFAULT_EMAIL_CONTENT_PREFS,
+      attach_excel: c.attach_excel ?? true,
+      excel_tabs:
+        c.excel_tabs ?? [...SCHEDULE_EXCEL_CORE_KEYS, ...SCHEDULE_EXCEL_OPTIONAL_TAB_KEYS],
+      name: c.name ?? "Weekly Report",
+      brand_name: c.brand_name ?? null,
+      report_type: c.report_type ?? "external",
+      include_tickets: c.include_tickets ?? true,
+      include_projects: c.include_projects ?? true,
+      is_note_to_self: c.is_note_to_self ?? false,
+      recipient_name: c.recipient_name ?? null,
+      ticket_client_ids: Array.isArray(c.ticket_client_ids) ? c.ticket_client_ids : [],
+      project_client_ids: Array.isArray(c.project_client_ids) ? c.project_client_ids : [],
+      ticket_all_clients:
+        typeof c.ticket_all_clients === "boolean" ? c.ticket_all_clients : true,
+      project_all_clients:
+        typeof c.project_all_clients === "boolean" ? c.project_all_clients : true,
+      selected_ticket_ids: Array.isArray(c.selected_ticket_ids) ? c.selected_ticket_ids : [],
+      selected_project_ids: Array.isArray(c.selected_project_ids) ? c.selected_project_ids : [],
+      email_tone: c.email_tone ?? "professional",
+      push_to_halo: c.push_to_halo === true,
+      halo_push_outputs: Array.isArray(c.halo_push_outputs) ? c.halo_push_outputs : [],
+      halo_push_excel: c.halo_push_excel === true,
+      halo_push_excel_tabs: Array.isArray(c.halo_push_excel_tabs) ? c.halo_push_excel_tabs : [],
+      halo_push_target:
+        c.halo_push_target === "projects" || c.halo_push_target === "tickets"
+          ? c.halo_push_target
+          : "all",
+      post_to_ticket_ids:
+        c.push_to_halo === true && Array.isArray(c.post_to_ticket_ids)
+          ? c.post_to_ticket_ids
+          : null,
+      post_consolidated: c.push_to_halo === true && c.post_consolidated === true,
+    }),
+    [],
+  );
 
   const toggleCampaignEnabled = async (c: (typeof campaigns)[number], enabled: boolean) => {
     if (!userEmail) return;
@@ -4569,61 +5920,69 @@ export default function Home() {
       const res = await fetch("/api/scheduled-reports", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          schedule_id: c.id,
-          enabled,
-          schedule_day: c.schedule_day,
-          schedule_time: c.schedule_time,
-          email_to: c.email_to,
-          email_cc: c.email_cc ?? null,
-          email_bcc: c.email_bcc ?? null,
-          date_range: c.date_range,
-          client_ids: Array.isArray(c.client_ids) ? c.client_ids : [],
-          email_content_prefs: c.email_content_prefs ?? DEFAULT_EMAIL_CONTENT_PREFS,
-          attach_excel: c.attach_excel ?? true,
-          excel_tabs:
-            c.excel_tabs ??
-            [...SCHEDULE_EXCEL_CORE_KEYS, ...SCHEDULE_EXCEL_OPTIONAL_TAB_KEYS],
-          name: c.name ?? "Weekly Report",
-          brand_name: c.brand_name ?? null,
-          report_type: c.report_type ?? "external",
-          include_tickets: c.include_tickets ?? true,
-          include_projects: c.include_projects ?? true,
-          is_note_to_self: c.is_note_to_self ?? false,
-          recipient_name: c.recipient_name ?? null,
-          ticket_client_ids: Array.isArray(c.ticket_client_ids) ? c.ticket_client_ids : [],
-          project_client_ids: Array.isArray(c.project_client_ids) ? c.project_client_ids : [],
-          ticket_all_clients:
-            typeof c.ticket_all_clients === "boolean" ? c.ticket_all_clients : true,
-          project_all_clients:
-            typeof c.project_all_clients === "boolean" ? c.project_all_clients : true,
-          selected_ticket_ids: Array.isArray(c.selected_ticket_ids) ? c.selected_ticket_ids : [],
-          selected_project_ids: Array.isArray(c.selected_project_ids) ? c.selected_project_ids : [],
-          email_tone: c.email_tone ?? "professional",
-          push_to_halo: c.push_to_halo === true,
-          halo_push_outputs: Array.isArray(c.halo_push_outputs) ? c.halo_push_outputs : [],
-          halo_push_excel: c.halo_push_excel === true,
-          halo_push_excel_tabs: Array.isArray(c.halo_push_excel_tabs) ? c.halo_push_excel_tabs : [],
-          halo_push_target:
-            c.halo_push_target === "projects" || c.halo_push_target === "tickets"
-              ? c.halo_push_target
-              : "all",
-          post_to_ticket_ids:
-            c.push_to_halo === true && Array.isArray(c.post_to_ticket_ids)
-              ? c.post_to_ticket_ids
-              : null,
-          post_consolidated: c.push_to_halo === true && c.post_consolidated === true,
-        }),
+        body: JSON.stringify(buildSchedulePatchPayload(c, { enabled })),
       });
       const data = (await res.json()) as { schedule?: typeof c; error?: string };
       if (!res.ok) throw new Error(data.error || "Could not update schedule");
-    } catch (e) {
+      void refreshCampaigns();
+    } catch {
       setCampaigns((prev) =>
         prev.map((row) => (row.id === c.id ? { ...row, enabled: previousEnabled } : row)),
       );
       if (selectedSchedule?.id === c.id) {
         setSelectedSchedule((prev) => (prev ? { ...prev, enabled: previousEnabled } : prev));
         setSchEnabled(previousEnabled);
+      }
+      toast({
+        message: "Failed to update schedule status",
+        variant: "error",
+        durationMs: 4000,
+      });
+    } finally {
+      setScheduleSaving(false);
+    }
+  };
+
+  const toggleAllCampaignsEnabled = async (enabled: boolean) => {
+    if (!userEmail) return;
+    const targets = campaigns.filter((c) => Boolean(c.id));
+    if (targets.length === 0) return;
+    const previousCampaigns = campaigns;
+    const previousSchEnabled = schEnabled;
+    const previousMasterEnabled = scheduledReportsMasterEnabled;
+    setScheduledReportsMasterEnabled(enabled);
+    setCampaigns((prev) => prev.map((c) => ({ ...c, enabled })));
+    setSchEnabled(enabled);
+    setScheduleSaving(true);
+    try {
+      for (const c of targets) {
+        const res = await fetch("/api/scheduled-reports", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(buildSchedulePatchPayload(c, { enabled })),
+        });
+        const data = (await res.json()) as { error?: string };
+        if (!res.ok) throw new Error(data.error || "Could not update schedule");
+      }
+      void refreshCampaigns();
+      if (selectedSchedule?.id) {
+        const matched = targets.find((c) => c.id === selectedSchedule.id);
+        if (matched) {
+          setSelectedSchedule((prev) => (prev ? { ...prev, enabled } : prev));
+          setSchEnabled(enabled);
+        }
+      }
+    } catch {
+      setScheduledReportsMasterEnabled(previousMasterEnabled);
+      setCampaigns(previousCampaigns);
+      setSchEnabled(previousSchEnabled);
+      if (selectedSchedule?.id) {
+        const prevSelected = previousCampaigns.find((c) => c.id === selectedSchedule.id);
+        if (prevSelected) {
+          setSelectedSchedule((prev) =>
+            prev ? { ...prev, enabled: prevSelected.enabled } : prev,
+          );
+        }
       }
       toast({
         message: "Failed to update schedule status",
@@ -4754,8 +6113,6 @@ export default function Home() {
             ? "note_to_self"
             : row.report_type === "internal"
               ? "internal"
-              : row.report_type === "qbr"
-                ? "qbr"
               : row.report_type === "note_to_self"
                 ? "note_to_self"
                 : "external";
@@ -4867,25 +6224,12 @@ export default function Home() {
         }
 
         try {
-          const pageSize = 100;
-          const allClients: { id: number; name: string }[] = [];
-          let page = 1;
-          let hasMore = true;
-          while (!cancelled && hasMore && page <= 20) {
-            const cres = await fetch(
-              `/api/halo/clients?page=${page}&page_size=${pageSize}`,
-            );
-            const cj = (await cres.json()) as {
-              clients?: { id: number; name: string }[];
-              hasMore?: boolean;
-              error?: string;
-            };
-            if (!cres.ok) break;
-            const batch = cj.clients ?? [];
-            allClients.push(...batch);
-            if (cj.hasMore === false || batch.length < pageSize) hasMore = false;
-            else page += 1;
-          }
+          const cres = await fetch("/api/halo/clients?all_pages=1&page_size=1000");
+          const cj = (await cres.json()) as {
+            clients?: { id: number; name: string }[];
+            error?: string;
+          };
+          const allClients = !cancelled && cres.ok && Array.isArray(cj.clients) ? cj.clients : [];
           if (!cancelled) setHaloClientsForSchedule(allClients);
         } catch {
           if (!cancelled) setHaloClientsForSchedule([]);
@@ -4913,6 +6257,7 @@ export default function Home() {
 
   const saveScheduledReport = async () => {
     if (!userEmail) return;
+    if (demoModeActive) return;
     if (!schIncludeTickets && !schIncludeProjects) {
       toast({
         message: "Enable tickets or projects to continue.",
@@ -5100,7 +6445,15 @@ export default function Home() {
         });
       }
       scheduleEmailPreviewCacheRef.current = null;
-      void refreshCampaigns();
+      const savedSchedule = data.schedule;
+      const refreshedList = await refreshCampaigns();
+      if (savedSchedule && typeof savedSchedule.id === "string" && savedSchedule.id) {
+        const sid = savedSchedule.id;
+        const present = (refreshedList ?? []).some((c) => c.id === sid);
+        if (!present) {
+          setCampaigns((prev) => (prev.some((c) => c.id === sid) ? prev : [savedSchedule, ...prev]));
+        }
+      }
       toast({
         message: `Schedule created - first report sends on ${formatScheduleTs(
           data.schedule?.next_run_at ?? null,
@@ -5137,6 +6490,16 @@ export default function Home() {
     async (opts?: { forceRefresh?: boolean; openDialog?: boolean }) => {
       const forceRefresh = opts?.forceRefresh === true;
       const openDialog = opts?.openDialog !== false;
+      if (demoModeActive) {
+        if (openDialog) {
+          toast({
+            message: "Connect your PSA to enable scheduled reports",
+            variant: "error",
+            durationMs: 4000,
+          });
+        }
+        return;
+      }
       const scheduleId = (
         schCampaignId ??
         selectedSchedule?.id ??
@@ -5212,7 +6575,7 @@ export default function Home() {
         setScheduleEmailPreviewLoading(false);
       }
     },
-    [schCampaignId, selectedSchedule?.id, scheduleRow?.id, toast],
+    [schCampaignId, selectedSchedule?.id, scheduleRow?.id, toast, demoModeActive],
   );
 
   const openScheduleEmailPreview = useCallback(() => {
@@ -5225,7 +6588,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!scheduleEditorOpen) return;
-    if (schCampaignEditorTab !== 3 && schCampaignEditorTab !== 4) return;
+    if (schCampaignEditorTab !== 2) return;
     const id = (schCampaignId ?? selectedSchedule?.id ?? scheduleRow?.id ?? "").trim();
     if (!id) return;
     void loadScheduleEmailPreview({ openDialog: false });
@@ -5312,18 +6675,54 @@ export default function Home() {
     }
   };
 
-  const handleSelectProject = (project: ProjectItem) => {
-    setMainView("generate");
-    setSelectedProjectId(project.id);
-    setProjectName(project.project_name ?? "");
-    setInput(project.input_text ?? "");
-    setGenerationMailtoEmail(null);
-    if (project.output_json) {
-      setResult(parseApiGenerateResult(project.output_json));
-    }
-    setLastGeneratedTone(emailTone);
-    setSidebarOpenMobile(false);
-  };
+  const handleSelectProject = useCallback(
+    (project: ProjectItem) => {
+      setLastSessionRestoreBannerProject(null);
+      setMainView("generate");
+      setSelectedProjectId(project.id);
+      setProjectName(project.project_name ?? "");
+      setInput(project.input_text ?? "");
+      const restoredInput = project.input_text ?? "";
+      if (parseCwImportedItemsFromInput(restoredInput).length > 0) {
+        setLastImportSourcePsa("connectwise");
+      } else if (restoredInput.includes("Source: HaloPSA")) {
+        setLastImportSourcePsa("halopsa");
+      }
+      setGenerationMailtoEmail(null);
+      if (project.output_json) {
+        setResult(parseApiGenerateResult(project.output_json));
+      }
+      setLastGeneratedTone(GENERATION_EMAIL_TONE);
+      setSidebarOpenMobile(false);
+      const haloRows = Array.isArray(cachedHaloTickets?.tickets)
+        ? (cachedHaloTickets.tickets as Array<Record<string, unknown>>)
+        : [];
+      setLastImportedHaloItems(restoreImportedItemsForHistory(project.input_text ?? "", haloRows));
+      const restoredLabel =
+        typeof project.project_name === "string" ? project.project_name.trim() : "";
+      toast({
+        message: restoredLabel ? `Restored — ${restoredLabel}` : "History restored",
+        durationMs: 3000,
+      });
+    },
+    [toast, cachedHaloTickets?.tickets],
+  );
+
+  useEffect(() => {
+    if (!selectedProjectId) return;
+    if (lastImportedHaloItems.length > 0) return;
+    const p = projects.find((x) => x.id === selectedProjectId);
+    const inputText = p?.input_text ?? "";
+    if (!inputText) return;
+    if (parseCwImportedItemsFromInput(inputText).length > 0) return;
+    const haloRows = Array.isArray(cachedHaloTickets?.tickets)
+      ? (cachedHaloTickets.tickets as Array<Record<string, unknown>>)
+      : [];
+    if (haloRows.length === 0) return;
+    const next = restoreImportedItemsForHistory(inputText, haloRows);
+    if (next.length === 0) return;
+    setLastImportedHaloItems(next);
+  }, [selectedProjectId, projects, cachedHaloTickets?.tickets, lastImportedHaloItems.length]);
 
   const handleNewGeneration = () => {
     setMainView("generate");
@@ -5339,7 +6738,10 @@ export default function Home() {
     setEditingActionRow(null);
     setEditingRiskRow(null);
     setLastInput("");
-    setLastGeneratedTone(emailTone);
+    setLastGeneratedTone(GENERATION_EMAIL_TONE);
+    setLastSessionRestoreBannerProject(null);
+    setLastImportedHaloItems([]);
+    setLastImportSourcePsa(null);
   };
 
   const markOnboardingComplete = useCallback(async () => {
@@ -5354,24 +6756,20 @@ export default function Home() {
   }, []);
 
   const saveOnboardingProfileStep = useCallback(async (): Promise<boolean> => {
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return false;
-    const { error } = await supabase.from("profiles").upsert(
-      {
-        id: user.id,
+    const res = await fetch("/api/profile/update", {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         first_name: profileFirstName.trim() || null,
         last_name: profileLastName.trim() || null,
         display_name: profileDisplayName.trim() || null,
         job_title: profileJobTitle.trim() || null,
         company_name: profileCompanyName.trim() || null,
         signature_override: signatureOverride.trim() || null,
-      },
-      { onConflict: "id" },
-    );
-    if (error) {
+      }),
+    });
+    if (!res.ok) {
       toast({ message: "Could not save profile", variant: "error", durationMs: 4000 });
       return false;
     }
@@ -5663,6 +7061,51 @@ export default function Home() {
     void refreshUsage();
   };
 
+  const savePortalSlug = useCallback(async (overrideSlug?: string): Promise<boolean> => {
+    const slug = sanitizePortalSlug(overrideSlug ?? portalSlug);
+    if (!PORTAL_SLUG_RE.test(slug)) {
+      toast({ message: "Slug must be 3-30 chars: a-z, 0-9, or hyphen.", variant: "error" });
+      return false;
+    }
+    setPortalSlugSaving(true);
+    try {
+      const res = await fetch("/api/portal/account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          slug,
+          display_name: profileCompanyName.trim() || profileDisplayName.trim() || null,
+        }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        toast({
+          message: body.error ?? "Could not save portal URL",
+          variant: "error",
+          durationMs: 4000,
+        });
+        return false;
+      }
+      setPortalSlug(slug);
+      setPortalSlugAvailable(true);
+      toast({ message: "Portal URL saved", durationMs: 2000 });
+      return true;
+    } finally {
+      setPortalSlugSaving(false);
+    }
+  }, [portalSlug, profileCompanyName, profileDisplayName, toast]);
+
+  const completeEnterpriseOnboardingWithSlug = useCallback(
+    async (slug: string) => {
+      const ok = await savePortalSlug(slug);
+      if (!ok) return;
+      await markOnboardingComplete();
+      setMainView("generate");
+    },
+    [markOnboardingComplete, savePortalSlug],
+  );
+
   const saveOutputTabPreferences = async () => {
     const supabase = createClient();
     const {
@@ -5682,6 +7125,7 @@ export default function Home() {
       return;
     }
     saveOutputPrefs(outputPrefs);
+    saveExtendedOutputPrefs(extendedOutputPrefs);
     toast({ message: "Output preferences saved", durationMs: 2000 });
     void refreshUsage();
   };
@@ -5904,6 +7348,30 @@ export default function Home() {
       if (ok) toast({ message: "Teams webhook saved", durationMs: 2000 });
     } finally {
       setTeamsWebhookSaveLoading(false);
+    }
+  };
+
+  const handleDisconnectSlackNotifications = async () => {
+    const ok = await patchNotificationWebhooks({
+      slack_webhook_url: "",
+      slack_notifications_enabled: false,
+    });
+    if (ok) {
+      setSlackWebhookUrl("");
+      setSlackNotificationsEnabled(false);
+      toast({ message: "Slack disconnected", durationMs: 2000 });
+    }
+  };
+
+  const handleDisconnectTeamsNotifications = async () => {
+    const ok = await patchNotificationWebhooks({
+      teams_webhook_url: "",
+      teams_notifications_enabled: false,
+    });
+    if (ok) {
+      setTeamsWebhookUrl("");
+      setTeamsNotificationsEnabled(false);
+      toast({ message: "Teams disconnected", durationMs: 2000 });
     }
   };
 
@@ -6154,34 +7622,55 @@ export default function Home() {
     }
   };
 
-  const openGenerateOptionsModal = async () => {
+  const requestFullGeneration = async () => {
     const trimmed = input.trim();
-    const effectiveInput = trimmed || lastInput.trim();
     if (!trimmed || isGenerating) return;
 
-    const supabase = createClient();
-    const {
-      data: { user: currentUser },
-    } = await supabase.auth.getUser();
+    setIsCheckingAuthForGenerate(true);
+    try {
+      const supabase = createClient();
+      const {
+        data: { user: currentUser },
+      } = await supabase.auth.getUser();
 
-    if (!currentUser) {
-      if (trimmed === EXAMPLE_INPUT.trim()) {
-        setDemoTab("actions");
-        setDemoModalOpen(true);
-      } else {
-        setLockedTeaserTab("actions");
-        setLockedTeaserOpen(true);
+      if (!currentUser) {
+        if (trimmed === DEMO_EXAMPLE_INPUT.trim()) {
+          setDemoTab("actions");
+          setDemoModalOpen(true);
+        } else {
+          setLockedTeaserTab("actions");
+          setLockedTeaserOpen(true);
+        }
+        return;
       }
-      return;
-    }
 
-    if (freeGenUsage && freeGenUsage.used >= freeGenUsage.cap) {
-      setHardLimitType("trial");
-      setPremiumHardLimitOpen(true);
-      return;
-    }
+      if (freeGenUsage && freeGenUsage.used >= freeGenUsage.cap) {
+        setHardLimitType("trial");
+        setPremiumHardLimitOpen(true);
+        return;
+      }
+      if (showPro100Warning) {
+        toast({
+          message: "You’ve reached your monthly limit. Upgrade to Team to continue generating.",
+          variant: "error",
+          durationMs: 5000,
+        });
+        return;
+      }
 
-    setGenerateOptionsOpen(true);
+      if (MODAL_OUTPUT_KEYS.filter((k) => outputPrefs[k]).length === 0) {
+        toast({
+          message: "Enable at least one output in Settings → Output tabs, then generate again.",
+          variant: "error",
+          durationMs: 5000,
+        });
+        return;
+      }
+
+      void executeGenerate(outputPrefs);
+    } finally {
+      setIsCheckingAuthForGenerate(false);
+    }
   };
 
   const executeGenerate = async (selection: Record<ModalOutputKey, boolean>) => {
@@ -6200,8 +7689,7 @@ export default function Home() {
     console.log("[generate] Input length:", effectiveInput.length);
 
     if (!userEmail) {
-      setGenerateOptionsOpen(false);
-      if (effectiveInput === EXAMPLE_INPUT.trim()) {
+      if (effectiveInput === DEMO_EXAMPLE_INPUT.trim()) {
         setDemoTab("actions");
         setDemoModalOpen(true);
       } else {
@@ -6212,9 +7700,16 @@ export default function Home() {
     }
 
     if (freeGenUsage && freeGenUsage.used >= freeGenUsage.cap) {
-      setGenerateOptionsOpen(false);
       setHardLimitType("trial");
       setPremiumHardLimitOpen(true);
+      return;
+    }
+    if (showPro100Warning) {
+      toast({
+        message: "You’ve reached your monthly limit. Upgrade to Team to continue generating.",
+        variant: "error",
+        durationMs: 5000,
+      });
       return;
     }
 
@@ -6222,10 +7717,10 @@ export default function Home() {
     if (selectedOutputs.length === 0) return;
 
     const extendedOutputKeys = EXTENDED_PM_TAB_KEYS.filter((k) => extendedOutputPrefs[k]);
-    const toneAtRun = emailTone;
+    const toneAtRun = GENERATION_EMAIL_TONE;
 
     saveOutputPrefs(selection);
-    setGenerateOptionsOpen(false);
+    saveExtendedOutputPrefs(extendedOutputPrefs);
 
     const clientContactNameForApi = selection.client_email
       ? clientContactName.trim() || null
@@ -6234,6 +7729,19 @@ export default function Home() {
       ? clientContactEmail.trim() || null
       : null;
 
+    setResult(null);
+    setOutputMainTab("actions");
+    setActiveClientEmailIndex(0);
+    setEditingActionRow(null);
+    setEditingDueDateRow(null);
+    setEditingRiskRow(null);
+    setEditingField(null);
+    setFollowUpModalOpen(false);
+    setFollowUpModalBody("");
+    setFollowUpModalSubject("");
+    setSmartActionEmailBody(null);
+    setSmartActionEmailTo(null);
+
     const supabase = createClient();
     const totalGensBeforeRun = totalGenerationCount ?? 0;
     setIsGenerating(true);
@@ -6241,7 +7749,7 @@ export default function Home() {
     setShowSignUpBanner(false);
 
     try {
-      if (effectiveInput.length > 15000) {
+      if (effectiveInput.length > GENERATION_INPUT_CHAR_LIMIT) {
         setGenerationPhase("compacting");
         await new Promise<void>((resolve) => {
           window.setTimeout(resolve, 1600);
@@ -6249,23 +7757,36 @@ export default function Home() {
       }
       setGenerationPhase("generating");
 
+      const generateRequestBody = {
+        input: effectiveInput,
+        projectName,
+        templateContext: nextTemplateContext,
+        selectedOutputs,
+        outputPreferences: {
+          enabledTabs: selectedOutputs,
+          extendedTabs: extendedOutputKeys,
+        },
+        extendedOutputKeys,
+        tone: toneAtRun,
+        privacyMode,
+        clientContactName: clientContactNameForApi,
+        clientContactEmail: clientContactEmailForApi,
+      };
+      console.log("[generate][audit] client → POST /api/generate", {
+        extendedOutputKeys: generateRequestBody.extendedOutputKeys,
+        extendedOutputKeysLength: generateRequestBody.extendedOutputKeys.length,
+        outputPreferences: generateRequestBody.outputPreferences,
+        selectedOutputs: generateRequestBody.selectedOutputs,
+        extendedOutputPrefsSnapshot: Object.fromEntries(
+          EXTENDED_PM_TAB_KEYS.map((k) => [k, extendedOutputPrefs[k]]),
+        ) as Record<ExtendedPmTabKey, boolean>,
+        inputLengthChars: effectiveInput.length,
+      });
+
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          input: effectiveInput,
-          projectName,
-          templateContext: nextTemplateContext,
-          selectedOutputs,
-          outputPreferences: {
-            enabledTabs: selectedOutputs,
-          },
-          extendedOutputKeys,
-          tone: toneAtRun,
-          privacyMode,
-          clientContactName: clientContactNameForApi,
-          clientContactEmail: clientContactEmailForApi,
-        }),
+        body: JSON.stringify(generateRequestBody),
       });
 
       const data: unknown = await res.json();
@@ -6401,6 +7922,34 @@ export default function Home() {
         },
       };
       setResult(nextResult);
+      setFollowUpModalOpen(false);
+      setFollowUpModalBody("");
+      setReportQualityTipsOpen(false);
+      {
+        const coreVis = visibleCoreTabsForResult(nextResult);
+        const extVis = visibleExtendedTabsForResult(nextResult);
+        let preferredTab: string;
+        if (selection.client_email && coreVis.includes("client_email")) {
+          preferredTab = "client_email";
+        } else if (coreVis.includes("actions")) {
+          preferredTab = "actions";
+        } else if (coreVis[0]) {
+          preferredTab = coreVis[0];
+        } else if (extVis[0]) {
+          preferredTab = extVis[0];
+        } else {
+          preferredTab = "actions";
+        }
+        setOutputMainTab(preferredTab);
+      }
+      window.setTimeout(() => {
+        outputRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 300);
+      try {
+        window.sessionStorage.removeItem(SS_DEMO_INPUT);
+      } catch {
+        /* ignore */
+      }
       if (typeof console !== "undefined") {
         console.log("[SmartActions] after generation", {
           eligible: shouldOfferSmartActions(nextResult, projectName, {
@@ -6430,7 +7979,12 @@ export default function Home() {
       setGenerationToastOpen(true);
       setLastInput(effectiveInput);
       setLastGeneratedTone(toneAtRun);
-      if (userEmail && !hasProAccess && !readUpgradePromptConsumed()) {
+      if (
+        userEmail &&
+        !hasProAccess &&
+        !readUpgradePromptConsumed() &&
+        hasCompletedLoop
+      ) {
         setShowPostGenProUpsell(true);
       }
 
@@ -6501,12 +8055,6 @@ export default function Home() {
   };
 
   const charCount = input.length;
-  const inputCounterColor =
-    charCount > 15000
-      ? "#CA8A04"
-      : charCount > 10000
-        ? "#BA7517"
-        : "color-mix(in srgb, var(--success) 28%, var(--text-muted))";
   const generationProgressLabel =
     isGenerating && generationPhase === "compacting"
       ? "Compacting..."
@@ -6515,22 +8063,10 @@ export default function Home() {
         : isGenerating
           ? "Generating…"
           : "";
-  const selectedGenCount = MODAL_OUTPUT_KEYS.filter((k) => outputPrefs[k]).length;
-
   const showFirstGenOnboardingTip =
     Boolean(userEmail) &&
     firstGenTipDismissed === false &&
     totalGenerationCount === 1;
-
-  const visibleCoreTabsList = useMemo(() => {
-    if (!result) return [...MODAL_OUTPUT_KEYS];
-    return visibleCoreTabsForResult(result);
-  }, [result]);
-
-  const visibleExtendedTabsList = useMemo(() => {
-    if (!result) return [];
-    return visibleExtendedTabsForResult(result);
-  }, [result]);
 
   const smartActionsEligible = useMemo(() => {
     if (!userEmail || !result) return false;
@@ -6562,12 +8098,12 @@ export default function Home() {
 
   useEffect(() => {
     if (!result) return;
-    const all: string[] = [...visibleCoreTabsList, ...visibleExtendedTabsList];
+    const all: string[] = [...visibleCoreTabsList, ...outputTabStripExtendedKeys];
     if (all.length === 0) return;
     if (!all.includes(outputMainTab)) {
       setOutputMainTab(all[0]!);
     }
-  }, [result, visibleCoreTabsList, visibleExtendedTabsList, outputMainTab]);
+  }, [result, visibleCoreTabsList, outputTabStripExtendedKeys, outputMainTab]);
 
   const filteredHistoryProjects = useMemo(() => {
     let filtered = projects;
@@ -6679,10 +8215,106 @@ export default function Home() {
   }, [result, outputMainTab, userEmail]);
 
   useEffect(() => {
+    if (!pushModalOpen) setPushModalMobileStep(0);
+  }, [pushModalOpen]);
+
+  useEffect(() => {
     if (!pushHaloHighlight) return;
     const t = window.setTimeout(() => setPushHaloHighlight(false), 2800);
     return () => window.clearTimeout(t);
   }, [pushHaloHighlight]);
+
+  useEffect(() => {
+    if (!pushQuickActionSuccess) return;
+    const t = window.setTimeout(() => setPushQuickActionSuccess(false), 2000);
+    return () => window.clearTimeout(t);
+  }, [pushQuickActionSuccess]);
+
+  useEffect(() => {
+    if (!templateSaveCtaHighlight) return;
+    const t = window.setTimeout(() => setTemplateSaveCtaHighlight(false), 4500);
+    return () => window.clearTimeout(t);
+  }, [templateSaveCtaHighlight]);
+
+  useEffect(() => {
+    if (!postOnboardingNewGenHighlight) return;
+    const t = window.setTimeout(() => setPostOnboardingNewGenHighlight(false), 3000);
+    return () => window.clearTimeout(t);
+  }, [postOnboardingNewGenHighlight]);
+
+  useEffect(() => {
+    if (!sendEmailButtonHighlight) return;
+    const t = window.setTimeout(() => setSendEmailButtonHighlight(false), 3000);
+    return () => window.clearTimeout(t);
+  }, [sendEmailButtonHighlight]);
+
+  const syncOutputTabScrollEdges = useCallback(() => {
+    const el = outputTabScrollRef.current;
+    if (!el) return;
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    const sl = el.scrollLeft;
+    const eps = 2;
+    setOutputTabScrollEdges({
+      left: sl > eps,
+      right: maxScroll > eps && sl < maxScroll - eps,
+    });
+  }, []);
+
+  useEffect(() => {
+    const el = outputTabScrollRef.current;
+    if (!el) return;
+    syncOutputTabScrollEdges();
+    const onScroll = () => syncOutputTabScrollEdges();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    const ro = new ResizeObserver(() => syncOutputTabScrollEdges());
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      ro.disconnect();
+    };
+  }, [result, visibleCoreTabsList, outputTabStripExtendedKeys, syncOutputTabScrollEdges]);
+
+  useEffect(() => {
+    const root = outputTabScrollRef.current;
+    if (!root) return;
+    const active = root.querySelector('[data-state="active"]') as HTMLElement | null;
+    active?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+  }, [outputMainTab, result]);
+
+  useEffect(() => {
+    if (!scheduleEditorOpen) {
+      setSchedulePrefillImportBanner(false);
+    }
+  }, [scheduleEditorOpen]);
+
+  useEffect(() => {
+    scheduleWizardPrevRequiredRef.current = null;
+  }, [scheduleEditorOpen, schCampaignEditorTab]);
+
+  useEffect(() => {
+    if (!scheduleEditorOpen) {
+      scheduleWizardPrevRequiredRef.current = null;
+      return;
+    }
+    if (schCampaignEditorTab > 1) return;
+    const prev = scheduleWizardPrevRequiredRef.current;
+    scheduleWizardPrevRequiredRef.current = scheduleWizardRequiredRemaining;
+    if (prev === null || prev <= 0 || scheduleWizardRequiredRemaining > 0) return;
+    if (scheduleWizardFlashTimerRef.current) {
+      window.clearTimeout(scheduleWizardFlashTimerRef.current);
+    }
+    setScheduleWizardNextFlash(true);
+    scheduleWizardFlashTimerRef.current = window.setTimeout(() => {
+      scheduleWizardFlashTimerRef.current = null;
+      setScheduleWizardNextFlash(false);
+    }, 900);
+    return () => {
+      if (scheduleWizardFlashTimerRef.current) {
+        window.clearTimeout(scheduleWizardFlashTimerRef.current);
+        scheduleWizardFlashTimerRef.current = null;
+      }
+    };
+  }, [scheduleEditorOpen, schCampaignEditorTab, scheduleWizardRequiredRemaining]);
 
   const handleSmartActionEmail = useCallback(
     async (suggestion: SmartActionSuggestion) => {
@@ -6889,6 +8521,240 @@ export default function Home() {
     runFirstGenExcelFromCelebration,
   ]);
 
+  const onQuickEmailClient = useCallback(() => {
+    setOutputMainTab("client_email");
+    window.requestAnimationFrame(() => {
+      outputRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.requestAnimationFrame(() => {
+        document
+          .getElementById("handover-send-client-email-btn")
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        setSendEmailButtonHighlight(true);
+      });
+    });
+  }, []);
+
+  const onQuickPushToPsa = useCallback(() => {
+    openPushModal();
+  }, [openPushModal]);
+
+  const onQuickExportExcel = useCallback(() => {
+    void openFullReportExportPicker();
+  }, [openFullReportExportPicker]);
+
+  const reportQuality = useMemo(
+    () => (result ? calculateReportQuality(result) : null),
+    [result],
+  );
+
+  const generateFollowUpEmail = useCallback(
+    async (clientScope: string, options?: { openModal?: boolean }) => {
+      if (!result?.actions?.length || followUpLoading || isGenerating) return;
+      const scope = clientScope.trim() || FOLLOW_UP_ALL_CLIENTS;
+      const scopedActions =
+        scope === FOLLOW_UP_ALL_CLIENTS
+          ? result.actions
+          : result.actions.filter((a) => (a.client_name ?? "").trim() === scope);
+      const openActions = scopedActions
+        .map((a) => a.task?.trim())
+        .filter((t): t is string => Boolean(t));
+      if (openActions.length === 0) {
+        toast({
+          message: "No open actions for this client",
+          variant: "error",
+          durationMs: 4000,
+        });
+        return;
+      }
+
+      if (!userEmail) return;
+      if (freeGenUsage && freeGenUsage.used >= freeGenUsage.cap) {
+        setHardLimitType("trial");
+        setPremiumHardLimitOpen(true);
+        return;
+      }
+      if (showPro100Warning) {
+        toast({
+          message: "You’ve reached your monthly limit. Upgrade to Team to continue generating.",
+          variant: "error",
+          durationMs: 5000,
+        });
+        return;
+      }
+
+      const clientLabel =
+        scope === FOLLOW_UP_ALL_CLIENTS
+          ? "all clients"
+          : scope;
+      const chaseInput = `Generate a brief professional follow-up email chasing these open actions for ${clientLabel}: ${openActions.join(", ")}. Keep it to 3-4 sentences.`;
+
+      setFollowUpLoading(true);
+      setError(null);
+      try {
+        const res = await fetch("/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            input: chaseInput,
+            projectName:
+              scope === FOLLOW_UP_ALL_CLIENTS ? projectName : scope,
+            templateContext: "",
+            selectedOutputs: ["client_email"],
+            outputPreferences: {
+              enabledTabs: ["client_email"],
+              extendedTabs: [],
+            },
+            extendedOutputKeys: [],
+            tone: GENERATION_EMAIL_TONE,
+            privacyMode,
+            clientContactName: clientContactName.trim() || null,
+            clientContactEmail: clientContactEmail.trim() || null,
+          }),
+        });
+        const data: unknown = await res.json();
+        if (!res.ok) {
+          toast({
+            message: "Could not generate follow-up — try again",
+            variant: "error",
+            durationMs: 5000,
+          });
+          return;
+        }
+        const parsed = parseApiGenerateResult(data);
+        const body = (parsed.client_email ?? "").trim();
+        if (!body) {
+          toast({
+            message: "Could not generate follow-up — try again",
+            variant: "error",
+            durationMs: 5000,
+          });
+          return;
+        }
+        setFollowUpModalBody(body);
+        setFollowUpModalSubject(
+          (parsed.email_subject ?? "").trim() ||
+            buildDefaultClientEmailSubject(
+              scope === FOLLOW_UP_ALL_CLIENTS ? projectName : scope,
+            ),
+        );
+        setFollowUpModalActionCount(openActions.length);
+        setFollowUpClientScope(scope);
+        if (options?.openModal !== false) {
+          setFollowUpModalOpen(true);
+        }
+        void refreshUsage();
+      } catch {
+        toast({
+          message: "Could not generate follow-up — try again",
+          variant: "error",
+          durationMs: 5000,
+        });
+      } finally {
+        setFollowUpLoading(false);
+      }
+    },
+    [
+      result,
+      followUpLoading,
+      isGenerating,
+      userEmail,
+      freeGenUsage,
+      showPro100Warning,
+      projectName,
+      privacyMode,
+      clientContactName,
+      clientContactEmail,
+      toast,
+      refreshUsage,
+    ],
+  );
+
+  const onFollowUpEmailClick = useCallback(() => {
+    if (!result?.actions?.length || followUpLoading || isGenerating) return;
+    const clients = followUpClientOptions;
+    if (clients.length <= 1) {
+      const scope = clients[0] ?? FOLLOW_UP_ALL_CLIENTS;
+      void generateFollowUpEmail(scope);
+      return;
+    }
+    let defaultClient = clients[0]!;
+    let bestCount = -1;
+    for (const name of clients) {
+      const count = result.actions.filter(
+        (a) => (a.client_name ?? "").trim() === name && Boolean(a.task?.trim()),
+      ).length;
+      if (count > bestCount) {
+        bestCount = count;
+        defaultClient = name;
+      }
+    }
+    setFollowUpClientScope(defaultClient);
+    setFollowUpModalOpen(true);
+    setFollowUpModalBody("");
+    void generateFollowUpEmail(defaultClient, { openModal: false });
+  }, [
+    result,
+    followUpLoading,
+    isGenerating,
+    followUpClientOptions,
+    generateFollowUpEmail,
+  ]);
+
+  const openScheduleEditorFromGeneration = useCallback(() => {
+    if (!hasProAccess) {
+      setHaloProModalOpen(true);
+      return;
+    }
+    setMainView("scheduled");
+    setSettingsOpen(false);
+    setSidebarOpenMobile(false);
+    openNewScheduleEditor();
+    const ticketIds = lastImportedHaloItems.filter((t) => t.type === "ticket").map((t) => t.id);
+    const projectIds = lastImportedHaloItems.filter((t) => t.type === "project").map((t) => t.id);
+    const ticketClientIds: number[] = [];
+    const seenCid = new Set<number>();
+    for (const item of lastImportedHaloItems) {
+      if (item.type !== "ticket") continue;
+      const row = allTickets.find((x) => Number(x.id) === item.id);
+      const cid = Number(
+        row?.clientId ?? (row as Record<string, unknown> | undefined)?.client_id,
+      );
+      if (Number.isFinite(cid) && !seenCid.has(cid)) {
+        seenCid.add(cid);
+        ticketClientIds.push(cid);
+      }
+    }
+    if (ticketIds.length > 0) {
+      setSelectedTicketIds(ticketIds);
+      setSchIncludeTickets(true);
+    }
+    if (projectIds.length > 0) {
+      setSelectedProjectIds(projectIds);
+      setSchIncludeProjects(true);
+    }
+    if (ticketIds.length > 0 || projectIds.length > 0) {
+      setTicketClientMode("selected");
+      setProjectClientMode("selected");
+    }
+    if (ticketClientIds.length > 0) {
+      setSelectedTicketClients(ticketClientIds);
+      setExpandedTicketClients(new Set([ticketClientIds[0]]));
+    }
+    const clientLabel = lastImportedHaloItems[0]?.clientName?.trim() || "";
+    if (projectName.trim()) setSchName(projectName.trim());
+    if (clientLabel) setSchRecipientName(clientLabel);
+    setSchedulePrefillImportBanner(lastImportedHaloItems.length > 0);
+    setSchCampaignEditorTab(1);
+    window.requestAnimationFrame(() => scrollCampaignEditorIntoView());
+  }, [
+    hasProAccess,
+    openNewScheduleEditor,
+    lastImportedHaloItems,
+    allTickets,
+    projectName,
+    scrollCampaignEditorIntoView,
+  ]);
+
   const signaturePreview = buildClientEmailSignOffBlock(
     signatureOverride,
     profileDisplayName,
@@ -6937,7 +8803,6 @@ export default function Home() {
 
   const showStickyTrialBanner =
     Boolean(userEmail) &&
-    !userTeamId &&
     !isPaidProfileTierForTrialBanner &&
     planLabelIndicatesInAppTrial &&
     trialEndIsFutureForBanner;
@@ -6947,6 +8812,315 @@ export default function Home() {
     !userTeamId &&
     !hasProAccess &&
     !isSoloAppTrialPlanRow;
+
+  const configurationBrandingSection = !hasProAccess ? null : (
+
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="mb-2 text-[13px] font-semibold text-[var(--text-primary)]">Branding</h3>
+                      <p className="mb-3 text-[12px] text-[var(--text-muted)]">
+                        Brand details are used in generated outputs, Excel exports, and sender display names.
+                      </p>
+                      <div className="space-y-3">
+                        <label
+                          className="flex cursor-pointer items-start gap-2 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-3"
+                          onClick={(e) => {
+                            if (plan !== "enterprise") {
+                              e.preventDefault();
+                              router.push("/contact?plan=enterprise");
+                              toast({
+                                message: "White label mode is available on Enterprise. Upgrade to Enterprise to enable it.",
+                                variant: "error",
+                                durationMs: 5000,
+                              });
+                            }
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            className={cn("mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)]", focusRing)}
+                            checked={whiteLabelMode}
+                            disabled={plan !== "enterprise"}
+                            onChange={(e) => {
+                              if (plan === "enterprise") {
+                                setWhiteLabelMode(e.target.checked);
+                              }
+                            }}
+                          />
+                          <span className="text-[12px] leading-snug text-[var(--text-primary)]">
+                            <span className="font-medium">White label mode</span>
+                            <span className="text-[var(--text-muted)]">
+                              {" "}
+                              - remove all Handover branding from scheduled emails, client send, Excel exports, and
+                              Halo ticket notes (requires a brand name above).
+                            </span>
+                            {plan !== "enterprise" ? (
+                              <span className="mt-2 block text-[11px] text-[var(--text-muted)]">
+                                Enterprise only.{" "}
+                                <Link
+                                  href="/contact?plan=enterprise"
+                                  className="font-medium text-[var(--accent)] underline-offset-2 hover:underline"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  Upgrade to Enterprise
+                                </Link>
+                              </span>
+                            ) : null}
+                          </span>
+                        </label>
+                        <Input
+                          value={brandName}
+                          onChange={(e) => setBrandName(e.target.value)}
+                          placeholder="Brand name (e.g. Northstar MSP)"
+                          className={cn("rounded-[var(--radius)] border-[var(--border)]", focusRing)}
+                        />
+                        <div className="space-y-1.5">
+                          <label className="text-[12px] text-[var(--text-secondary)]">
+                            Name in scheduled email header
+                          </label>
+                          <Input
+                            value={schBrandName}
+                            onChange={(e) => setSchBrandName(e.target.value)}
+                            placeholder="e.g. Northstar MSP (defaults to Handover if blank)"
+                            className={cn("rounded-[var(--radius)] border-[var(--border)]", focusRing)}
+                          />
+                          <p className="text-[11px] text-[var(--text-muted)]">
+                            Shown to recipients on automated scheduled sends; your account brand above is used
+                            elsewhere.
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[12px] text-[var(--text-secondary)]">Primary colour</label>
+                          <div className="flex flex-wrap items-center gap-2 rounded-[var(--radius)] border border-[var(--border)] p-3">
+                            <input
+                              ref={brandPrimaryColorPickerRef}
+                              type="color"
+                              className="pointer-events-none fixed h-px w-px opacity-0"
+                              tabIndex={-1}
+                              aria-hidden
+                              value={hexForColorInput(brandColour, HANDOVER_BRAND_PRIMARY_HEX)}
+                              onChange={(e) => {
+                                setBrandColour(formatHex6Display(e.target.value));
+                                setBrandColourError("");
+                              }}
+                            />
+                            <button
+                              type="button"
+                              className={cn(
+                                "size-9 shrink-0 rounded border border-[var(--border)] shadow-sm transition-opacity hover:opacity-90",
+                                focusRing,
+                              )}
+                              style={{
+                                backgroundColor: HEX_COLOUR_6.test(brandColour.trim())
+                                  ? `#${brandColour.trim().replace(/^#/, "")}`
+                                  : "#2563eb",
+                              }}
+                              aria-label="Open primary colour picker"
+                              onClick={() => brandPrimaryColorPickerRef.current?.click()}
+                            />
+                            <Input
+                              value={brandColour}
+                              onChange={(e) => {
+                                setBrandColour(e.target.value);
+                                setBrandColourError("");
+                              }}
+                              placeholder={HANDOVER_BRAND_PRIMARY_HEX}
+                              spellCheck={false}
+                              autoCapitalize="off"
+                              className={cn(
+                                "min-w-0 flex-1 rounded-[var(--radius)] border-[var(--border)] font-mono text-[13px] sm:max-w-[11rem]",
+                                focusRing,
+                              )}
+                              aria-invalid={Boolean(brandColourError)}
+                              aria-describedby={brandColourError ? "brand-colour-primary-err" : undefined}
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className={cn("shrink-0 text-[12px]", focusRing)}
+                              onClick={() => void resetBrandPrimaryColour()}
+                            >
+                              Reset to default
+                            </Button>
+                          </div>
+                          {brandColourError ? (
+                            <p id="brand-colour-primary-err" className="text-[12px] text-[var(--danger)]">
+                              {brandColourError}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[12px] text-[var(--text-secondary)]">Accent colour</label>
+                          <div className="flex flex-wrap items-center gap-2 rounded-[var(--radius)] border border-[var(--border)] p-3">
+                            <input
+                              ref={brandSecondaryColorPickerRef}
+                              type="color"
+                              className="pointer-events-none fixed h-px w-px opacity-0"
+                              tabIndex={-1}
+                              aria-hidden
+                              value={hexForColorInput(brandSecondaryColour, HANDOVER_BRAND_SECONDARY_HEX)}
+                              onChange={(e) => {
+                                setBrandSecondaryColour(formatHex6Display(e.target.value));
+                                setBrandSecondaryColourError("");
+                              }}
+                            />
+                            <button
+                              type="button"
+                              className={cn(
+                                "size-9 shrink-0 rounded border border-[var(--border)] shadow-sm transition-opacity hover:opacity-90",
+                                focusRing,
+                              )}
+                              style={{
+                                backgroundColor: HEX_COLOUR_6.test(brandSecondaryColour.trim())
+                                  ? `#${brandSecondaryColour.trim().replace(/^#/, "")}`
+                                  : "#1e40af",
+                              }}
+                              aria-label="Open accent colour picker"
+                              onClick={() => brandSecondaryColorPickerRef.current?.click()}
+                            />
+                            <Input
+                              value={brandSecondaryColour}
+                              onChange={(e) => {
+                                setBrandSecondaryColour(e.target.value);
+                                setBrandSecondaryColourError("");
+                              }}
+                              placeholder={HANDOVER_BRAND_SECONDARY_HEX}
+                              spellCheck={false}
+                              autoCapitalize="off"
+                              className={cn(
+                                "min-w-0 flex-1 rounded-[var(--radius)] border-[var(--border)] font-mono text-[13px] sm:max-w-[11rem]",
+                                focusRing,
+                              )}
+                              aria-invalid={Boolean(brandSecondaryColourError)}
+                              aria-describedby={
+                                brandSecondaryColourError ? "brand-colour-secondary-err" : undefined
+                              }
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className={cn("shrink-0 text-[12px]", focusRing)}
+                              onClick={() => void resetBrandSecondaryColour()}
+                            >
+                              Reset to default
+                            </Button>
+                          </div>
+                          {brandSecondaryColourError ? (
+                            <p id="brand-colour-secondary-err" className="text-[12px] text-[var(--danger)]">
+                              {brandSecondaryColourError}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-2">
+                          <p className="mb-1.5 text-[11px] font-medium text-[var(--text-muted)]">Colour preview</p>
+                          <div className="flex h-8 w-full overflow-hidden rounded-md border border-[var(--border)]">
+                            <div
+                              className="flex-1"
+                              style={{
+                                background:
+                                  /^#?[0-9a-fA-F]{6}$/.test(brandColour.trim())
+                                    ? brandColour.trim().replace(/^#?/, "#")
+                                    : "#2563eb",
+                              }}
+                              title="Primary"
+                            />
+                            <div
+                              className="flex-1"
+                              style={{
+                                background:
+                                  /^#?[0-9a-fA-F]{6}$/.test(brandSecondaryColour.trim())
+                                    ? brandSecondaryColour.trim().replace(/^#?/, "#")
+                                    : "#1e40af",
+                              }}
+                              title="Accent"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[12px] text-[var(--text-secondary)]">Logo</label>
+                          {brandLogoUrl.trim() ? (
+                            <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-3">
+                              <img
+                                key={brandLogoPreviewKey}
+                                src={brandLogoUrl.trim()}
+                                alt="Current brand logo"
+                                className="max-h-16 max-w-[200px] rounded border border-[var(--border)] bg-[var(--bg-primary)] object-contain"
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className={cn("text-[12px]", focusRing)}
+                                onClick={() => void removeBrandLogo()}
+                                disabled={brandLogoUploading}
+                              >
+                                Remove logo
+                              </Button>
+                            </div>
+                          ) : (
+                            <>
+                              <input
+                                ref={logoFileInputRef}
+                                type="file"
+                                accept="image/png,image/jpeg,image/jpg,image/webp"
+                                onChange={(e) => void uploadBrandLogo(e.target.files?.[0] ?? null)}
+                                className={cn("block w-full text-[12px] text-[var(--text-secondary)]", focusRing)}
+                              />
+                              {brandLogoUploading ? (
+                                <p className="text-[12px] text-[var(--text-muted)]">Uploading logo...</p>
+                              ) : null}
+                            </>
+                          )}
+                        </div>
+                        <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-3">
+                          <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
+                            Excel header preview
+                          </p>
+                          <div
+                            className="flex items-center gap-3 rounded-[6px] border px-3 py-2"
+                            style={{
+                              background:
+                                /^#?[0-9a-fA-F]{6}$/.test(brandColour.trim())
+                                  ? brandColour.trim().replace(/^#?/, "#")
+                                  : "#2563eb",
+                              borderColor:
+                                /^#?[0-9a-fA-F]{6}$/.test(brandSecondaryColour.trim())
+                                  ? brandSecondaryColour.trim().replace(/^#?/, "#")
+                                  : /^#?[0-9a-fA-F]{6}$/.test(brandColour.trim())
+                                    ? brandColour.trim().replace(/^#?/, "#")
+                                    : "#2563eb",
+                            }}
+                          >
+                            {brandLogoUrl ? (
+                              <img
+                                key={`excel-${brandLogoPreviewKey}`}
+                                src={brandLogoUrl}
+                                alt="Brand logo"
+                                className="h-8 w-8 rounded bg-white/90 p-1 object-contain"
+                              />
+                            ) : (
+                              <div className="h-8 w-8 rounded bg-white/20" />
+                            )}
+                            <span className="text-[12px] font-semibold text-white">
+                              {(brandName.trim() || "Handover")} Report Header
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        className={cn("bg-[var(--accent)] text-[13px] text-white hover:bg-[var(--accent-hover)]", focusRing)}
+                        onClick={() => void saveBrandingSettings()}
+                      >
+                        Save branding
+                      </Button>
+                    </div>
+                  </div>
+  );
 
   const authLoading = mounted && !onboardingProfileLoaded;
   if (authLoading) {
@@ -6959,7 +9133,7 @@ export default function Home() {
           <img src="/icon2.png" alt="" className="h-8 w-8 object-contain" />
           <span className="text-xl font-bold text-white">Handover</span>
         </div>
-        <div className="mt-2 h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-[#0EA5E9]" />
+        <div className="mt-2 h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-[var(--accent)]" />
       </div>
     );
   }
@@ -6993,14 +9167,9 @@ export default function Home() {
           </p>
           <Link
             href="/pricing"
-            className={cn(
-              "shrink-0 rounded-md px-2.5 py-1 text-[10px] font-semibold sm:text-[11px]",
-              trialBannerExpired
-                ? "bg-red-600 text-white hover:bg-red-500"
-                : "bg-sky-600/90 text-white shadow-sm hover:bg-sky-600 dark:bg-sky-700/90",
-            )}
+            className="shrink-0 rounded-[var(--radius)] bg-[var(--accent)] px-3 py-1 text-[12px] font-semibold text-white transition hover:bg-[var(--accent-hover)]"
           >
-            Upgrade
+            Upgrade now
           </Link>
           <button
             type="button"
@@ -7028,13 +9197,13 @@ export default function Home() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Link
-                href="/pricing?trial=professional"
+                href="/welcome"
                 className="inline-flex min-h-10 items-center justify-center rounded-[var(--radius)] bg-[var(--accent)] px-4 text-sm font-semibold text-white transition hover:bg-[var(--accent-hover)]"
               >
                 Professional — 14-day trial
               </Link>
               <Link
-                href="/pricing?trial=team"
+                href="/welcome"
                 className="inline-flex min-h-10 items-center justify-center rounded-[var(--radius)] border border-[var(--border)] bg-transparent px-4 text-sm font-semibold text-[var(--text-primary)] transition hover:bg-[var(--bg-secondary)]"
               >
                 Team — 14-day trial
@@ -7071,26 +9240,67 @@ export default function Home() {
             <div className="border-b border-[var(--border)] px-5 py-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h3 className="text-lg font-semibold text-[var(--text-primary)]">{`Push to ${pushModalPsaLabel}`}</h3>
+                  <h3 className="text-lg font-semibold text-[var(--text-primary)]">{`Push to ${pushModalHeaderLabel}`}</h3>
                   <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                    {`Post generated outputs as a note on your ${pushModalPsaLabel} tickets`}
+                    {`Post generated outputs as a note on your ${pushModalHeaderLabel} tickets`}
                   </p>
+                  {showPushPsaPicker ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                        Push to
+                      </span>
+                      <div className="inline-flex rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-0.5">
+                        <button
+                          type="button"
+                          className={cn(
+                            "rounded-[calc(var(--radius)-2px)] px-3 py-1 text-[12px] font-medium transition-colors",
+                            pushTargetPsa === "halopsa"
+                              ? "bg-[var(--accent)] text-white"
+                              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
+                            focusRing,
+                          )}
+                          onClick={() => setPushTargetPsa("halopsa")}
+                        >
+                          HaloPSA
+                        </button>
+                        <button
+                          type="button"
+                          className={cn(
+                            "rounded-[calc(var(--radius)-2px)] px-3 py-1 text-[12px] font-medium transition-colors",
+                            pushTargetPsa === "connectwise"
+                              ? "bg-[var(--accent)] text-white"
+                              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
+                            focusRing,
+                          )}
+                          onClick={() => setPushTargetPsa("connectwise")}
+                        >
+                          ConnectWise
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
                 <Button type="button" variant="outline" size="sm" onClick={() => setPushModalOpen(false)}>
                   Close
                 </Button>
               </div>
             </div>
+            <div className="flex min-h-0 flex-1 flex-col">
             <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-5 lg:grid-cols-3">
-              <div className="rounded-[var(--radius)] border border-[var(--border)] p-4">
+              <div
+                className={cn(
+                  "rounded-[var(--radius)] border border-[var(--border)] p-4",
+                  pushModalMobileStep !== 0 && "hidden lg:block",
+                )}
+              >
                 <p className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--text-muted)]">Step 1</p>
                 <h4 className="mt-1 text-sm font-semibold text-[var(--text-primary)]">Select tickets to post to</h4>
                 <div className="mt-2 flex items-center gap-3 text-xs">
-                  <button type="button" className="text-[var(--accent)]" onClick={() => setPushSelectedTicketIds(lastImportedHaloItems.map((t) => t.id))}>Select all</button>
+                  <button type="button" className="text-[var(--accent)]" onClick={() => setPushSelectedTicketIds(pushModalImportRows.map((t) => t.id))}>Select all</button>
                   <button type="button" className="text-[var(--text-secondary)]" onClick={() => setPushSelectedTicketIds([])}>Deselect all</button>
                 </div>
                 <div className="mt-3 space-y-2">
-                  {lastImportedHaloItems.map((t) => (
+                  {pushModalImportRows.map((t) => (
                     <label key={t.id} className="flex items-start gap-2 rounded-[var(--radius)] border border-[var(--border)] p-2 text-xs">
                       <input
                         type="checkbox"
@@ -7109,26 +9319,35 @@ export default function Home() {
                   ))}
                 </div>
               </div>
-              <div className="rounded-[var(--radius)] border border-[var(--border)] p-4">
+              <div
+                className={cn(
+                  "rounded-[var(--radius)] border border-[var(--border)] p-4",
+                  pushModalMobileStep !== 1 && "hidden lg:block",
+                )}
+              >
                 <p className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--text-muted)]">Step 2</p>
                 <h4 className="mt-1 text-sm font-semibold text-[var(--text-primary)]">Choose what to include in the note</h4>
+                <p className="mt-2 text-[11px] text-[var(--text-muted)]">
+                  Client email is sent via Email client, not pushed to PSA.
+                </p>
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                  {[
-                    ["client_email", "Client email"],
-                    ["actions", "Action log"],
-                    ["risks", "Risk log"],
-                    ["summary", "Summary"],
-                    ["status_report", "Status report"],
-                  ].map(([id, label]) => (
+                  {(
+                    [
+                      ["actions", "Action log"],
+                      ["risks", "Risk log"],
+                      ["summary", "Summary"],
+                      ["status_report", "Status report"],
+                    ] as const
+                  ).map(([id, label]) => (
                     <label key={id} className="flex items-center gap-2 rounded border border-[var(--border)] p-2">
                       <input
                         type="checkbox"
-                        checked={pushSelectedOutputs.includes(id as "client_email")}
+                        checked={pushSelectedOutputs.includes(id)}
                         onChange={() =>
                           setPushSelectedOutputs((prev) =>
-                            prev.includes(id as "client_email")
+                            prev.includes(id)
                               ? prev.filter((x) => x !== id)
-                              : [...prev, id as "client_email"],
+                              : [...prev, id],
                           )
                         }
                       />
@@ -7136,16 +9355,90 @@ export default function Home() {
                     </label>
                   ))}
                 </div>
+                {pushSelectedTicketIds.length > 1 && pushSelectedOutputs.includes("summary") ? (
+                  <div className="mt-4 space-y-2">
+                    <p className="text-[11px] font-medium text-[var(--text-muted)]">Summary scope</p>
+                    <div
+                      className="inline-flex rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-0.5"
+                      role="group"
+                      aria-label="Summary scope"
+                    >
+                      <button
+                        type="button"
+                        className={cn(
+                          "rounded-[calc(var(--radius)-2px)] px-2.5 py-1 text-[11px] font-medium transition-colors",
+                          pushSummaryScope === "per_ticket"
+                            ? "bg-[var(--accent)] text-white"
+                            : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
+                          focusRing,
+                        )}
+                        onClick={() => setPushSummaryScope("per_ticket")}
+                      >
+                        Per ticket
+                      </button>
+                      <button
+                        type="button"
+                        className={cn(
+                          "rounded-[calc(var(--radius)-2px)] px-2.5 py-1 text-[11px] font-medium transition-colors",
+                          pushSummaryScope === "combined_all"
+                            ? "bg-[var(--accent)] text-white"
+                            : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
+                          focusRing,
+                        )}
+                        onClick={() => setPushSummaryScope("combined_all")}
+                      >
+                        Combined (all tickets)
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                {pushSelectedTicketIds.length > 1 && pushSelectedOutputs.includes("status_report") ? (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-[11px] font-medium text-[var(--text-muted)]">Status report scope</p>
+                    <div
+                      className="inline-flex rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-0.5"
+                      role="group"
+                      aria-label="Status report scope"
+                    >
+                      <button
+                        type="button"
+                        className={cn(
+                          "rounded-[calc(var(--radius)-2px)] px-2.5 py-1 text-[11px] font-medium transition-colors",
+                          pushStatusScope === "per_ticket"
+                            ? "bg-[var(--accent)] text-white"
+                            : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
+                          focusRing,
+                        )}
+                        onClick={() => setPushStatusScope("per_ticket")}
+                      >
+                        Per ticket
+                      </button>
+                      <button
+                        type="button"
+                        className={cn(
+                          "rounded-[calc(var(--radius)-2px)] px-2.5 py-1 text-[11px] font-medium transition-colors",
+                          pushStatusScope === "combined_all"
+                            ? "bg-[var(--accent)] text-white"
+                            : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
+                          focusRing,
+                        )}
+                        onClick={() => setPushStatusScope("combined_all")}
+                      >
+                        Combined (all tickets)
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="mt-4 border-t border-[var(--border)] pt-3">
                   <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent)]">
                     Excel Report Pack
                   </p>
                   <label className="flex items-center justify-between gap-2 text-sm text-[var(--text-primary)]">
-                    <span>{`Attach Excel to ${pushModalPsaLabel} note`}</span>
+                    <span>{`Attach Excel to ${pushModalHeaderLabel} note`}</span>
                     <input type="checkbox" checked={pushAttachExcel} onChange={(e) => setPushAttachExcel(e.target.checked)} />
                   </label>
                   <p className="mt-1 text-xs text-[var(--text-muted)]">
-                    {`The Excel file will be attached directly to the ${pushModalPsaLabel} ticket note`}
+                    {`The Excel file will be attached directly to the ${pushModalHeaderLabel} ticket note`}
                   </p>
                   {pushAttachExcel ? (
                     <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
@@ -7173,7 +9466,12 @@ export default function Home() {
                   ) : null}
                 </div>
               </div>
-              <div className="rounded-[var(--radius)] border border-[var(--border)] p-4">
+              <div
+                className={cn(
+                  "rounded-[var(--radius)] border border-[var(--border)] p-4",
+                  pushModalMobileStep !== 2 && "hidden lg:block",
+                )}
+              >
                 <p className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--text-muted)]">Step 3</p>
                 <h4 className="mt-1 text-sm font-semibold text-[var(--text-primary)]">Confirm</h4>
                 <div className="mt-3 space-y-2 text-sm text-[var(--text-secondary)]">
@@ -7190,13 +9488,53 @@ export default function Home() {
                 ) : null}
                 <Button
                   type="button"
-                  className="mt-4 w-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                  className="mt-4 hidden w-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] lg:flex"
                   onClick={() => void executePushToHalo()}
                   disabled={pushLoading || pushSelectedTicketIds.length === 0 || pushSelectedOutputs.length === 0}
                 >
-                  {pushLoading ? "Pushing..." : `Push to ${pushModalPsaLabel}`}
+                  {pushLoading ? "Pushing..." : `Push to ${pushModalHeaderLabel}`}
                 </Button>
               </div>
+            </div>
+            <div className="flex shrink-0 items-center justify-between gap-3 border-t border-[var(--border)] bg-[var(--bg-primary)] px-4 py-3 lg:hidden">
+              {pushModalMobileStep > 0 ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPushModalMobileStep((s) => Math.max(0, s - 1))}
+                >
+                  ← Back
+                </Button>
+              ) : (
+                <span className="w-px shrink-0" aria-hidden />
+              )}
+              {pushModalMobileStep < 2 ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="ml-auto bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                  disabled={
+                    (pushModalMobileStep === 0 &&
+                      (pushSelectedTicketIds.length === 0 || pushLoading)) ||
+                    (pushModalMobileStep === 1 && (pushSelectedOutputs.length === 0 || pushLoading))
+                  }
+                  onClick={() => setPushModalMobileStep((s) => Math.min(2, s + 1))}
+                >
+                  Next →
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="ml-auto bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                  onClick={() => void executePushToHalo()}
+                  disabled={pushLoading || pushSelectedTicketIds.length === 0 || pushSelectedOutputs.length === 0}
+                >
+                  {pushLoading ? "Pushing..." : `Push to ${pushModalHeaderLabel}`}
+                </Button>
+              )}
+            </div>
             </div>
           </div>
         </div>
@@ -7233,16 +9571,21 @@ export default function Home() {
       <HaloImportModal
         open={haloImportOpen}
         onOpenChange={setHaloImportOpen}
+        forceDemoMode={demoModeActive}
         onProRequired={() => setHaloProModalOpen(true)}
         onConnectionInvalid={(message) => {
           setHaloConnected(false);
           setHaloError(message);
-          setMainView("integrations");
+          openIntegrationsInConfiguration({ initialDetail: "halo" });
           setHaloConfigOpen(true);
         }}
-        onImport={({ formatted, count, selectedClientName, dataType, importedItems }) => {
+        onImport={({ formatted, count, selectedClientName, dataType, importedItems, fromDemo }) => {
           setInput(formatted);
+          setSessionUsesDemoData(Boolean(fromDemo));
           setLastImportedHaloItems(importedItems);
+          setLastImportSourcePsa("halopsa");
+          setPushTargetPsa("halopsa");
+          setIsInputCollapsed(importedItems.length > 0);
           if (selectedClientName) {
             setProjectName(selectedClientName);
           }
@@ -7268,11 +9611,16 @@ export default function Home() {
       <CwImportModal
         open={cwImportOpen}
         connectwiseConnected={cwConnected}
+        forceDemoMode={demoModeActive}
+        demoModeActive={demoModeActive}
         onOpenChange={setCwImportOpen}
-        onImport={({ formatted, count, selectedClientName, dataType, importedItems }) => {
+        onImport={({ formatted, count, selectedClientName, dataType, importedItems, fromDemo }) => {
           setInput(formatted);
+          setSessionUsesDemoData(Boolean(fromDemo));
           setLastImportedHaloItems(importedItems);
+          setIsInputCollapsed(importedItems.length > 0);
           setCwImportedCount((prev) => prev + count);
+          setLastImportSourcePsa("connectwise");
           setPushTargetPsa("connectwise");
           if (selectedClientName) {
             setProjectName(selectedClientName);
@@ -7322,11 +9670,15 @@ export default function Home() {
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--bg-secondary)]">
             <div className="min-h-[min(52vh,480px)] flex-1 overflow-hidden">
               {scheduleEmailPreviewLoading ? (
-                <div className="flex flex-col items-center justify-center gap-3 px-6 py-16">
-                  <Loader2 className="size-10 animate-spin text-[var(--accent)]" aria-hidden />
+                <div className="flex flex-col gap-4 px-6 py-10" aria-busy>
                   <p className="text-center text-sm text-[var(--text-secondary)]">
                     Pulling live HaloPSA data and generating preview...
                   </p>
+                  <div className="animate-pulse space-y-3">
+                    <div className="mx-auto h-3 w-[55%] max-w-sm rounded bg-[var(--bg-primary)]" />
+                    <div className="min-h-[min(280px,40vh)] w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] shadow-inner" />
+                    <div className="mx-auto h-2 w-2/3 max-w-md rounded bg-[var(--bg-primary)]" />
+                  </div>
                 </div>
               ) : scheduleEmailPreviewError ? (
                 <div className="px-6 py-8">
@@ -7689,110 +10041,6 @@ export default function Home() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={generateOptionsOpen} onOpenChange={setGenerateOptionsOpen}>
-        <DialogContent className="sm:max-w-lg" showCloseButton>
-          <DialogHeader>
-            <DialogTitle>What do you need?</DialogTitle>
-            <DialogDescription>Select the outputs to generate</DialogDescription>
-          </DialogHeader>
-          <form
-            className="grid gap-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (MODAL_OUTPUT_KEYS.filter((k) => outputPrefs[k]).length === 0) {
-                return;
-              }
-              void executeGenerate(outputPrefs);
-            }}
-            onKeyDown={(e) => {
-              if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
-              const t = e.target as HTMLElement;
-              if (t.tagName === "BUTTON") return;
-              if (t.tagName === "INPUT") {
-                const ty = (t as HTMLInputElement).type;
-                if (ty === "text" || ty === "checkbox" || ty === "email") return;
-              }
-              if (t.tagName === "TEXTAREA") return;
-              if (MODAL_OUTPUT_KEYS.filter((k) => outputPrefs[k]).length === 0) {
-                return;
-              }
-              e.preventDefault();
-              void executeGenerate(outputPrefs);
-            }}
-          >
-            <div className="flex max-h-[min(60vh,24rem)] flex-col gap-3 overflow-y-auto pr-1">
-              {MODAL_OUTPUT_KEYS.map((key) => (
-                <div key={key} className="space-y-0">
-                  <label className="flex cursor-pointer items-start gap-3 text-sm text-[var(--text-primary)]">
-                    <input
-                      type="checkbox"
-                      checked={outputPrefs[key]}
-                      onChange={() => {
-                        if (key === "client_email") {
-                          setOutputPrefs((p) => {
-                            const next = !p.client_email;
-                            if (!next) {
-                              setClientContactName("");
-                              setClientContactEmail("");
-                            }
-                            return { ...p, client_email: next };
-                          });
-                        } else {
-                          setOutputPrefs((p) => ({ ...p, [key]: !p[key] }));
-                        }
-                      }}
-                      className="mt-0.5 size-4 shrink-0 rounded border-[var(--border)] text-[var(--accent)] focus-visible:outline focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                    />
-                    <span>{OUTPUT_KEY_LABELS[key]}</span>
-                  </label>
-                  {key === "client_email" && outputPrefs.client_email ? (
-                    <div className="ml-7 mt-2 space-y-2 border-l-2 border-[var(--border-subtle)] pl-3 duration-200 animate-in fade-in slide-in-from-left-2">
-                      <Input
-                        value={clientContactName}
-                        onChange={(e) => setClientContactName(e.target.value)}
-                        placeholder="Contact name (optional)"
-                        title='e.g. "James"'
-                        disabled={isGenerating}
-                        className="h-9 border-[var(--border)]"
-                        autoComplete="off"
-                      />
-                      <Input
-                        type="email"
-                        value={clientContactEmail}
-                        onChange={(e) => setClientContactEmail(e.target.value)}
-                        placeholder="Contact email (optional)"
-                        title='e.g. "james@crownoil.co.uk"'
-                        disabled={isGenerating}
-                        className="h-9 border-[var(--border)]"
-                        autoComplete="email"
-                      />
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-            <div className="flex flex-col gap-2 border-t border-[var(--border-subtle)] pt-4">
-              <Button
-                type="submit"
-                disabled={
-                  MODAL_OUTPUT_KEYS.filter((k) => outputPrefs[k]).length === 0
-                }
-                className="w-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
-              >
-                Generate {selectedGenCount} output{selectedGenCount === 1 ? "" : "s"}
-              </Button>
-              <button
-                type="button"
-                className="text-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-                onClick={() => setGenerateOptionsOpen(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-
       <PremiumHardLimitModal
         open={premiumHardLimitOpen}
         onOpenChange={setPremiumHardLimitOpen}
@@ -7831,9 +10079,10 @@ export default function Home() {
       >
         <DialogContent className="sm:max-w-lg" showCloseButton>
           <DialogHeader>
-            <DialogTitle>Scheduled reports require Pro</DialogTitle>
+            <DialogTitle>Scheduled Reports is available on Pro</DialogTitle>
             <DialogDescription>
-              Upgrade to automate your weekly reporting.
+              Upgrade to unlock automated weekly reporting — save schedules, run on your PSA data, and email clients on
+              autopilot.
             </DialogDescription>
           </DialogHeader>
           <UpgradePlanCards
@@ -7888,6 +10137,86 @@ export default function Home() {
               See all Pro features
             </Link>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={fullReportExportPickerOpen}
+        onOpenChange={(open) => {
+          setFullReportExportPickerOpen(open);
+        }}
+      >
+        <DialogContent className="max-h-[min(90dvh,720px)] overflow-y-auto sm:max-w-2xl" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>Export Excel — sheets</DialogTitle>
+            <DialogDescription>
+              Choose which workbook tabs to include. Your selection is remembered on this device.
+            </DialogDescription>
+          </DialogHeader>
+          {fullReportExcelSheetPickerOptions.length === 0 ? (
+            <p className="text-sm text-[var(--text-muted)]">No generated sheets available to export.</p>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[12px] font-medium text-[var(--text-secondary)]">Workbook tabs</p>
+                <button
+                  type="button"
+                  className={cn("text-[12px] font-medium text-[var(--accent)] underline-offset-2 hover:underline", focusRing)}
+                  onClick={() =>
+                    setExportFullTabs(fullReportExcelSheetPickerOptions.map((o) => o.id))
+                  }
+                >
+                  Select all
+                </button>
+              </div>
+              <div className="max-h-[min(70vh,500px)] space-y-0 overflow-y-auto rounded-[var(--radius)] border border-[var(--border)]">
+                {fullReportExcelSheetPickerOptions.map((row) => {
+                  const checked = exportFullTabs.includes(row.id);
+                  return (
+                    <label
+                      key={row.id}
+                      className="flex cursor-pointer items-center gap-3 border-b border-[var(--border)] px-3 py-2.5 text-[13px] last:border-b-0 hover:bg-[color-mix(in_srgb,var(--bg-secondary)_80%,transparent)]"
+                    >
+                      <input
+                        type="checkbox"
+                        className="size-4 shrink-0 rounded border-[var(--border)] text-[var(--accent)]"
+                        checked={checked}
+                        onChange={() =>
+                          setExportFullTabs((prev) => toggleStringInArray(prev, row.id, !checked))
+                        }
+                      />
+                      <span className="text-[var(--text-primary)]">{row.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:justify-end">
+            <Button type="button" variant="outline" onClick={() => setFullReportExportPickerOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+              disabled={exportFullTabs.length === 0 || fullReportExcelSheetPickerOptions.length === 0}
+              onClick={() => {
+                const defCols = EXPORT_DEFAULTS.fullReport;
+                const actionCols = [...defCols.actionColumns];
+                const riskCols = [...defCols.riskColumns];
+                setExportFullActionCols(actionCols);
+                setExportFullRiskCols(riskCols);
+                saveFullReportExportPrefs({
+                  tabs: exportFullTabs,
+                  actionColumns: actionCols,
+                  riskColumns: riskCols,
+                });
+                void handleFullReportExcelExport();
+              }}
+            >
+              Download
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -8202,55 +10531,60 @@ export default function Home() {
       <aside
         id="app-sidebar-nav"
         className={cn(
-          "fixed top-0 left-0 z-40 flex h-screen min-h-0 w-[280px] flex-col border-r bg-[var(--sidebar-bg)] text-[14px]",
+          "group fixed top-0 left-0 z-40 flex h-screen min-h-0 w-[280px] flex-col border-r bg-gradient-to-b from-[#1a2540] to-[#141d32] text-[14px]",
           "border-[var(--sidebar-border)]",
-          "transition-transform md:translate-x-0",
+          "transition-transform md:translate-x-0 md:transition-all md:duration-150 md:ease-out",
+          sidebarExpanded ? "md:w-[280px]" : "md:w-[56px]",
           sidebarOpenMobile ? "translate-x-0" : "-translate-x-full",
         )}
+        onMouseEnter={() => setSidebarHovered(true)}
+        onMouseLeave={() => setSidebarHovered(false)}
       >
-        <div className="flex shrink-0 items-center justify-between border-b border-[var(--sidebar-border)] px-4 py-4">
+        <button
+          type="button"
+          onClick={toggleSidebarPinned}
+          className={cn(
+            "absolute top-3 right-3 z-10 hidden cursor-pointer text-[var(--text-secondary)] transition-colors hover:text-white md:block",
+            sidebarPinned ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+          )}
+          aria-label={sidebarPinned ? "Unpin sidebar" : "Pin sidebar"}
+        >
+          {sidebarPinned ? (
+            <PinOff className="size-3.5" aria-hidden />
+          ) : (
+            <Pin className="size-3.5" aria-hidden />
+          )}
+        </button>
+        <div
+          className={cn(
+            "flex shrink-0 items-center justify-between border-b border-[var(--sidebar-border)] py-4",
+            sidebarExpanded ? "px-4 max-md:px-4 md:px-4" : "px-2 max-md:px-4 md:px-2",
+          )}
+        >
           <a
             href="/"
-            style={{
-              textDecoration: "none",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "8px",
-              flexShrink: 0,
-            }}
+            className="inline-flex min-w-0 flex-1 items-center gap-2 no-underline"
           >
             {whiteLabelMode && brandLogoUrl.trim() ? (
               <img
                 src={brandLogoUrl.trim()}
                 alt=""
-                style={{
-                  maxHeight: "32px",
-                  width: "auto",
-                  objectFit: "contain",
-                  display: "block",
-                  flexShrink: 0,
-                }}
+                className="block max-h-8 w-auto shrink-0 object-contain"
               />
             ) : (
               <img
                 src="/icon2.png"
                 alt=""
-                style={{
-                  width: "28px",
-                  height: "28px",
-                  objectFit: "contain",
-                  display: "block",
-                  flexShrink: 0,
-                }}
+                className="block size-7 shrink-0 object-contain drop-shadow-[0_0_8px_rgba(14,165,233,0.3)]"
               />
             )}
             <span
-              style={{
-                fontWeight: 700,
-                fontSize: "16px",
-                color: "white",
-                letterSpacing: "-0.02em",
-              }}
+              className={cn(
+                "truncate font-bold text-[16px] text-white tracking-[-0.02em] transition-opacity duration-150",
+                sidebarExpanded
+                  ? "max-md:opacity-100 md:opacity-100"
+                  : "max-md:opacity-100 md:w-0 md:overflow-hidden md:opacity-0",
+              )}
             >
               {whiteLabelMode && brandName.trim() ? brandName.trim() : "Handover"}
             </span>
@@ -8266,22 +10600,24 @@ export default function Home() {
         </div>
 
         <div className="sidebar-scroll min-h-0 flex-1 overflow-y-auto p-3">
-          <Button
-            type="button"
-            variant="ghost"
-            className={cn(
-              "mb-4 h-[34px] w-full justify-start rounded-[var(--radius)] border border-[var(--sidebar-border)] bg-[var(--accent)] px-3 text-[13px] font-medium text-white transition-all duration-[120ms] ease-in-out hover:bg-[var(--accent-hover)] hover:text-white",
-              focusRing,
-            )}
-            onClick={handleNewGeneration}
-          >
-            <Plus className="mr-2 size-[14px]" />
-            New Generation
-          </Button>
-
           {userEmail ? (
             <nav className="mb-4 space-y-0.5" aria-label="Main navigation">
               <button
+                type="button"
+                onClick={() => {
+                  setMainView("overview");
+                  setSettingsOpen(false);
+                  setSidebarOpenMobile(false);
+                }}
+                className={sidebarNavItemClass(
+                  mainView === "overview" && !settingsOpen,
+                )}
+              >
+                <HomeIcon className="size-[14px] shrink-0" aria-hidden />
+                <span className={sidebarNavLabelClass}>Overview</span>
+              </button>
+              <button
+                id="handover-new-generation-btn"
                 type="button"
                 onClick={() => {
                   setMainView("generate");
@@ -8289,31 +10625,13 @@ export default function Home() {
                   setSidebarOpenMobile(false);
                 }}
                 className={cn(
-                  "flex h-8 w-full items-center gap-1.5 rounded-[var(--radius)] px-2.5 text-[12px] text-[var(--sidebar-text)] transition-colors duration-[120ms] ease-in-out",
-                  mainView === "generate" && !settingsOpen
-                    ? "bg-[rgba(255,255,255,0.1)] font-medium text-white"
-                    : "hover:bg-[rgba(255,255,255,0.06)]",
+                  sidebarNavItemClass(mainView === "generate" && !settingsOpen),
+                  postOnboardingNewGenHighlight &&
+                    "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[#1a2540] animate-pulse",
                 )}
               >
                 <Zap className="size-[14px] shrink-0" aria-hidden />
-                Generate
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMainView("reports");
-                  setSettingsOpen(false);
-                  setSidebarOpenMobile(false);
-                }}
-                className={cn(
-                  "flex h-8 w-full items-center gap-1.5 rounded-[var(--radius)] px-2.5 text-[12px] text-[var(--sidebar-text)] transition-colors duration-[120ms] ease-in-out",
-                  mainView === "reports" && !settingsOpen
-                    ? "bg-[rgba(255,255,255,0.1)] font-medium text-white"
-                    : "hover:bg-[rgba(255,255,255,0.06)]",
-                )}
-              >
-                <LayoutTemplate className="size-[14px] shrink-0" aria-hidden />
-                Reports
+                <span className={sidebarNavLabelClass}>Generate</span>
               </button>
               {hasProAccess && deliveryDashboardAccess !== "none" ? (
                 <button
@@ -8323,70 +10641,132 @@ export default function Home() {
                     setSettingsOpen(false);
                     setSidebarOpenMobile(false);
                   }}
-                  className={cn(
-                    "flex h-8 w-full items-center gap-1.5 rounded-[var(--radius)] px-2.5 text-[12px] text-[var(--sidebar-text)] transition-colors duration-[120ms] ease-in-out",
-                    mainView === "delivery" && !settingsOpen
-                      ? "bg-[rgba(255,255,255,0.1)] font-medium text-white"
-                      : "hover:bg-[rgba(255,255,255,0.06)]",
+                  className={sidebarNavItemClass(
+                    mainView === "delivery" && !settingsOpen,
                   )}
                 >
-                  <LayoutDashboard className="size-[14px] shrink-0" aria-hidden />
-                  <span className="min-w-0 truncate">Dashboard</span>
+                  <BarChart3 className="size-[14px] shrink-0" aria-hidden />
+                  <span className={cn(sidebarNavLabelClass, "min-w-0 truncate")}>
+                    Delivery Health
+                  </span>
                 </button>
               ) : null}
               <button
                 type="button"
                 onClick={() => {
-                  setMainView("integrations");
+                  setSettingsOpen(false);
+                  setSidebarOpenMobile(false);
+                  if (!hasProAccess) {
+                    setScheduledReportsProPaywallOpen(true);
+                    return;
+                  }
+                  setMainView("scheduled");
+                }}
+                className={sidebarNavItemClass(
+                  mainView === "scheduled" && !settingsOpen,
+                )}
+              >
+                <Calendar className="size-[14px] shrink-0" aria-hidden />
+                <span className={cn(sidebarNavLabelClass, "min-w-0 truncate")}>
+                  Scheduled
+                </span>
+              </button>
+              <button
+                type="button"
+                aria-label="QBR Builder"
+                onClick={() => {
+                  setMainView("reports");
                   setSettingsOpen(false);
                   setSidebarOpenMobile(false);
                 }}
-                className={cn(
-                  "flex h-8 w-full items-center gap-1.5 rounded-[var(--radius)] px-2.5 text-[12px] text-[var(--sidebar-text)] transition-colors duration-[120ms] ease-in-out",
-                  mainView === "integrations" && !settingsOpen
-                    ? "bg-[rgba(255,255,255,0.1)] font-medium text-white"
-                    : "hover:bg-[rgba(255,255,255,0.06)]",
+                className={sidebarNavItemClass(
+                  mainView === "reports" && !settingsOpen,
                 )}
               >
-                <Plug className="size-[14px] shrink-0" aria-hidden />
-                Integrations
+                <LayoutTemplate className="size-[14px] shrink-0" aria-hidden />
+                <span className={sidebarNavLabelClass}>QBR Builder</span>
               </button>
+              {userEmail && hasProAccess && isEnterprisePlanUser ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMainView("organisation");
+                    setSettingsOpen(false);
+                    setSidebarOpenMobile(false);
+                  }}
+                  className={sidebarNavItemClass(
+                    mainView === "organisation" && !settingsOpen,
+                  )}
+                >
+                  <Building2 className="size-[14px] shrink-0" aria-hidden />
+                  <span className={cn(sidebarNavLabelClass, "min-w-0 truncate")}>
+                    Organisation
+                  </span>
+                </button>
+              ) : null}
               {showTeamDashboardLink ? (
                 <Link
                   href="/dashboard/team"
                   onClick={() => setSidebarOpenMobile(false)}
                   className={cn(
-                    "flex h-8 w-full items-center gap-1.5 rounded-[var(--radius)] px-2.5 text-[12px] text-[var(--sidebar-text)] transition-colors duration-[120ms] ease-in-out",
-                    "hover:bg-[rgba(255,255,255,0.06)]",
+                    "relative flex h-10 w-full items-center rounded-[var(--radius)] border-l-2 border-transparent text-[12px] text-[var(--text-secondary)] transition-colors duration-[120ms] ease-in-out hover:bg-white/5 hover:text-white",
+                    sidebarExpanded
+                      ? "gap-1.5 px-2.5 max-md:gap-1.5 max-md:px-2.5 md:gap-1.5 md:px-2.5"
+                      : "max-md:gap-1.5 max-md:px-2.5 md:justify-center md:gap-0 md:px-0",
                   )}
                 >
                   <Users className="size-[14px] shrink-0" aria-hidden />
-                  Team
+                  <span className={sidebarNavLabelClass}>Team</span>
                 </Link>
               ) : null}
               <button
                 type="button"
                 onClick={() => {
-                  setMainView("scheduled");
+                  setMainView("configuration");
                   setSettingsOpen(false);
                   setSidebarOpenMobile(false);
                 }}
-                className={cn(
-                  "flex h-8 w-full items-center gap-1.5 rounded-[var(--radius)] px-2.5 text-[12px] text-[var(--sidebar-text)] transition-colors duration-[120ms] ease-in-out",
-                  mainView === "scheduled" && !settingsOpen
-                    ? "bg-[rgba(255,255,255,0.1)] font-medium text-white"
-                    : "hover:bg-[rgba(255,255,255,0.06)]",
+                className={sidebarNavItemClass(
+                  mainView === "configuration" && !settingsOpen,
                 )}
               >
-                <Calendar className="size-[14px] shrink-0" aria-hidden />
-                <span className="min-w-0 truncate">Scheduled</span>
+                <Settings className="size-[14px] shrink-0" aria-hidden />
+                <span className={cn(sidebarNavLabelClass, "min-w-0 truncate")}>
+                  Configuration
+                </span>
+              </button>
+              <button
+                type="button"
+                aria-label={`History — ${totalGenerationCount ?? 0} generations`}
+                onClick={() => {
+                  setChatsModalOpen(true);
+                  setSidebarOpenMobile(false);
+                }}
+                className={sidebarNavItemClass(chatsModalOpen)}
+              >
+                <History className="size-[14px] shrink-0" aria-hidden />
+                <span className={cn(sidebarNavLabelClass, "min-w-0 truncate")}>
+                  History
+                </span>
+                <span
+                  className={cn(
+                    "shrink-0 rounded-full bg-[rgba(255,255,255,0.12)] px-1.5 py-px text-[10px] font-semibold tabular-nums text-[rgba(255,255,255,0.85)]",
+                    sidebarExpanded ? "ml-auto max-md:ml-auto md:ml-auto" : "max-md:ml-auto md:hidden",
+                  )}
+                  aria-hidden
+                >
+                  {totalGenerationCount ?? 0}
+                </span>
               </button>
             </nav>
           ) : null}
 
           {userEmail && freeGenUsage && !hasProAccess ? (
             <div
-              className="mb-3 rounded-[var(--radius)] border border-[var(--sidebar-border)] bg-[rgba(255,255,255,0.04)] px-2.5 py-2"
+              className={cn(
+                "mb-3 rounded-[var(--radius)] border border-[var(--sidebar-border)] bg-[rgba(255,255,255,0.04)] px-2.5 py-2",
+                !sidebarExpanded && "max-md:block md:hidden",
+              )}
               aria-label="Basic plan generation usage"
             >
               <div className="flex items-center justify-between gap-2">
@@ -8414,51 +10794,8 @@ export default function Home() {
               </div>
             </div>
           ) : null}
-          <div className="mx-2.5 my-1.5 h-px bg-[rgba(255,255,255,0.06)]" />
-          <button
-            type="button"
-            onClick={() => {
-              setMainView("configuration");
-              setSettingsOpen(false);
-              setSidebarOpenMobile(false);
-            }}
-            className={cn(
-              "flex h-8 w-full items-center gap-1.5 rounded-[var(--radius)] px-2.5 text-[12px] text-[var(--sidebar-text)] transition-colors duration-[120ms] ease-in-out",
-              mainView === "configuration" && !settingsOpen
-                ? "bg-[rgba(255,255,255,0.1)] font-medium text-white"
-                : "hover:bg-[rgba(255,255,255,0.06)]",
-            )}
-          >
-            <Settings className="size-[14px] shrink-0" aria-hidden />
-            <span className="min-w-0 truncate">Configuration</span>
-          </button>
 
-          {userEmail ? (
-            <>
-              <button
-                type="button"
-                onClick={() => {
-                  setChatsModalOpen(true);
-                  setSidebarOpenMobile(false);
-                }}
-                className={cn(
-                  "mb-1 flex h-8 w-full items-center gap-1.5 rounded-[var(--radius)] px-2.5 text-[12px] text-[var(--sidebar-text)] transition-colors duration-[120ms] ease-in-out",
-                  chatsModalOpen
-                    ? "bg-[rgba(255,255,255,0.1)] font-medium text-white"
-                    : "hover:bg-[rgba(255,255,255,0.06)]",
-                )}
-              >
-                <MessageSquare className="size-[14px] shrink-0" aria-hidden />
-                <span className="min-w-0 truncate">Chats</span>
-                <span
-                  className="ml-auto shrink-0 rounded-full bg-[rgba(255,255,255,0.12)] px-1.5 py-px text-[10px] font-semibold tabular-nums text-[rgba(255,255,255,0.85)]"
-                  aria-label={`${totalGenerationCount ?? 0} generations`}
-                >
-                  {totalGenerationCount ?? 0}
-                </span>
-              </button>
-            </>
-          ) : (
+          {!userEmail ? (
             <div className="mt-6 rounded-[var(--radius)] px-3 py-3" style={{ backgroundColor: "rgba(56,189,248,0.05)", border: "1px solid rgba(56,189,248,0.15)" }}>
               <p className="text-[13px] font-medium text-white">Save your work</p>
               <p className="mt-1 text-[12px] text-[var(--sidebar-text)]">
@@ -8470,37 +10807,49 @@ export default function Home() {
                 </Button>
               </Link>
             </div>
-          )}
+          ) : null}
         </div>
 
         <div className="shrink-0 border-t border-[rgba(255,255,255,0.08)] p-2.5">
           <div className="mb-2 space-y-0.5">
-            <Link
-              href="/integrations/halopsa"
-              className="flex w-full items-center gap-2 rounded-[var(--radius)] px-2 py-1.5 text-[12px] text-[var(--sidebar-text)] transition-colors duration-[120ms] hover:bg-[rgba(255,255,255,0.06)]"
+            <button
+              type="button"
+              onClick={() => {
+                setMainView("changelog");
+                setSettingsOpen(false);
+                setSidebarOpenMobile(false);
+              }}
+              className={sidebarNavItemClass(
+                mainView === "changelog" && !settingsOpen,
+              )}
             >
-              <Sparkles className="size-3.5" />
-              <span>HaloPSA guide</span>
-            </Link>
-            <Link
-              href="/"
-              className="flex w-full items-center gap-2 rounded-[var(--radius)] px-2 py-1.5 text-[12px] text-[var(--sidebar-text)] transition-colors duration-[120ms] hover:bg-[rgba(255,255,255,0.06)]"
-            >
-              <Sparkles className="size-3.5" />
-              <span>What&apos;s new</span>
-            </Link>
+              <Sparkles className="size-3.5 shrink-0" aria-hidden />
+              <span className={sidebarNavLabelClass}>What&apos;s new</span>
+            </button>
           </div>
           {userEmail ? (
             <>
               <button
                 type="button"
-                className="mb-2 flex w-full items-center gap-2 rounded-[var(--radius)] p-2.5 transition-colors duration-[120ms] hover:bg-[rgba(255,255,255,0.06)]"
+                className={cn(
+                  "mb-2 flex w-full items-center rounded-[var(--radius)] transition-colors duration-[120ms] hover:bg-[rgba(255,255,255,0.06)]",
+                  sidebarExpanded
+                    ? "gap-2 p-2.5 max-md:gap-2 max-md:p-2.5 md:gap-2 md:p-2.5"
+                    : "justify-center p-2 max-md:gap-2 max-md:p-2.5 md:justify-center md:p-2",
+                )}
                 onClick={() => setSettingsOpen(true)}
               >
                 <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-[11px] font-semibold text-white">
                   {userFirstName?.[0]?.toUpperCase() || userEmail?.[0]?.toUpperCase() || "U"}
                 </div>
-                <div className="min-w-0 flex-1 text-left">
+                <div
+                  className={cn(
+                    "min-w-0 flex-1 text-left transition-opacity duration-150",
+                    sidebarExpanded
+                      ? "max-md:block md:block"
+                      : "max-md:block md:hidden",
+                  )}
+                >
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="truncate text-[12px] font-medium text-white">
                       {userFirstName || "Account"}
@@ -8617,12 +10966,20 @@ export default function Home() {
                   </div>
                   <p className="truncate text-[10px] text-[rgba(255,255,255,0.35)]">{userEmail}</p>
                 </div>
-                <Settings className="ml-auto size-[14px] shrink-0 text-[rgba(255,255,255,0.3)] transition-colors hover:text-[rgba(255,255,255,0.7)]" />
+                <Settings
+                  className={cn(
+                    "size-[14px] shrink-0 text-[rgba(255,255,255,0.3)] transition-colors hover:text-[rgba(255,255,255,0.7)]",
+                    sidebarExpanded ? "ml-auto max-md:ml-auto md:ml-auto" : "max-md:ml-auto md:hidden",
+                  )}
+                />
               </button>
               {!hasProAccess ? (
                 <button
                   type="button"
-                  className="mb-2 flex w-full items-center justify-center rounded-[var(--radius)] border border-[var(--accent)] px-3 py-2 text-[12px] font-medium text-[var(--accent)] transition-colors hover:bg-[rgba(255,255,255,0.06)]"
+                  className={cn(
+                    "mb-2 flex w-full items-center justify-center rounded-[var(--radius)] border border-[var(--accent)] px-3 py-2 text-[12px] font-medium text-[var(--accent)] transition-colors hover:bg-[rgba(255,255,255,0.06)]",
+                    !sidebarExpanded && "max-md:flex md:hidden",
+                  )}
                   onClick={() => {
                     setHeaderUpgradeOpen(true);
                     setSidebarOpenMobile(false);
@@ -8640,40 +10997,25 @@ export default function Home() {
               Create free account
             </Link>
           )}
-          <div
-            style={{
-              padding: "4px 12px 8px",
-              fontSize: "10px",
-              color: "rgba(255,255,255,0.2)",
-              textAlign: "center",
-              userSelect: "none",
-            }}
-          >
-            v{APP_VERSION}.{BUILD_NUMBER}
+          <div className="py-2 text-center text-[10px] text-white/20 select-none">
+            v{APP_VERSION}
           </div>
         </div>
       </aside>
       {userEmail && authChecked && showLeftSidebar && (
         <div
-          className="fixed top-0 z-30 flex h-[52px] items-center justify-end px-4"
+          className="fixed top-0 z-30 flex h-[52px] items-center justify-between px-4 max-md:!left-0 transition-[left] duration-150 ease-out"
           style={{
-            left: '280px',
-            right: '0px',
-            top: '0px',
-            width: 'auto',
-            backgroundColor: '#0F1C3F',
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            left: `${sidebarMainOffsetPx}px`,
+            right: "0px",
+            top: "0px",
+            width: "auto",
+            background: SIGNED_IN_SHELL_BACKGROUND,
           }}
         >
-          {/* Dashboard link with active underline */}
-          <Link
-            href="/"
-            className="relative mr-3 text-[13px] font-medium text-white transition-colors"
-          >
-            Dashboard
-            <span className="absolute bottom-[-18px] left-0 right-0 h-[2px] bg-[var(--accent)] rounded-full" />
-          </Link>
+          <span className="text-[14px] font-medium text-white">{shellPageTitle}</span>
 
+          <div className="flex items-center">
           {/* Theme toggle */}
           <button
             type="button"
@@ -8703,6 +11045,7 @@ export default function Home() {
           >
             <Settings className="size-[14px]" />
           </button>
+          </div>
         </div>
       )}
         </>
@@ -8887,12 +11230,113 @@ export default function Home() {
           }}
           initialTo={smartActionEmailTo ?? generationMailtoEmail ?? ""}
           initialSubject={
-            (result.email_subject ?? "").trim() ||
-            buildDefaultClientEmailSubject(projectName)
+            smartActionEmailBody === followUpModalBody && followUpModalSubject.trim()
+              ? followUpModalSubject.trim()
+              : (result.email_subject ?? "").trim() ||
+                buildDefaultClientEmailSubject(projectName)
           }
           textBody={smartActionEmailBody ?? activeClientEmailBody}
+          onSendSuccess={() => void markProfileLoopCompleted()}
         />
       ) : null}
+
+      <Dialog open={followUpModalOpen} onOpenChange={setFollowUpModalOpen}>
+        <DialogContent className="sm:max-w-lg" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>Follow-up email</DialogTitle>
+            <DialogDescription>
+              Based on {followUpModalActionCount} open action
+              {followUpModalActionCount === 1 ? "" : "s"}
+              {followUpClientOptions.length > 1
+                ? followUpClientScope === FOLLOW_UP_ALL_CLIENTS
+                  ? " across all clients"
+                  : ` for ${followUpClientScope}`
+                : ""}{" "}
+              from your last report
+            </DialogDescription>
+          </DialogHeader>
+          {followUpClientOptions.length > 1 ? (
+            <div className="space-y-2">
+              <p className="text-[11px] font-medium text-[var(--text-muted)]">
+                Follow up for
+              </p>
+              <div className="flex flex-wrap gap-2" role="tablist" aria-label="Follow-up client">
+                {followUpClientOptions.map((clientName) => (
+                  <button
+                    key={clientName}
+                    type="button"
+                    role="tab"
+                    aria-selected={followUpClientScope === clientName}
+                    disabled={followUpLoading}
+                    onClick={() => void generateFollowUpEmail(clientName, { openModal: false })}
+                    className={cn(
+                      "cursor-pointer rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                      followUpClientScope === clientName
+                        ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+                        : "border-[var(--border)] bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]",
+                    )}
+                  >
+                    {clientName}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={followUpClientScope === FOLLOW_UP_ALL_CLIENTS}
+                  disabled={followUpLoading}
+                  onClick={() =>
+                    void generateFollowUpEmail(FOLLOW_UP_ALL_CLIENTS, { openModal: false })
+                  }
+                  className={cn(
+                    "cursor-pointer rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                    followUpClientScope === FOLLOW_UP_ALL_CLIENTS
+                      ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+                      : "border-[var(--border)] bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]",
+                  )}
+                >
+                  All clients
+                </button>
+              </div>
+            </div>
+          ) : null}
+          <div className="max-h-[min(50dvh,320px)] min-h-[8rem] overflow-y-auto whitespace-pre-wrap rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)]/40 p-3 text-[13px] leading-relaxed text-[var(--text-primary)]">
+            {followUpLoading && !followUpModalBody.trim() ? (
+              <span className="text-[var(--text-muted)]">Generating...</span>
+            ) : (
+              followUpModalBody
+            )}
+          </div>
+          <DialogFooter className="gap-2 sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              className={cn(focusRing)}
+              onClick={() => {
+                void navigator.clipboard.writeText(followUpModalBody);
+                toast({
+                  message: "Copied to clipboard",
+                  variant: "success",
+                  durationMs: 2500,
+                });
+              }}
+            >
+              Copy
+            </Button>
+            <Button
+              type="button"
+              className={cn("bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]", focusRing)}
+              onClick={() => {
+                setSmartActionEmailBody(followUpModalBody);
+                setSmartActionEmailTo(generationMailtoEmail ?? "");
+                setFollowUpModalOpen(false);
+                setSendClientEmailModalOpen(true);
+              }}
+            >
+              Send
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {result && smartActionsResultSnapshot && userEmail ? (
         <SmartActionsPanel
@@ -8962,12 +11406,7 @@ export default function Home() {
                   {(
                     [
                       { id: "profile" as const, label: "Profile", Icon: User },
-                      { id: "branding" as const, label: "Branding", Icon: Palette },
-                      { id: "signature" as const, label: "Signature", Icon: PenLine },
-                      { id: "appearance" as const, label: "Appearance", Icon: Palette },
-                      { id: "privacy" as const, label: "Privacy", Icon: Shield },
-                      { id: "writing" as const, label: "Writing style", Icon: FileEdit },
-                      { id: "outputs" as const, label: "Output tabs", Icon: LayoutList },
+                      { id: "preferences" as const, label: "Preferences", Icon: PenLine },
                       { id: "referrals" as const, label: "Referrals", Icon: Gift },
                     ] as const
                   ).map(({ id, label, Icon }) => (
@@ -9093,303 +11532,33 @@ export default function Home() {
               </div>
                 ) : null}
 
-                {settingsTab === "branding" ? (
-                  <div className="space-y-4">
-                    <div>
-                      <h3 className="mb-2 text-[13px] font-semibold text-[var(--text-primary)]">Branding</h3>
-                      <p className="mb-3 text-[12px] text-[var(--text-muted)]">
-                        Brand details are used in generated outputs, Excel exports, and sender display names.
-                      </p>
-                      <div className="space-y-3">
-                        <label
-                          className="flex cursor-pointer items-start gap-2 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-3"
-                          onClick={(e) => {
-                            if (plan !== "enterprise") {
-                              e.preventDefault();
-                              router.push("/contact?plan=enterprise");
-                              toast({
-                                message: "White label mode is available on Enterprise. Upgrade to Enterprise to enable it.",
-                                variant: "error",
-                                durationMs: 5000,
-                              });
-                            }
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            className={cn("mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)]", focusRing)}
-                            checked={whiteLabelMode}
-                            disabled={plan !== "enterprise"}
-                            onChange={(e) => {
-                              if (plan === "enterprise") {
-                                setWhiteLabelMode(e.target.checked);
-                              }
-                            }}
-                          />
-                          <span className="text-[12px] leading-snug text-[var(--text-primary)]">
-                            <span className="font-medium">White label mode</span>
-                            <span className="text-[var(--text-muted)]">
-                              {" "}
-                              - remove all Handover branding from scheduled emails, client send, Excel exports, and
-                              Halo ticket notes (requires a brand name above).
-                            </span>
-                            {plan !== "enterprise" ? (
-                              <span className="mt-2 block text-[11px] text-[var(--text-muted)]">
-                                Enterprise only.{" "}
-                                <Link
-                                  href="/contact?plan=enterprise"
-                                  className="font-medium text-[var(--accent)] underline-offset-2 hover:underline"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  Upgrade to Enterprise
-                                </Link>
-                              </span>
-                            ) : null}
-                          </span>
-                        </label>
-                        <Input
-                          value={brandName}
-                          onChange={(e) => setBrandName(e.target.value)}
-                          placeholder="Brand name (e.g. Northstar MSP)"
-                          className={cn("rounded-[var(--radius)] border-[var(--border)]", focusRing)}
-                        />
-                        <div className="space-y-2">
-                          <label className="text-[12px] text-[var(--text-secondary)]">Primary colour</label>
-                          <div className="flex flex-wrap items-center gap-2 rounded-[var(--radius)] border border-[var(--border)] p-3">
-                            <input
-                              ref={brandPrimaryColorPickerRef}
-                              type="color"
-                              className="pointer-events-none fixed h-px w-px opacity-0"
-                              tabIndex={-1}
-                              aria-hidden
-                              value={hexForColorInput(brandColour, HANDOVER_BRAND_PRIMARY_HEX)}
-                              onChange={(e) => {
-                                setBrandColour(formatHex6Display(e.target.value));
-                                setBrandColourError("");
-                              }}
-                            />
-                            <button
-                              type="button"
-                              className={cn(
-                                "size-9 shrink-0 rounded border border-[var(--border)] shadow-sm transition-opacity hover:opacity-90",
-                                focusRing,
-                              )}
-                              style={{
-                                backgroundColor: HEX_COLOUR_6.test(brandColour.trim())
-                                  ? `#${brandColour.trim().replace(/^#/, "")}`
-                                  : "#2563eb",
-                              }}
-                              aria-label="Open primary colour picker"
-                              onClick={() => brandPrimaryColorPickerRef.current?.click()}
-                            />
-                            <Input
-                              value={brandColour}
-                              onChange={(e) => {
-                                setBrandColour(e.target.value);
-                                setBrandColourError("");
-                              }}
-                              placeholder={HANDOVER_BRAND_PRIMARY_HEX}
-                              spellCheck={false}
-                              autoCapitalize="off"
-                              className={cn(
-                                "min-w-0 flex-1 rounded-[var(--radius)] border-[var(--border)] font-mono text-[13px] sm:max-w-[11rem]",
-                                focusRing,
-                              )}
-                              aria-invalid={Boolean(brandColourError)}
-                              aria-describedby={brandColourError ? "brand-colour-primary-err" : undefined}
-                            />
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className={cn("shrink-0 text-[12px]", focusRing)}
-                              onClick={() => void resetBrandPrimaryColour()}
-                            >
-                              Reset to default
-                            </Button>
-                          </div>
-                          {brandColourError ? (
-                            <p id="brand-colour-primary-err" className="text-[12px] text-[var(--danger)]">
-                              {brandColourError}
-                            </p>
-                          ) : null}
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[12px] text-[var(--text-secondary)]">Accent colour</label>
-                          <div className="flex flex-wrap items-center gap-2 rounded-[var(--radius)] border border-[var(--border)] p-3">
-                            <input
-                              ref={brandSecondaryColorPickerRef}
-                              type="color"
-                              className="pointer-events-none fixed h-px w-px opacity-0"
-                              tabIndex={-1}
-                              aria-hidden
-                              value={hexForColorInput(brandSecondaryColour, HANDOVER_BRAND_SECONDARY_HEX)}
-                              onChange={(e) => {
-                                setBrandSecondaryColour(formatHex6Display(e.target.value));
-                                setBrandSecondaryColourError("");
-                              }}
-                            />
-                            <button
-                              type="button"
-                              className={cn(
-                                "size-9 shrink-0 rounded border border-[var(--border)] shadow-sm transition-opacity hover:opacity-90",
-                                focusRing,
-                              )}
-                              style={{
-                                backgroundColor: HEX_COLOUR_6.test(brandSecondaryColour.trim())
-                                  ? `#${brandSecondaryColour.trim().replace(/^#/, "")}`
-                                  : "#1e40af",
-                              }}
-                              aria-label="Open accent colour picker"
-                              onClick={() => brandSecondaryColorPickerRef.current?.click()}
-                            />
-                            <Input
-                              value={brandSecondaryColour}
-                              onChange={(e) => {
-                                setBrandSecondaryColour(e.target.value);
-                                setBrandSecondaryColourError("");
-                              }}
-                              placeholder={HANDOVER_BRAND_SECONDARY_HEX}
-                              spellCheck={false}
-                              autoCapitalize="off"
-                              className={cn(
-                                "min-w-0 flex-1 rounded-[var(--radius)] border-[var(--border)] font-mono text-[13px] sm:max-w-[11rem]",
-                                focusRing,
-                              )}
-                              aria-invalid={Boolean(brandSecondaryColourError)}
-                              aria-describedby={
-                                brandSecondaryColourError ? "brand-colour-secondary-err" : undefined
-                              }
-                            />
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className={cn("shrink-0 text-[12px]", focusRing)}
-                              onClick={() => void resetBrandSecondaryColour()}
-                            >
-                              Reset to default
-                            </Button>
-                          </div>
-                          {brandSecondaryColourError ? (
-                            <p id="brand-colour-secondary-err" className="text-[12px] text-[var(--danger)]">
-                              {brandSecondaryColourError}
-                            </p>
-                          ) : null}
-                        </div>
-                        <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-2">
-                          <p className="mb-1.5 text-[11px] font-medium text-[var(--text-muted)]">Colour preview</p>
-                          <div className="flex h-8 w-full overflow-hidden rounded-md border border-[var(--border)]">
-                            <div
-                              className="flex-1"
-                              style={{
-                                background:
-                                  /^#?[0-9a-fA-F]{6}$/.test(brandColour.trim())
-                                    ? brandColour.trim().replace(/^#?/, "#")
-                                    : "#2563eb",
-                              }}
-                              title="Primary"
-                            />
-                            <div
-                              className="flex-1"
-                              style={{
-                                background:
-                                  /^#?[0-9a-fA-F]{6}$/.test(brandSecondaryColour.trim())
-                                    ? brandSecondaryColour.trim().replace(/^#?/, "#")
-                                    : "#1e40af",
-                              }}
-                              title="Accent"
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[12px] text-[var(--text-secondary)]">Logo</label>
-                          {brandLogoUrl.trim() ? (
-                            <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-3">
-                              <img
-                                key={brandLogoPreviewKey}
-                                src={brandLogoUrl.trim()}
-                                alt="Current brand logo"
-                                className="max-h-16 max-w-[200px] rounded border border-[var(--border)] bg-[var(--bg-primary)] object-contain"
-                              />
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className={cn("text-[12px]", focusRing)}
-                                onClick={() => void removeBrandLogo()}
-                                disabled={brandLogoUploading}
-                              >
-                                Remove logo
-                              </Button>
-                            </div>
-                          ) : (
-                            <>
-                              <input
-                                ref={logoFileInputRef}
-                                type="file"
-                                accept="image/png,image/jpeg,image/jpg,image/webp"
-                                onChange={(e) => void uploadBrandLogo(e.target.files?.[0] ?? null)}
-                                className={cn("block w-full text-[12px] text-[var(--text-secondary)]", focusRing)}
-                              />
-                              {brandLogoUploading ? (
-                                <p className="text-[12px] text-[var(--text-muted)]">Uploading logo...</p>
-                              ) : null}
-                            </>
-                          )}
-                        </div>
-                        <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-3">
-                          <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
-                            Excel header preview
-                          </p>
-                          <div
-                            className="flex items-center gap-3 rounded-[6px] border px-3 py-2"
-                            style={{
-                              background:
-                                /^#?[0-9a-fA-F]{6}$/.test(brandColour.trim())
-                                  ? brandColour.trim().replace(/^#?/, "#")
-                                  : "#2563eb",
-                              borderColor:
-                                /^#?[0-9a-fA-F]{6}$/.test(brandSecondaryColour.trim())
-                                  ? brandSecondaryColour.trim().replace(/^#?/, "#")
-                                  : /^#?[0-9a-fA-F]{6}$/.test(brandColour.trim())
-                                    ? brandColour.trim().replace(/^#?/, "#")
-                                    : "#2563eb",
-                            }}
-                          >
-                            {brandLogoUrl ? (
-                              <img
-                                key={`excel-${brandLogoPreviewKey}`}
-                                src={brandLogoUrl}
-                                alt="Brand logo"
-                                className="h-8 w-8 rounded bg-white/90 p-1 object-contain"
-                              />
-                            ) : (
-                              <div className="h-8 w-8 rounded bg-white/20" />
-                            )}
-                            <span className="text-[12px] font-semibold text-white">
-                              {(brandName.trim() || "Handover")} Report Header
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex justify-end">
-                      <Button
-                        type="button"
-                        className={cn("bg-[var(--accent)] text-[13px] text-white hover:bg-[var(--accent-hover)]", focusRing)}
-                        onClick={() => void saveBrandingSettings()}
-                      >
-                        Save branding
-                      </Button>
-                    </div>
-                  </div>
-                ) : null}
-
-                {settingsTab === "signature" ? (
-                  <div className="space-y-4">
+                {settingsTab === "preferences" ? (
+                  <div className="space-y-1">
                 <div>
-                  <h3 className="mb-2 text-[13px] font-semibold text-[var(--text-primary)]">Email signature</h3>
+                  <h3 className="mb-3 text-[13px] font-semibold text-[var(--text-primary)]">Preferences</h3>
+                </div>
+                <button
+                  type="button"
+                  className="flex w-full cursor-pointer items-center justify-between border-b border-[var(--border)] py-3 text-left text-[14px] font-medium text-white transition-colors hover:text-[var(--accent)]"
+                  onClick={() => togglePrefsAccordion("signature")}
+                  aria-expanded={Boolean(prefsAccordionOpen.signature)}
+                >
+                  <span>Signature</span>
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 shrink-0 transition-transform duration-200",
+                      prefsAccordionOpen.signature && "rotate-180",
+                    )}
+                    aria-hidden
+                  />
+                </button>
+                <div
+                  className={cn(
+                    "overflow-hidden transition-all duration-200",
+                    prefsAccordionOpen.signature ? "max-h-[1200px] opacity-100" : "max-h-0 opacity-0",
+                  )}
+                >
+                  <div className="space-y-4 pb-4 pt-1">
                   <p className="mb-3 text-[12px] text-[var(--text-muted)]">
                     Optional full sign-off. When empty, generated emails use your profile display name, job title, and company (see Profile). The model is instructed not to substitute names from tickets.
                   </p>
@@ -9409,20 +11578,101 @@ export default function Home() {
                     {signaturePreview}
                   </div>
                 </div>
-                </div>
                 <div className="flex justify-end">
                 <Button type="button" className={cn("bg-[var(--accent)] text-[13px] text-white hover:bg-[var(--accent-hover)]", focusRing)} onClick={() => void saveSignatureOverride()}>
                   Save signature
                 </Button>
                 </div>
-              </div>
-                ) : null}
+                  </div>
+                </div>
 
-                {settingsTab === "privacy" ? (
-                  <div className="space-y-4">
-                    <div>
-                      <h3 className="mb-2 text-[13px] font-semibold text-[var(--text-primary)]">Privacy</h3>
-                      <p className="mb-3 text-[12px] text-[var(--text-muted)]">
+                <button
+                  type="button"
+                  className="flex w-full cursor-pointer items-center justify-between border-b border-[var(--border)] py-3 text-left text-[14px] font-medium text-white transition-colors hover:text-[var(--accent)]"
+                  onClick={() => togglePrefsAccordion("appearance")}
+                  aria-expanded={Boolean(prefsAccordionOpen.appearance)}
+                >
+                  <span>Appearance</span>
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 shrink-0 transition-transform duration-200",
+                      prefsAccordionOpen.appearance && "rotate-180",
+                    )}
+                    aria-hidden
+                  />
+                </button>
+                <div
+                  className={cn(
+                    "overflow-hidden transition-all duration-200",
+                    prefsAccordionOpen.appearance ? "max-h-[1200px] opacity-100" : "max-h-0 opacity-0",
+                  )}
+                >
+                  <div className="space-y-4 pb-4 pt-1">
+                <p className="text-[12px] text-[var(--text-muted)]">Theme and layout preferences for this device.</p>
+                <label className="flex items-center justify-between rounded-[var(--radius)] border border-[var(--border)] p-3 text-sm">
+                  <span className="flex items-center gap-2 text-[var(--text-secondary)]">
+                    {theme === "dark" ? <Moon className="size-4" /> : <Sun className="size-4" />}
+                    Dark mode
+                  </span>
+                  <input type="checkbox" checked={theme === "dark"} onChange={toggleTheme} className={focusRing} />
+                </label>
+                <label className="flex items-center justify-between rounded-[var(--radius)] border border-[var(--border)] p-3 text-sm">
+                  <span>Compact mode</span>
+                  <input type="checkbox" checked={compactMode} onChange={(e) => setCompactMode(e.target.checked)} className={focusRing} />
+                </label>
+                <label className="flex items-center justify-between rounded-[var(--radius)] border border-[var(--border)] p-3 text-sm">
+                  <span>Show character count</span>
+                  <input type="checkbox" checked={showCharacterCount} onChange={(e) => setShowCharacterCount(e.target.checked)} className={focusRing} />
+                </label>
+                <div className="rounded-[var(--radius)] border border-[var(--border)] p-4">
+                  <h4 className="text-[13px] font-semibold text-[var(--text-primary)]">Getting started checklist</h4>
+                  <p className="mt-1.5 text-[12px] leading-snug text-[var(--text-muted)]">
+                    If you dismissed the corner checklist, restore it here. This applies on this browser only.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={cn("mt-3 text-[13px]", focusRing)}
+                    onClick={() => {
+                      if (!userEmail) return;
+                      clearGettingStartedChecklistStorage(userEmail);
+                      setGettingStartedChecklistMountKey((k) => k + 1);
+                    }}
+                  >
+                    Show getting started checklist
+                  </Button>
+                </div>
+                <div className="flex justify-end">
+                <Button type="button" className={cn("bg-[var(--accent)] text-[13px] text-white hover:bg-[var(--accent-hover)]", focusRing)} onClick={() => void saveSettings()}>
+                  Save
+                </Button>
+                </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="flex w-full cursor-pointer items-center justify-between border-b border-[var(--border)] py-3 text-left text-[14px] font-medium text-white transition-colors hover:text-[var(--accent)]"
+                  onClick={() => togglePrefsAccordion("privacy")}
+                  aria-expanded={Boolean(prefsAccordionOpen.privacy)}
+                >
+                  <span>Privacy</span>
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 shrink-0 transition-transform duration-200",
+                      prefsAccordionOpen.privacy && "rotate-180",
+                    )}
+                    aria-hidden
+                  />
+                </button>
+                <div
+                  className={cn(
+                    "overflow-hidden transition-all duration-200",
+                    prefsAccordionOpen.privacy ? "max-h-[800px] opacity-100" : "max-h-0 opacity-0",
+                  )}
+                >
+                  <div className="space-y-4 pb-4 pt-1">
+                      <p className="text-[12px] text-[var(--text-muted)]">
                         Control whether generations are saved to your account history.
                       </p>
                       <label className="flex items-start justify-between gap-4 rounded-[var(--radius)] border border-[var(--border)] p-3">
@@ -9439,7 +11689,6 @@ export default function Home() {
                           onChange={(e) => setPrivacyMode(e.target.checked)}
                         />
                       </label>
-                    </div>
                     <div className="flex justify-end">
                       <Button
                         type="button"
@@ -9450,13 +11699,31 @@ export default function Home() {
                       </Button>
                     </div>
                   </div>
-                ) : null}
+                </div>
 
-                {settingsTab === "writing" ? (
-                  <div className="space-y-4">
-                    <div>
-                      <h3 className="mb-2 text-[13px] font-semibold text-[var(--text-primary)]">Writing style</h3>
-                      <p className="mb-3 text-[12px] text-[var(--text-muted)]">
+                <button
+                  type="button"
+                  className="flex w-full cursor-pointer items-center justify-between border-b border-[var(--border)] py-3 text-left text-[14px] font-medium text-white transition-colors hover:text-[var(--accent)]"
+                  onClick={() => togglePrefsAccordion("writing")}
+                  aria-expanded={Boolean(prefsAccordionOpen.writing)}
+                >
+                  <span>Writing Style</span>
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 shrink-0 transition-transform duration-200",
+                      prefsAccordionOpen.writing && "rotate-180",
+                    )}
+                    aria-hidden
+                  />
+                </button>
+                <div
+                  className={cn(
+                    "overflow-hidden transition-all duration-200",
+                    prefsAccordionOpen.writing ? "max-h-[1200px] opacity-100" : "max-h-0 opacity-0",
+                  )}
+                >
+                  <div className="space-y-4 pb-4 pt-1">
+                      <p className="text-[12px] text-[var(--text-muted)]">
                         Optional. Train Handover to match how you write for clients.
                       </p>
                       {!hasProAccess ? (
@@ -9529,64 +11796,32 @@ export default function Home() {
                           </div>
                         </>
                       )}
-                    </div>
                   </div>
-                ) : null}
+                </div>
 
-                {settingsTab === "appearance" ? (
-                  <div className="space-y-4">
-                <div>
-                  <h3 className="mb-2 text-[13px] font-semibold text-[var(--text-primary)]">Appearance</h3>
-                  <p className="mb-3 text-[12px] text-[var(--text-muted)]">Theme and layout preferences for this device.</p>
-                <label className="flex items-center justify-between rounded-[var(--radius)] border border-[var(--border)] p-3 text-sm">
-                  <span className="flex items-center gap-2 text-[var(--text-secondary)]">
-                    {theme === "dark" ? <Moon className="size-4" /> : <Sun className="size-4" />}
-                    Dark mode
-                  </span>
-                  <input type="checkbox" checked={theme === "dark"} onChange={toggleTheme} className={focusRing} />
-                </label>
-                <label className="flex items-center justify-between rounded-[var(--radius)] border border-[var(--border)] p-3 text-sm">
-                  <span>Compact mode</span>
-                  <input type="checkbox" checked={compactMode} onChange={(e) => setCompactMode(e.target.checked)} className={focusRing} />
-                </label>
-                <label className="flex items-center justify-between rounded-[var(--radius)] border border-[var(--border)] p-3 text-sm">
-                  <span>Show character count</span>
-                  <input type="checkbox" checked={showCharacterCount} onChange={(e) => setShowCharacterCount(e.target.checked)} className={focusRing} />
-                </label>
-                </div>
-                <div className="rounded-[var(--radius)] border border-[var(--border)] p-4">
-                  <h4 className="text-[13px] font-semibold text-[var(--text-primary)]">Getting started checklist</h4>
-                  <p className="mt-1.5 text-[12px] leading-snug text-[var(--text-muted)]">
-                    If you dismissed the corner checklist, restore it here. This applies on this browser only.
-                  </p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className={cn("mt-3 text-[13px]", focusRing)}
-                    onClick={() => {
-                      if (!userEmail) return;
-                      clearGettingStartedChecklistStorage(userEmail);
-                      setGettingStartedChecklistMountKey((k) => k + 1);
-                    }}
-                  >
-                    Show getting started checklist
-                  </Button>
-                </div>
-                <div className="flex justify-end">
-                <Button type="button" className={cn("bg-[var(--accent)] text-[13px] text-white hover:bg-[var(--accent-hover)]", focusRing)} onClick={() => void saveSettings()}>
-                  Save
-                </Button>
-                </div>
-              </div>
-                ) : null}
-
-                {settingsTab === "outputs" ? (
-                  <div className="space-y-6">
-                    <div>
-                      <h3 className="mb-2 text-[13px] font-semibold text-[var(--text-primary)]">
-                        Output tabs
-                      </h3>
-                      <p className="mb-3 text-[12px] text-[var(--text-muted)]">
+                <button
+                  type="button"
+                  className="flex w-full cursor-pointer items-center justify-between border-b border-[var(--border)] py-3 text-left text-[14px] font-medium text-white transition-colors hover:text-[var(--accent)]"
+                  onClick={() => togglePrefsAccordion("outputs")}
+                  aria-expanded={Boolean(prefsAccordionOpen.outputs)}
+                >
+                  <span>Output Tabs</span>
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 shrink-0 transition-transform duration-200",
+                      prefsAccordionOpen.outputs && "rotate-180",
+                    )}
+                    aria-hidden
+                  />
+                </button>
+                <div
+                  className={cn(
+                    "overflow-hidden transition-all duration-200",
+                    prefsAccordionOpen.outputs ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0",
+                  )}
+                >
+                  <div className="space-y-6 pb-4 pt-1">
+                      <p className="text-[12px] text-[var(--text-muted)]">
                         Choose what appears in the generate dialog and what is produced on each run. Core outputs are on by default; optional PM tabs add RAID logs, meeting notes, and more.
                       </p>
                       <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
@@ -9613,7 +11848,6 @@ export default function Home() {
                           </label>
                         ))}
                       </div>
-                    </div>
                     <div>
                       <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
                         Optional PM deliverables
@@ -9654,6 +11888,8 @@ export default function Home() {
                       </Button>
                     </div>
                   </div>
+                </div>
+              </div>
                 ) : null}
 
                 {settingsTab === "referrals" ? (
@@ -9726,21 +11962,196 @@ export default function Home() {
       <div
         className={cn(
           "relative ml-0 overflow-x-hidden",
-          !userEmail ? "bg-transparent" : "bg-[#172035]",
-          showLeftSidebar && "md:ml-[280px]",
+          !userEmail ? "bg-transparent" : "",
+          showLeftSidebar &&
+            (sidebarExpanded ? "md:ml-[280px]" : "md:ml-[56px]"),
+          showLeftSidebar && "md:transition-[margin] md:duration-150 md:ease-out",
         )}
+        style={userEmail ? { background: SIGNED_IN_SHELL_BACKGROUND } : undefined}
       >
         {userEmail && mainView === "configuration" ? (
-          <div className="animate-in fade-in duration-200" style={{ 
-            position: 'fixed',
-            top: '52px',
-            left: '280px',
-            right: 0,
-            bottom: 0,
-            overflow: 'hidden',
-            zIndex: 10
-          }}>
-            <ConfigurationPanel userEmail={userEmail} plan={plan} hasProAccess={hasProAccess} />
+          <div
+            className="animate-in fade-in duration-200 max-md:!left-0 transition-[left] duration-150 ease-out"
+            style={{
+              position: "fixed",
+              top: "52px",
+              left: `${sidebarMainOffsetPx}px`,
+              right: 0,
+              bottom: 0,
+              overflow: "hidden",
+              zIndex: 10,
+            }}
+          >
+            <ConfigurationPanel
+              userEmail={userEmail}
+              plan={plan}
+              hasProAccess={hasProAccess}
+              demoModeActive={demoModeActive}
+              brandingSection={configurationBrandingSection}
+              integrationsSection={
+                <IntegrationsPanel
+                  hasProFeatures={hasProAccess}
+                  userTeamId={userTeamId}
+                  integrationsBootstrapping={integrationsBootstrapping}
+                  initialOpenDetail={integrationsInitialDetail}
+                  onConsumedInitialOpenDetail={() => setIntegrationsInitialDetail(null)}
+                  haloConnected={haloConnected}
+                  haloUrl={haloUrl}
+                  haloUpdatedAt={haloUpdatedAt}
+                  haloImportedCount={haloImportedCount}
+                  haloConfigOpen={haloConfigOpen}
+                  setHaloConfigOpen={setHaloConfigOpen}
+                  haloUrlInput={haloUrl}
+                  setHaloUrlInput={setHaloUrl}
+                  haloTenant={haloTenant}
+                  setHaloTenant={setHaloTenant}
+                  haloClientId={haloClientId}
+                  setHaloClientId={setHaloClientId}
+                  haloClientSecret={haloClientSecret}
+                  setHaloClientSecret={setHaloClientSecret}
+                  haloHelpOpen={haloHelpOpen}
+                  setHaloHelpOpen={setHaloHelpOpen}
+                  haloError={haloError}
+                  haloReconnectRecommended={haloReconnectRecommended}
+                  onOpenHaloReconnectConfig={() => setHaloConfigOpen(true)}
+                  haloPermissionWarning={haloPermissionWarning}
+                  haloLoading={haloLoading}
+                  haloTestLoading={haloTestLoading}
+                  haloAutoClosureSummary={haloAutoClosureSummary}
+                  haloAutoClosureSummaryBusy={haloAutoClosureSummaryBusy}
+                  onHaloAutoClosureSummaryChange={handleHaloAutoClosureSummaryChange}
+                  onConnect={handleHaloConnect}
+                  onTest={handleHaloTestConnection}
+                  onDisconnect={handleHaloDisconnect}
+                  onImportTickets={() => setHaloImportOpen(true)}
+                  onUpgrade={() => setHaloProModalOpen(true)}
+                  upgradeDisabled={
+                    (!STRIPE_PRO_MONTHLY_PRICE_ID && !STRIPE_PRO_ANNUAL_PRICE_ID) ||
+                    checkoutLoadingPriceId !== null
+                  }
+                  cwConnected={cwConnected}
+                  cwSiteUrl={cwSiteUrl}
+                  cwImportedCount={cwImportedCount}
+                  cwSiteUrlInput={cwSiteUrlInput}
+                  setCwSiteUrlInput={setCwSiteUrlInput}
+                  cwCompanyIdInput={cwCompanyIdInput}
+                  setCwCompanyIdInput={setCwCompanyIdInput}
+                  cwPublicKeyInput={cwPublicKeyInput}
+                  setCwPublicKeyInput={setCwPublicKeyInput}
+                  cwPrivateKeyInput={cwPrivateKeyInput}
+                  setCwPrivateKeyInput={setCwPrivateKeyInput}
+                  cwClientIdInput={cwClientIdInput}
+                  setCwClientIdInput={setCwClientIdInput}
+                  cwConfigOpen={cwConfigOpen}
+                  setCwConfigOpen={setCwConfigOpen}
+                  cwError={cwError}
+                  cwSaveLoading={cwSaveLoading}
+                  cwTestLoading={cwTestLoading}
+                  cwTestOk={cwTestOk}
+                  cwTestMessage={cwTestMessage}
+                  onCwSave={handleCwSave}
+                  onCwTest={handleCwTestConnection}
+                  onCwDisconnect={handleCwDisconnect}
+                  slackWebhookUrl={slackWebhookUrl}
+                  setSlackWebhookUrl={setSlackWebhookUrl}
+                  slackNotificationsEnabled={slackNotificationsEnabled}
+                  onSlackNotificationsToggle={handleSlackNotificationsToggle}
+                  teamsWebhookUrl={teamsWebhookUrl}
+                  setTeamsWebhookUrl={setTeamsWebhookUrl}
+                  teamsNotificationsEnabled={teamsNotificationsEnabled}
+                  onTeamsNotificationsToggle={handleTeamsNotificationsToggle}
+                  slackWebhookSaveLoading={slackWebhookSaveLoading}
+                  teamsWebhookSaveLoading={teamsWebhookSaveLoading}
+                  slackWebhookTestLoading={slackWebhookTestLoading}
+                  teamsWebhookTestLoading={teamsWebhookTestLoading}
+                  onSaveSlackWebhook={handleSaveSlackWebhook}
+                  onSaveTeamsWebhook={handleSaveTeamsWebhook}
+                  onTestSlackWebhook={handleTestSlackWebhook}
+                  onTestTeamsWebhook={handleTestTeamsWebhook}
+                  onDisconnectSlackNotifications={handleDisconnectSlackNotifications}
+                  onDisconnectTeamsNotifications={handleDisconnectTeamsNotifications}
+                />
+              }
+              targetSection={configurationTargetSection}
+              onTargetSectionApplied={clearConfigurationTargetSection}
+              dashboardViewMode={dashboardViewMode}
+              onDashboardViewModeChange={setDashboardViewMode}
+              onToggleDemo={(enabled) => {
+                try {
+                  if (enabled) {
+                    window.localStorage.removeItem("handover_demo_disabled");
+                    setDemoDisabled(false);
+                  } else {
+                    window.localStorage.setItem("handover_demo_disabled", "true");
+                    setDemoDisabled(true);
+                  }
+                } catch {
+                  setDemoDisabled(!enabled);
+                }
+              }}
+            />
+          </div>
+        ) : null}
+        {userEmail && mainView === "changelog" ? (
+          <div key="changelog" className="min-h-full animate-in fade-in duration-200">
+            <ChangelogView />
+          </div>
+        ) : null}
+        {userEmail && mainView === "organisation" ? (
+          <div
+            className="animate-in fade-in duration-200 max-md:!left-0 transition-[left] duration-150 ease-out"
+            style={{
+              position: "fixed",
+              top: "52px",
+              left: `${sidebarMainOffsetPx}px`,
+              right: 0,
+              bottom: 0,
+              overflow: "hidden",
+              zIndex: 10,
+            }}
+          >
+            <EnterprisePortalClientsSection
+              enabled={hasProAccess}
+              portalSlug={portalSlug}
+              companyDisplayName={
+                profileCompanyName.trim() || profileDisplayName.trim() || "Organisation"
+              }
+              organisationCompanyName={
+                profileCompanyName.trim() || profileDisplayName.trim()
+              }
+              brandLogoUrl={brandLogoUrl.trim()}
+              brandColour={brandColour.trim()}
+              whiteLabelMode={whiteLabelMode}
+              primaryPsa={
+                psaConnections.multiple
+                  ? pushTargetPsa
+                  : psaConnections.primary === "connectwise"
+                    ? "connectwise"
+                    : psaConnections.primary === "halopsa"
+                      ? "halopsa"
+                      : null
+              }
+              bothConnected={psaConnections.multiple}
+              deliveryAccess={deliveryDashboardAccess}
+              profilePlan={profileDbPlan}
+              demoModeActive={demoModeActive}
+              monthCount={monthCount}
+              totalGenerationCount={totalGenerationCount}
+              projects={projects}
+              onNavigateToDelivery={() => {
+                setMainView("delivery");
+                setSettingsOpen(false);
+                setSidebarOpenMobile(false);
+              }}
+              onOpenConfiguration={(targetSection) => {
+                setMainView("configuration");
+                setSettingsOpen(false);
+                setSidebarOpenMobile(false);
+                if (targetSection === "branding") setConfigurationTargetSection("branding");
+                if (targetSection === "integrations") setConfigurationTargetSection("integrations");
+              }}
+              onCloseMobileSidebar={() => setSidebarOpenMobile(false)}
+            />
           </div>
         ) : null}
         {showLeftSidebar ? (
@@ -9799,7 +12210,7 @@ export default function Home() {
         {!userEmail ? (!signedOutCompactMode ? (
           <>
             <section
-              className="relative flex flex-col overflow-hidden bg-transparent animate-in fade-in slide-in-from-bottom-4 duration-300"
+              className="relative flex flex-col overflow-x-hidden overflow-y-visible bg-transparent animate-in fade-in slide-in-from-bottom-4 duration-300"
             >
               <style
                 dangerouslySetInnerHTML={{
@@ -9815,7 +12226,7 @@ export default function Home() {
                 <div
                   className="absolute -top-40 -right-40 h-[600px] w-[600px] rounded-full opacity-20"
                   style={{
-                    background: "radial-gradient(circle, #0EA5E9 0%, transparent 70%)",
+                    background: "radial-gradient(circle, var(--accent) 0%, transparent 70%)",
                     animation: "homeHeroAmbientPulse 8s ease-in-out infinite",
                   }}
                 />
@@ -9838,7 +12249,7 @@ export default function Home() {
                       className="handover-pulse inline-block size-2 rounded-full bg-[#22c55e]"
                       aria-hidden
                     />
-                    Built for MSP delivery teams
+                    Built for MSPs who are done wasting time.
                   </motion.div>
 
                   <motion.h1
@@ -9848,7 +12259,7 @@ export default function Home() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.5, delay: 0.1, ease: "easeOut" }}
                   >
-                    The reporting tool built for MSP delivery teams
+                    Your engineers spend hours on reports that should take minutes.
                   </motion.h1>
 
                   <motion.p
@@ -9861,7 +12272,7 @@ export default function Home() {
                     MSPs. Connect your PSA and generate your first report in 30 seconds — nothing to configure.
                   </motion.p>
                   <p className="mt-2 text-[13px] leading-relaxed text-[var(--text-muted)] md:text-[15px] md:leading-normal">
-                    Free to try - no card required.
+                    14-day free trial — cancel anytime.
                   </p>
 
                   <motion.div
@@ -9872,7 +12283,7 @@ export default function Home() {
                   >
                     <Link
                       href="/auth?tab=signup&returnTo=/welcome"
-                      className="bg-gradient-to-r from-[#0EA5E9] to-[#0284C7] hover:from-[#0284C7] hover:to-[#0EA5E9] text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-[#0EA5E9]/20 hover:shadow-[#0EA5E9]/30 transition-all duration-300 transform hover:scale-[1.02] inline-flex w-full items-center justify-center text-sm active:scale-[0.99] md:w-auto"
+                      className="bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] hover:from-[var(--accent-hover)] hover:to-[var(--accent)] text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-[color-mix(in_srgb,var(--accent)_25%,transparent)] hover:shadow-[color-mix(in_srgb,var(--accent)_35%,transparent)] transition-all duration-300 transform hover:scale-[1.02] inline-flex w-full items-center justify-center text-sm active:scale-[0.99] md:w-auto"
                     >
                       Start free trial
                     </Link>
@@ -9977,7 +12388,7 @@ export default function Home() {
                 </div>
 
                 <motion.div
-                  className="relative hidden min-w-0 w-full max-w-full flex-col items-center justify-center overflow-x-hidden sm:flex"
+                  className="relative hidden min-w-0 w-full max-w-full flex-col items-center justify-center overflow-visible sm:flex"
                   initial={{ opacity: 0, x: 40 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
@@ -9990,37 +12401,36 @@ export default function Home() {
                     }}
                     aria-hidden
                   />
-                  <section
-                    className="relative z-10 w-full min-w-0 max-w-full rounded-[var(--radius-lg)] bg-white/[0.03] backdrop-blur-md border border-white/[0.07]"
-                    style={{
-                      border: "1.5px solid rgba(56,189,248,0.3)",
-                      boxShadow:
-                        "0 0 0 1px rgba(56,189,248,0.15), 0 4px 24px rgba(56,189,248,0.06), inset 0 1px 0 rgba(255,255,255,0.8)",
-                    }}
-                  >
-                    <div className="relative w-full min-w-0 max-w-full overflow-x-hidden">
-                      {/* Glow effect behind the image */}
-                      <div className="absolute -inset-4 bg-gradient-to-r from-cyan-500/20 via-blue-500/10 to-transparent rounded-2xl blur-2xl pointer-events-none" />
-                      
-                      {/* Floating animation wrapper */}
+                  <section className="relative z-10 w-full min-w-0 max-w-full">
+                    <div className="relative w-full min-w-0 max-w-full overflow-visible">
+                      {/* Glow behind screenshot — not a frame; no border/shadow on wrappers */}
+                      <div className="pointer-events-none absolute -inset-4 z-0 bg-gradient-to-r from-cyan-500/20 via-blue-500/10 to-transparent blur-2xl" />
+
+                      {/* Float + 3D: float on outer so transform does not fight perspective on inner */}
                       <div
-                        className="relative overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-2xl shadow-black/60"
+                        className="relative overflow-visible"
                         style={{
-                          animation: 'float 6s ease-in-out infinite',
+                          animation: "float 6s ease-in-out infinite",
                         }}
                       >
-                        {/* Subtle top shine */}
-                        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent pointer-events-none z-10" />
-                        
-                        <img
-                          src="/dashboard.png"
-                          alt="Handover delivery health dashboard"
-                          className="block h-auto w-full max-w-full"
-                          style={{ display: "block" }}
-                        />
-
-                        {/* Subtle bottom fade */}
-                        <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[#0F1C3F]/60 to-transparent pointer-events-none z-10" />
+                        <div
+                          className="relative overflow-visible rounded-xl transition-transform duration-500"
+                          style={{
+                            transform: heroDashboard3dHovered
+                              ? "perspective(1200px) rotateY(-2deg) rotateX(0deg)"
+                              : "perspective(1200px) rotateY(-6deg) rotateX(2deg)",
+                            boxShadow: "-24px 24px 80px rgba(0,0,0,0.6)",
+                          }}
+                          onMouseEnter={() => setHeroDashboard3dHovered(true)}
+                          onMouseLeave={() => setHeroDashboard3dHovered(false)}
+                        >
+                          <img
+                            src="/dashboard.png"
+                            alt="Handover delivery health dashboard"
+                            className="block h-auto w-full max-w-full rounded-xl"
+                            style={{ display: "block" }}
+                          />
+                        </div>
                       </div>
                     </div>
                   </section>
@@ -10112,6 +12522,90 @@ export default function Home() {
             </section>
 
             <motion.section
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+              className="mx-auto w-full max-w-7xl px-6 py-24"
+            >
+              <div className="mb-16 text-center">
+                <h2 className="text-3xl font-bold text-white sm:text-4xl">
+                  Three things happen when MSPs use Handover
+                </h2>
+                <p className="mx-auto mt-4 max-w-2xl text-[16px] text-[#94a3b8]">
+                  Your team gets hours back. Your clients see more value. Your delivery looks more professional.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                {(
+                  [
+                    {
+                      Icon: Clock,
+                      title: "Engineers do engineering.",
+                      body: "The average MSP engineer spends 2–4 hours a day writing updates that should be automatic. Handover turns that into 30 seconds. Your team stops translating ticket notes and starts closing tickets.",
+                      italic: "Less admin. More delivery.",
+                    },
+                    {
+                      Icon: Eye,
+                      title: "Clients see the value you're already delivering.",
+                      body: "Most MSP clients don't know how much work happens on their account. Handover turns your PSA data into professional updates they actually read — action logs, risk registers, status reports — automatically.",
+                      italic: "Invisible work becomes visible.",
+                    },
+                    {
+                      Icon: TrendingUp,
+                      title: "Your delivery scales without your headcount.",
+                      body: "Whether you manage 5 clients or 50, Handover generates consistent, professional outputs across your entire portfolio. Same quality. No extra resource.",
+                      italic: "More clients. Same team.",
+                    },
+                  ] as const
+                ).map((card, i) => {
+                  const CardIcon = card.Icon;
+                  return (
+                    <motion.div
+                      key={card.title}
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ duration: 0.5, delay: i * 0.1 }}
+                      whileHover={{ y: -4 }}
+                      className="group rounded-2xl border border-white/[0.08] border-t border-t-[color-mix(in_srgb,var(--accent)_30%,transparent)] bg-white/[0.04] p-8 backdrop-blur-sm transition-all duration-300 hover:border-[color-mix(in_srgb,var(--accent)_20%,transparent)] hover:bg-white/[0.06]"
+                    >
+                      <CardIcon className="mb-5 h-8 w-8 text-[var(--accent)]" />
+                      <h3 className="mb-3 text-xl font-bold text-white">{card.title}</h3>
+                      <p className="mb-5 text-[15px] leading-relaxed text-[#94a3b8]">{card.body}</p>
+                      <p className="text-[14px] italic font-medium text-[var(--accent)]">{card.italic}</p>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </motion.section>
+
+            <motion.section
+              className="bg-transparent py-12 md:py-14 lg:py-20"
+              aria-label="Testimonials"
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-80px" }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
+            >
+              <div className="mx-auto mb-10 max-w-[960px] px-6 text-center">
+                <ScrollRevealItem index={0} className="text-center">
+                  <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)] md:text-3xl">
+                    What delivery professionals say
+                  </h2>
+                  <p className="mt-2 text-[15px] text-[var(--text-secondary)]">
+                    From PMs and SDMs at leading IT organisations
+                  </p>
+                </ScrollRevealItem>
+              </div>
+              <div className="w-full overflow-hidden">
+                <ScrollRevealItem index={1} className="block">
+                  <TestimonialMarquee />
+                </ScrollRevealItem>
+              </div>
+            </motion.section>
+
+            <motion.section
               className="mx-auto max-w-[1100px] overflow-x-hidden bg-transparent px-4 pt-8 md:pt-10"
               aria-label="How it works"
               initial={{ opacity: 0, y: 24 }}
@@ -10128,7 +12622,7 @@ export default function Home() {
               <div className="mt-8 flex flex-col items-center gap-10 md:hidden">
                 <ScrollRevealItem index={1} className="flex w-full max-w-md flex-col items-center text-center">
                   <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-sm">
-                    <Plug className="size-[22px] shrink-0 text-[#0EA5E9]" strokeWidth={1.75} aria-hidden />
+                    <Plug className="size-[22px] shrink-0 text-[var(--accent)]" strokeWidth={1.75} aria-hidden />
                   </span>
                   <p className="mt-4 font-bold text-[var(--text-primary)]">Connect or paste</p>
                   <p className="mt-2 text-sm text-[var(--text-secondary)]">
@@ -10137,7 +12631,7 @@ export default function Home() {
                 </ScrollRevealItem>
                 <ScrollRevealItem index={2} className="flex w-full max-w-md flex-col items-center text-center">
                   <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-sm">
-                    <Sparkles className="size-[22px] shrink-0 text-[#0EA5E9]" strokeWidth={1.75} aria-hidden />
+                    <Sparkles className="size-[22px] shrink-0 text-[var(--accent)]" strokeWidth={1.75} aria-hidden />
                   </span>
                   <p className="mt-4 font-bold text-[var(--text-primary)]">Generate in 30 seconds</p>
                   <p className="mt-2 text-sm text-[var(--text-secondary)]">
@@ -10146,7 +12640,7 @@ export default function Home() {
                 </ScrollRevealItem>
                 <ScrollRevealItem index={3} className="flex w-full max-w-md flex-col items-center text-center">
                   <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-sm">
-                    <Send className="size-[22px] shrink-0 text-[#0EA5E9]" strokeWidth={1.75} aria-hidden />
+                    <Send className="size-[22px] shrink-0 text-[var(--accent)]" strokeWidth={1.75} aria-hidden />
                   </span>
                   <p className="mt-4 font-bold text-[var(--text-primary)]">Send or push back</p>
                   <p className="mt-2 text-sm text-[var(--text-secondary)]">
@@ -10162,7 +12656,7 @@ export default function Home() {
                   className="flex h-full min-w-0 flex-1 flex-col items-center px-2 text-center"
                 >
                   <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-sm">
-                    <Plug className="size-[22px] shrink-0 text-[#0EA5E9]" strokeWidth={1.75} aria-hidden />
+                    <Plug className="size-[22px] shrink-0 text-[var(--accent)]" strokeWidth={1.75} aria-hidden />
                   </span>
                   <p className="mt-4 font-bold text-[var(--text-primary)]">Connect or paste</p>
                   <p className="mt-1 flex-1 text-sm text-[var(--text-secondary)]">
@@ -10179,7 +12673,7 @@ export default function Home() {
                   className="flex h-full min-w-0 flex-1 flex-col items-center px-2 text-center"
                 >
                   <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-sm">
-                    <Sparkles className="size-[22px] shrink-0 text-[#0EA5E9]" strokeWidth={1.75} aria-hidden />
+                    <Sparkles className="size-[22px] shrink-0 text-[var(--accent)]" strokeWidth={1.75} aria-hidden />
                   </span>
                   <p className="mt-4 font-bold text-[var(--text-primary)]">Generate in 30 seconds</p>
                   <p className="mt-1 flex-1 text-sm text-[var(--text-secondary)]">
@@ -10196,7 +12690,7 @@ export default function Home() {
                   className="flex h-full min-w-0 flex-1 flex-col items-center px-2 text-center"
                 >
                   <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-sm">
-                    <Send className="size-[22px] shrink-0 text-[#0EA5E9]" strokeWidth={1.75} aria-hidden />
+                    <Send className="size-[22px] shrink-0 text-[var(--accent)]" strokeWidth={1.75} aria-hidden />
                   </span>
                   <p className="mt-4 font-bold text-[var(--text-primary)]">Send or push back</p>
                   <p className="mt-1 flex-1 text-sm text-[var(--text-secondary)]">
@@ -10269,31 +12763,6 @@ export default function Home() {
               </div>
             </motion.section>
 
-            <motion.section
-              className="bg-transparent py-12 md:py-14 lg:py-20"
-              aria-label="Testimonials"
-              initial={{ opacity: 0, y: 24 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-80px" }}
-              transition={{ duration: 0.5, ease: "easeOut" }}
-            >
-              <div className="mx-auto mb-10 max-w-[960px] px-6 text-center">
-                <ScrollRevealItem index={0} className="text-center">
-                  <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)] md:text-3xl">
-                    What delivery professionals say
-                  </h2>
-                  <p className="mt-2 text-[15px] text-[var(--text-secondary)]">
-                    From PMs and SDMs at leading IT organisations
-                  </p>
-                </ScrollRevealItem>
-              </div>
-              <div className="w-full overflow-hidden">
-                <ScrollRevealItem index={1} className="block">
-                  <TestimonialMarquee />
-                </ScrollRevealItem>
-              </div>
-            </motion.section>
-
             <section
               className="w-full px-4 py-12 md:px-6 md:py-14 lg:py-16"
               style={{
@@ -10313,12 +12782,12 @@ export default function Home() {
                   Ready to send client-ready updates automatically?
                 </h2>
                 <p className="mt-3 text-sm leading-relaxed text-white/75 md:text-base">
-                  Connect HaloPSA or ConnectWise once. Generate client-ready reports, QBR packs, and delivery updates automatically. 14-day free trial, no card required.
+                  Connect HaloPSA or ConnectWise once. Generate client-ready reports, QBR packs, and delivery updates automatically. 14-day free trial, 14-day free trial — cancel anytime.
                 </p>
                 <div className="mt-8 flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
                   <Link
                     href="/auth?tab=signup&returnTo=/welcome"
-                    className="bg-gradient-to-r from-[#0EA5E9] to-[#0284C7] hover:from-[#0284C7] hover:to-[#0EA5E9] text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-[#0EA5E9]/20 hover:shadow-[#0EA5E9]/30 transition-all duration-300 transform hover:scale-[1.02] inline-flex w-full flex-1 items-center justify-center text-sm active:scale-[0.98] md:w-auto"
+                    className="bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] hover:from-[var(--accent-hover)] hover:to-[var(--accent)] text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-[color-mix(in_srgb,var(--accent)_25%,transparent)] hover:shadow-[color-mix(in_srgb,var(--accent)_35%,transparent)] transition-all duration-300 transform hover:scale-[1.02] inline-flex w-full flex-1 items-center justify-center text-sm active:scale-[0.98] md:w-auto"
                   >
                     Start free trial →
                   </Link>
@@ -10354,9 +12823,9 @@ export default function Home() {
                     >
                       Scheduled reports
                     </p>
-                    <h1 className="mt-1 text-[28px] font-bold text-white">Automated weekly reports</h1>
+                    <h1 className="mt-1 text-[28px] font-bold text-white">Automated scheduled reports</h1>
                     <p className="mt-1.5 max-w-xl text-[14px] leading-relaxed text-white/60">
-                      Handover pulls your HaloPSA tickets and emails a generated report automatically.
+                      Handover pulls your PSA tickets and emails a generated report automatically.
                     </p>
                   </div>
                   <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
@@ -10364,17 +12833,20 @@ export default function Home() {
                       <button
                         type="button"
                         role="switch"
-                        aria-checked={schEnabled}
-                        aria-label={schEnabled ? "Scheduled reports enabled" : "Scheduled reports disabled"}
-                        onClick={() => setSchEnabled((v) => !v)}
+                        aria-checked={scheduledReportsMasterEnabled}
+                        aria-label={
+                          scheduledReportsMasterEnabled ? "Scheduled reports enabled" : "Scheduled reports disabled"
+                        }
+                        onClick={() => void toggleAllCampaignsEnabled(!scheduledReportsMasterEnabled)}
+                        disabled={campaigns.length === 0 || scheduleSaving}
                         className={cn(
-                          "h-14 min-w-[132px] shrink-0 rounded-full border-2 px-6 text-[13px] font-semibold transition-colors duration-200",
-                          schEnabled
+                          "h-14 min-w-[132px] shrink-0 rounded-full border-2 px-6 text-[13px] font-semibold transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-60",
+                          scheduledReportsMasterEnabled
                             ? "border-emerald-500/60 bg-emerald-600/35 text-emerald-100 shadow-[0_0_20px_rgba(34,197,94,0.2)]"
                             : "border-slate-500/50 bg-slate-600/25 text-slate-300",
                         )}
                       >
-                        {schEnabled ? "Enabled" : "Disabled"}
+                        {scheduledReportsMasterEnabled ? "Enabled" : "Disabled"}
                       </button>
 
                       <button
@@ -10391,6 +12863,18 @@ export default function Home() {
                   </div>
                 </div>
 
+                {showDemoDataBanner ? (
+                  <div className="mb-4">
+                    <DemoBanner
+                      onConnectPSA={() => {
+                        openIntegrationsInConfiguration();
+                        setSettingsOpen(false);
+                        setSidebarOpenMobile(false);
+                      }}
+                    />
+                  </div>
+                ) : null}
+
                 {!hasProAccess ? (
                   <div className="mb-4 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] px-4 py-3 text-[13px] text-[var(--text-secondary)]">
                     <span className="font-medium text-[var(--text-primary)]">Basic:</span> walk through the schedule
@@ -10398,20 +12882,41 @@ export default function Home() {
                   </div>
                 ) : null}
                 {scheduleLoading ? (
-                  <div className="flex justify-center py-16">
-                    <Loader2 className="size-10 animate-spin text-[var(--accent)]" aria-hidden />
+                  <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-4" aria-busy>
+                    <div className="space-y-0">
+                      {[0, 1, 2].map((i) => (
+                        <div
+                          key={i}
+                          className={cn(
+                            "flex animate-pulse items-center gap-3 border-[var(--border)] py-3",
+                            i < 2 && "border-b",
+                          )}
+                        >
+                          <div className="h-4 min-w-0 flex-1 rounded bg-[var(--bg-secondary)]" />
+                          <div className="h-4 w-[12%] shrink-0 rounded bg-[var(--bg-secondary)]" />
+                          <div className="h-4 w-[8%] shrink-0 rounded bg-[var(--bg-secondary)]" />
+                          <div className="h-4 w-[12%] shrink-0 rounded bg-[var(--bg-secondary)]" />
+                          <div className="h-4 w-[18%] shrink-0 rounded bg-[var(--bg-secondary)]" />
+                          <div className="h-4 w-[10%] shrink-0 rounded bg-[var(--bg-secondary)]" />
+                          <div className="h-4 w-[18%] shrink-0 rounded bg-[var(--bg-secondary)]" />
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ) : (
                   <>
-                  <div className="mb-6">
-                    {campaigns.length === 0 ? (
-                      <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-10 text-center">
+                  {campaigns.length === 0 ? (
+                    <>
+                    <div className="mb-6 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-10 text-center">
                         <div className="mx-auto mb-4 size-12 rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] flex items-center justify-center">
                           <Calendar className="size-5 text-[var(--accent)]" />
                         </div>
                         <h3 className="text-xl font-semibold text-[var(--text-primary)]">No scheduled reports yet</h3>
                         <p className="mt-2 text-[var(--text-secondary)]">
                           Set up your first automated report to save hours every week.
+                        </p>
+                        <p className="mt-1 text-[13px] text-[var(--text-secondary)]">
+                          Most MSPs set this up right after sending their first client report.
                         </p>
                         <button
                           type="button"
@@ -10420,9 +12925,27 @@ export default function Home() {
                         >
                           Create your first schedule →
                         </button>
-                      </div>
-                    ) : (
-                      <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)]">
+                    </div>
+                    <div className="w-full">{scheduleRecentReportsCard}</div>
+                    </>
+                  ) : (
+                    <>
+                    <div className="mb-6 flex flex-wrap gap-4">
+                      <span className="rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1 text-[12px] text-[var(--text-secondary)]">
+                        {scheduledPageStats.active} active schedule
+                        {scheduledPageStats.active === 1 ? "" : "s"}
+                      </span>
+                      <span className="rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1 text-[12px] text-[var(--text-secondary)]">
+                        Next send: {scheduledPageStats.nextSend}
+                      </span>
+                      <span className="rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1 text-[12px] text-[var(--text-secondary)]">
+                        {scheduledPageStats.sentThisMonth} report
+                        {scheduledPageStats.sentThisMonth === 1 ? "" : "s"} sent this month
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                      <div className="min-w-0 lg:col-span-2">
+                      <div className="w-full rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)]">
                         <div className="hidden w-full overflow-x-hidden md:block">
                           <table className="w-full table-fixed border-collapse text-left text-sm">
                             <thead>
@@ -10454,7 +12977,7 @@ export default function Home() {
                                 return (
                                   <tr
                                     key={c.id ?? idx}
-                                    className="border-b border-[var(--border)]/70 transition-colors hover:bg-[var(--bg-secondary)]/45"
+                                    className="border-b border-[var(--border)]/70 transition-colors duration-150 hover:bg-[var(--bg-secondary)]/45"
                                   >
                                     <td className="px-3 py-3 text-[var(--text-primary)]">
                                       <p className="truncate font-semibold" title={c.name?.trim() || "Weekly Report"}>{c.name?.trim() || "Weekly Report"}</p>
@@ -10546,7 +13069,7 @@ export default function Home() {
                             return (
                               <div
                                 key={c.id ?? idx}
-                                className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-4"
+                                className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-4 transition-colors duration-150 hover:bg-white/[0.02]"
                               >
                                 <p className="font-semibold text-[var(--text-primary)]">{c.name?.trim() || "Weekly Report"}</p>
                                 <p className="mt-1 text-xs text-[var(--text-secondary)]">
@@ -10581,84 +13104,11 @@ export default function Home() {
                           })}
                         </div>
                       </div>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
-                    <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6">
-                      <h2 className="text-[16px] font-semibold text-[var(--text-primary)]">Campaign editor</h2>
-                      <p className="mt-2 text-sm text-[var(--text-secondary)]">
-                        Open a schedule to edit settings in the side panel.
-                      </p>
-                      <div className="mt-4 flex items-center gap-2">
-                        <Button type="button" onClick={() => createNewSchedule()}>
-                          New schedule
-                        </Button>
                       </div>
+                      <div className="min-w-0">{scheduleRecentReportsCard}</div>
                     </div>
-
-                    <div className="min-w-0">
-                      <div className="sticky top-4 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
-                        <div className="flex items-center justify-between">
-                          <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Recent reports</h2>
-                          <span className="rounded-full bg-[var(--bg-secondary)] px-2 py-0.5 text-[11px] text-[var(--text-muted)]">
-                            {reportHistory.length}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-[13px] text-[var(--text-secondary)]">
-                          Last 5 sent reports
-                        </p>
-                        {reportHistoryLoading ? (
-                          <div className="mt-4 flex justify-center py-4">
-                            <Loader2 className="size-5 animate-spin text-[var(--accent)]" aria-hidden />
-                          </div>
-                        ) : reportHistory.length === 0 ? (
-                          <div className="mt-4 text-sm text-[var(--text-secondary)]">
-                            <p>No reports sent yet.</p>
-                            <p className="mt-1">Your schedules are set up and ready to run.</p>
-                          </div>
-                        ) : (
-                          <ul className="mt-4 space-y-2">
-                            {reportHistory.slice(0, 5).map((h, idx) => (
-                              <li key={h.id} className={cn("rounded-[var(--radius)] border border-[var(--border)] p-2.5", idx % 2 ? "bg-[var(--bg-secondary)]/30" : "")}>
-                                <p className="text-sm font-semibold text-[var(--text-primary)]">
-                                  {formatScheduleHistorySent(h.sent_at)}
-                                </p>
-                                <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
-                                  {h.tickets_processed ?? 0} tickets · {h.clients_covered?.length ?? 0} clients
-                                </p>
-                                <span
-                                  className={cn(
-                                    "mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium",
-                                    h.status === "failed"
-                                      ? "bg-red-500/10 text-red-500"
-                                      : "bg-emerald-500/10 text-emerald-500",
-                                  )}
-                                >
-                                  {h.status === "failed" ? "Failed" : "Sent"}
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-
-                        <h3 className="mt-5 text-[13px] font-semibold text-[var(--text-primary)]">
-                          Upcoming runs
-                        </h3>
-                        {upcomingRuns.length === 0 ? (
-                          <p className="mt-2 text-xs text-[var(--text-secondary)]">No upcoming runs.</p>
-                        ) : (
-                          <ul className="mt-2 space-y-1.5 text-xs text-[var(--text-secondary)]">
-                            {upcomingRuns.map((c, idx) => (
-                              <li key={c.id ?? idx}>
-                                {formatScheduleTs(c.next_run_at)} - {c.name?.trim() || "Weekly Report"}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                  </>
+                  )}
                   {scheduleEditorOpen ? (
                     <div className="fixed inset-0 z-[100] flex min-h-0 flex-col overflow-hidden bg-[var(--bg-secondary)]">
                         <style jsx global>{`
@@ -10684,14 +13134,14 @@ export default function Home() {
                           </button>
                         </div>
                         <div className={cn("relative z-10 flex h-11 shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-primary)] px-8 transition-shadow duration-200", stepBarGlow ? "shadow-[0_0_0_3px_rgba(56,189,248,0.25)]" : "")}>
-                          {(["Basics", "Schedule", "Data", "Output", "Review"] as const).map((label, idx) => {
+                          {(["Who & when", "What data", "Review & deliver"] as const).map((label, idx) => {
                             const complete = idx < schCampaignEditorTab;
                             const active = idx === schCampaignEditorTab;
                             return (
                               <div
                                 key={label}
                                 className={cn(
-                                  "flex h-11 w-1/5 items-center justify-center border-b-2 text-center text-[12px]",
+                                  "flex h-11 w-1/3 items-center justify-center border-b-2 text-center text-[12px]",
                                   active
                                     ? "border-[var(--accent)] font-medium text-[var(--text-primary)]"
                                     : complete
@@ -10716,218 +13166,242 @@ export default function Home() {
                               "radial-gradient(ellipse 60% 40% at 50% 0%, rgba(56,189,248,0.05) 0%, transparent 60%)",
                           }}
                         >
+                          {schedulePrefillImportBanner ? (
+                            <p className="mb-4 text-[12px] text-[var(--text-secondary)]">
+                              Pre-filled from your last import
+                            </p>
+                          ) : null}
+                          {showDemoDataBanner ? (
+                            <div className="mb-6">
+                              <DemoBanner
+                                onConnectPSA={() => {
+                                  setScheduleEditorOpen(false);
+                                  openIntegrationsInConfiguration();
+                                  setSettingsOpen(false);
+                                  setSidebarOpenMobile(false);
+                                }}
+                              />
+                            </div>
+                          ) : null}
                           {schCampaignEditorTab === 0 ? (
                             <div className="space-y-4">
-                              <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6">
-                                <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent)]">Campaign name</p>
+                              <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-5 lg:p-6">
+                                <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent)]">
+                                  Campaign name
+                                </p>
                                 <Input
                                   value={schName}
                                   onChange={(e) => setSchName(e.target.value)}
                                   placeholder="Weekly client update"
                                 />
                               </div>
-                              <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6">
-                                <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent)]">Report type</p>
-                                <div className="grid grid-cols-1 gap-2">
-                                  {(["external", "internal", "note_to_self", "qbr"] as const).map((rt) => (
-                                    <button
-                                      key={rt}
-                                      type="button"
-                                      onClick={() => setSchReportType(rt)}
-                                      className={cn(
-                                        "relative flex cursor-pointer flex-col gap-2 rounded-[var(--radius-lg)] border-[1.5px] p-5 text-left transition-all duration-200",
-                                        schReportType === rt
-                                          ? "border-2 border-[var(--accent)] bg-[rgba(56,189,248,0.06)] -translate-y-0.5"
-                                          : "border-[var(--border)] hover:-translate-y-0.5 hover:border-[rgba(56,189,248,0.4)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.1)]",
-                                      )}
-                                    >
-                                      <span
-                                        className={cn(
-                                          "inline-flex size-8 items-center justify-center rounded-full",
-                                          rt === "external"
-                                            ? "bg-sky-500/20 text-sky-300"
-                                            : rt === "internal"
-                                              ? "bg-purple-500/20 text-purple-300"
-                                              : rt === "qbr"
-                                                ? "bg-amber-500/20 text-amber-300"
-                                                : "bg-emerald-500/20 text-emerald-300",
-                                        )}
+                              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start lg:gap-6">
+                                <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-5 lg:p-6">
+                                  <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent)]">
+                                    Delivery
+                                  </p>
+                                  <div className="space-y-4">
+                                    <div>
+                                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                                        Send to (comma-separated for multiple)
+                                      </p>
+                                      <Input
+                                        type="text"
+                                        autoComplete="email"
+                                        value={schEmail}
+                                        onChange={(e) => setSchEmail(e.target.value)}
+                                        placeholder={userEmail ?? "you@company.com"}
+                                      />
+                                      <button
+                                        type="button"
+                                        className="mt-2 text-left text-[12px] font-medium text-[var(--accent)] underline-offset-2 hover:underline"
+                                        onClick={() => setSchCcBccOpen((o) => !o)}
                                       >
-                                        {rt === "external" ? <Globe className="size-4" /> : rt === "internal" ? <LayoutList className="size-4" /> : rt === "qbr" ? <BarChart3 className="size-4" /> : <User className="size-4" />}
-                                      </span>
-                                      <p className="text-[14px] font-semibold text-[var(--text-primary)]">
-                                        {rt === "external" ? "External" : rt === "internal" ? "Internal" : rt === "qbr" ? "QBR pack" : "Note to self"}
-                                      </p>
-                                      <p className="text-[12px] leading-relaxed text-[var(--text-muted)]">
-                                        {rt === "external"
-                                          ? "Client-facing update email with action-focused language."
-                                          : rt === "internal"
-                                            ? "Internal delivery summary with operational context."
-                                            : rt === "qbr"
-                                              ? "Quarterly business review pack with charts, SLA, and business recommendations."
-                                              : "Personal digest sent to your own account email."}
-                                      </p>
-                                      {schReportType === rt ? (
-                                        <span className="absolute right-3 top-3 inline-flex size-5 items-center justify-center rounded-full bg-[var(--accent)] text-white">
-                                          <Check className="size-3" />
-                                        </span>
+                                        {schCcBccOpen ? "− Hide CC/BCC" : "+ Add CC/BCC"}
+                                      </button>
+                                      {schCcBccOpen ? (
+                                        <div className="mt-3 space-y-3">
+                                          <div>
+                                            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                                              CC (optional)
+                                            </p>
+                                            <Input
+                                              type="text"
+                                              value={schEmailCc}
+                                              onChange={(e) => setSchEmailCc(e.target.value)}
+                                              placeholder="cc1@client.com, cc2@client.com"
+                                            />
+                                          </div>
+                                          <div>
+                                            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                                              BCC (optional)
+                                            </p>
+                                            <Input
+                                              type="text"
+                                              value={schEmailBcc}
+                                              onChange={(e) => setSchEmailBcc(e.target.value)}
+                                              placeholder="bcc@example.com"
+                                            />
+                                          </div>
+                                        </div>
                                       ) : null}
-                                    </button>
-                                  ))}
+                                      <p className="mb-2 mt-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                                        Email subject
+                                      </p>
+                                      <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-muted)]">
+                                        {(schName?.trim() || "Weekly Report")} - [date will be added]
+                                      </div>
+                                      <p className="mt-1 text-xs italic text-[var(--text-muted)]">
+                                        Subject is set automatically from your campaign name and date.
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                                        Recipient first name
+                                      </p>
+                                      <Input
+                                        value={schRecipientName}
+                                        onChange={(e) => setSchRecipientName(e.target.value)}
+                                        placeholder="e.g. John"
+                                      />
+                                      <p className="mt-1 text-xs text-[var(--text-muted)]">
+                                        The email will start with &quot;Hi [name],&quot; — leave blank for generic greeting
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                                        Email tone
+                                      </p>
+                                      <div className="flex flex-wrap gap-2">
+                                        {(["formal", "professional", "friendly"] as const).map((tone) => (
+                                          <button
+                                            key={tone}
+                                            type="button"
+                                            onClick={() => setSchEmailTone(tone)}
+                                            className={cn(
+                                              "rounded-full border-[1.5px] px-4 py-2 text-[13px] font-medium capitalize transition-all duration-150 active:scale-95",
+                                              schEmailTone === tone
+                                                ? "border-[var(--accent)] bg-[var(--accent)] text-white shadow-[0_2px_8px_rgba(56,189,248,0.3)]"
+                                                : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[rgba(56,189,248,0.4)] hover:text-[var(--text-primary)]",
+                                            )}
+                                          >
+                                            {tone}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="space-y-4">
+                                  <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-5 lg:p-6">
+                                    <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent)]">
+                                      Report type
+                                    </p>
+                                    <div className="grid grid-cols-1 gap-2">
+                                      {(["external", "internal", "note_to_self"] as const).map((rt) => (
+                                        <button
+                                          key={rt}
+                                          type="button"
+                                          onClick={() => setSchReportType(rt)}
+                                          className={cn(
+                                            "relative flex cursor-pointer flex-col gap-2 rounded-[var(--radius-lg)] border-[1.5px] p-4 text-left transition-all duration-200 lg:p-5",
+                                            schReportType === rt
+                                              ? "border-2 border-[var(--accent)] bg-[rgba(56,189,248,0.06)] -translate-y-0.5"
+                                              : "border-[var(--border)] hover:-translate-y-0.5 hover:border-[rgba(56,189,248,0.4)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.1)]",
+                                          )}
+                                        >
+                                          <span
+                                            className={cn(
+                                              "inline-flex size-8 items-center justify-center rounded-full",
+                                              rt === "external"
+                                                ? "bg-sky-500/20 text-sky-300"
+                                                : rt === "internal"
+                                                  ? "bg-purple-500/20 text-purple-300"
+                                                  : "bg-emerald-500/20 text-emerald-300",
+                                            )}
+                                          >
+                                            {rt === "external" ? (
+                                              <Globe className="size-4" />
+                                            ) : rt === "internal" ? (
+                                              <LayoutList className="size-4" />
+                                            ) : (
+                                              <User className="size-4" />
+                                            )}
+                                          </span>
+                                          <p className="text-[14px] font-semibold text-[var(--text-primary)]">
+                                            {rt === "external"
+                                              ? "External"
+                                              : rt === "internal"
+                                                ? "Internal"
+                                                : "Note to self"}
+                                          </p>
+                                          <p className="text-[12px] leading-relaxed text-[var(--text-muted)]">
+                                            {rt === "external"
+                                              ? "Client-facing update email with action-focused language."
+                                              : rt === "internal"
+                                                ? "Internal delivery summary with operational context."
+                                                : "Personal digest sent to your own account email."}
+                                          </p>
+                                          {schReportType === rt ? (
+                                            <span className="absolute right-3 top-3 inline-flex size-5 items-center justify-center rounded-full bg-[var(--accent)] text-white">
+                                              <Check className="size-3" />
+                                            </span>
+                                          ) : null}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-5 lg:p-6">
+                                    <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent)]">
+                                      Timing
+                                    </p>
+                                    <div className="space-y-4">
+                                      <div>
+                                        <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                                          Day (GMT)
+                                        </p>
+                                        <div className="flex flex-wrap gap-2">
+                                          {SCHEDULE_DAY_OPTIONS.map((d) => (
+                                            <button
+                                              key={d}
+                                              type="button"
+                                              onClick={() => setSchDay(d)}
+                                              className={cn(
+                                                "min-w-11 cursor-pointer rounded-full border-[1.5px] px-3.5 py-2 text-center text-[13px] font-medium capitalize transition-all duration-150 active:scale-95",
+                                                schDay === d
+                                                  ? "border-[var(--accent)] bg-[var(--accent)] text-white shadow-[0_2px_8px_rgba(56,189,248,0.3)]"
+                                                  : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[rgba(56,189,248,0.4)] hover:text-[var(--text-primary)]",
+                                              )}
+                                            >
+                                              {d.slice(0, 3)}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                                          Time (GMT)
+                                        </p>
+                                        <select
+                                          value={schTime}
+                                          onChange={(e) => setSchTime(e.target.value)}
+                                          className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 text-sm"
+                                        >
+                                          {SCHEDULE_TIME_OPTIONS.map((t) => (
+                                            <option key={t.value} value={t.value}>
+                                              {t.label}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             </div>
                           ) : null}
 
                           {schCampaignEditorTab === 1 ? (
-                            <div className="space-y-4">
-                              <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6">
-                                <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent)]">Delivery</p>
-                                <div className="space-y-4">
-                                  <div>
-                                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Sent from</p>
-                                    <Input value="noreply@gethandover.uk" disabled className="cursor-not-allowed opacity-70" />
-                                    <p className="mt-1 text-xs text-[var(--text-muted)]">Replies go to your account email</p>
-                                  </div>
-                                  <div>
-                                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
-                                      Send to (comma-separated for multiple)
-                                    </p>
-                                    <Input
-                                      type="text"
-                                      autoComplete="email"
-                                      value={schEmail}
-                                      onChange={(e) => setSchEmail(e.target.value)}
-                                      placeholder={userEmail ?? "you@company.com"}
-                                    />
-                                    <button
-                                      type="button"
-                                      className="mt-2 text-left text-[12px] font-medium text-[var(--accent)] underline-offset-2 hover:underline"
-                                      onClick={() => setSchCcBccOpen((o) => !o)}
-                                    >
-                                      {schCcBccOpen ? "− Hide CC/BCC" : "+ Add CC/BCC"}
-                                    </button>
-                                    {schCcBccOpen ? (
-                                      <div className="mt-3 space-y-3">
-                                        <div>
-                                          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
-                                            CC (optional)
-                                          </p>
-                                          <Input
-                                            type="text"
-                                            value={schEmailCc}
-                                            onChange={(e) => setSchEmailCc(e.target.value)}
-                                            placeholder="cc1@client.com, cc2@client.com"
-                                          />
-                                        </div>
-                                        <div>
-                                          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
-                                            BCC (optional)
-                                          </p>
-                                          <Input
-                                            type="text"
-                                            value={schEmailBcc}
-                                            onChange={(e) => setSchEmailBcc(e.target.value)}
-                                            placeholder="bcc@example.com"
-                                          />
-                                        </div>
-                                      </div>
-                                    ) : null}
-                                    <p className="mb-2 mt-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Email subject</p>
-                                    <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-muted)]">
-                                      {(schName?.trim() || "Weekly Report")} - [date will be added]
-                                    </div>
-                                    <p className="mt-1 text-xs italic text-[var(--text-muted)]">
-                                      Subject is set automatically from your campaign name and date.
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Recipient first name</p>
-                                    <Input
-                                      value={schRecipientName}
-                                      onChange={(e) => setSchRecipientName(e.target.value)}
-                                      placeholder="e.g. John"
-                                    />
-                                    <p className="mt-1 text-xs text-[var(--text-muted)]">
-                                      The email will start with "Hi [name]," - leave blank for generic greeting
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Email tone</p>
-                                    <div className="flex flex-wrap gap-2">
-                                      {(["formal", "professional", "friendly"] as const).map((tone) => (
-                                        <button
-                                          key={tone}
-                                          type="button"
-                                          onClick={() => setSchEmailTone(tone)}
-                                          className={cn(
-                                            "rounded-full border-[1.5px] px-4 py-2 text-[13px] font-medium capitalize transition-all duration-150 active:scale-95",
-                                            schEmailTone === tone
-                                              ? "border-[var(--accent)] bg-[var(--accent)] text-white shadow-[0_2px_8px_rgba(56,189,248,0.3)]"
-                                              : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[rgba(56,189,248,0.4)] hover:text-[var(--text-primary)]",
-                                          )}
-                                        >
-                                          {tone}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>
-                                  <div>
-                                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Brand name in email</p>
-                                    <Input
-                                      value={schBrandName}
-                                      onChange={(e) => setSchBrandName(e.target.value)}
-                                      placeholder="e.g. Panacea Group"
-                                    />
-                                    <p className="mt-1 text-xs text-[var(--text-muted)]">
-                                      Replaces "Handover" in the email header. Leave blank to use "Handover".
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6">
-                                <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent)]">Timing</p>
-                                <div className="space-y-4">
-                                  <div>
-                                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Day (GMT)</p>
-                                    <div className="flex flex-wrap gap-2">
-                                      {SCHEDULE_DAY_OPTIONS.map((d) => (
-                                        <button
-                                          key={d}
-                                          type="button"
-                                          onClick={() => setSchDay(d)}
-                                          className={cn(
-                                            "min-w-11 cursor-pointer rounded-full border-[1.5px] px-3.5 py-2 text-center text-[13px] font-medium capitalize transition-all duration-150 active:scale-95",
-                                            schDay === d
-                                              ? "border-[var(--accent)] bg-[var(--accent)] text-white shadow-[0_2px_8px_rgba(56,189,248,0.3)]"
-                                              : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[rgba(56,189,248,0.4)] hover:text-[var(--text-primary)]",
-                                          )}
-                                        >
-                                          {d.slice(0, 3)}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>
-                                  <div>
-                                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Time (GMT)</p>
-                                    <select
-                                      value={schTime}
-                                      onChange={(e) => setSchTime(e.target.value)}
-                                      className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 text-sm"
-                                    >
-                                      {SCHEDULE_TIME_OPTIONS.map((t) => (
-                                        <option key={t.value} value={t.value}>
-                                          {t.label}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          ) : null}
-
-                          {schCampaignEditorTab === 2 ? (
                             <div className="space-y-6 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6">
                               <div>
                                 <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent)]">Ticket date range</p>
@@ -10962,7 +13436,25 @@ export default function Home() {
                                   {schIncludeTickets ? (
                                     <div className="space-y-2 border-t border-[var(--border)] pt-3">
                                       {dataLoading && !dataLoaded ? (
-                                        <div className="flex min-h-[220px] items-center justify-center gap-2 text-sm text-[var(--text-secondary)]"><Loader2 className="size-4 animate-spin" />Loading your HaloPSA data...</div>
+                                        <div className="min-h-[220px] space-y-3 py-4" aria-busy>
+                                          <p className="text-center text-sm text-[var(--text-secondary)]">
+                                            Loading your HaloPSA data...
+                                          </p>
+                                          <div className="space-y-2">
+                                            {[0, 1, 2, 3].map((row) => (
+                                              <div
+                                                key={row}
+                                                className="flex animate-pulse gap-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-3"
+                                              >
+                                                <div className="h-4 w-4 shrink-0 rounded bg-[var(--bg-secondary)]" />
+                                                <div className="min-w-0 flex-1 space-y-2">
+                                                  <div className="h-3 w-[75%] max-w-[280px] rounded bg-[var(--bg-secondary)]" />
+                                                  <div className="h-3 w-[50%] max-w-[180px] rounded bg-[var(--bg-secondary)]" />
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
                                       ) : (
                                         <>
                                           <div className="flex items-center justify-between">
@@ -10982,8 +13474,15 @@ export default function Home() {
                                               <div className="max-h-[500px] space-y-0 overflow-y-auto rounded-[var(--radius)] border border-[var(--border)]">
                                                 {ticketClientOptions.map((client) => {
                                                   const expanded = expandedTicketClients.has(client.id);
-                                                  const clientTickets = allTickets.filter((t) => Number(t.clientId ?? t.client_id) === client.id);
-                                                  const allChecked = clientTickets.length > 0 && clientTickets.every((t) => selectedTicketIds.includes(Number(t.id)));
+                                                  const clientTickets = scheduleTicketsForClientRow(
+                                                    client.id,
+                                                    client.name,
+                                                  );
+                                                  const allChecked =
+                                                    clientTickets.length > 0 &&
+                                                    clientTickets.every((t) =>
+                                                      selectedTicketIds.includes(Number(t.id)),
+                                                    );
                                                   return (
                                                     <div key={`t-${client.id}`} className={cn("border-b border-[var(--border)] px-[14px] py-3 hover:bg-[var(--bg-secondary)] last:border-b-0", allChecked ? "border-l-3 border-l-[var(--accent)] bg-[rgba(56,189,248,0.06)]" : "")}>
                                                       <div className="flex items-center gap-2 text-xs">
@@ -10999,7 +13498,9 @@ export default function Home() {
                                                           () => handleClientCheck(client.id, !allChecked, "tickets"),
                                                         )}
                                                         <button type="button" className="min-w-0 flex-1 truncate text-left text-[13px]" onClick={() => handleClientCheck(client.id, !allChecked, "tickets")}>{client.name}</button>
-                                                        <span className="rounded bg-[var(--bg-secondary)] px-1.5 py-0.5">{getTicketCountForClient(client.id, allTickets)}</span>
+                                                        <span className="rounded bg-[var(--bg-secondary)] px-1.5 py-0.5">
+                                                          {clientTickets.length}
+                                                        </span>
                                                       </div>
                                                       {expanded ? (
                                                         <div className="ml-6 mt-1 space-y-1">
@@ -11171,7 +13672,8 @@ export default function Home() {
                             </div>
                           ) : null}
 
-                          {schCampaignEditorTab === 3 ? (
+                          {schCampaignEditorTab === 2 ? (
+                            <>
                             <div className="space-y-4">
                               <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6">
                                 <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent)]">Email content</p>
@@ -11595,10 +14097,7 @@ export default function Home() {
                                 ) : null}
                               </div>
                             </div>
-                          ) : null}
-
-                          {schCampaignEditorTab === 4 ? (
-                            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.9fr_1fr]">
+                            <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-[1.9fr_1fr]">
                               <div className="space-y-3">
                                 <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6">
                                   <div className="mb-3 flex items-center justify-between border-b border-[var(--border)] pb-3">
@@ -11612,7 +14111,7 @@ export default function Home() {
                                 <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6">
                                   <div className="mb-3 flex items-center justify-between border-b border-[var(--border)] pb-3">
                                     <p className="text-[13px] font-semibold text-[var(--text-primary)]">Schedule</p>
-                                    <button type="button" className="text-[12px] text-[var(--accent)]" onClick={() => setSchCampaignEditorTab(1)}>Edit →</button>
+                                    <button type="button" className="text-[12px] text-[var(--accent)]" onClick={() => setSchCampaignEditorTab(0)}>Edit →</button>
                                   </div>
                                   <div className="flex justify-between py-1"><span className="text-xs text-[var(--text-muted)]">Day</span><span className="text-[13px] font-medium text-[var(--text-primary)]">{formatScheduleDayLabel(schDay)}</span></div>
                                   <div className="flex justify-between py-1"><span className="text-xs text-[var(--text-muted)]">Time</span><span className="text-[13px] font-medium text-[var(--text-primary)]">{formatScheduleTime12h(schTime)}</span></div>
@@ -11638,7 +14137,7 @@ export default function Home() {
                                 <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6">
                                   <div className="mb-3 flex items-center justify-between border-b border-[var(--border)] pb-3">
                                     <p className="text-[13px] font-semibold text-[var(--text-primary)]">Data</p>
-                                    <button type="button" className="text-[12px] text-[var(--accent)]" onClick={() => setSchCampaignEditorTab(2)}>Edit →</button>
+                                    <button type="button" className="text-[12px] text-[var(--accent)]" onClick={() => setSchCampaignEditorTab(1)}>Edit →</button>
                                   </div>
                                   <div className="flex justify-between py-1"><span className="text-xs text-[var(--text-muted)]">Includes</span><span className="text-[13px] font-medium text-[var(--text-primary)]">{schIncludeTickets ? "Tickets" : ""}{schIncludeTickets && schIncludeProjects ? " | " : ""}{schIncludeProjects ? "Projects" : ""}</span></div>
                                   <div className="flex justify-between py-1"><span className="text-xs text-[var(--text-muted)]">Clients</span><span className="text-[13px] font-medium text-[var(--text-primary)]">{ticketClientMode === "all" && projectClientMode === "all" ? "All clients" : `${selectedTicketClients.length + selectedProjectClients.length} clients selected`}</span></div>
@@ -11679,12 +14178,13 @@ export default function Home() {
                                 </div>
                               </div>
                             </div>
+                            </>
                           ) : null}
                         </div>
                         </div>
 
-                        <div className="relative flex h-16 shrink-0 items-center justify-between gap-3 border-t border-[var(--border)] bg-[var(--bg-primary)] px-8 py-4">
-                          <div>
+                        <div className="relative flex min-h-[4rem] shrink-0 flex-wrap items-center gap-3 border-t border-[var(--border)] bg-[var(--bg-primary)] px-4 py-3 sm:px-8 sm:py-4">
+                          <div className="shrink-0">
                             {schCampaignEditorTab > 0 ? (
                               <Button
                                 type="button"
@@ -11700,24 +14200,70 @@ export default function Home() {
                               </Button>
                             )}
                           </div>
-                          <div className="ml-auto text-right">
-                            {schCampaignEditorTab === 2 ? (
-                              <p className="mb-1 text-xs text-[var(--text-secondary)]">
-                                Tickets: {selectedTicketIds.length} selected · Projects: {selectedProjectIds.length} selected
+                          <div className="order-3 flex min-w-0 flex-1 basis-full items-center justify-center px-2 text-center sm:order-none sm:basis-auto sm:justify-center">
+                            {schCampaignEditorTab < 2 ? (
+                              scheduleWizardRequiredRemaining > 0 ? (
+                                <p className="text-[12px] text-[var(--text-secondary)]">
+                                  Required fields remaining:{" "}
+                                  <span className="font-semibold text-[var(--text-primary)]">
+                                    {scheduleWizardRequiredRemaining}
+                                  </span>
+                                </p>
+                              ) : (
+                                <p className="text-[12px] font-medium text-emerald-500">✓ Ready to continue</p>
+                              )
+                            ) : (
+                              <p className="text-[12px] font-medium text-emerald-500">✓ Ready to continue</p>
+                            )}
+                          </div>
+                          <div className="ml-auto flex shrink-0 flex-col items-end gap-1 text-right">
+                            {schCampaignEditorTab === 1 ? (
+                              <p className="mb-0.5 text-xs text-[var(--text-secondary)]">
+                                Tickets: {selectedTicketIds.length} selected · Projects: {selectedProjectIds.length}{" "}
+                                selected
                               </p>
                             ) : null}
-                            {schCampaignEditorTab < 4 ? (
+                            {schCampaignEditorTab < 2 ? (
                               <Button
                                 type="button"
-                                className={cn("bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]", primaryModalButtonClass)}
+                                className={cn(
+                                  "h-11 min-w-[7.5rem] bg-[var(--accent)] px-5 text-[14px] font-semibold text-white hover:bg-[var(--accent-hover)]",
+                                  primaryModalButtonClass,
+                                  scheduleWizardNextFlash &&
+                                    schCampaignEditorTab < 2 &&
+                                    "animate-pulse motion-reduce:animate-none",
+                                )}
                                 disabled={
-                                  schCampaignEditorTab === 2 &&
+                                  schCampaignEditorTab === 1 &&
                                   !canProceedStep3
                                 }
-                                onClick={() => setSchCampaignEditorTab((s) => Math.min(4, s + 1))}
+                                onClick={() => setSchCampaignEditorTab((s) => Math.min(2, s + 1))}
                               >
                                 Next →
                               </Button>
+                            ) : demoModeActive ? (
+                              <span
+                                className="inline-flex flex-col items-end gap-1"
+                                title="Connect your PSA to enable scheduled reports"
+                              >
+                                <Button
+                                  type="button"
+                                  className={cn(
+                                    "cursor-not-allowed bg-[var(--accent)] text-white opacity-60",
+                                    primaryModalButtonClass,
+                                  )}
+                                  style={{
+                                    boxShadow: "0 4px 16px rgba(56,189,248,0.15)",
+                                  }}
+                                  disabled
+                                  aria-describedby="demo-schedule-save-tooltip"
+                                >
+                                  {scheduleEditorIsNew ? "Create schedule" : "Save"}
+                                </Button>
+                                <span id="demo-schedule-save-tooltip" className="sr-only">
+                                  Connect your PSA to enable scheduled reports
+                                </span>
+                              </span>
                             ) : (
                               <Button
                                 type="button"
@@ -11756,8 +14302,10 @@ export default function Home() {
                 <DeliveryHealthDashboard
                   focusRing={focusRing}
                   dashboardAccess={deliveryDashboardAccess === "read" ? "read" : "full"}
+                  viewMode={dashboardViewMode}
+                  demoMode={demoModeActive}
                   onOpenIntegrations={() => {
-                    setMainView("integrations");
+                    openIntegrationsInConfiguration();
                     setSettingsOpen(false);
                     setSidebarOpenMobile(false);
                   }}
@@ -11819,90 +14367,43 @@ export default function Home() {
                 </div>
               ) : null}
             </div>
-          ) : userEmail && mainView === "integrations" ? (
-            <IntegrationsPanel
-              hasProFeatures={hasProAccess}
-              userTeamId={userTeamId}
-              integrationsBootstrapping={integrationsBootstrapping}
-              initialOpenDetail={integrationsInitialDetail}
-              onConsumedInitialOpenDetail={() => setIntegrationsInitialDetail(null)}
-              haloConnected={haloConnected}
-              haloUrl={haloUrl}
-              haloUpdatedAt={haloUpdatedAt}
-              haloImportedCount={haloImportedCount}
-              haloConfigOpen={haloConfigOpen}
-              setHaloConfigOpen={setHaloConfigOpen}
-              haloUrlInput={haloUrl}
-              setHaloUrlInput={setHaloUrl}
-              haloTenant={haloTenant}
-              setHaloTenant={setHaloTenant}
-              haloClientId={haloClientId}
-              setHaloClientId={setHaloClientId}
-              haloClientSecret={haloClientSecret}
-              setHaloClientSecret={setHaloClientSecret}
-              haloHelpOpen={haloHelpOpen}
-              setHaloHelpOpen={setHaloHelpOpen}
-              haloError={haloError}
-              haloReconnectRecommended={haloReconnectRecommended}
-              onOpenHaloReconnectConfig={() => setHaloConfigOpen(true)}
-              haloPermissionWarning={haloPermissionWarning}
-              haloLoading={haloLoading}
-              haloTestLoading={haloTestLoading}
-              haloAutoClosureSummary={haloAutoClosureSummary}
-              haloAutoClosureSummaryBusy={haloAutoClosureSummaryBusy}
-              onHaloAutoClosureSummaryChange={handleHaloAutoClosureSummaryChange}
-              onConnect={handleHaloConnect}
-              onTest={handleHaloTestConnection}
-              onDisconnect={handleHaloDisconnect}
-              onImportTickets={() => setHaloImportOpen(true)}
-              onUpgrade={() => setHaloProModalOpen(true)}
-              upgradeDisabled={
-                (!STRIPE_PRO_MONTHLY_PRICE_ID && !STRIPE_PRO_ANNUAL_PRICE_ID) ||
-                checkoutLoadingPriceId !== null
-              }
-              fileInputRef={fileInputRef}
-              cwConnected={cwConnected}
-              cwSiteUrl={cwSiteUrl}
-              cwImportedCount={cwImportedCount}
-              cwSiteUrlInput={cwSiteUrlInput}
-              setCwSiteUrlInput={setCwSiteUrlInput}
-              cwCompanyIdInput={cwCompanyIdInput}
-              setCwCompanyIdInput={setCwCompanyIdInput}
-              cwPublicKeyInput={cwPublicKeyInput}
-              setCwPublicKeyInput={setCwPublicKeyInput}
-              cwPrivateKeyInput={cwPrivateKeyInput}
-              setCwPrivateKeyInput={setCwPrivateKeyInput}
-              cwClientIdInput={cwClientIdInput}
-              setCwClientIdInput={setCwClientIdInput}
-              cwConfigOpen={cwConfigOpen}
-              setCwConfigOpen={setCwConfigOpen}
-              cwError={cwError}
-              cwSaveLoading={cwSaveLoading}
-              cwTestLoading={cwTestLoading}
-              cwTestOk={cwTestOk}
-              cwTestMessage={cwTestMessage}
-              onCwSave={handleCwSave}
-              onCwTest={handleCwTestConnection}
-              onCwDisconnect={handleCwDisconnect}
-              slackWebhookUrl={slackWebhookUrl}
-              setSlackWebhookUrl={setSlackWebhookUrl}
-              slackNotificationsEnabled={slackNotificationsEnabled}
-              onSlackNotificationsToggle={handleSlackNotificationsToggle}
-              teamsWebhookUrl={teamsWebhookUrl}
-              setTeamsWebhookUrl={setTeamsWebhookUrl}
-              teamsNotificationsEnabled={teamsNotificationsEnabled}
-              onTeamsNotificationsToggle={handleTeamsNotificationsToggle}
-              slackWebhookSaveLoading={slackWebhookSaveLoading}
-              teamsWebhookSaveLoading={teamsWebhookSaveLoading}
-              slackWebhookTestLoading={slackWebhookTestLoading}
-              teamsWebhookTestLoading={teamsWebhookTestLoading}
-              onSaveSlackWebhook={handleSaveSlackWebhook}
-              onSaveTeamsWebhook={handleSaveTeamsWebhook}
-              onTestSlackWebhook={handleTestSlackWebhook}
-              onTestTeamsWebhook={handleTestTeamsWebhook}
-            />
           ) : (
           <>
+            {userEmail && mainView === "overview" ? (
+              <div key="overview" className="animate-in fade-in duration-200">
+                <OverviewHomeView
+                  userFirstName={userFirstName}
+                  dashStats={dashStats}
+                  projects={projects}
+                  campaigns={campaigns}
+                  monthlyStats={monthlyStats}
+                  monthlyStatsLoading={monthlyStatsLoading}
+                  loading={!projectsBootstrapped}
+                  formatRelativeTime={relativeTimeLabel}
+                  onSelectProject={(p) => {
+                    handleSelectProject(p as ProjectItem);
+                    setMainView("generate");
+                  }}
+                  onGoToGenerate={() => {
+                    setMainView("generate");
+                    window.requestAnimationFrame(() => {
+                      generateInputRef.current?.focus();
+                      generateInputRef.current?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "center",
+                      });
+                    });
+                  }}
+                  onGoToDelivery={() => {
+                    if (hasProAccess && deliveryDashboardAccess !== "none") {
+                      setMainView("delivery");
+                    } else {
+                      tryOpenProFeatureGate("Delivery Health Dashboard");
+                    }
+                  }}
+                />
+              </div>
+            ) : null}
             {userEmail && mainView === "reports" ? (
               <>
                 <div className="mb-6 w-full rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-5 shadow-[0_1px_3px_rgba(0,0,0,0.06)] md:p-8">
@@ -11916,15 +14417,62 @@ export default function Home() {
                   Connect your PSA, pick clients and date range, then generate branded PDF, Excel, and PowerPoint in one
                   pass.
                 </p>
-                <div className="mt-6">
-                  <QbrPackBuilder
-                    embedded
-                    hasProAccess={hasProAccess}
-                    defaultBrandName={brandName.trim() || "Handover"}
-                    defaultBrandColor={brandColour || "#38bdf8"}
-                    brandLogoUrl={brandLogoUrl.trim() || null}
-                    usageHint={qbrUsageHint}
-                  />
+                <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-3">
+                  <div className="min-w-0 lg:col-span-2">
+                  {noPsaConnected && !demoModeActive ? (
+                    <PSAEmptyState
+                      title="No PSA connected"
+                      description="Connect your PSA to import tickets and generate reports."
+                    />
+                  ) : psaStatus.loading && !demoModeActive ? (
+                    <div className="space-y-4" aria-busy>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        {[0, 1, 2].map((i) => (
+                          <div
+                            key={i}
+                            className="h-24 rounded-[var(--radius-lg)] border border-[var(--border)] bg-white/5 animate-pulse"
+                          />
+                        ))}
+                      </div>
+                      <div className="h-48 rounded-[var(--radius-lg)] border border-[var(--border)] bg-white/5 animate-pulse" />
+                      <div className="h-12 w-40 rounded-[var(--radius)] bg-white/5 animate-pulse" />
+                    </div>
+                  ) : (
+                    <div className="mx-auto w-full max-w-3xl">
+                      <QbrPackBuilder
+                        embedded
+                        demoMode={demoModeActive}
+                        hasProAccess={hasProAccess}
+                        defaultBrandName={brandName.trim() || "Handover"}
+                        defaultBrandColor={brandColour || "#38bdf8"}
+                        brandLogoUrl={brandLogoUrl.trim() || null}
+                        usageHint={qbrUsageHint}
+                      />
+                    </div>
+                  )}
+                  </div>
+                  <aside className="hidden lg:col-span-1 lg:block">
+                    <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">
+                      What&apos;s included
+                    </h2>
+                    <ul className="mt-4 space-y-3 text-[13px] text-[var(--text-secondary)]">
+                      {[
+                        "PDF summary",
+                        "Excel data pack",
+                        "Action log",
+                        "Risk register",
+                        "Client email template",
+                      ].map((item) => (
+                        <li key={item} className="flex items-start gap-2">
+                          <Check
+                            className="mt-0.5 size-4 shrink-0 text-[var(--accent)]"
+                            aria-hidden
+                          />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </aside>
                 </div>
                 </div>
               </>
@@ -11944,45 +14492,50 @@ export default function Home() {
               </div>
             ) : (
             <>
-            {userEmail && !result && !isGenerating && dashGreeting ? (
-              <div className="mb-3 flex flex-col justify-between gap-2 border-b border-[var(--border)] pb-3 sm:flex-row sm:items-center">
-                <div>
-                  <p className="text-[16px] font-semibold text-[var(--text-primary)]">
-                    {dashGreeting}
+            {userEmail && !result && !isGenerating && noPsaConnected && !demoModeActive ? (
+              <div className="mb-3 rounded-[var(--radius)] border border-amber-500/35 border-l-4 bg-amber-500/10 px-3 py-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="inline-flex items-center gap-2 text-[13px] text-amber-100">
+                    <AlertTriangle className="size-4 shrink-0" />
+                    Connect your PSA to unlock imports, ticket tracking, and AI-powered reporting.
                   </p>
-                  <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">
-                    Paste your notes or import from HaloPSA to get started.
-                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-7 bg-amber-500 px-2.5 text-[11px] font-semibold text-white hover:bg-amber-400"
+                    onClick={() => {
+                      openIntegrationsInConfiguration();
+                      setSettingsOpen(false);
+                      setSidebarOpenMobile(false);
+                    }}
+                  >
+                    Connect now
+                  </Button>
                 </div>
-                <p className="shrink-0 text-[11px] text-[var(--text-muted)]">
-                  {new Date().toLocaleDateString("en-GB", {
-                    weekday: "long",
-                    day: "numeric",
-                    month: "long",
-                    year: "numeric",
-                  })}
-                </p>
               </div>
             ) : null}
+            <div
+              className={cn(
+                "relative w-full",
+                userEmail &&
+                  !result &&
+                  !isGenerating &&
+                  "flex min-h-[calc(100vh-8rem)] flex-col justify-start pt-16 before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(ellipse_at_center,rgba(14,165,233,0.04)_0%,transparent_70%)]",
+              )}
+            >
             <section
               ref={inputSectionRef}
-              className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] shadow-[0_1px_3px_rgba(0,0,0,0.05)]"
+              className={cn(
+                "relative z-10 overflow-hidden rounded-[var(--radius-lg)] bg-[var(--bg-primary)] shadow-[0_1px_3px_rgba(0,0,0,0.05)]",
+                !input.trim()
+                  ? "border border-[var(--accent)]/15 shadow-[0_0_20px_rgba(14,165,233,0.06)]"
+                  : "border border-[var(--accent)]/30 shadow-[0_0_25px_rgba(14,165,233,0.10)]",
+              )}
             >
               <div
-                className="flex flex-col gap-1.5 border-b border-[var(--border)] bg-[var(--bg-secondary)] px-[14px] py-2"
+                className="flex flex-wrap items-center justify-end gap-2 border-b border-[var(--border)] bg-[var(--bg-secondary)] px-[14px] py-2.5"
                 style={{ borderRadius: "var(--radius-lg) var(--radius-lg) 0 0" }}
               >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span
-                      className="handover-pulse size-1.5 shrink-0 rounded-full bg-[var(--accent)]"
-                      aria-hidden
-                    />
-                    <span className="text-[12px] font-medium text-[var(--text-muted)]">
-                      New generation
-                    </span>
-                  </div>
-                <div className="flex flex-wrap items-center justify-end gap-2">
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -11998,13 +14551,13 @@ export default function Home() {
                     <details className="relative">
                       <summary
                         className={cn(
-                          "inline-flex h-7 cursor-pointer list-none items-center gap-1 rounded-[var(--radius)] border border-[var(--border)] px-2.5 text-[11px] text-[var(--text-secondary)]",
+                          "inline-flex h-9 cursor-pointer list-none items-center gap-1.5 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 text-[12px] font-medium text-[var(--text-secondary)] transition-colors hover:bg-[color-mix(in_srgb,var(--bg-secondary)_65%,var(--bg-primary))]",
                           focusRing,
                         )}
                       >
-                        <Database className="size-3 shrink-0" />
+                        <Database className="size-4 shrink-0" aria-hidden />
                         Import from PSA
-                        <ChevronDown className="size-3 shrink-0" />
+                        <ChevronDown className="size-3.5 shrink-0 opacity-70" aria-hidden />
                       </summary>
                       <div className="absolute right-0 z-30 mt-1 min-w-[180px] rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] p-1 shadow-lg">
                         <button
@@ -12037,7 +14590,7 @@ export default function Home() {
                       type="button"
                       variant="outline"
                       className={cn(
-                        "h-7 gap-1 border-[var(--border)] px-2.5 text-[11px] text-[var(--text-secondary)] transition-all duration-[120ms] ease-in-out",
+                        "h-9 gap-1.5 border-[var(--border)] bg-[var(--bg-primary)] px-3 text-[12px] font-medium text-[var(--text-secondary)] transition-all duration-[120ms] ease-in-out hover:bg-[color-mix(in_srgb,var(--bg-secondary)_65%,var(--bg-primary))]",
                         focusRing,
                       )}
                       onClick={() => {
@@ -12060,7 +14613,7 @@ export default function Home() {
                           : undefined
                       }
                     >
-                      <Database className="size-3 shrink-0" />
+                      <Database className="size-4 shrink-0" aria-hidden />
                       {`Import from ${importPsaLabel}`}
                       <span className="ml-0.5 inline-block size-1.5 rounded-full bg-emerald-500" aria-hidden />
                     </Button>
@@ -12069,63 +14622,46 @@ export default function Home() {
                       type="button"
                       variant="outline"
                       className={cn(
-                        "h-7 gap-1 border-[var(--border)] px-2.5 text-[11px] text-[var(--text-muted)] transition-all duration-[120ms] ease-in-out",
+                        "h-9 gap-1.5 border-[var(--border)] bg-[var(--bg-primary)] px-3 text-[12px] font-medium text-[var(--text-muted)] transition-all duration-[120ms] ease-in-out",
                         focusRing,
                       )}
                       disabled
                       title="Connect a PSA in Integrations to import tickets"
                     >
-                      <Database className="size-3 shrink-0" />
+                      <Database className="size-4 shrink-0" aria-hidden />
                       Import from PSA
                     </Button>
                   ) : userEmail && !hasProAccess ? (
-                    <button
+                    <Button
                       type="button"
+                      variant="outline"
                       title="Connect a PSA - available on Pro plan"
                       className={cn(
-                        "inline-flex h-7 shrink-0 items-center gap-1 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-2.5 text-[11px] text-[var(--text-muted)] transition-all duration-[120ms] ease-in-out hover:bg-[var(--bg-tertiary)]",
+                        "h-9 gap-1.5 border-[var(--border)] bg-[var(--bg-primary)] px-3 text-[12px] font-medium text-[var(--text-secondary)] transition-all duration-[120ms] ease-in-out hover:bg-[color-mix(in_srgb,var(--bg-secondary)_65%,var(--bg-primary))]",
                         focusRing,
                       )}
                       onClick={() => setHaloProModalOpen(true)}
                     >
-                      <Database className="size-3" aria-hidden />
+                      <Database className="size-4 shrink-0" aria-hidden />
                       <span>Import from PSA</span>
                       <span className="rounded-full bg-[var(--accent)] px-1.5 py-px text-[9px] font-semibold text-white">
                         Pro
                       </span>
-                    </button>
-                  ) : null}
-                  {privacyMode ? (
-                    <span
-                      className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
-                      style={{
-                        backgroundColor: "rgba(56,189,248,0.08)",
-                        border: "1px solid rgba(56,189,248,0.2)",
-                        color: "var(--accent)",
-                      }}
-                    >
-                      <Shield className="size-3" aria-hidden />
-                      Privacy mode on
-                    </span>
+                    </Button>
                   ) : null}
                   <Button
                     type="button"
                     variant="outline"
                     title="Supported formats: CSV (.csv), Microsoft Excel (.xlsx, .xls), Word (.docx)."
                     className={cn(
-                      "h-7 border-[var(--border)] px-2.5 text-[11px] text-[var(--text-secondary)] transition-all duration-[120ms] ease-in-out",
+                      "h-9 gap-1.5 border-[var(--border)] bg-[var(--bg-primary)] px-3 text-[12px] font-medium text-[var(--text-secondary)] transition-all duration-[120ms] ease-in-out hover:bg-[color-mix(in_srgb,var(--bg-secondary)_65%,var(--bg-primary))]",
                       focusRing,
                     )}
                     onClick={() => fileInputRef.current?.click()}
                   >
-                    <Upload className="mr-1 size-3" aria-hidden />
-                    Import file (CSV, Excel, Word)
+                    <Upload className="size-4 shrink-0" aria-hidden />
+                    Import file
                   </Button>
-                </div>
-                </div>
-                <p className="text-[10px] leading-snug text-[var(--text-muted)] sm:text-right">
-                  File import: CSV (.csv), Microsoft Excel (.xlsx, .xls), Word (.docx).
-                </p>
               </div>
 
               <div className="space-y-3 p-[14px]">
@@ -12172,7 +14708,41 @@ export default function Home() {
                       </p>
                     ) : null}
                   </div>
-                ) : null}
+                ) : (
+                  <div className="rounded-[var(--radius)] border border-dashed border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-secondary)_60%,transparent)] px-3 py-2.5">
+                    <p className="text-[11px] leading-snug text-[var(--text-muted)]">
+                      <span className="font-medium text-[var(--text-secondary)]">Try a template:</span> after you
+                      generate, use{" "}
+                      <span className="text-[var(--text-secondary)]">Save as template</span> on any output tab, then
+                      pick it here for your next run.
+                    </p>
+                    {result ? (
+                      <button
+                        type="button"
+                        className={cn(
+                          "mt-2 text-[11px] font-medium text-[var(--accent)] underline-offset-2 hover:underline",
+                          focusRing,
+                        )}
+                        onClick={() => {
+                          const coreVis = visibleCoreTabsForResult(result);
+                          const pick =
+                            coreVis.includes("client_email")
+                              ? "client_email"
+                              : coreVis.includes("summary")
+                                ? "summary"
+                                : coreVis[0];
+                          if (pick) setOutputMainTab(pick);
+                          window.requestAnimationFrame(() => {
+                            outputRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                          });
+                          setTemplateSaveCtaHighlight(true);
+                        }}
+                      >
+                        Show in outputs →
+                      </button>
+                    ) : null}
+                  </div>
+                )}
 
                 <div className="border-b border-[var(--border)] pb-2.5">
                   <Input
@@ -12227,113 +14797,227 @@ export default function Home() {
                     </Button>
                   </div>
                 ) : null}
-                <Textarea
-                  ref={generateInputRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Paste meeting notes, ticket updates, or project data here..."
-                  rows={6}
-                  maxLength={15000}
-                  className={cn(
-                    "min-h-[160px] resize-y border-0 bg-transparent px-0 py-1 text-[14px] placeholder:text-[var(--text-muted)] focus-visible:ring-0",
-                    focusRing,
-                  )}
-                  disabled={isGenerating}
-                  aria-label="Project notes input"
-                  onKeyDown={(e) => {
-                    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                      e.preventDefault();
-                      void openGenerateOptionsModal();
-                    }
-                  }}
-                />
-                <p className="hidden text-[11px] text-[var(--text-muted)] md:block">
-                  ⌘ + Enter to generate
-                </p>
-                <div className="mt-2 flex flex-col gap-3 border-t border-[var(--border)] pt-2.5 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
-                    {showCharacterCount ? (
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-xs" style={{ color: inputCounterColor }}>
-                          {charCount.toLocaleString()} / 15,000 characters
-                        </p>
-                        <span
-                          className="inline-flex shrink-0 cursor-help text-[var(--text-muted)] transition-colors hover:text-[var(--text-secondary)]"
-                          title="Large inputs are automatically compacted to preserve the most relevant ticket notes while staying within AI limits."
-                          aria-label="Large inputs are automatically compacted to preserve the most relevant ticket notes while staying within AI limits."
-                        >
-                          <Info className="size-3.5" strokeWidth={2} aria-hidden />
-                        </span>
-                      </div>
-                    ) : null}
-                    {Boolean(userEmail) && !hasProAccess && trialInfo?.active ? (
-                      <div className="flex items-center gap-2">
-                        <span className="text-[12px] text-[var(--text-muted)]">
-                          Trial: {trialInfo.used}/10
-                        </span>
-                        <div
-                          className="h-[3px] w-[120px] overflow-hidden rounded-full bg-[var(--border)]"
-                          aria-hidden
-                        >
-                          <div
-                            className="h-full rounded-full transition-all duration-300"
-                            style={{
-                              width: `${Math.min(100, (trialInfo.used / 10) * 100)}%`,
-                              background:
-                                trialInfo.used >= 9
-                                  ? "#D85A30"
-                                  : trialInfo.used >= 7
-                                    ? "#BA7517"
-                                    : "var(--accent)",
-                            }}
-                          />
-                        </div>
-                      </div>
-                    ) : null}
-                    {charCount > 13000 && charCount < 15000 ? (
-                      <p className="text-[12px] text-[#BA7517]">
-                        Large inputs may reduce output quality. Consider selecting fewer tickets.
-                      </p>
-                    ) : null}
-                    {charCount >= 15000 ? (
-                      <p className="text-[12px] text-[#BA7517]">
-                        Large input detected - content will be intelligently compacted before generation. You can
-                        still generate.
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                {showPro75Warning ? (
+                  <div className="flex items-start justify-between gap-3 rounded-[var(--radius)] border border-amber-500/35 bg-amber-500/10 px-3 py-2.5 text-[13px] text-amber-100">
+                    <p>You&apos;ve used {proMonthlyUsage} of your 200 monthly generations.</p>
                     <Button
                       type="button"
-                      size="lg"
-                      className={cn(
-                        "w-full gap-2 rounded-[var(--radius)] bg-[var(--accent)] px-5 py-2.5 text-[13px] font-medium text-white transition-all duration-[120ms] ease-in-out hover:bg-[var(--accent-hover)] disabled:opacity-80 sm:w-auto",
-                        focusRing,
-                      )}
-                      disabled={isGenerating || !input.trim()}
-                      onClick={() => void openGenerateOptionsModal()}
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 shrink-0 px-2 text-[11px] text-amber-200 hover:bg-amber-500/15 hover:text-amber-100"
+                      onClick={dismissPro75Warning}
                     >
-                      {isGenerating ? (
-                        <>
-                          <svg className="size-4 animate-spin" viewBox="0 0 24 24" aria-hidden>
-                            <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="3" fill="none" opacity="0.35" />
-                            <path d="M22 12a10 10 0 0 1-10 10" stroke="white" strokeWidth="3" fill="none" />
-                          </svg>
-                          {generationProgressLabel}
-                        </>
-                      ) : (
-                        "Generate Outputs"
-                      )}
+                      Dismiss
                     </Button>
                   </div>
-                  {isGenerating ? (
+                ) : null}
+                {showPro90Warning ? (
+                  <div className="flex flex-col gap-2 rounded-[var(--radius)] border border-amber-500/45 bg-amber-500/12 px-3 py-2.5 text-[13px] text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+                    <p>
+                      You&apos;re nearly out of generations this month. Upgrade to Team for unlimited generations.
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-7 shrink-0 bg-amber-500 px-2.5 text-[11px] font-semibold text-white hover:bg-amber-400"
+                      onClick={() => void startCheckout(STRIPE_TEAM_MONTHLY_PRICE_ID)}
+                    >
+                      Upgrade to Team
+                    </Button>
+                  </div>
+                ) : null}
+                {showPro100Warning ? (
+                  <div className="flex flex-col gap-2 rounded-[var(--radius)] border border-red-500/45 bg-red-500/12 px-3 py-2.5 text-[13px] text-red-100 sm:flex-row sm:items-center sm:justify-between">
+                    <p>You&apos;ve reached your monthly limit. Upgrade to Team to continue generating.</p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-7 shrink-0 bg-red-500 px-2.5 text-[11px] font-semibold text-white hover:bg-red-400"
+                      onClick={() => void startCheckout(STRIPE_TEAM_MONTHLY_PRICE_ID)}
+                    >
+                      Upgrade to Team
+                    </Button>
+                  </div>
+                ) : null}
+                {showProTeamRecommendation ? (
+                  <div className="flex flex-col gap-2 rounded-[var(--radius)] border border-amber-500/35 bg-amber-500/10 px-3 py-2.5 text-[13px] text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+                    <p>
+                      Based on your usage, Team plan would save you hitting limits.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 shrink-0 px-2 text-[11px] font-semibold text-amber-200 hover:bg-amber-500/15 hover:text-amber-100"
+                      onClick={() => {
+                        setShowProTeamRecommendation(false);
+                        void startCheckout(STRIPE_TEAM_MONTHLY_PRICE_ID);
+                      }}
+                    >
+                      See Team plan →
+                    </Button>
+                  </div>
+                ) : null}
+                {showDemoDataBanner ? (
+                  <DemoBanner
+                    onConnectPSA={() => {
+                      openIntegrationsInConfiguration();
+                      setSettingsOpen(false);
+                      setSidebarOpenMobile(false);
+                    }}
+                  />
+                ) : null}
+                {privacyMode ? (
+                  <div
+                    className="flex items-center gap-1.5 rounded-[var(--radius)] border border-[rgba(56,189,248,0.2)] px-2.5 py-1.5 text-[11px] text-[var(--accent)]"
+                    style={{ backgroundColor: "rgba(56,189,248,0.06)" }}
+                  >
+                    <Shield className="size-3.5 shrink-0" aria-hidden />
+                    <span>Privacy mode on — generations are not saved to your history.</span>
+                  </div>
+                ) : null}
+                {(lastImportedHaloItems.length > 0 || input.length > 500) && isInputCollapsed ? (
+                  <div className="flex h-14 items-center justify-between gap-3 rounded-[var(--radius)] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-secondary)_70%,var(--bg-primary))] px-3 py-2">
+                    <div className="flex min-w-0 flex-1 items-center gap-2 text-[13px] text-[var(--text-primary)]">
+                      <ClipboardList className="size-4 shrink-0 text-[var(--accent)]" aria-hidden />
+                      <span className="min-w-0 truncate">
+                        {lastImportedHaloItems.length > 0
+                          ? `${importPsaLabel} data imported — ${lastImportedHaloItems.length} ${lastImportedHaloItems.length === 1 ? "item" : "items"}`
+                          : "Long notes loaded"}{" "}
+                        {lastImportedHaloItems.length > 0 && lastImportedHaloItems[0]?.clientName?.trim()
+                          ? `· ${lastImportedHaloItems[0].clientName.trim()}`
+                          : null}
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className={cn("h-8 shrink-0 px-3", focusRing)}
+                      onClick={() => setIsInputCollapsed(false)}
+                    >
+                      Edit
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <Textarea
+                      ref={generateInputRef}
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      placeholder="What are you reporting on today? Paste notes or import from your PSA..."
+                      rows={6}
+                      maxLength={GENERATION_INPUT_CHAR_LIMIT}
+                      className={cn(
+                        "min-h-[200px] resize-y border-0 bg-transparent px-0 py-1 pr-14 pb-7 text-[14px] placeholder:text-[var(--text-muted)] focus-visible:ring-0",
+                        focusRing,
+                      )}
+                      disabled={isGenerating}
+                      aria-label="Project notes input"
+                      onKeyDown={(e) => {
+                        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                          e.preventDefault();
+                          void requestFullGeneration();
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className={cn(
+                        "absolute top-2 right-2 cursor-pointer rounded p-1 text-[var(--text-secondary)] transition-colors hover:bg-white/10 hover:text-white",
+                        input.trim().length > 0
+                          ? "opacity-100"
+                          : "pointer-events-none opacity-0",
+                      )}
+                      aria-label="Clear input"
+                      onClick={() => {
+                        setInput("");
+                        setProjectName("");
+                        setLastImportedHaloItems([]);
+                        setLastImportSourcePsa(null);
+                      }}
+                    >
+                      <X className="size-3.5" aria-hidden />
+                    </button>
+                    <span className="pointer-events-none absolute bottom-1.5 right-0 text-[11px] text-[var(--text-secondary)] tabular-nums">
+                      {charCount.toLocaleString()} / {GENERATION_INPUT_CHAR_LIMIT.toLocaleString()}
+                    </span>
+                  </div>
+                )}
+                {input.trim() === "" ? (
+                  <p className="text-[12px] text-[var(--text-secondary)]">
+                    Tip: Import from your PSA for the best results
+                  </p>
+                ) : null}
+                {charCount > GENERATION_INPUT_WARN_CHARS && charCount < GENERATION_INPUT_CHAR_LIMIT ? (
+                  <p className="text-[12px] text-[#BA7517]">
+                    Large inputs may reduce output quality. Consider selecting fewer tickets.
+                  </p>
+                ) : null}
+                {charCount >= GENERATION_INPUT_CHAR_LIMIT ? (
+                  <p className="text-[12px] text-[#BA7517]">
+                    Large input detected - content will be intelligently compacted before generation. You can still
+                    generate.
+                  </p>
+                ) : null}
+                {Boolean(userEmail) && !hasProAccess && trialInfo?.active ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[12px] text-[var(--text-muted)]">
+                      Trial: {trialInfo.used}/10
+                    </span>
                     <div
-                      className="mt-2 h-0.5 w-full max-w-md overflow-hidden rounded-full bg-[var(--border)] sm:ml-auto"
+                      className="h-[3px] min-w-[120px] flex-1 overflow-hidden rounded-full bg-[var(--border)] sm:max-w-[200px]"
                       aria-hidden
                     >
-                      <div className="h-full w-2/5 animate-pulse rounded-full bg-[var(--accent)]" />
+                      <div
+                        className="h-full rounded-full transition-all duration-300"
+                        style={{
+                          width: `${Math.min(100, (trialInfo.used / 10) * 100)}%`,
+                          background:
+                            trialInfo.used >= 9
+                              ? "#D85A30"
+                              : trialInfo.used >= 7
+                                ? "#BA7517"
+                                : "var(--accent)",
+                        }}
+                      />
                     </div>
-                  ) : null}
+                  </div>
+                ) : null}
+                <div className="mt-1 flex flex-col gap-2 border-t border-[var(--border)] pt-3">
+                  <Button
+                    type="button"
+                    size="lg"
+                    className={cn(
+                      "w-full gap-2 rounded-[var(--radius)] bg-[var(--accent)] px-5 py-2.5 text-[13px] font-medium text-white transition-all duration-[120ms] ease-in-out hover:bg-[var(--accent-hover)] disabled:opacity-80",
+                      focusRing,
+                    )}
+                    disabled={isGenerating || isCheckingAuthForGenerate || !input.trim()}
+                    onClick={() => void requestFullGeneration()}
+                  >
+                    {isCheckingAuthForGenerate ? (
+                      <>
+                        <svg className="size-4 animate-spin" viewBox="0 0 24 24" aria-hidden>
+                          <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="3" fill="none" opacity="0.35" />
+                          <path d="M22 12a10 10 0 0 1-10 10" stroke="white" strokeWidth="3" fill="none" />
+                        </svg>
+                        Checking…
+                      </>
+                    ) : isGenerating ? (
+                      <>
+                        <svg className="size-4 animate-spin" viewBox="0 0 24 24" aria-hidden>
+                          <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="3" fill="none" opacity="0.35" />
+                          <path d="M22 12a10 10 0 0 1-10 10" stroke="white" strokeWidth="3" fill="none" />
+                        </svg>
+                        {generationProgressLabel}
+                      </>
+                    ) : (
+                      "Generate Outputs"
+                    )}
+                  </Button>
+                  <p className="hidden text-center text-[11px] text-[var(--text-muted)] md:block">
+                    ⌘ + Enter to generate
+                  </p>
                 </div>
                 <div className="mt-2 flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
                   <Shield className="size-3.5 shrink-0" aria-hidden />
@@ -12449,7 +15133,7 @@ export default function Home() {
                           size="sm"
                           variant="outline"
                           className="mt-2"
-                          onClick={() => void openGenerateOptionsModal()}
+                          onClick={() => void requestFullGeneration()}
                         >
                           Retry
                         </Button>
@@ -12459,62 +15143,7 @@ export default function Home() {
                 ) : null}
               </div>
           </section>
-            {dashStats ? (
-              <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-                <div
-                  className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3.5 py-3 transition-[border-color] duration-150 hover:border-[rgba(56,189,248,0.3)]"
-                >
-                  <div className="flex items-start gap-2">
-                    <Zap className="mt-0.5 size-[14px] shrink-0 text-[var(--accent)]" aria-hidden />
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--text-muted)]">
-                        Total generations
-                      </p>
-                      <p className="mt-1 text-[22px] font-semibold leading-none text-[var(--text-primary)]">
-                        {dashStats.total}
-                      </p>
-                      <p className="mt-1 text-[11px] text-[var(--text-muted)]">All time</p>
-                    </div>
-                  </div>
-                </div>
-                <div
-                  className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3.5 py-3 transition-[border-color] duration-150 hover:border-[rgba(56,189,248,0.3)]"
-                >
-                  <div className="flex items-start gap-2">
-                    <Calendar className="mt-0.5 size-[14px] shrink-0 text-[var(--accent)]" aria-hidden />
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--text-muted)]">
-                        This month
-                      </p>
-                      <p className="mt-1 text-[22px] font-semibold leading-none text-[var(--text-primary)]">
-                        {dashStats.thisMonth}
-                      </p>
-                      <p className="mt-1 truncate text-[11px] text-[var(--text-muted)]">
-                        {dashStats.monthName}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                <div
-                  className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3.5 py-3 transition-[border-color] duration-150 hover:border-[rgba(56,189,248,0.3)]"
-                >
-                  <div className="flex items-start gap-2">
-                    <Clock className="mt-0.5 size-[14px] shrink-0 text-[var(--accent)]" aria-hidden />
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--text-muted)]">
-                        Last generated
-                      </p>
-                      <p className="mt-1 text-[22px] font-semibold leading-none text-[var(--text-primary)]">
-                        {dashStats.lastAgo}
-                      </p>
-                      <p className="mt-1 truncate text-[11px] text-[var(--text-muted)]" title={dashStats.lastTitle}>
-                        {dashStats.lastTitle}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : null}
+            </div>
             </>
             )
             ) : null}
@@ -12524,25 +15153,40 @@ export default function Home() {
 
         {isGenerating &&
         !(userEmail &&
-          (mainView === "integrations" ||
+          (mainView === "overview" ||
+            mainView === "changelog" ||
+            mainView === "configuration" ||
             mainView === "scheduled" ||
             mainView === "delivery" ||
-            mainView === "reports")) ? (
+            mainView === "reports" ||
+            mainView === "organisation")) ? (
           <ResultsSkeleton />
         ) : null}
 
         {!isGenerating &&
         result &&
         !(userEmail &&
-          (mainView === "integrations" ||
+          (mainView === "overview" ||
+            mainView === "changelog" ||
+            mainView === "configuration" ||
             mainView === "scheduled" ||
             mainView === "delivery" ||
-            mainView === "reports")) ? (
+            mainView === "reports" ||
+            mainView === "organisation")) ? (
           <div
             ref={outputRef}
             className={cn(
               signedOutCompactMode ? "mt-0 animate-in fade-in slide-in-from-right-4 duration-300" : "mt-8",
-              "flex max-h-[min(88dvh,calc(100dvh-13rem))] min-h-0 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)]",
+              "relative flex flex-col rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] pt-2 pb-3",
+              userEmail &&
+                result &&
+                mainView === "generate" &&
+                "max-h-[calc(100vh-5.5rem)] min-h-0 overflow-hidden",
+              signedOutCompactMode &&
+                result &&
+                "max-h-[calc(100vh-5.5rem)] min-h-0 overflow-hidden",
+              "shadow-[0_0_0_1px_color-mix(in_srgb,var(--border)_40%,transparent),6px_0_42px_-22px_color-mix(in_srgb,var(--accent)_16%,transparent)]",
+              "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:z-[1] before:h-px before:bg-gradient-to-r before:from-transparent before:via-[color-mix(in_srgb,var(--accent)_48%,transparent)] before:to-transparent before:opacity-[0.85]",
             )}
           >
             {signedOutCompactMode ? (
@@ -12574,11 +15218,11 @@ export default function Home() {
                     type="button"
                     size="sm"
                     className="h-9 rounded-[var(--radius)] bg-[var(--accent)] px-4 text-[13px] font-semibold text-white hover:bg-[var(--accent-hover)]"
-                    disabled={isGenerating || !input.trim()}
+                    disabled={isGenerating || isCheckingAuthForGenerate || !input.trim()}
                     onClick={() => {
                       setIsEditingSignedOutInput(false);
                       setExportLockedPromptOpen(false);
-                      void openGenerateOptionsModal();
+                      void requestFullGeneration();
                     }}
                   >
                     Generate again
@@ -12586,54 +15230,330 @@ export default function Home() {
                 </div>
               </div>
             ) : null}
+            {userEmail && result && lastSessionRestoreBannerProject ? (
+              <div
+                className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] border-l-2 border-l-[var(--accent)] bg-[color-mix(in_srgb,var(--bg-secondary)_55%,var(--bg-primary))] px-3 py-2"
+                role="status"
+              >
+                <p className="min-w-0 text-[12px] text-[var(--text-secondary)]">
+                  Showing your last report —{" "}
+                  <span className="font-semibold text-[var(--text-primary)]">
+                    {(
+                      lastSessionRestoreBannerProject.project_name ||
+                      lastSessionRestoreBannerProject.title ||
+                      "Untitled"
+                    )
+                      .trim()
+                      .slice(0, 200) || "Untitled"}
+                  </span>
+                  {" · "}
+                  <span className="text-[var(--text-muted)]">
+                    {formatShortRelativeTime(lastSessionRestoreBannerProject.created_at)}
+                  </span>
+                </p>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    className={cn(
+                      "text-[12px] font-medium text-[var(--accent)] underline-offset-2 hover:underline",
+                      focusRing,
+                    )}
+                    onClick={() => {
+                      setLastSessionRestoreBannerProject(null);
+                      handleNewGeneration();
+                      window.requestAnimationFrame(() => generateInputRef.current?.focus());
+                    }}
+                  >
+                    New generation →
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-[var(--radius)] p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]"
+                    aria-label="Dismiss"
+                    onClick={() => setLastSessionRestoreBannerProject(null)}
+                  >
+                    <X className="size-4" aria-hidden />
+                  </button>
+                </div>
+              </div>
+            ) : null}
             <Tabs
               value={outputMainTab}
               onValueChange={setOutputMainTab}
-              className="flex min-h-0 w-full flex-1 flex-col gap-0"
+              className={cn(
+                "flex w-full flex-col gap-0",
+                userEmail &&
+                  result &&
+                  mainView === "generate" &&
+                  "min-h-0 flex-1 overflow-hidden",
+                signedOutCompactMode && result && "min-h-0 flex-1 overflow-hidden",
+              )}
             >
-            {isRewritingEmail ? (
-              <div
-                className="h-0.5 w-full shrink-0 overflow-hidden bg-[var(--border)]"
-                aria-hidden
-              >
-                <div className="h-full w-full origin-left animate-pulse bg-[var(--accent)]" />
+            {userEmail && result ? (
+              <div className="mb-4 shrink-0 px-3 pt-1">
+                <p className="mb-2 text-[12px] font-medium tracking-normal text-[var(--text-secondary)]">
+                  Send or save your report
+                </p>
+                <div className="overflow-hidden rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)]">
+                  <div className="flex flex-wrap gap-2 p-3">
+                    <button
+                      type="button"
+                      disabled={followUpLoading || isGenerating}
+                      className={cn(
+                        "inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-primary)] px-4 py-1.5 text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[color-mix(in_srgb,var(--bg-secondary)_70%,var(--bg-primary))] disabled:cursor-not-allowed disabled:opacity-50",
+                        focusRing,
+                      )}
+                      onClick={onQuickEmailClient}
+                    >
+                      <Mail className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      Email client
+                    </button>
+                    <button
+                      type="button"
+                      disabled={followUpLoading || isGenerating}
+                      className={cn(
+                        "inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-primary)] px-4 py-1.5 text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[color-mix(in_srgb,var(--bg-secondary)_70%,var(--bg-primary))] disabled:cursor-not-allowed disabled:opacity-50",
+                        focusRing,
+                      )}
+                      onClick={onQuickPushToPsa}
+                    >
+                      {pushQuickActionSuccess ? (
+                        <CheckCircle className="h-3.5 w-3.5 shrink-0 text-green-500" aria-hidden />
+                      ) : (
+                        <Upload className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      )}
+                      Push to PSA
+                    </button>
+                    <button
+                      type="button"
+                      disabled={followUpLoading || isGenerating}
+                      className={cn(
+                        "inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-primary)] px-4 py-1.5 text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[color-mix(in_srgb,var(--bg-secondary)_70%,var(--bg-primary))] disabled:cursor-not-allowed disabled:opacity-50",
+                        focusRing,
+                      )}
+                      onClick={onQuickExportExcel}
+                    >
+                      <FileSpreadsheet className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      Export Excel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={followUpLoading || isGenerating}
+                      className={cn(
+                        "inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-primary)] px-4 py-1.5 text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[color-mix(in_srgb,var(--bg-secondary)_70%,var(--bg-primary))] disabled:cursor-not-allowed disabled:opacity-50",
+                        focusRing,
+                      )}
+                      onClick={openScheduleEditorFromGeneration}
+                    >
+                      <CalendarClock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      Schedule this
+                    </button>
+                    {result.actions && result.actions.length > 0 ? (
+                      <button
+                        type="button"
+                        disabled={followUpLoading || isGenerating}
+                        className={cn(
+                          "inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-primary)] px-4 py-1.5 text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[color-mix(in_srgb,var(--bg-secondary)_70%,var(--bg-primary))] disabled:cursor-not-allowed disabled:opacity-50",
+                          focusRing,
+                        )}
+                        onClick={() => onFollowUpEmailClick()}
+                      >
+                        {followUpLoading ? (
+                          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
+                        ) : (
+                          <CornerDownLeft className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                        )}
+                        {followUpLoading ? "Generating..." : "Follow up email"}
+                      </button>
+                    ) : null}
+                  </div>
+                  {reportQuality ? (
+                    reportQuality.score === 100 ? (
+                      <p className="flex items-center gap-3 border-t border-[var(--border)] px-4 py-2 text-[11px] font-medium text-green-400">
+                        ✓ Report quality: Excellent
+                      </p>
+                    ) : (
+                      <>
+                        <div className="flex flex-wrap items-center gap-3 border-t border-[var(--border)] px-4 py-2">
+                          <span
+                            className={cn(
+                              "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium",
+                              reportQuality.score >= 80
+                                ? "bg-green-500/15 text-green-400"
+                                : reportQuality.score >= 60
+                                  ? "bg-amber-500/15 text-amber-400"
+                                  : "bg-red-500/15 text-red-400",
+                            )}
+                          >
+                            Quality: {reportQuality.score}/100
+                          </span>
+                          {reportQuality.issues.length > 0 ? (
+                            <span className="min-w-0 flex-1 text-[11px] text-[var(--text-secondary)]">
+                              {reportQuality.issues.join(" · ")}
+                            </span>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="shrink-0 cursor-pointer text-[11px] text-[var(--accent)] hover:underline"
+                            onClick={() => setReportQualityTipsOpen((v) => !v)}
+                          >
+                            How to improve →
+                          </button>
+                        </div>
+                        {reportQualityTipsOpen && reportQuality.issues.length > 0 ? (
+                          <ul className="list-disc space-y-1 border-t border-[var(--border)] px-4 py-2 pl-8 text-[11px] text-[var(--text-secondary)]">
+                            {qualityImprovementTips(reportQuality.issues).map((tip, i) => (
+                              <li key={i}>{tip}</li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </>
+                    )
+                  ) : null}
+                </div>
               </div>
             ) : null}
-            <div className="flex shrink-0 items-stretch bg-[var(--bg-secondary)]">
-              <div className="min-h-0 min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                <TabsList
-                  variant="line"
-                  className="flex h-[42px] min-h-0 w-max min-w-full shrink-0 flex-nowrap items-end overflow-x-visible rounded-none border-0 border-b border-[var(--border)] bg-[var(--bg-secondary)] p-0 pl-4 pr-2"
+            <div className="shrink-0 border-b border-[var(--border)] bg-[var(--bg-primary)] px-3 pt-2 md:hidden">
+              <label htmlFor="output-main-tab-select" className="sr-only">
+                Output section
+              </label>
+              <select
+                id="output-main-tab-select"
+                className={cn(
+                  "h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 text-[13px] text-[var(--text-primary)]",
+                  focusRing,
+                )}
+                value={outputMainTab}
+                onChange={(e) => setOutputMainTab(e.target.value)}
+              >
+                {visibleCoreTabsList.map((key) => (
+                  <option key={key} value={key}>
+                    {key === "client_email"
+                      ? `✉ ${clientEmailTabDisplay.label}`
+                      : OUTPUT_TAB_TRIGGER_LABELS[key]}
+                  </option>
+                ))}
+                {outputTabStripExtendedKeys.map((key) => (
+                  <option key={key} value={key}>
+                    {EXTENDED_PM_TAB_LABELS[key]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {smartActionsEligible ? (
+              <div className="flex shrink-0 justify-end border-b border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 md:hidden">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className={cn(
+                    "h-8 shrink-0 gap-1 whitespace-nowrap rounded-[var(--radius)] border-[var(--border)] px-2.5 text-[11px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-primary)]",
+                    focusRing,
+                  )}
+                  onClick={() => setSmartActionsOpen(true)}
                 >
-                  {visibleCoreTabsList.map((key) => (
-                    <TabsTrigger
-                      key={key}
-                      value={key}
-                      className="flex h-full shrink-0 items-center rounded-none border-b-2 border-transparent bg-transparent px-4 text-[13px] text-[var(--text-muted)] shadow-none transition-[color,border-color] duration-[120ms] after:hidden hover:text-[var(--text-secondary)] data-[state=active]:border-[var(--accent)] data-[state=active]:font-medium data-[state=active]:text-[var(--text-primary)]"
-                    >
-                      <span className="inline-flex items-center gap-1.5">
-                        {OUTPUT_TAB_TRIGGER_LABELS[key]}
-                        {key === "client_email" && isRewritingEmail ? (
-                          <span className="text-[10px] font-normal text-[var(--text-muted)]">
-                            Rewriting…
-                          </span>
-                        ) : null}
-                      </span>
-                    </TabsTrigger>
-                  ))}
-                  {visibleExtendedTabsList.map((key) => (
-                    <TabsTrigger
-                      key={key}
-                      value={key}
-                      className="flex h-full shrink-0 items-center rounded-none border-b-2 border-transparent bg-transparent px-4 text-[13px] text-[var(--text-muted)] shadow-none transition-[color,border-color] duration-[120ms] after:hidden hover:text-[var(--text-secondary)] data-[state=active]:border-[var(--accent)] data-[state=active]:font-medium data-[state=active]:text-[var(--text-primary)]"
-                    >
-                      {EXTENDED_PM_TAB_LABELS[key]}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
+                  <span aria-hidden>⚡</span> Smart Actions
+                </Button>
               </div>
+            ) : null}
+            <div className="relative hidden shrink-0 items-stretch border-b border-[var(--border)] bg-[var(--bg-primary)] md:flex">
+              <button
+                type="button"
+                aria-label="Scroll tabs left"
+                className={cn(
+                  "flex w-8 shrink-0 items-center justify-center border-r border-[var(--border)] text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]",
+                  !outputTabScrollEdges.left && "pointer-events-none opacity-0",
+                  focusRing,
+                )}
+                onClick={() =>
+                  outputTabScrollRef.current?.scrollBy({ left: -200, behavior: "smooth" })
+                }
+              >
+                <ChevronLeft className="size-5" aria-hidden />
+              </button>
+              <div className="relative min-w-0 flex-1">
+                <div
+                  ref={outputTabScrollRef}
+                  className="relative flex min-h-0 min-w-0 overflow-x-auto scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                >
+                  <div
+                    className={cn(
+                      "pointer-events-none absolute left-0 top-0 z-[1] h-full w-10 bg-gradient-to-r from-[var(--bg-primary)] to-transparent transition-opacity duration-150",
+                      outputTabScrollEdges.left ? "opacity-100" : "opacity-0",
+                    )}
+                    aria-hidden
+                  />
+                  <div
+                    className={cn(
+                      "pointer-events-none absolute right-0 top-0 z-[1] h-full w-12 bg-gradient-to-l from-[var(--bg-primary)] to-transparent transition-opacity duration-150",
+                      outputTabScrollEdges.right ? "opacity-100" : "opacity-0",
+                    )}
+                    aria-hidden
+                  />
+                  <TabsList
+                    variant="line"
+                    className="relative z-0 flex !h-auto w-max min-w-0 shrink-0 flex-nowrap items-end gap-4 rounded-none border-0 bg-transparent p-0 px-3 pt-2 shadow-none"
+                  >
+                    {visibleCoreTabsList.map((key) => (
+                      <TabsTrigger
+                        key={key}
+                        value={key}
+                        className={cn(
+                          "inline-flex items-center",
+                          OUTPUT_SEGMENT_TRIGGER_CLASS,
+                          focusRing,
+                        )}
+                      >
+                        <span className="inline-flex items-center gap-1.5">
+                          {key === "client_email" ? (
+                            <Mail
+                              className="size-3.5 shrink-0 text-[var(--text-muted)]"
+                              aria-hidden
+                            />
+                          ) : null}
+                          {key === "client_email"
+                            ? clientEmailTabDisplay.label
+                            : OUTPUT_TAB_TRIGGER_LABELS[key]}
+                          {key === "client_email" && clientEmailTabDisplay.showInternalBadge ? (
+                            <span className="inline-flex items-center rounded-md border border-amber-500/35 bg-amber-500/15 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-300">
+                              Internal
+                            </span>
+                          ) : null}
+                        </span>
+                      </TabsTrigger>
+                    ))}
+                    {outputTabStripExtendedKeys.map((key) => (
+                      <TabsTrigger
+                        key={key}
+                        value={key}
+                        className={cn(
+                          "inline-flex items-center",
+                          OUTPUT_SEGMENT_TRIGGER_CLASS,
+                          focusRing,
+                        )}
+                      >
+                        {EXTENDED_PM_TAB_LABELS[key]}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label="Scroll tabs right"
+                className={cn(
+                  "flex w-8 shrink-0 items-center justify-center border-l border-[var(--border)] text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]",
+                  !outputTabScrollEdges.right && "pointer-events-none opacity-0",
+                  focusRing,
+                )}
+                onClick={() =>
+                  outputTabScrollRef.current?.scrollBy({ left: 200, behavior: "smooth" })
+                }
+              >
+                <ChevronRight className="size-5" aria-hidden />
+              </button>
               {smartActionsEligible ? (
-                <div className="flex shrink-0 items-center border-l border-b border-[var(--border)] px-2">
+                <div className="flex shrink-0 items-end border-l border-[var(--border)] bg-[var(--bg-primary)] px-2 pb-2 pt-1">
                   <Button
                     type="button"
                     size="sm"
@@ -12650,30 +15570,15 @@ export default function Home() {
               ) : null}
             </div>
 
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {visibleCoreTabsList.includes("actions") ? (
-            <TabsContent
-              value="actions"
-              className="mt-0 min-h-0 flex-1 overflow-y-auto rounded-b-[var(--radius-lg)] border border-t-0 border-[var(--border)] bg-[var(--bg-primary)] p-5"
-            >
-              <Card className="border-0 bg-transparent shadow-none">
-                <CardHeader className="flex-row items-center justify-between gap-4 border-b p-0 pb-4">
-                  <CardTitle className="text-base">Actions</CardTitle>
-                  <CardAction className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        copyWithFeedback(
-                          "actions",
-                          formatActionsForCopy(result.actions, ticketTitlesForSourceColumn),
-                        )
-                      }
-                    >
-                      {copiedKey === "actions" ? "Copied!" : "Copy"}
-                    </Button>
-                    {renderPushActionTrigger("actions")}
-                  </CardAction>
+            <TabsContent value="actions" className={OUTPUT_TAB_PANEL_CLASS}>
+              <div className={OUTPUT_TAB_CONTENT_SHELL}>
+              <Card className={OUTPUT_TAB_CARD_CLASS}>
+                <CardHeader className="flex-row items-center justify-between gap-3 border-b border-[var(--border)] px-4 pb-3 pt-4">
+                  <CardTitle className="text-[15px] font-semibold tracking-tight text-[var(--text-primary)]">
+                    Actions
+                  </CardTitle>
                 </CardHeader>
                 {lastPushed && lastPushedOutputs.includes("actions") ? (
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
@@ -12683,35 +15588,33 @@ export default function Home() {
                     {`Pushed to ${lastPushedPsaLabel} · ${pushedRelativeText()}`}
                   </div>
                 ) : null}
-                <CardContent className="p-0 pt-0">
-                  <div className="overflow-x-auto">
+                <CardContent className={cn(OUTPUT_TAB_CARD_BODY_SCROLL, "p-0 pt-0")}>
+                  <div className={cn(OUTPUT_TAB_CARD_BODY_INNER_SCROLL, "min-w-0 px-2 pb-1 pt-2")}>
                   <Table>
                     <TableHeader>
-                      <TableRow>
-                        <TableHead className="bg-[var(--bg-secondary)] px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--text-muted)]">
+                      <TableRow className="border-[var(--border)] hover:bg-transparent">
+                        <TableHead className="h-auto bg-[color-mix(in_srgb,var(--bg-secondary)_92%,transparent)] px-2.5 py-1.5 text-left text-[10px] font-semibold uppercase leading-tight tracking-[0.06em] text-[var(--text-muted)]">
                           Task
                         </TableHead>
-                        <TableHead className="bg-[var(--bg-secondary)] px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--text-muted)]">
+                        <TableHead className="h-auto bg-[color-mix(in_srgb,var(--bg-secondary)_92%,transparent)] px-2.5 py-1.5 text-left text-[10px] font-semibold uppercase leading-tight tracking-[0.06em] text-[var(--text-muted)]">
                           Owner
                         </TableHead>
-                        <TableHead className="bg-[var(--bg-secondary)] px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--text-muted)]">
+                        <TableHead className="hidden h-auto w-32 bg-[color-mix(in_srgb,var(--bg-secondary)_92%,transparent)] px-2.5 py-1.5 text-left text-[10px] font-semibold uppercase leading-tight tracking-[0.06em] text-[var(--text-muted)] md:table-cell">
+                          Due date
+                        </TableHead>
+                        <TableHead className="h-auto bg-[color-mix(in_srgb,var(--bg-secondary)_92%,transparent)] px-2.5 py-1.5 text-left text-[10px] font-semibold uppercase leading-tight tracking-[0.06em] text-[var(--text-muted)]">
                           Priority
                         </TableHead>
-                        {showTicketSourceColumn ? (
-                          <TableHead className="bg-[var(--bg-secondary)] px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--text-muted)]">
-                            Source
-                          </TableHead>
-                        ) : null}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {result.actions.length === 0 ? (
-                        <TableRow>
-                          <TableCell
-                            colSpan={showTicketSourceColumn ? 4 : 3}
-                            className="whitespace-normal px-4 py-3 text-[var(--text-secondary)]"
-                          >
-                            No actions returned.
+                        <TableRow className="border-0 hover:bg-transparent">
+                          <TableCell colSpan={4} className="p-0">
+                            <OutputTabEmptyState
+                              icon={<CheckSquare strokeWidth={1.25} />}
+                              message="No actions returned."
+                            />
                           </TableCell>
                         </TableRow>
                       ) : (
@@ -12719,11 +15622,13 @@ export default function Home() {
                           <TableRow
                             key={idx}
                             className={cn(
+                              "border-[var(--border)] transition-colors duration-150",
+                              idx % 2 === 1 && "bg-white/[0.02]",
                               idx !== result.actions.length - 1 &&
-                                "border-b border-[var(--border)]",
+                                "border-b",
                             )}
                           >
-                            <TableCell className="max-w-md whitespace-normal px-3 py-2.5 text-[13px] font-medium">
+                            <TableCell className="max-w-md whitespace-normal px-2.5 py-1.5 text-[13px] font-medium leading-snug text-[var(--text-primary)]">
                               {editingActionRow === idx ? (
                                 <Input
                                   value={row.task ?? ""}
@@ -12744,7 +15649,7 @@ export default function Home() {
                                 row.task ?? "-"
                               )}
                             </TableCell>
-                            <TableCell className="whitespace-normal px-3 py-2.5 text-[13px]">
+                            <TableCell className="whitespace-normal px-2.5 py-1.5 text-[13px] leading-snug text-[var(--text-secondary)]">
                               {editingActionRow === idx ? (
                                 <Input
                                   value={row.suggested_owner ?? ""}
@@ -12769,7 +15674,53 @@ export default function Home() {
                                 (row.suggested_owner ?? "").trim()
                               )}
                             </TableCell>
-                            <TableCell className="flex items-center gap-2 px-3 py-2.5 text-[13px]">
+                            <TableCell className="group hidden w-32 whitespace-nowrap px-2.5 py-1.5 text-[13px] leading-snug md:table-cell">
+                              {editingDueDateRow === idx ? (
+                                <input
+                                  type="date"
+                                  autoFocus
+                                  value={dueDateToInputValue(row.due_date)}
+                                  className="h-8 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-2 text-[12px] text-[var(--text-primary)]"
+                                  onChange={(e) => {
+                                    const formatted = formatDueDateFromInput(e.target.value);
+                                    setResult((prev) => {
+                                      if (!prev) return prev;
+                                      const next = [...prev.actions];
+                                      next[idx] = {
+                                        ...next[idx],
+                                        due_date: formatted || null,
+                                      };
+                                      return { ...prev, actions: next };
+                                    });
+                                  }}
+                                  onBlur={() => setEditingDueDateRow(null)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") setEditingDueDateRow(null);
+                                  }}
+                                />
+                              ) : (
+                                <button
+                                  type="button"
+                                  className={cn(
+                                    "inline-flex w-full cursor-pointer items-center gap-1 text-left",
+                                    focusRing,
+                                  )}
+                                  onClick={() => setEditingDueDateRow(idx)}
+                                >
+                                  {(row.due_date ?? "").trim() ? (
+                                    <span>{row.due_date}</span>
+                                  ) : (
+                                    <span className="text-[var(--text-secondary)]">—</span>
+                                  )}
+                                  <Edit2
+                                    className="size-3 shrink-0 text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100"
+                                    aria-hidden
+                                  />
+                                </button>
+                              )}
+                            </TableCell>
+                            <TableCell className="px-2.5 py-1.5 align-middle">
+                              <div className="flex items-center gap-1.5">
                               {editingActionRow === idx ? (
                                 <Input
                                   value={row.priority ?? ""}
@@ -12795,38 +15746,36 @@ export default function Home() {
                                 type="button"
                                 variant="ghost"
                                 size="sm"
+                                className={cn(
+                                  "size-7 shrink-0 p-0 text-[var(--text-muted)] hover:bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] hover:text-[var(--text-primary)]",
+                                  focusRing,
+                                )}
+                                aria-label={
+                                  editingActionRow === idx
+                                    ? "Done editing row"
+                                    : "Edit row"
+                                }
                                 onClick={() =>
                                   setEditingActionRow((curr) =>
                                     curr === idx ? null : idx,
                                   )
                                 }
                               >
-                                <Pencil className="size-3.5" />
-                                {editingActionRow === idx ? "Done" : "Edit"}
+                                {editingActionRow === idx ? (
+                                  <Check className="size-3.5" aria-hidden />
+                                ) : (
+                                  <Pencil className="size-3.5" aria-hidden />
+                                )}
                               </Button>
+                              </div>
                             </TableCell>
-                            {showTicketSourceColumn ? (
-                              <TableCell className="align-middle px-3 py-2.5">
-                                <span
-                                  className="inline-block max-w-[11rem] truncate rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-0.5 text-[11px] font-normal text-[var(--text-muted)]"
-                                  title={
-                                    actionSourceFullTitleForTooltip(
-                                      row,
-                                      ticketTitlesForSourceColumn,
-                                    ) ?? undefined
-                                  }
-                                >
-                                  {actionSourceDisplayLabel(row, ticketTitlesForSourceColumn)}
-                                </span>
-                              </TableCell>
-                            ) : null}
                           </TableRow>
                         ))
                       )}
                     </TableBody>
                   </Table>
                   </div>
-                  <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                  <div className={cn(OUTPUT_REGEN_BAR_CLASS, "mx-4 mb-4 mt-2 shrink-0")}>
                     <Input
                       value={regenInstruction.actions || ""}
                       onChange={(e) =>
@@ -12836,11 +15785,16 @@ export default function Home() {
                         }))
                       }
                       placeholder="Tweak this output... e.g. make it shorter, add more detail about the risk"
+                      className={OUTPUT_REGEN_INPUT_CLASS}
                     />
                     <Button
                       type="button"
-                      variant="outline"
                       disabled={regenLoadingFor === "actions"}
+                      className={cn(
+                        OUTPUT_REGEN_BUTTON_CLASS,
+                        "bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50",
+                        focusRing,
+                      )}
                       onClick={() => void handleRegenerate("actions")}
                     >
                       {regenLoadingFor === "actions" ? "Regenerating..." : "Regenerate"}
@@ -12848,33 +15802,18 @@ export default function Home() {
                   </div>
                 </CardContent>
               </Card>
+              </div>
             </TabsContent>
             ) : null}
 
             {visibleCoreTabsList.includes("risks") ? (
-            <TabsContent
-              value="risks"
-              className="mt-0 min-h-0 flex-1 overflow-y-auto rounded-b-[var(--radius-lg)] border border-t-0 border-[var(--border)] bg-[var(--bg-primary)] p-5"
-            >
-              <Card className="border-0 bg-transparent shadow-none">
-                <CardHeader className="flex-row items-center justify-between gap-4 border-b p-0 pb-4">
-                  <CardTitle className="text-base">Risks</CardTitle>
-                  <CardAction className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        copyWithFeedback(
-                          "risks",
-                          formatRisksForCopy(result.risks, ticketTitlesForSourceColumn),
-                        )
-                      }
-                    >
-                      {copiedKey === "risks" ? "Copied!" : "Copy"}
-                    </Button>
-                    {renderPushActionTrigger("risks")}
-                  </CardAction>
+            <TabsContent value="risks" className={OUTPUT_TAB_PANEL_CLASS}>
+              <div className={OUTPUT_TAB_CONTENT_SHELL}>
+              <Card className={OUTPUT_TAB_CARD_CLASS}>
+                <CardHeader className="flex-row items-center justify-between gap-3 border-b border-[var(--border)] px-4 pb-3 pt-4">
+                  <CardTitle className="text-[15px] font-semibold tracking-tight text-[var(--text-primary)]">
+                    Risks
+                  </CardTitle>
                 </CardHeader>
                 {lastPushed && lastPushedOutputs.includes("risks") ? (
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
@@ -12884,35 +15823,43 @@ export default function Home() {
                     {`Pushed to ${lastPushedPsaLabel} · ${pushedRelativeText()}`}
                   </div>
                 ) : null}
-                <CardContent className="p-0 pt-0">
-                  <div className="overflow-x-auto">
+                <CardContent className={cn(OUTPUT_TAB_CARD_BODY_SCROLL, "p-0 pt-0")}>
+                  <div className={cn(OUTPUT_TAB_CARD_BODY_INNER_SCROLL, "min-w-0 overflow-x-auto px-2 pb-1 pt-2")}>
                   <Table>
                     <TableHeader>
-                      <TableRow>
-                        <TableHead>Risk</TableHead>
-                        <TableHead>Impact</TableHead>
-                        <TableHead>Mitigation</TableHead>
-                        {showTicketSourceColumn ? (
-                          <TableHead className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--text-muted)]">
-                            Source
-                          </TableHead>
-                        ) : null}
+                      <TableRow className="border-[var(--border)] hover:bg-transparent">
+                        <TableHead className="h-auto bg-[color-mix(in_srgb,var(--bg-secondary)_92%,transparent)] px-2.5 py-1.5 text-left text-[10px] font-semibold uppercase leading-tight tracking-[0.06em] text-[var(--text-muted)]">
+                          Risk
+                        </TableHead>
+                        <TableHead className="h-auto bg-[color-mix(in_srgb,var(--bg-secondary)_92%,transparent)] px-2.5 py-1.5 text-left text-[10px] font-semibold uppercase leading-tight tracking-[0.06em] text-[var(--text-muted)]">
+                          Impact
+                        </TableHead>
+                        <TableHead className="h-auto bg-[color-mix(in_srgb,var(--bg-secondary)_92%,transparent)] px-2.5 py-1.5 text-left text-[10px] font-semibold uppercase leading-tight tracking-[0.06em] text-[var(--text-muted)]">
+                          Mitigation
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {result.risks.length === 0 ? (
-                        <TableRow>
-                          <TableCell
-                            colSpan={showTicketSourceColumn ? 4 : 3}
-                            className="whitespace-normal text-muted-foreground"
-                          >
-                            No risks returned.
+                        <TableRow className="border-0 hover:bg-transparent">
+                          <TableCell colSpan={3} className="p-0">
+                            <OutputTabEmptyState
+                              icon={<AlertTriangle strokeWidth={1.25} />}
+                              message="No risks returned."
+                            />
                           </TableCell>
                         </TableRow>
                       ) : (
                         result.risks.map((row, idx) => (
-                          <TableRow key={idx}>
-                            <TableCell className="max-w-xs whitespace-normal">
+                          <TableRow
+                            key={idx}
+                            className={cn(
+                              "border-[var(--border)] transition-colors duration-150",
+                              idx % 2 === 1 && "bg-white/[0.02]",
+                              idx !== result.risks.length - 1 && "border-b",
+                            )}
+                          >
+                            <TableCell className="max-w-xs whitespace-normal px-2.5 py-1.5 text-[13px] leading-snug text-[var(--text-primary)]">
                               {editingRiskRow === idx ? (
                                 <Textarea
                                   value={row.risk ?? ""}
@@ -12934,7 +15881,7 @@ export default function Home() {
                                 row.risk ?? "-"
                               )}
                             </TableCell>
-                            <TableCell className="max-w-xs whitespace-normal">
+                            <TableCell className="max-w-xs whitespace-normal px-2.5 py-1.5 text-[13px] leading-snug text-[var(--text-secondary)]">
                               {editingRiskRow === idx ? (
                                 <Textarea
                                   value={row.impact ?? ""}
@@ -12956,7 +15903,7 @@ export default function Home() {
                                 row.impact ?? "-"
                               )}
                             </TableCell>
-                            <TableCell className="max-w-md whitespace-normal">
+                            <TableCell className="max-w-md whitespace-normal px-2.5 py-1.5 text-[13px] leading-snug text-[var(--text-secondary)]">
                               {editingRiskRow === idx ? (
                                 <div className="flex items-start gap-2">
                                   <Textarea
@@ -12979,9 +15926,14 @@ export default function Home() {
                                     type="button"
                                     variant="ghost"
                                     size="sm"
+                                    className={cn(
+                                      "size-7 shrink-0 p-0 text-[var(--text-muted)] hover:bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] hover:text-[var(--text-primary)]",
+                                      focusRing,
+                                    )}
+                                    aria-label="Done editing row"
                                     onClick={() => setEditingRiskRow(null)}
                                   >
-                                    Done
+                                    <Check className="size-3.5" aria-hidden />
                                   </Button>
                                 </div>
                               ) : (
@@ -12991,36 +15943,25 @@ export default function Home() {
                                     type="button"
                                     variant="ghost"
                                     size="sm"
+                                    className={cn(
+                                      "size-7 shrink-0 p-0 text-[var(--text-muted)] hover:bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] hover:text-[var(--text-primary)]",
+                                      focusRing,
+                                    )}
+                                    aria-label="Edit row"
                                     onClick={() => setEditingRiskRow(idx)}
                                   >
-                                    <Pencil className="size-3.5" />
-                                    Edit
+                                    <Pencil className="size-3.5" aria-hidden />
                                   </Button>
                                 </div>
                               )}
                             </TableCell>
-                            {showTicketSourceColumn ? (
-                              <TableCell className="align-middle">
-                                <span
-                                  className="inline-block max-w-[11rem] truncate rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-0.5 text-[11px] font-normal text-[var(--text-muted)]"
-                                  title={
-                                    riskSourceFullTitleForTooltip(
-                                      row,
-                                      ticketTitlesForSourceColumn,
-                                    ) ?? undefined
-                                  }
-                                >
-                                  {riskSourceDisplayLabel(row, ticketTitlesForSourceColumn)}
-                                </span>
-                              </TableCell>
-                            ) : null}
                           </TableRow>
                         ))
                       )}
                     </TableBody>
                   </Table>
                   </div>
-                  <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                  <div className={cn(OUTPUT_REGEN_BAR_CLASS, "mx-4 mb-4 mt-2 shrink-0")}>
                     <Input
                       value={regenInstruction.risks || ""}
                       onChange={(e) =>
@@ -13030,11 +15971,16 @@ export default function Home() {
                         }))
                       }
                       placeholder="Tweak this output... e.g. make it shorter, add more detail about the risk"
+                      className={OUTPUT_REGEN_INPUT_CLASS}
                     />
                     <Button
                       type="button"
-                      variant="outline"
                       disabled={regenLoadingFor === "risks"}
+                      className={cn(
+                        OUTPUT_REGEN_BUTTON_CLASS,
+                        "bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50",
+                        focusRing,
+                      )}
                       onClick={() => void handleRegenerate("risks")}
                     >
                       {regenLoadingFor === "risks" ? "Regenerating..." : "Regenerate"}
@@ -13042,30 +15988,18 @@ export default function Home() {
                   </div>
                 </CardContent>
               </Card>
+              </div>
             </TabsContent>
             ) : null}
 
             {visibleCoreTabsList.includes("summary") ? (
-            <TabsContent
-              value="summary"
-              className="mt-0 min-h-0 flex-1 overflow-y-auto rounded-b-[var(--radius-lg)] border border-t-0 border-[var(--border)] bg-[var(--bg-primary)] p-5"
-            >
-              <Card className="border-0 bg-transparent shadow-none">
-                <CardHeader className="flex-row items-center justify-between gap-4 border-b p-0 pb-4">
-                  <CardTitle className="text-base">Summary</CardTitle>
-                  <CardAction className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        copyWithFeedback("summary", result.summary)
-                      }
-                    >
-                      {copiedKey === "summary" ? "Copied!" : "Copy"}
-                    </Button>
-                    {renderPushActionTrigger("summary")}
-                  </CardAction>
+            <TabsContent value="summary" className={OUTPUT_TAB_PANEL_CLASS}>
+              <div className={OUTPUT_TAB_CONTENT_SHELL}>
+              <Card className={OUTPUT_TAB_CARD_CLASS}>
+                <CardHeader className="flex-row items-center justify-between gap-3 border-b border-[var(--border)] px-4 pb-3 pt-4">
+                  <CardTitle className="text-[15px] font-semibold tracking-tight text-[var(--text-primary)]">
+                    Summary
+                  </CardTitle>
                 </CardHeader>
                 {lastPushed && lastPushedOutputs.includes("summary") ? (
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
@@ -13075,7 +16009,8 @@ export default function Home() {
                     {`Pushed to ${lastPushedPsaLabel} · ${pushedRelativeText()}`}
                   </div>
                 ) : null}
-                <CardContent className="p-0 pt-0">
+                <CardContent className={cn(OUTPUT_TAB_CARD_BODY_SCROLL, "p-0")}>
+                  <div className={cn(OUTPUT_TAB_CARD_BODY_INNER_SCROLL, "px-4 pb-4 pt-4")}>
                   {editingField === "summary" ? (
                     <Textarea
                       value={result.summary || ""}
@@ -13085,25 +16020,31 @@ export default function Home() {
                         )
                       }
                       rows={6}
-                      className="min-h-28"
+                      className="min-h-28 border-[var(--border)] bg-[var(--bg-secondary)] text-[13px] leading-relaxed text-[var(--text-primary)]"
                       onBlur={() => setEditingField(null)}
                       autoFocus
+                    />
+                  ) : !(result.summary ?? "").trim() ? (
+                    <OutputTabEmptyState
+                      icon={<FileText strokeWidth={1.25} />}
+                      message="No summary returned."
                     />
                   ) : (
                     <button
                       type="button"
-                      className="w-full text-left"
+                      className="w-full rounded-[calc(var(--radius)-2px)] text-left ring-offset-[var(--bg-primary)] transition-colors hover:bg-[color-mix(in_srgb,var(--accent)_6%,transparent)]"
                       onClick={() => setEditingField("summary")}
                     >
-                      <p className="mb-2 text-xs text-muted-foreground">
+                      <p className="mb-2 text-[11px] text-[var(--text-muted)]">
                         Click to edit
                       </p>
-                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                      <p className="whitespace-pre-wrap text-[13px] leading-[1.55] text-[var(--text-primary)]">
                         {result.summary || "-"}
                       </p>
                     </button>
                   )}
-                  <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                  </div>
+                  <div className={cn(OUTPUT_REGEN_BAR_CLASS, "mx-4 mb-4 mt-2 shrink-0")}>
                     <Input
                       value={regenInstruction.summary || ""}
                       onChange={(e) =>
@@ -13113,11 +16054,16 @@ export default function Home() {
                         }))
                       }
                       placeholder="Tweak this output... e.g. make it shorter, add more detail about the risk"
+                      className={OUTPUT_REGEN_INPUT_CLASS}
                     />
                     <Button
                       type="button"
-                      variant="outline"
                       disabled={regenLoadingFor === "summary"}
+                      className={cn(
+                        OUTPUT_REGEN_BUTTON_CLASS,
+                        "bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50",
+                        focusRing,
+                      )}
                       onClick={() => void handleRegenerate("summary")}
                     >
                       {regenLoadingFor === "summary" ? "Regenerating..." : "Regenerate"}
@@ -13125,42 +16071,25 @@ export default function Home() {
                   </div>
                 </CardContent>
               </Card>
+              </div>
             </TabsContent>
             ) : null}
 
             {visibleCoreTabsList.includes("client_email") ? (
-            <TabsContent
-              value="client_email"
-              className="mt-0 min-h-0 flex-1 overflow-y-auto rounded-b-[var(--radius-lg)] border border-t-0 border-[var(--border)] bg-[var(--bg-primary)] p-5"
-            >
-              <Card className="border-0 bg-transparent shadow-none">
-                <CardHeader className="flex-row items-center justify-between gap-4 border-b p-0 pb-4">
-                  <CardTitle className="text-base">Client Email</CardTitle>
+            <TabsContent value="client_email" className={OUTPUT_TAB_PANEL_CLASS}>
+              <div className={OUTPUT_TAB_CONTENT_SHELL}>
+              <Card className={OUTPUT_TAB_CARD_CLASS}>
+                <CardHeader className="flex-row items-center justify-between gap-4 border-b border-[var(--border)] px-4 pb-3 pt-4">
+                  <CardTitle className="inline-flex items-center gap-2 text-[15px] font-semibold tracking-tight text-[var(--text-primary)]">
+                    {clientEmailTabDisplay.label}
+                    {clientEmailTabDisplay.showInternalBadge ? (
+                      <span className="inline-flex items-center rounded-md border border-amber-500/35 bg-amber-500/15 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-300">
+                        Internal
+                      </span>
+                    ) : null}
+                  </CardTitle>
                   <CardAction>
                     <div className="flex flex-wrap items-center justify-end gap-2">
-                      {(["formal", "professional", "friendly"] as Tone[]).map((t) => (
-                        <Button
-                          key={t}
-                          type="button"
-                          size="sm"
-                          variant={emailTone === t ? "default" : "outline"}
-                          disabled={isRewritingEmail}
-                          onClick={() => setEmailTone(t)}
-                        >
-                          {t === "professional" ? "Professional (default)" : toneLabel(t)}
-                        </Button>
-                      ))}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          copyWithFeedback("client_email", activeClientEmailBody)
-                        }
-                      >
-                        {copiedKey === "client_email" ? "Copied!" : "Copy"}
-                      </Button>
-                      {renderPushActionTrigger("client_email")}
                       <Button
                         type="button"
                         variant="outline"
@@ -13180,10 +16109,15 @@ export default function Home() {
                         Open in mail
                       </Button>
                       <Button
+                        id="handover-send-client-email-btn"
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="gap-1.5 border-[var(--border)]"
+                        className={cn(
+                          "gap-1.5 border-[var(--border)]",
+                          sendEmailButtonHighlight &&
+                            "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--bg-primary)] animate-pulse",
+                        )}
                         disabled={!userEmail}
                         title={
                           userEmail
@@ -13206,16 +16140,13 @@ export default function Home() {
                     {`Pushed to ${lastPushedPsaLabel} · ${pushedRelativeText()}`}
                   </div>
                 ) : null}
-                <CardContent className="flex flex-col gap-4 p-0">
-                  <Button
-                    type="button"
-                    className="w-full sm:w-fit"
-                    onClick={() =>
-                      copyWithFeedback("client_email_btn", activeClientEmailBody)
-                    }
+                <CardContent className={cn(OUTPUT_TAB_CARD_BODY_SCROLL, "p-0")}>
+                  <div
+                    className={cn(
+                      OUTPUT_TAB_CARD_BODY_INNER_SCROLL,
+                      "flex flex-col gap-4 px-4 pb-4 pt-4",
+                    )}
                   >
-                    {copiedKey === "client_email_btn" ? "Copied!" : "Copy Email"}
-                  </Button>
                   {clientEmailSections.length > 1 ? (
                     <div
                       className="mb-3 flex flex-wrap gap-2"
@@ -13276,8 +16207,8 @@ export default function Home() {
                       <div style={{ whiteSpace: "pre-wrap" }}>{result.email_note}</div>
                     </div>
                   ) : null}
-                  <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] p-4 text-sm leading-relaxed text-foreground">
-                    {editingField === "client_email" ? (
+                  {editingField === "client_email" ? (
+                    <div className="rounded-[calc(var(--radius)-2px)] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-secondary)_55%,var(--bg-primary))] px-4 py-3 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--border)_50%,transparent)] text-[13px] leading-[1.55] text-[var(--text-primary)]">
                       <Textarea
                         value={result.client_email || ""}
                         onChange={(e) =>
@@ -13288,20 +16219,24 @@ export default function Home() {
                           )
                         }
                         rows={10}
-                        className="min-h-36"
+                        className="min-h-36 border-[var(--border)] bg-[var(--bg-primary)] text-[13px] leading-relaxed text-[var(--text-primary)]"
                         onBlur={() => setEditingField(null)}
                         autoFocus
                       />
-                    ) : (
+                    </div>
+                  ) : !activeClientEmailBody ? (
+                    <OutputTabEmptyState
+                      icon={<Mail strokeWidth={1.25} />}
+                      message="No client email returned."
+                    />
+                  ) : (
+                    <div className="rounded-[calc(var(--radius)-2px)] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-secondary)_55%,var(--bg-primary))] px-4 py-3 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--border)_50%,transparent)] text-[13px] leading-[1.55] text-[var(--text-primary)]">
                       <button
                         type="button"
                         className="w-full text-left"
                         onClick={() => setEditingField("client_email")}
                       >
-                        {(clientEmailSections.length > 1
-                          ? activeClientEmailBody || "-"
-                          : result.client_email || "-"
-                        )
+                        {(activeClientEmailBody || "-")
                           .split("\n")
                           .map((line, i) => (
                             <p
@@ -13315,8 +16250,10 @@ export default function Home() {
                             </p>
                           ))}
                       </button>
-                    )}
+                    </div>
+                  )}
                   </div>
+                  <div className="flex shrink-0 flex-col gap-4 px-4 pb-4">
                   {saveTemplateFor === "email" ? (
                     <div className="flex flex-col gap-2 sm:flex-row">
                       <Input
@@ -13351,7 +16288,11 @@ export default function Home() {
                       <Button
                         type="button"
                         variant="outline"
-                        className="w-full sm:w-fit"
+                        className={cn(
+                          "w-full sm:w-fit transition-shadow",
+                          templateSaveCtaHighlight &&
+                            "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--bg-primary)]",
+                        )}
                         onClick={() => {
                           setSaveTemplateFor("email");
                           setTemplateNameDraft("");
@@ -13361,7 +16302,7 @@ export default function Home() {
                       </Button>
                     </div>
                   )}
-                  <div className="flex flex-col gap-2 sm:flex-row">
+                  <div className={OUTPUT_REGEN_BAR_CLASS}>
                     <Input
                       value={regenInstruction.client_email || ""}
                       onChange={(e) =>
@@ -13371,45 +16312,36 @@ export default function Home() {
                         }))
                       }
                       placeholder="Tweak this output... e.g. make it shorter, add more detail about the risk"
+                      className={OUTPUT_REGEN_INPUT_CLASS}
                     />
                     <Button
                       type="button"
-                      variant="outline"
                       disabled={regenLoadingFor === "client_email"}
+                      className={cn(
+                        OUTPUT_REGEN_BUTTON_CLASS,
+                        "bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50",
+                        focusRing,
+                      )}
                       onClick={() => void handleRegenerate("client_email")}
                     >
                       {regenLoadingFor === "client_email" ? "Regenerating..." : "Regenerate"}
                     </Button>
                   </div>
+                  </div>
                 </CardContent>
               </Card>
+              </div>
             </TabsContent>
             ) : null}
 
             {visibleCoreTabsList.includes("status_report") ? (
-            <TabsContent
-              value="status_report"
-              className="mt-0 min-h-0 flex-1 overflow-y-auto rounded-b-[var(--radius-lg)] border border-t-0 border-[var(--border)] bg-[var(--bg-primary)] p-5"
-            >
-              <Card className="border-0 bg-transparent shadow-none">
-                <CardHeader className="flex-row items-center justify-between gap-4 border-b p-0 pb-4">
-                  <CardTitle className="text-base">Status Report</CardTitle>
-                  <CardAction className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        copyWithFeedback(
-                          "status_report",
-                          result.status_report,
-                        )
-                      }
-                    >
-                      {copiedKey === "status_report" ? "Copied!" : "Copy"}
-                    </Button>
-                    {renderPushActionTrigger("status_report")}
-                  </CardAction>
+            <TabsContent value="status_report" className={OUTPUT_TAB_PANEL_CLASS}>
+              <div className={OUTPUT_TAB_CONTENT_SHELL}>
+              <Card className={OUTPUT_TAB_CARD_CLASS}>
+                <CardHeader className="flex-row items-center justify-between gap-3 border-b border-[var(--border)] px-4 pb-3 pt-4">
+                  <CardTitle className="text-[15px] font-semibold tracking-tight text-[var(--text-primary)]">
+                    Status Report
+                  </CardTitle>
                 </CardHeader>
                 {lastPushed && lastPushedOutputs.includes("status_report") ? (
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
@@ -13419,24 +16351,15 @@ export default function Home() {
                     {`Pushed to ${lastPushedPsaLabel} · ${pushedRelativeText()}`}
                   </div>
                 ) : null}
-                <CardContent className="flex flex-col gap-4 p-0">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="w-full sm:w-fit"
-                    onClick={() =>
-                      copyWithFeedback(
-                        "status_report_btn",
-                        coerceStringOutput(result.status_report),
-                      )
-                    }
+                <CardContent className={cn(OUTPUT_TAB_CARD_BODY_SCROLL, "p-0")}>
+                  <div
+                    className={cn(
+                      OUTPUT_TAB_CARD_BODY_INNER_SCROLL,
+                      "flex flex-col gap-4 px-4 pb-4 pt-4",
+                    )}
                   >
-                    {copiedKey === "status_report_btn"
-                      ? "Copied!"
-                      : "Copy Report"}
-                  </Button>
-                  <div className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-                    {editingField === "status_report" ? (
+                  {editingField === "status_report" ? (
+                    <div className="rounded-[calc(var(--radius)-2px)] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-secondary)_55%,var(--bg-primary))] px-4 py-3 whitespace-pre-wrap text-[13px] leading-[1.55] text-[var(--text-primary)] shadow-[inset_0_1px_0_color-mix(in_srgb,var(--border)_50%,transparent)]">
                       <Textarea
                         value={result.status_report || ""}
                         onChange={(e) =>
@@ -13447,27 +16370,32 @@ export default function Home() {
                           )
                         }
                         rows={10}
-                        className="min-h-36"
+                        className="min-h-36 border-[var(--border)] bg-[var(--bg-primary)] text-[13px] leading-relaxed text-[var(--text-primary)]"
                         onBlur={() => setEditingField(null)}
                         autoFocus
                       />
-                    ) : (
+                    </div>
+                  ) : !(result.status_report ?? "").trim() ? (
+                    <OutputTabEmptyState
+                      icon={<ClipboardList strokeWidth={1.25} />}
+                      message="No status report returned."
+                    />
+                  ) : (
+                    <div className="rounded-[calc(var(--radius)-2px)] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-secondary)_55%,var(--bg-primary))] px-4 py-3 whitespace-pre-wrap text-[13px] leading-[1.55] text-[var(--text-primary)] shadow-[inset_0_1px_0_color-mix(in_srgb,var(--border)_50%,transparent)]">
                       <button
                         type="button"
-                        className="w-full text-left"
+                        className="w-full rounded-[calc(var(--radius)-4px)] text-left ring-offset-[var(--bg-primary)] transition-colors hover:bg-[color-mix(in_srgb,var(--accent)_6%,transparent)]"
                         onClick={() => setEditingField("status_report")}
                       >
-                        <span className="mb-2 block text-xs text-muted-foreground">
+                        <span className="mb-2 block text-[11px] text-[var(--text-muted)]">
                           Click to edit
                         </span>
-                        {result.status_report
-                          ? renderStatusReportDisplay(coerceStringOutput(result.status_report))
-                          : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
+                        {renderStatusReportDisplay(coerceStringOutput(result.status_report))}
                       </button>
-                    )}
+                    </div>
+                  )}
                   </div>
+                  <div className="flex shrink-0 flex-col gap-4 px-4 pb-4">
                   {saveTemplateFor === "report" ? (
                     <div className="flex flex-col gap-2 sm:flex-row">
                       <Input
@@ -13502,7 +16430,11 @@ export default function Home() {
                       <Button
                         type="button"
                         variant="outline"
-                        className="w-full sm:w-fit"
+                        className={cn(
+                          "w-full sm:w-fit transition-shadow",
+                          templateSaveCtaHighlight &&
+                            "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--bg-primary)]",
+                        )}
                         onClick={() => {
                           setSaveTemplateFor("report");
                           setTemplateNameDraft("");
@@ -13512,7 +16444,7 @@ export default function Home() {
                       </Button>
                     </div>
                   )}
-                  <div className="flex flex-col gap-2 sm:flex-row">
+                  <div className={OUTPUT_REGEN_BAR_CLASS}>
                     <Input
                       value={regenInstruction.status_report || ""}
                       onChange={(e) =>
@@ -13522,50 +16454,43 @@ export default function Home() {
                         }))
                       }
                       placeholder="Tweak this output... e.g. make it shorter, add more detail about the risk"
+                      className={OUTPUT_REGEN_INPUT_CLASS}
                     />
                     <Button
                       type="button"
-                      variant="outline"
                       disabled={regenLoadingFor === "status_report"}
+                      className={cn(
+                        OUTPUT_REGEN_BUTTON_CLASS,
+                        "bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50",
+                        focusRing,
+                      )}
                       onClick={() => void handleRegenerate("status_report")}
                     >
                       {regenLoadingFor === "status_report" ? "Regenerating..." : "Regenerate"}
                     </Button>
                   </div>
+                  </div>
                 </CardContent>
               </Card>
+              </div>
             </TabsContent>
             ) : null}
 
-            {visibleExtendedTabsList.map((extKey) => (
+            {outputTabStripExtendedKeys.map((extKey) => (
               <TabsContent
                 key={extKey}
                 value={extKey}
-                className="mt-0 min-h-0 flex-1 overflow-y-auto rounded-b-[var(--radius-lg)] border border-t-0 border-[var(--border)] bg-[var(--bg-primary)] p-5"
+                className={OUTPUT_TAB_PANEL_CLASS}
               >
-                <Card className="border-0 bg-transparent shadow-none">
-                  <CardHeader className="flex-row items-center justify-between gap-4 border-b p-0 pb-4">
-                    <CardTitle className="text-base">
+                <div className={OUTPUT_TAB_CONTENT_SHELL}>
+                <Card className={OUTPUT_TAB_CARD_CLASS}>
+                  <CardHeader className="flex-row items-center justify-between gap-3 border-b border-[var(--border)] px-4 pb-3 pt-4">
+                    <CardTitle className="text-[15px] font-semibold tracking-tight text-[var(--text-primary)]">
                       {EXTENDED_PM_TAB_LABELS[extKey]}
                     </CardTitle>
-                    <CardAction>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          copyWithFeedback(
-                            `ext_${extKey}`,
-                            result[extKey] ?? "",
-                          )
-                        }
-                      >
-                        {copiedKey === `ext_${extKey}` ? "Copied!" : "Copy"}
-                      </Button>
-                    </CardAction>
                   </CardHeader>
-                  <CardContent className="p-0 pt-0">
-                    <p className="mb-2 text-xs text-muted-foreground">Click to edit</p>
+                  <CardContent className={cn(OUTPUT_TAB_CARD_BODY_SCROLL, "px-4 pb-4 pt-4")}>
+                    <p className="mb-2 text-[11px] text-[var(--text-muted)]">Click to edit</p>
                     <Textarea
                       value={result[extKey] ?? ""}
                       onChange={(e) =>
@@ -13574,591 +16499,85 @@ export default function Home() {
                         )
                       }
                       rows={14}
-                      className="min-h-[12rem] whitespace-pre-wrap font-sans text-sm leading-relaxed"
+                      className="min-h-[12rem] whitespace-pre-wrap border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-secondary)_45%,var(--bg-primary))] font-sans text-[13px] leading-relaxed text-[var(--text-primary)] shadow-[inset_0_1px_0_color-mix(in_srgb,var(--border)_45%,transparent)]"
                       aria-label={EXTENDED_PM_TAB_LABELS[extKey]}
                     />
                   </CardContent>
                 </Card>
+                </div>
               </TabsContent>
             ))}
 
-            {mainView !== "configuration" && (
-              <div
-                className="sticky bottom-0 z-10 flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[var(--border)] bg-[var(--bg-primary)] px-4 py-3"
-              >
-              {psaConnections.primary && psaConnections.multiple ? (
-                <details className="relative">
-                  <summary
+            </div>
+
+            {result &&
+            mainView !== "overview" &&
+            mainView !== "changelog" &&
+            mainView !== "configuration" &&
+            mainView !== "organisation" ? (
+              <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
                     className={cn(
-                      "inline-flex h-7 cursor-pointer list-none items-center gap-1 rounded-[var(--radius)] border border-[var(--border)] px-2.5 text-[12px]",
+                      "h-8 border-[var(--border)] px-2.5 text-[12px] text-[var(--text-secondary)] transition-all duration-150 ease-out",
                       focusRing,
                     )}
+                    onClick={() =>
+                      copyWithFeedback(
+                        "output_tab",
+                        getOutputTabPlaintext(
+                          outputMainTab,
+                          result,
+                          clientEmailSections,
+                          activeClientEmailIndex,
+                          ticketTitlesForSourceColumn,
+                        ),
+                      )
+                    }
                   >
-                    ↑ Push all to PSA
-                    <ChevronDown className="size-3" />
-                  </summary>
-                  <div className="absolute right-0 z-30 mt-1 min-w-[170px] rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] p-1 shadow-lg">
-                    <button
-                      type="button"
-                      className="block w-full rounded px-2 py-1.5 text-left text-[12px] hover:bg-[var(--bg-secondary)]"
-                      onClick={() => openPushModal(undefined, "halopsa")}
-                    >
-                      HaloPSA
-                    </button>
-                    <button
-                      type="button"
-                      className="block w-full rounded px-2 py-1.5 text-left text-[12px] hover:bg-[var(--bg-secondary)]"
-                      onClick={() => openPushModal(undefined, "connectwise")}
-                    >
-                      ConnectWise
-                    </button>
-                  </div>
-                </details>
-              ) : psaConnections.primary ? (
-                <Button
-                  id="handover-output-push-halo"
-                  type="button"
-                  size="sm"
-                  className={cn(
-                    "h-7 gap-1.5 px-2.5 text-[12px] transition-[box-shadow,ring]",
-                    pushHaloHighlight &&
-                      "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--bg-primary)]",
-                  )}
-                  onClick={() => openPushModal()}
-                >
-                  {`↑ Push all to ${pushPsaLabel}`}
-                </Button>
-              ) : null}
-              <div className="relative" ref={exportMenuRef}>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className={cn(
-                    "h-7 gap-1.5 border-[var(--border)] px-2.5 text-[12px] text-[var(--text-secondary)] transition-all duration-[120ms] ease-in-out",
-                    focusRing,
-                  )}
-                  aria-expanded={exportMenuOpen}
-                  aria-haspopup="menu"
-                  onClick={() =>
-                    setExportMenuOpen((o) => {
-                      const next = !o;
-                      if (next) setExportLockedPromptOpen(false);
-                      if (!next) setExportSubPanel(null);
-                      return next;
-                    })
-                  }
-                >
-                  <Download className="size-3.5" aria-hidden />
-                  Export
-                </Button>
-                {exportMenuOpen ? (
-                  <div
-                    role="menu"
-                    className="absolute bottom-full right-0 z-50 mb-1 max-h-[min(85vh,32rem)] w-[min(100vw-2rem,22rem)] overflow-y-auto rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] py-1 shadow-md"
-                  >
-                    <div className="px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
-                      Download individual
-                    </div>
-                    {!userEmail ? (
-                      exportLockedPromptOpen ? (
-                        <div className="mx-3 my-2 rounded-[var(--radius)] border border-[rgba(56,189,248,0.2)] bg-[rgba(56,189,248,0.05)] px-3 py-3">
-                          <div className="flex items-start gap-3">
-                            <div className="flex size-9 items-center justify-center rounded-full bg-[var(--accent)]/15 text-[var(--accent)]">
-                              <Lock className="size-4" aria-hidden />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-[13px] font-semibold text-[var(--text-primary)]">
-                                Create a free account
-                              </p>
-                              <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-secondary)]">
-                                Sign up free to export your outputs. No credit card required.
-                              </p>
-                              <Link href="/auth?tab=signup&returnTo=/welcome" className="mt-3 block">
-                                <Button type="button" className="w-full rounded-[var(--radius)] bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]">
-                                  Create free account
-                                </Button>
-                              </Link>
-                              <Link
-                                href="/auth?tab=signin"
-                                className="mt-2 block text-center text-[13px] font-medium text-[var(--text-secondary)] hover:text-white"
-                              >
-                                Sign in
-                              </Link>
-                            </div>
-                          </div>
-                        </div>
-                      ) : null
-                    ) : !hasProAccess ? (
-                      <div className="mx-3 my-2 rounded-[var(--radius)] border border-[var(--border)] bg-[rgba(56,189,248,0.03)] px-3 py-3">
-                        <div className="flex items-start gap-3">
-                          <div className="flex size-9 items-center justify-center rounded-full bg-[var(--accent)]/15 text-[var(--accent)]">
-                            <Zap className="size-4" aria-hidden />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-[13px] font-semibold text-[var(--text-primary)]">
-                              Upgrade to Pro
-                            </p>
-                            <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-secondary)]">
-                              Export a full report pack with action log, risk log, client email and status report in one formatted Excel file.
-                            </p>
-                            <p className="mt-2 text-[13px] font-medium text-[var(--accent)]">
-                              From £25/month. Cancel anytime.
-                            </p>
-                            <Button
-                              type="button"
-                              className="mt-3 w-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
-                              onClick={() => setHeaderUpgradeOpen(true)}
-                              disabled={
-                                (!STRIPE_PRO_MONTHLY_PRICE_ID && !STRIPE_PRO_ANNUAL_PRICE_ID) ||
-                                checkoutLoadingPriceId !== null
-                              }
-                            >
-                              Upgrade to Pro
-                            </Button>
-                            <Link
-                              href="/pricing"
-                              className="mt-2 block text-center text-[13px] font-medium text-[var(--text-secondary)] hover:text-white"
-                            >
-                              See all Pro features
-                            </Link>
-                          </div>
-                        </div>
-                      </div>
-                    ) : null}
-                    <div
-                      className="border-b border-[var(--border-subtle)]"
-                      onMouseEnter={() => {
-                        if (!userEmail) return;
-                        setExportSubPanel("actions");
-                      }}
-                    >
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-muted/60"
-                        onClick={() =>
-                          !userEmail
-                            ? setExportLockedPromptOpen(true)
-                            : setExportSubPanel((p) => (p === "actions" ? null : "actions"))
-                        }
-                      >
-                        <span>Action log</span>
-                        <span className="flex shrink-0 items-center gap-1.5">
-                          <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-100 text-emerald-900 dark:bg-emerald-950/80 dark:text-emerald-100">
-                            CSV
-                          </span>
-                          <ChevronDown
-                            className={cn(
-                              "size-4 text-[var(--text-muted)] transition-transform",
-                              exportSubPanel === "actions" && "rotate-180",
-                            )}
-                            aria-hidden
-                          />
-                        </span>
-                      </button>
-                      {exportSubPanel === "actions" ? (
-                        <div className="border-t border-[var(--border-subtle)] bg-muted/25 px-3 py-2">
-                          <p className="text-xs font-medium text-[var(--text-secondary)]">
-                            Choose columns
-                          </p>
-                          <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1.5">
-                            {EXPORT_ACTION_COLUMN_OPTIONS.map((opt) => (
-                              <label
-                                key={opt.id}
-                                className="flex cursor-pointer items-center gap-2 text-xs text-[var(--text-primary)]"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={exportActionCols.includes(opt.id)}
-                                  onChange={(e) =>
-                                    setExportActionCols((c) =>
-                                      toggleStringInArray(c, opt.id, e.target.checked),
-                                    )
-                                  }
-                                  className="size-3.5 rounded border-[var(--border)]"
-                                />
-                                {opt.label}
-                              </label>
-                            ))}
-                          </div>
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="mt-3 w-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
-                            disabled={exportActionCols.length === 0}
-                            onClick={() => {
-                              if (!userEmail) {
-                                setExportLockedPromptOpen(true);
-                                return;
-                              }
-                              saveExportActionsColumns(exportActionCols);
-                              exportActionsCSV(
-                                result.actions,
-                                projectName,
-                                exportActionCols,
-                                buildActionExportMeta(projectName, result.actions),
-                              );
-                              toast({
-                                message: "Downloaded",
-                                subtitle: getActionLogExportFilename(projectName),
-                                durationMs: 3000,
-                              });
-                              setExportMenuOpen(false);
-                              setExportSubPanel(null);
-                            }}
-                          >
-                            Download
-                          </Button>
-                        </div>
-                      ) : null}
-                    </div>
-                    <div
-                      className="border-b border-[var(--border-subtle)]"
-                      onMouseEnter={() => {
-                        if (!userEmail) return;
-                        setExportSubPanel("risks");
-                      }}
-                    >
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-muted/60"
-                        onClick={() =>
-                          !userEmail
-                            ? setExportLockedPromptOpen(true)
-                            : setExportSubPanel((p) => (p === "risks" ? null : "risks"))
-                        }
-                      >
-                        <span>Risk log</span>
-                        <span className="flex shrink-0 items-center gap-1.5">
-                          <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-100 text-emerald-900 dark:bg-emerald-950/80 dark:text-emerald-100">
-                            CSV
-                          </span>
-                          <ChevronDown
-                            className={cn(
-                              "size-4 text-[var(--text-muted)] transition-transform",
-                              exportSubPanel === "risks" && "rotate-180",
-                            )}
-                            aria-hidden
-                          />
-                        </span>
-                      </button>
-                      {exportSubPanel === "risks" ? (
-                        <div className="border-t border-[var(--border-subtle)] bg-muted/25 px-3 py-2">
-                          <p className="text-xs font-medium text-[var(--text-secondary)]">
-                            Choose columns
-                          </p>
-                          <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1.5">
-                            {EXPORT_RISK_COLUMN_OPTIONS.map((opt) => (
-                              <label
-                                key={opt.id}
-                                className="flex cursor-pointer items-center gap-2 text-xs text-[var(--text-primary)]"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={exportRiskCols.includes(opt.id)}
-                                  onChange={(e) =>
-                                    setExportRiskCols((c) =>
-                                      toggleStringInArray(c, opt.id, e.target.checked),
-                                    )
-                                  }
-                                  className="size-3.5 rounded border-[var(--border)]"
-                                />
-                                {opt.label}
-                              </label>
-                            ))}
-                          </div>
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="mt-3 w-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
-                            disabled={exportRiskCols.length === 0}
-                            onClick={() => {
-                              if (!userEmail) {
-                                setExportLockedPromptOpen(true);
-                                return;
-                              }
-                              saveExportRisksColumns(exportRiskCols);
-                              exportRisksCSV(
-                                result.risks,
-                                projectName,
-                                exportRiskCols,
-                                buildActionExportMeta(projectName, result.actions),
-                              );
-                              toast({
-                                message: "Downloaded",
-                                subtitle: getRiskLogExportFilename(projectName),
-                                durationMs: 3000,
-                              });
-                              setExportMenuOpen(false);
-                              setExportSubPanel(null);
-                            }}
-                          >
-                            Download
-                          </Button>
-                        </div>
-                      ) : null}
-                    </div>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-muted/60"
-                      onMouseEnter={() => setExportSubPanel(null)}
-                      onClick={() => {
-                        if (!userEmail) {
-                          setExportLockedPromptOpen(true);
-                          return;
-                        }
-                        exportStatusReportTXT(result.status_report, projectName);
-                        toast({
-                          message: "Downloaded",
-                          subtitle: getStatusReportExportFilename(projectName),
-                          durationMs: 3000,
-                        });
-                        setExportMenuOpen(false);
-                        setExportSubPanel(null);
-                      }}
-                    >
-                      <span>Status report</span>
-                      <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-sky-100 text-sky-950 dark:bg-sky-950/80 dark:text-sky-50">
-                        TXT
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-muted/60"
-                      onMouseEnter={() => setExportSubPanel(null)}
-                      onClick={() => {
-                        if (!userEmail) {
-                          setExportLockedPromptOpen(true);
-                          return;
-                        }
-                        exportClientEmailTXT(
-                          result.email_subject,
-                          result.client_email,
-                          projectName,
-                        );
-                        toast({
-                          message: "Downloaded",
-                          subtitle: getClientEmailExportFilename(projectName),
-                          durationMs: 3000,
-                        });
-                        setExportMenuOpen(false);
-                        setExportSubPanel(null);
-                      }}
-                    >
-                      <span>Client email</span>
-                      <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-sky-100 text-sky-950 dark:bg-sky-950/80 dark:text-sky-50">
-                        TXT
-                      </span>
-                    </button>
-                    <div className="my-1 h-px bg-[var(--border)]" />
-                    <div className="px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
-                      Pro features
-                    </div>
-                    <div
-                      className="border-t border-[var(--border-subtle)]"
-                      onMouseEnter={() => {
-                        if (hasProAccess) setExportSubPanel("fullreport");
-                      }}
-                    >
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-muted/60"
-                        onClick={() => {
-                          if (!userEmail) {
-                            setExportLockedPromptOpen(true);
-                            return;
-                          }
-                          if (!hasProAccess) {
-                            tryOpenProFeatureGate("Full report pack (Excel export)");
-                            setExportMenuOpen(false);
-                            return;
-                          }
-                          setExportSubPanel((p) => (p === "fullreport" ? null : "fullreport"));
-                        }}
-                      >
-                        <span className="flex min-w-0 flex-1 items-center gap-2">
-                          {!hasProAccess ? (
-                            <Lock className="size-3.5 shrink-0 text-[var(--text-muted)]" aria-hidden />
-                          ) : null}
-                          <span className="truncate">Full report pack</span>
-                          {!hasProAccess ? (
-                            <Badge
-                              variant="secondary"
-                              className="shrink-0 text-[10px] font-normal"
-                            >
-                              Pro
-                            </Badge>
-                          ) : null}
-                        </span>
-                        {hasProAccess ? (
-                          <span className="flex shrink-0 items-center gap-1.5">
-                            <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-violet-100 text-violet-950 dark:bg-violet-950/80 dark:text-violet-100">
-                              XLSX
-                            </span>
-                            <ChevronDown
-                              className={cn(
-                                "size-4 text-[var(--text-muted)] transition-transform",
-                                exportSubPanel === "fullreport" && "rotate-180",
-                              )}
-                              aria-hidden
-                            />
-                          </span>
-                        ) : (
-                          <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-violet-100 text-violet-950 dark:bg-violet-950/80 dark:text-violet-100">
-                            XLSX
-                          </span>
-                        )}
-                      </button>
-                      {hasProAccess && exportSubPanel === "fullreport" ? (
-                        <div className="border-t border-[var(--border-subtle)] bg-muted/25 px-3 py-2">
-                          <p className="text-xs font-medium text-[var(--text-secondary)]">
-                            Choose columns
-                          </p>
-                          <p className="mt-2 text-[11px] font-medium text-[var(--text-muted)]">
-                            Sheets to include
-                          </p>
-                          <div className="mt-1 grid grid-cols-1 gap-y-1.5">
-                            {EXPORT_FULLREPORT_TAB_OPTIONS.map((opt) => (
-                              <label
-                                key={opt.id}
-                                className="flex cursor-pointer items-center gap-2 text-xs text-[var(--text-primary)]"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={exportFullTabs.includes(opt.id)}
-                                  onChange={(e) =>
-                                    setExportFullTabs((t) =>
-                                      toggleStringInArray(t, opt.id, e.target.checked),
-                                    )
-                                  }
-                                  className="size-3.5 rounded border-[var(--border)]"
-                                />
-                                {opt.label}
-                              </label>
-                            ))}
-                          </div>
-                          <p className="mt-3 text-[11px] font-medium text-[var(--text-muted)]">
-                            Action log columns
-                          </p>
-                          <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-1.5">
-                            {EXPORT_ACTION_COLUMN_OPTIONS.map((opt) => (
-                              <label
-                                key={`full-a-${opt.id}`}
-                                className="flex cursor-pointer items-center gap-2 text-xs text-[var(--text-primary)]"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={exportFullActionCols.includes(opt.id)}
-                                  onChange={(e) =>
-                                    setExportFullActionCols((c) =>
-                                      toggleStringInArray(c, opt.id, e.target.checked),
-                                    )
-                                  }
-                                  className="size-3.5 rounded border-[var(--border)]"
-                                />
-                                {opt.label}
-                              </label>
-                            ))}
-                          </div>
-                          <p className="mt-3 text-[11px] font-medium text-[var(--text-muted)]">
-                            Risk log columns
-                          </p>
-                          <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-1.5">
-                            {EXPORT_RISK_COLUMN_OPTIONS.map((opt) => (
-                              <label
-                                key={`full-r-${opt.id}`}
-                                className="flex cursor-pointer items-center gap-2 text-xs text-[var(--text-primary)]"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={exportFullRiskCols.includes(opt.id)}
-                                  onChange={(e) =>
-                                    setExportFullRiskCols((c) =>
-                                      toggleStringInArray(c, opt.id, e.target.checked),
-                                    )
-                                  }
-                                  className="size-3.5 rounded border-[var(--border)]"
-                                />
-                                {opt.label}
-                              </label>
-                            ))}
-                          </div>
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="mt-3 w-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
-                            disabled={
-                              exportFullTabs.length === 0 ||
-                              (exportFullTabs.includes("actions") &&
-                                exportFullActionCols.length === 0) ||
-                              (exportFullTabs.includes("risks") &&
-                                exportFullRiskCols.length === 0)
-                            }
-                            onClick={() => {
-                              saveFullReportExportPrefs({
-                                tabs: exportFullTabs,
-                                actionColumns: exportFullActionCols,
-                                riskColumns: exportFullRiskCols,
-                              });
-                              handleFullReportExcelExport();
-                            }}
-                          >
-                            Download
-                          </Button>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className={cn(
-                  "h-7 border-[var(--border)] px-2.5 text-[12px] text-[var(--text-secondary)] transition-all duration-[120ms] ease-in-out",
-                  focusRing,
-                )}
-                onClick={() =>
-                  copyWithFeedback(
-                    "output_tab",
-                    getOutputTabPlaintext(
-                      outputMainTab,
-                      result,
-                      clientEmailSections,
-                      activeClientEmailIndex,
-                      ticketTitlesForSourceColumn,
-                    ),
-                  )
-                }
-              >
-                {copiedKey === "output_tab" ? "Copied!" : "Copy tab"}
-              </Button>
+                    {copiedKey === "output_tab" ? "Copied!" : "Copy tab"}
+                  </Button>
 
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className={cn(
-                  "h-7 border-[var(--border)] px-2.5 text-[12px] text-[var(--text-secondary)] transition-all duration-[120ms] ease-in-out",
-                  focusRing,
-                )}
-                onClick={() =>
-                  copyWithFeedback(
-                    "all_outputs",
-                    formatAllOutputsForCopy(result, ticketTitlesForSourceColumn),
-                  )
-                }
-              >
-                {copiedKey === "all_outputs" ? "Copied!" : "Copy all outputs"}
-              </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "h-8 border-[var(--border)] px-2.5 text-[12px] text-[var(--text-secondary)] transition-all duration-150 ease-out",
+                      focusRing,
+                    )}
+                    onClick={() =>
+                      copyWithFeedback(
+                        "all_outputs",
+                        formatAllOutputsForCopy(result, ticketTitlesForSourceColumn),
+                      )
+                    }
+                  >
+                    {copiedKey === "all_outputs" ? "Copied!" : "Copy all outputs"}
+                  </Button>
+                </div>
+                <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">
+                  {userEmail && isEnterprisePlanUser && portalSlug.trim() && sharePortalClientId ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className={cn(
+                        "h-8 border-[var(--border)] px-2.5 text-[12px] text-[var(--text-secondary)] transition-all duration-150 ease-out",
+                        focusRing,
+                      )}
+                      disabled={sharePortalBusy}
+                      onClick={() => void onShareReportToPortal()}
+                    >
+                      {sharePortalBusy ? "Sharing…" : "Share to portal"}
+                    </Button>
+                  ) : null}
+                </div>
               </div>
-            )}
+            ) : null}
           </Tabs>
             {userEmail && showPostGenReferralFooter ? (
               <div className="flex items-center justify-between gap-3 border-t border-[var(--border)] bg-[var(--bg-secondary)]/40 px-4 py-2">
@@ -14187,7 +16606,11 @@ export default function Home() {
                 </button>
               </div>
             ) : null}
-            {userEmail && !hasProAccess && showPostGenProUpsell && !readUpgradePromptConsumed() ? (
+            {userEmail &&
+            !hasProAccess &&
+            hasCompletedLoop &&
+            showPostGenProUpsell &&
+            !readUpgradePromptConsumed() ? (
               <div
                 className="flex flex-col gap-2 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--accent)_6%,var(--bg-secondary))] px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                 role="region"
@@ -14247,47 +16670,55 @@ export default function Home() {
 
       </div>
       </div>
-      <MarketingFooter />
-      <FirstRunOnboardingOverlay
-        open={onboardingOverlayOpen}
-        isTrial={!!trialEndsAt}
-        welcomeFirstName={onboardingWelcomeFirst}
-        profileJobTitle={profileJobTitle}
-        profileCompanyName={profileCompanyName}
-        signatureOverride={signatureOverride}
-        setProfileJobTitle={setProfileJobTitle}
-        setProfileCompanyName={setProfileCompanyName}
-        setSignatureOverride={setSignatureOverride}
-        onSaveProfileStep={saveOnboardingProfileStep}
-        haloUrl={haloUrl}
-        setHaloUrl={setHaloUrl}
-        haloTenant={haloTenant}
-        setHaloTenant={setHaloTenant}
-        haloClientId={haloClientId}
-        setHaloClientId={setHaloClientId}
-        haloClientSecret={haloClientSecret}
-        setHaloClientSecret={setHaloClientSecret}
-        haloLoading={haloLoading}
-        haloError={haloError}
-        haloConnected={haloConnected}
-        onHaloConnect={handleHaloConnect}
-        onComplete={(choice) => {
-          void markOnboardingComplete();
-          confetti({
-            particleCount: 100,
-            spread: 70,
-            origin: { y: 0.6 },
-            colors: ["#38bdf8", "#1e3a5f", "#ffffff", "#7dd3fc"],
-          });
-          if (choice === "example") {
-            setInput(EXAMPLE_INPUT);
-          } else {
-            setInput("");
-          }
-          setMainView("generate");
-        }}
-        onSkipEntirely={() => markOnboardingComplete()}
-      />
+      {!showLeftSidebar ? <MarketingFooter /> : null}
+      {plan === "enterprise" ? (
+        <EnterprisePortalOnboarding
+          open={onboardingOverlayOpen}
+          companyName={profileCompanyName.trim() || profileDisplayName.trim()}
+          onConfirm={completeEnterpriseOnboardingWithSlug}
+          onSkip={markOnboardingComplete}
+        />
+      ) : (
+        <FirstRunOnboardingOverlay
+          open={onboardingOverlayOpen}
+          isTrial={!!trialEndsAt}
+          welcomeFirstName={onboardingWelcomeFirst}
+          haloUrl={haloUrl}
+          setHaloUrl={setHaloUrl}
+          haloTenant={haloTenant}
+          setHaloTenant={setHaloTenant}
+          haloClientId={haloClientId}
+          setHaloClientId={setHaloClientId}
+          haloClientSecret={haloClientSecret}
+          setHaloClientSecret={setHaloClientSecret}
+          haloLoading={haloLoading}
+          haloError={haloError}
+          haloConnected={haloConnected}
+          onHaloConnect={handleHaloConnect}
+          onComplete={(choice) => {
+            void (async () => {
+              await markOnboardingComplete();
+              confetti({
+                particleCount: 100,
+                spread: 70,
+                origin: { y: 0.6 },
+                colors: ["#38bdf8", "#1e3a5f", "#ffffff", "#7dd3fc"],
+              });
+              if (choice === "example") {
+                setInput(DEMO_EXAMPLE_INPUT);
+              } else {
+                setInput("");
+              }
+              setMainView("generate");
+              setPostOnboardingNewGenHighlight(true);
+            })();
+          }}
+          onSkipEntirely={async () => {
+            await markOnboardingComplete();
+            setPostOnboardingNewGenHighlight(true);
+          }}
+        />
+      )}
       <Dialog
         open={Boolean(deleteConfirmScheduleId)}
         onOpenChange={(open) => {
@@ -14323,6 +16754,25 @@ export default function Home() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {isGenerating ? (
+        <div
+          className="fixed inset-x-0 bottom-0 z-[160] border-t border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-primary)_96%,var(--bg-secondary))] px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm"
+          role="status"
+          aria-live="polite"
+          aria-label="Generation in progress"
+        >
+          <p className="text-center text-[13px] font-medium text-[var(--text-primary)]">Generating your report…</p>
+          <p className="mt-1 text-center text-[12px] text-[var(--text-secondary)]">{GEN_PROGRESS_MESSAGES[genProgressMsgIx]}</p>
+          <div className="mx-auto mt-2 h-1.5 max-w-md overflow-hidden rounded-full bg-[var(--border)]">
+            <div
+              className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-500 ease-out"
+              style={{
+                width: `${((genProgressMsgIx + 1) / GEN_PROGRESS_MESSAGES.length) * 100}%`,
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
     </motion.div>
   );
 }

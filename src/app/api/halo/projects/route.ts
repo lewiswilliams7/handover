@@ -85,8 +85,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ projects: result, total: result.length });
   } catch (err: unknown) {
     const e = err instanceof Error ? err : new Error(String(err));
-    console.error("[projects route] error:", e.message);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error("[projects route] error:", e.message, e);
+    return NextResponse.json(
+      { error: "Could not load projects. Please try again." },
+      { status: 500 },
+    );
   }
 }
 

@@ -2,9 +2,19 @@ import OpenAI from "openai";
 import { NextResponse } from "next/server";
 
 import { GLOBAL_GENERATION_VOICE_AND_PUNCTUATION } from "@/lib/generation-global-style-rules";
+import { createServerClient } from "@/lib/supabase/server";
 
 export async function POST(req: Request) {
   try {
+    const supabase = await createServerClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = (await req.json()) as {
       original_output?: string;
       output_type?: string;

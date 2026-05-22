@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { CheckCircle } from "lucide-react";
 
 import { useToast } from "@/components/toasts";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,8 @@ type Props = {
   initialTo: string;
   initialSubject: string;
   textBody: string;
+  /** Called after a successful send, before the dialog closes. */
+  onSendSuccess?: () => void;
 };
 
 export function SendClientEmailModal({
@@ -27,6 +30,7 @@ export function SendClientEmailModal({
   initialTo,
   initialSubject,
   textBody,
+  onSendSuccess,
 }: Props) {
   const toast = useToast();
   const [to, setTo] = useState(initialTo);
@@ -35,6 +39,8 @@ export function SendClientEmailModal({
   const [ccBccOpen, setCcBccOpen] = useState(false);
   const [subject, setSubject] = useState(initialSubject);
   const [sending, setSending] = useState(false);
+  const [sendSuccess, setSendSuccess] = useState(false);
+  const successCloseTimerRef = useRef<number | null>(null);
   const fieldsRef = useRef({ to, cc, bcc, subject, textBody });
   fieldsRef.current = { to, cc, bcc, subject, textBody };
 
@@ -46,6 +52,10 @@ export function SendClientEmailModal({
       setBcc("");
       setCcBccOpen(false);
       setSending(false);
+      setSendSuccess(false);
+    } else if (successCloseTimerRef.current) {
+      window.clearTimeout(successCloseTimerRef.current);
+      successCloseTimerRef.current = null;
     }
   }, [open, initialTo, initialSubject]);
 
@@ -86,7 +96,16 @@ export function SendClientEmailModal({
         return;
       }
       toast({ message: "Email sent successfully", durationMs: 3200 });
-      onOpenChange(false);
+      setSendSuccess(true);
+      if (successCloseTimerRef.current) {
+        window.clearTimeout(successCloseTimerRef.current);
+      }
+      successCloseTimerRef.current = window.setTimeout(() => {
+        successCloseTimerRef.current = null;
+        onSendSuccess?.();
+        onOpenChange(false);
+        setSendSuccess(false);
+      }, 1500);
     } catch {
       toast({
         message: "Could not send email.",
@@ -114,6 +133,15 @@ export function SendClientEmailModal({
         </DialogHeader>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-5">
+          {sendSuccess ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-16">
+              <CheckCircle className="size-12 shrink-0 text-green-500" aria-hidden />
+              <p className="text-center text-[15px] font-medium text-[var(--text-primary)]">
+                Email sent successfully
+              </p>
+            </div>
+          ) : (
+            <>
           <div className="space-y-1.5">
             <label htmlFor="send-client-email-to" className="text-sm font-medium text-[var(--text-primary)]">
               To (comma-separated for multiple)
@@ -190,20 +218,26 @@ export function SendClientEmailModal({
               your safe senders list.
             </p>
           </div>
+            </>
+          )}
         </div>
 
         <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-[var(--border)] bg-[var(--bg-secondary)]/50 px-4 py-3 sm:flex-row sm:justify-end sm:px-5">
-          <Button type="button" variant="outline" disabled={sending} onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            className="bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
-            disabled={sending || !to.trim() || !subject.trim() || !textBody.trim()}
-            onClick={() => void performSend()}
-          >
-            {sending ? "Sending…" : "Send"}
-          </Button>
+          {sendSuccess ? null : (
+            <>
+              <Button type="button" variant="outline" disabled={sending} onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                disabled={sending || !to.trim() || !subject.trim() || !textBody.trim()}
+                onClick={() => void performSend()}
+              >
+                {sending ? "Sending…" : "Send"}
+              </Button>
+            </>
+          )}
         </div>
       </DialogContent>
     </Dialog>

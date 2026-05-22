@@ -129,28 +129,14 @@ export default function AboutPage() {
                 cardTransition,
               )}
             >
-              {/* Replace with actual photo: <img src="/lewis.jpg" alt="Lewis Williams" className="absolute inset-0 size-full object-cover" /> */}
-              <div
-                className="flex size-full flex-col items-center justify-center p-10"
-                style={{
-                  background:
-                    "linear-gradient(145deg, color-mix(in srgb, var(--sidebar-bg) 88%, var(--accent)) 0%, var(--sidebar-bg) 45%, color-mix(in srgb, var(--sidebar-bg) 92%, var(--accent)) 100%)",
-                }}
-              >
-                <span
-                  className="text-[5.5rem] font-bold leading-none tracking-tight sm:text-[6.5rem]"
-                  style={{
-                    background: "linear-gradient(180deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 65%, white) 100%)",
-                    WebkitBackgroundClip: "text",
-                    WebkitTextFillColor: "transparent",
-                    backgroundClip: "text",
-                    filter: "drop-shadow(0 0 28px color-mix(in srgb, var(--accent) 45%, transparent))",
-                  }}
-                >
-                  LW
-                </span>
-                <span className="mt-4 text-center text-[12px] font-medium uppercase tracking-[0.1em] text-[rgba(255,255,255,0.35)]">
-                </span>
+              <div className="flex size-full items-center justify-center p-8 sm:p-10">
+                <div className="aspect-square w-[min(280px,calc(100%-1rem))] max-w-full shrink-0 overflow-hidden rounded-full ring-2 ring-[color-mix(in_srgb,var(--accent)_35%,var(--border))]">
+                  <img
+                    src="/lewiswilliams.png"
+                    className="h-full w-full object-cover rounded-full"
+                    alt="Lewis Williams"
+                  />
+                </div>
               </div>
             </CardMouseSpotlight>
           </ScrollRevealItem>

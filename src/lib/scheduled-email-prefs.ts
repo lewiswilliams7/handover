@@ -70,3 +70,44 @@ export const SCHEDULE_EXCEL_CORE_KEYS = [
   "client_email",
   "status_report",
 ] as const;
+
+/** Normalize persisted schedule `excel_tabs` into allowed keys (defaults to core + optional when empty). */
+export function selectedExcelKeysFromRow(raw: unknown): string[] {
+  const allowed = new Set<string>([
+    ...SCHEDULE_EXCEL_CORE_KEYS,
+    ...SCHEDULE_EXCEL_OPTIONAL_TAB_KEYS,
+  ]);
+  let list: unknown = raw;
+  if (typeof raw === "string") {
+    const t = raw.trim();
+    if (!t) list = [];
+    else {
+      try {
+        list = JSON.parse(t) as unknown;
+      } catch {
+        list = [];
+      }
+    }
+  }
+  if (!Array.isArray(list) || list.length === 0 || list.length < 3) {
+    return [...SCHEDULE_EXCEL_CORE_KEYS, ...SCHEDULE_EXCEL_OPTIONAL_TAB_KEYS];
+  }
+  const picked = list.filter((x): x is string => typeof x === "string" && allowed.has(x));
+  return picked.length > 0
+    ? picked
+    : [...SCHEDULE_EXCEL_CORE_KEYS, ...SCHEDULE_EXCEL_OPTIONAL_TAB_KEYS];
+}
+
+/** Map export-picker ids to keys consumed by exportFullReport; drop unsupported aliases and dedupe. */
+export function normalizeExcelExportEngineTabIds(tabIds: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const t of tabIds) {
+    if (t === "rag_dashboard") continue;
+    const mapped = t === "executive_summary" ? "summary" : t;
+    if (seen.has(mapped)) continue;
+    seen.add(mapped);
+    out.push(mapped);
+  }
+  return out;
+}

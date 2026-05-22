@@ -242,7 +242,7 @@ export default function MspWeeklyReportingCaseStudyPage() {
               </Link>
             </div>
             <p className="mt-6 text-sm text-[var(--sidebar-text)]">
-              No card required. 14-day free trial.
+              14-day free trial — cancel anytime. 14-day free trial.
             </p>
           </ScrollRevealItem>
         </div>

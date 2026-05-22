@@ -55,7 +55,11 @@ export async function POST(req: Request) {
         error_message: null,
       });
       if (fallbackErr) {
-        return NextResponse.json({ error: fallbackErr.message }, { status: 500 });
+        console.error("[qbr/history]", fallbackErr.message);
+        return NextResponse.json(
+          { error: "Could not load QBR history. Please try again." },
+          { status: 500 },
+        );
       }
     }
 

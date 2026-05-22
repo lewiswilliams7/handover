@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Database, Loader2, RefreshCw } from "lucide-react";
 
+import { DemoBanner } from "@/components/demo-banner";
 import { useToast } from "@/components/toasts";
+import { DEMO_CLIENTS, DEMO_PROJECTS, DEMO_TICKETS } from "@/lib/demo-data";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -38,6 +40,7 @@ type CwProject = {
   client?: { name?: string | null } | null;
   projectmanager?: { name?: string | null } | null;
   targetdate?: string | null;
+  dateoccurred?: string | null;
   description?: string | null;
   notes?: CwNote[];
   tasks?: Array<{ id: number; summary: string; status: string }>;
@@ -60,16 +63,69 @@ function useDebouncedValue<T>(value: T, delayMs = 200): T {
   return debounced;
 }
 
+function mapDemoTicketsToCwTickets() {
+  return DEMO_TICKETS.map((t) => ({
+    id: t.id,
+    summary: t.summary,
+    status: t.status,
+    priority: t.priority,
+    client: t.client,
+    agent: t.agent,
+    dateoccurred: t.dateoccurred,
+    targetdate: t.targetdate,
+    timetaken: t.timetaken,
+    cwProjectId: 0,
+  }));
+}
+
+function mapDemoProjectsToCwProjects(): CwProject[] {
+  return DEMO_PROJECTS.map((p) => ({
+    id: p.id,
+    name: p.name,
+    status: p.status,
+    client: p.client,
+    projectmanager: p.projectmanager,
+    targetdate: p.targetdate,
+    description: p.description,
+    notes: [],
+    tasks: [],
+    teamMembers: [],
+    dateoccurred: p.dateoccurred,
+  }));
+}
+
+function buildDemoTicketNotesState(): {
+  notesById: Record<number, CwNote[]>;
+  selectedById: Record<number, Record<string, boolean>>;
+} {
+  const notesById: Record<number, CwNote[]> = {};
+  const selectedById: Record<number, Record<string, boolean>> = {};
+  for (const t of DEMO_TICKETS) {
+    const notes = t.notes.map((n) => ({
+      id: String(n.id),
+      author: n.who,
+      date: n.dateoccurred,
+      content: n.note,
+    }));
+    notesById[t.id] = notes;
+    selectedById[t.id] = Object.fromEntries(notes.map((n) => [n.id, true]));
+  }
+  return { notesById, selectedById };
+}
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Dashboard source of truth; avoids stale global PSA cache so the dialog can mount when open. */
   connectwiseConnected?: boolean;
+  forceDemoMode?: boolean;
+  demoModeActive?: boolean;
   onImport: (payload: {
     formatted: string;
     count: number;
     selectedClientName: string | null;
     dataType: "tickets" | "projects";
+    fromDemo?: boolean;
     importedItems: Array<{
       id: number;
       title: string;
@@ -80,11 +136,20 @@ type Props = {
   }) => void;
 };
 
-export function CwImportModal({ open, onOpenChange, connectwiseConnected, onImport }: Props) {
+export function CwImportModal({
+  open,
+  onOpenChange,
+  connectwiseConnected,
+  forceDemoMode,
+  demoModeActive,
+  onImport,
+}: Props) {
   const psaHook = usePSAConnections();
   const connectwiseLive =
     typeof connectwiseConnected === "boolean" ? connectwiseConnected : psaHook.connectwise;
+  const effectiveForceDemo = Boolean(forceDemoMode || demoModeActive);
   const toast = useToast();
+  const [demoMode, setDemoMode] = useState(false);
   const [mode, setMode] = useState<"tickets" | "projects">("tickets");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,16 +168,29 @@ export function CwImportModal({ open, onOpenChange, connectwiseConnected, onImpo
   const [selectedProjectNotesById, setSelectedProjectNotesById] = useState<Record<number, Record<string, boolean>>>({});
   const [loadedOnce, setLoadedOnce] = useState(false);
   const debouncedSearch = useDebouncedValue(search, 220);
+  const effectiveLive = connectwiseLive && !demoMode && !effectiveForceDemo;
+  const showMainContent = demoMode || connectwiseLive || effectiveForceDemo;
   const {
     data: cachedTickets,
     isLoading: ticketsLoading,
     mutate: refreshTickets,
-  } = useCwTickets(open && connectwiseLive);
+  } = useCwTickets(open && effectiveLive);
   const {
     data: cachedProjects,
     isLoading: projectsLoading,
     mutate: refreshProjects,
-  } = useCwProjects(open && connectwiseLive);
+  } = useCwProjects(open && effectiveLive);
+
+  const loadDemoData = useCallback(() => {
+    console.log("[cw-demo] loading demo data", { demoClients: DEMO_CLIENTS.length });
+    setTicketRows(mapDemoTicketsToCwTickets());
+    setProjectRows(mapDemoProjectsToCwProjects());
+    const { notesById, selectedById } = buildDemoTicketNotesState();
+    setTicketNotesById(notesById);
+    setSelectedNotesById(selectedById);
+    setDemoMode(true);
+    setLoadedOnce(true);
+  }, []);
 
   useEffect(() => {
     if (!open) {
@@ -131,14 +209,22 @@ export function CwImportModal({ open, onOpenChange, connectwiseConnected, onImpo
     setSearch("");
     setKeyword("");
     setError(null);
-  }, [open]);
+    if (!effectiveForceDemo) {
+      setDemoMode(false);
+    }
+  }, [open, effectiveForceDemo]);
+
+  useEffect(() => {
+    if (!open || !effectiveForceDemo) return;
+    loadDemoData();
+  }, [open, effectiveForceDemo, loadDemoData]);
 
   useEffect(() => {
     if (!open) return;
-    if (!connectwiseLive) return;
+    if (!effectiveLive) return;
     if (loadedOnce) return;
     void loadRows();
-  }, [open, loadedOnce, connectwiseLive]);
+  }, [open, loadedOnce, effectiveLive]);
 
   useEffect(() => {
     if (!open) return;
@@ -230,6 +316,23 @@ export function CwImportModal({ open, onOpenChange, connectwiseConnected, onImpo
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
     if (ticketNotesById[id] || notesLoadingById[id]) return;
+    if (demoMode) {
+      const demoTicket = DEMO_TICKETS.find((t) => t.id === id);
+      if (demoTicket) {
+        const notes = demoTicket.notes.map((n) => ({
+          id: String(n.id),
+          author: n.who,
+          date: n.dateoccurred,
+          content: n.note,
+        }));
+        setTicketNotesById((prev) => ({ ...prev, [id]: notes }));
+        setSelectedNotesById((prev) => ({
+          ...prev,
+          [id]: Object.fromEntries(notes.map((n) => [n.id, true])),
+        }));
+      }
+      return;
+    }
     setNotesLoadingById((prev) => ({ ...prev, [id]: true }));
     try {
       const res = await fetch(`/api/cw/ticket-detail?id=${id}`);
@@ -408,30 +511,61 @@ export function CwImportModal({ open, onOpenChange, connectwiseConnected, onImpo
       count: selectedItems.length,
       selectedClientName,
       dataType: selectedProjects.length > 0 && selectedTickets.length === 0 ? "projects" : "tickets",
+      fromDemo: demoMode || effectiveForceDemo,
       importedItems: selectedItems,
     });
-    onOpenChange(false);
+    window.setTimeout(() => onOpenChange(false), 500);
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl">
-        <DialogHeader>
+      <DialogContent className="flex h-[min(90vh,700px)] max-h-[min(90vh,700px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
+        <DialogHeader className="shrink-0 border-b border-[var(--border)] px-4 py-3">
           <DialogTitle className="flex items-center gap-2">
             <Database className="size-4" />
             Import from ConnectWise
           </DialogTitle>
         </DialogHeader>
-        {!connectwiseLive ? (
-          <p className="text-sm text-[var(--text-secondary)]">
-            ConnectWise is not connected. Open{" "}
-            <span className="font-medium text-[var(--text-primary)]">Integrations</span> in the sidebar, add your
-            ConnectWise Manage API credentials, then try again.
-          </p>
-        ) : null}
-        {connectwiseLive ? (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
+
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {(demoMode || effectiveForceDemo) ? (
+            <div className="shrink-0 px-4 pt-4">
+              <DemoBanner onConnectPSA={() => onOpenChange(false)} />
+            </div>
+          ) : null}
+          {(demoMode || effectiveForceDemo) ? (
+            <div className="px-4 pt-2">
+              <button
+                type="button"
+                className="text-xs text-[var(--accent)] hover:underline"
+                onClick={loadDemoData}
+              >
+                Reload demo data →
+              </button>
+            </div>
+          ) : null}
+          {!showMainContent ? (
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+              <div className="space-y-3">
+                <p className="text-sm text-[var(--text-secondary)]">
+                  ConnectWise is not connected. Open{" "}
+                  <span className="font-medium text-[var(--text-primary)]">Integrations</span> in the sidebar, add your
+                  ConnectWise Manage API credentials, then try again.
+                </p>
+                {(!connectwiseLive || effectiveForceDemo) && !demoMode ? (
+                  <button
+                    type="button"
+                    className="w-full text-center text-xs text-[var(--text-muted)]"
+                    onClick={loadDemoData}
+                  >
+                    No ConnectWise account? Load demo data →
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-4 py-4">
+          <div className="flex shrink-0 items-center gap-2">
             <Button
               type="button"
               variant={mode === "tickets" ? "default" : "outline"}
@@ -453,7 +587,7 @@ export function CwImportModal({ open, onOpenChange, connectwiseConnected, onImpo
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => void loadRows()}
+              onClick={() => (demoMode || effectiveForceDemo ? loadDemoData() : void loadRows())}
               className="ml-auto"
             >
               <RefreshCw className="mr-1 size-3.5" />
@@ -461,11 +595,12 @@ export function CwImportModal({ open, onOpenChange, connectwiseConnected, onImpo
             </Button>
           </div>
           <Input
+            className="shrink-0"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={mode === "tickets" ? "Search tickets..." : "Search projects..."}
           />
-          <div>
+          <div className="shrink-0">
             <label className="mb-1 block text-[12px] text-[var(--text-secondary)]">
               Filter by keyword or project name (optional)
             </label>
@@ -473,16 +608,16 @@ export function CwImportModal({ open, onOpenChange, connectwiseConnected, onImpo
               type="text"
               value={keyword}
               onChange={(e) => setKeyword(e.target.value)}
-              placeholder={'e.g. "bako project" or "firewall"'}
+              placeholder={'e.g. "Migration project" or "firewall"'}
               className="w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
             />
           </div>
           {error ? (
-            <div className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+            <div className="shrink-0 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">
               {error}
             </div>
           ) : null}
-          <div className="max-h-[420px] space-y-2 overflow-y-auto rounded border border-[var(--border)] p-2">
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto rounded border border-[var(--border)] p-2">
             {(loading || ticketsLoading || projectsLoading) && rows.length === 0 ? (
               Array.from({ length: 6 }).map((_, i) => (
                 <div key={`sk-${i}`} className="animate-pulse rounded border border-[var(--border)] p-3">
@@ -663,30 +798,45 @@ export function CwImportModal({ open, onOpenChange, connectwiseConnected, onImpo
               </div>
             ) : null}
           </div>
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-[var(--text-secondary)]">
-              {(() => {
-                const ticketCount = ticketRows.filter((t) => selectedIds.includes(t.id)).length;
-                const projectCount = projectRows.filter((p) => selectedIds.includes(p.id)).length;
-                return `${ticketCount} ticket${ticketCount === 1 ? "" : "s"} and ${projectCount} project${projectCount === 1 ? "" : "s"} selected`;
-              })()}
-            </p>
-            <Button
-              type="button"
-              disabled={selectedIds.length === 0}
-              onClick={() => {
-                importSelected();
-                toast({
-                  message: "Imported from ConnectWise",
-                  durationMs: 2500,
-                });
-              }}
-            >
-              Import selected
-            </Button>
-          </div>
         </div>
-        ) : null}
+          )}
+
+          {showMainContent ? (
+            <div className="sticky bottom-0 z-10 shrink-0 border-t border-[var(--border)] bg-[var(--bg-primary)] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm text-[var(--text-secondary)]">
+                  {(() => {
+                    const ticketCount = ticketRows.filter((t) => selectedIds.includes(t.id)).length;
+                    const projectCount = projectRows.filter((p) => selectedIds.includes(p.id)).length;
+                    return `${ticketCount} ticket${ticketCount === 1 ? "" : "s"} and ${projectCount} project${projectCount === 1 ? "" : "s"} selected`;
+                  })()}
+                </p>
+                <Button
+                  type="button"
+                  disabled={selectedIds.length === 0}
+                  onClick={() => {
+                    importSelected();
+                    toast({
+                      message: "Imported from ConnectWise",
+                      durationMs: 2500,
+                    });
+                  }}
+                >
+                  Import selected
+                </Button>
+              </div>
+              {!effectiveForceDemo ? (
+                <button
+                  type="button"
+                  className="w-full text-center text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                  onClick={loadDemoData}
+                >
+                  No ConnectWise account? Load demo data →
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </DialogContent>
     </Dialog>
   );

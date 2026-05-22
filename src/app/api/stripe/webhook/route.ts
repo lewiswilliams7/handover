@@ -464,7 +464,13 @@ export async function POST(request: Request) {
               const uid = m.user_id as string;
               const { error: pErr } = await supabase
                 .from("profiles")
-                .update({ plan: "free", team_id: null })
+                .update({
+                  plan: "free",
+                  team_id: null,
+                  trial_ends_at: null,
+                  trial_plan: null,
+                  subscription_status: "inactive",
+                })
                 .eq("id", uid);
               if (pErr) {
                 console.error("profiles update (team cancel member):", pErr);
@@ -478,7 +484,12 @@ export async function POST(request: Request) {
         } else {
           const { error } = await supabase
             .from("profiles")
-            .update({ plan: "free" })
+            .update({
+              plan: "free",
+              trial_ends_at: null,
+              trial_plan: null,
+              subscription_status: "inactive",
+            })
             .eq("stripe_customer_id", customerId);
 
           if (error) {

@@ -512,9 +512,11 @@ export function TeamDashboardClient() {
     setRemoveBusy(true);
     const removedId = removeTarget.id;
     try {
-      const res = await fetch(`/api/team/members/${removedId}`, { method: "DELETE" });
-      const j = (await res.json()) as { error?: string };
-      if (!res.ok) {
+      const res = await fetch(`/api/team/members/${removedId}`, {
+        method: "DELETE",
+      });
+      const j = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || !j.ok) {
         toast({ message: j.error ?? "Could not remove member", variant: "error", durationMs: 5000 });
         return;
       }
@@ -738,6 +740,12 @@ export function TeamDashboardClient() {
     <div className="mx-auto max-w-5xl animate-in fade-in duration-300 space-y-8 px-4 py-10">
       <TrialBanner />
       <div>
+        <Link
+          href="/"
+          className="mb-3 inline-flex items-center text-sm font-medium text-[var(--accent)] hover:underline"
+        >
+          ← Back to Dashboard
+        </Link>
         <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)] md:text-[28px]">
           Your team
         </h1>
@@ -800,11 +808,10 @@ export function TeamDashboardClient() {
               ) : null}
             </div>
             </ScrollRevealItem>
-            <ScrollRevealItem index={1} className="min-w-0">
-            <CardMouseSpotlight className={cn(cardShell, "p-5")} style={elevateCardStyle}>
-              <Zap className="size-5 text-[var(--accent)]" strokeWidth={1.75} aria-hidden />
-              {!isEnterprisePlan ? (
-                <>
+            {!isEnterprisePlan ? (
+              <ScrollRevealItem index={1} className="min-w-0">
+                <CardMouseSpotlight className={cn(cardShell, "p-5")} style={elevateCardStyle}>
+                  <Zap className="size-5 text-[var(--accent)]" strokeWidth={1.75} aria-hidden />
                   <p className="mt-4 text-3xl font-bold tabular-nums tracking-tight text-[var(--text-primary)]">
                     {genUsed}
                     <span className="text-lg font-semibold text-[var(--text-muted)]">
@@ -818,19 +825,9 @@ export function TeamDashboardClient() {
                   <p className="mt-2 text-[11px] leading-snug text-[var(--text-muted)]">
                     200 generations per seat per month, pooled across your team
                   </p>
-                </>
-              ) : (
-                <>
-                  <p className="mt-4 text-3xl font-bold tabular-nums tracking-tight text-[var(--text-primary)]">
-                    Unlimited
-                  </p>
-                  <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
-                    Generations (billing period)
-                  </p>
-                </>
-              )}
-            </CardMouseSpotlight>
-            </ScrollRevealItem>
+                </CardMouseSpotlight>
+              </ScrollRevealItem>
+            ) : null}
             <ScrollRevealItem index={2} className="min-w-0">
             <CardMouseSpotlight className={cn(cardShell, "p-5")} style={elevateCardStyle}>
               <LayoutDashboard className="size-5 text-[var(--accent)]" strokeWidth={1.75} aria-hidden />
@@ -858,85 +855,86 @@ export function TeamDashboardClient() {
             </ScrollRevealItem>
           </div>
 
-          <ScrollRevealItem index={4} className="block">
-          <section className={cn(cardShell, "p-6 sm:p-7")} style={elevateCardStyle}>
-            <h2 className={sectionTitleClass()}>Pool usage ({monthName})</h2>
-            <p className="mt-3 text-sm text-[var(--text-secondary)]">
-              Team-wide generation count vs your plan limit this billing period.
-            </p>
-            {!isEnterprisePlan ? (
-              <>
+          {!isEnterprisePlan ? (
+            <ScrollRevealItem index={4} className="block">
+              <section className={cn(cardShell, "p-6 sm:p-7")} style={elevateCardStyle}>
+                <h2 className={sectionTitleClass()}>Pool usage ({monthName})</h2>
+                <p className="mt-3 text-sm text-[var(--text-secondary)]">
+                  Team-wide generation count vs your plan limit this billing period.
+                </p>
                 <div className="mt-5 h-2.5 w-full overflow-hidden rounded-full bg-[var(--bg-secondary)]">
                   <AnimatedFillBar targetPercent={genPct} barClassName="bg-[var(--accent)]" />
                 </div>
                 <p className="mt-2 text-xs text-[var(--text-muted)]">
                   {genUsed} of {genLimit} used ({genPct}%)
                 </p>
-              </>
-            ) : null}
-          </section>
-          </ScrollRevealItem>
+              </section>
+            </ScrollRevealItem>
+          ) : null}
 
-          <ScrollRevealItem index={5} className="block">
-          <section className={cn(cardShell, "p-6 sm:p-7")} style={elevateCardStyle}>
-            <h2 className={sectionTitleClass()}>Daily generations ({monthName})</h2>
-            <p className="mt-3 text-sm text-[var(--text-secondary)]">
-              Saved generations by team members, by UTC day.
-            </p>
-            <div className="mt-5 h-[260px] w-full min-w-0">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={usageStats.dailyThisMonth} margin={{ top: 12, right: 12, left: -8, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="4 4" stroke="var(--border)" vertical={false} />
-                  <XAxis
-                    dataKey="day"
-                    tick={{ fontSize: 11, fill: "var(--text-muted)" }}
-                    axisLine={{ stroke: "var(--border)" }}
-                    tickLine={{ stroke: "var(--border)" }}
-                  />
-                  <YAxis
-                    allowDecimals={false}
-                    tick={{ fontSize: 11, fill: "var(--text-muted)" }}
-                    width={36}
-                    axisLine={{ stroke: "var(--border)" }}
-                    tickLine={{ stroke: "var(--border)" }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      background: "var(--bg-primary)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      color: "var(--text-primary)",
-                    }}
-                    labelFormatter={(_, payload) =>
-                      payload?.[0]?.payload?.date ? String(payload[0].payload.date) : ""
-                    }
-                  />
-                  <ReferenceLine
-                    y={genLimit}
-                    stroke="var(--accent)"
-                    strokeDasharray="5 5"
-                    strokeOpacity={0.65}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="count"
-                    stroke="var(--accent)"
-                    strokeWidth={2.5}
-                    dot={false}
-                    activeDot={{ r: 4, fill: "var(--accent)" }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </section>
-          </ScrollRevealItem>
+          {!isEnterprisePlan ? (
+            <ScrollRevealItem index={5} className="block">
+              <section className={cn(cardShell, "p-6 sm:p-7")} style={elevateCardStyle}>
+                <h2 className={sectionTitleClass()}>Daily generations ({monthName})</h2>
+                <p className="mt-3 text-sm text-[var(--text-secondary)]">
+                  Saved generations by team members, by UTC day.
+                </p>
+                <div className="mt-5 h-[260px] w-full min-w-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={usageStats.dailyThisMonth} margin={{ top: 12, right: 12, left: -8, bottom: 4 }}>
+                      <CartesianGrid strokeDasharray="4 4" stroke="var(--border)" vertical={false} />
+                      <XAxis
+                        dataKey="day"
+                        tick={{ fontSize: 11, fill: "var(--text-muted)" }}
+                        axisLine={{ stroke: "var(--border)" }}
+                        tickLine={{ stroke: "var(--border)" }}
+                      />
+                      <YAxis
+                        allowDecimals={false}
+                        tick={{ fontSize: 11, fill: "var(--text-muted)" }}
+                        width={36}
+                        axisLine={{ stroke: "var(--border)" }}
+                        tickLine={{ stroke: "var(--border)" }}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          background: "var(--bg-primary)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 8,
+                          color: "var(--text-primary)",
+                        }}
+                        labelFormatter={(_, payload) =>
+                          payload?.[0]?.payload?.date ? String(payload[0].payload.date) : ""
+                        }
+                      />
+                      <ReferenceLine
+                        y={genLimit}
+                        stroke="var(--accent)"
+                        strokeDasharray="5 5"
+                        strokeOpacity={0.65}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="count"
+                        stroke="var(--accent)"
+                        strokeWidth={2.5}
+                        dot={false}
+                        activeDot={{ r: 4, fill: "var(--accent)" }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </section>
+            </ScrollRevealItem>
+          ) : null}
 
-          <section className={cn(cardShell, "p-6 sm:p-7")} style={elevateCardStyle}>
-            <h2 className={sectionTitleClass()}>Member usage this month</h2>
-            <p className="mt-3 text-sm text-[var(--text-secondary)]">
-              Each bar shows usage against a {PER_SEAT_MONTHLY_GENERATIONS}/month seat allowance (team pool
-              is shared).
-            </p>
+          {!isEnterprisePlan ? (
+            <section className={cn(cardShell, "p-6 sm:p-7")} style={elevateCardStyle}>
+              <h2 className={sectionTitleClass()}>Member usage this month</h2>
+              <p className="mt-3 text-sm text-[var(--text-secondary)]">
+                Each bar shows usage against a {PER_SEAT_MONTHLY_GENERATIONS}/month seat allowance (team pool
+                is shared).
+              </p>
             <ul className="mt-5 space-y-4">
               {[...displayMembers]
                 .sort(
@@ -975,18 +973,21 @@ export function TeamDashboardClient() {
                 );
                 })}
             </ul>
-          </section>
+            </section>
+          ) : null}
 
-          <ScrollRevealItem index={6} className="block">
-          <section className={cn(cardShell, "p-6 sm:p-7")} style={elevateCardStyle}>
-            <h2 className={sectionTitleClass()}>Month on month</h2>
-            <p className="mt-3 text-sm text-[var(--text-secondary)]">
-              This month: <strong className="text-[var(--text-primary)]">{usageStats.thisMonthTotal}</strong>{" "}
-              generations logged · Last month:{" "}
-              <strong className="text-[var(--text-primary)]">{usageStats.lastMonthTotal}</strong>
-            </p>
-          </section>
-          </ScrollRevealItem>
+          {!isEnterprisePlan ? (
+            <ScrollRevealItem index={6} className="block">
+              <section className={cn(cardShell, "p-6 sm:p-7")} style={elevateCardStyle}>
+                <h2 className={sectionTitleClass()}>Month on month</h2>
+                <p className="mt-3 text-sm text-[var(--text-secondary)]">
+                  This month: <strong className="text-[var(--text-primary)]">{usageStats.thisMonthTotal}</strong>{" "}
+                  generations logged · Last month:{" "}
+                  <strong className="text-[var(--text-primary)]">{usageStats.lastMonthTotal}</strong>
+                </p>
+              </section>
+            </ScrollRevealItem>
+          ) : null}
 
           <ScrollRevealItem index={7} className="block">
           <section className={cn(cardShell, "p-6 sm:p-7")} style={elevateCardStyle}>
@@ -1017,7 +1018,7 @@ export function TeamDashboardClient() {
               Each member has an individual allowance of 200 generations/month contributing to your team
               pool.
             </p>
-            <div className="mt-5 min-w-0">
+            <div className="mt-5 min-w-0 [&_[data-slot=table-container]]:overflow-y-visible">
               <Table>
                 <TableHeader>
                   <TableRow>

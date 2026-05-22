@@ -25,6 +25,123 @@ import {
 import type { NormalisedNote, NormalisedTicket } from "@/lib/psa/types";
 import { stripHtmlToPlainText } from "@/lib/utils";
 
+const HALO_REQUEST_CONCURRENCY = 5;
+const HALO_BATCH_DELAY_MS = 100;
+const HALO_RATE_LIMIT_DEFAULT_WAIT_MS = 10_000;
+
+export class HaloRateLimitError extends Error {
+  readonly status = 429;
+
+  constructor(message = "HaloPSA rate limit exceeded") {
+    super(message);
+    this.name = "HaloRateLimitError";
+  }
+}
+
+function haloSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function parseHaloRetryAfterMs(res: Response): number | null {
+  const raw = res.headers.get("Retry-After");
+  if (!raw?.trim()) return null;
+  const asSeconds = Number.parseInt(raw.trim(), 10);
+  if (Number.isFinite(asSeconds) && asSeconds >= 0) {
+    return asSeconds * 1000;
+  }
+  const asDate = Date.parse(raw);
+  if (!Number.isNaN(asDate)) {
+    return Math.max(0, asDate - Date.now());
+  }
+  return null;
+}
+
+let lastHaloRequestTime = 0;
+
+async function haloRequestThrottle(): Promise<void> {
+  const now = Date.now();
+  const elapsed = now - lastHaloRequestTime;
+  if (elapsed < 200) {
+    await haloSleep(200 - elapsed);
+  }
+  lastHaloRequestTime = Date.now();
+}
+
+async function haloThrottledRawFetch(url: string, init?: RequestInit): Promise<Response> {
+  const requestInit: RequestInit = {
+    ...init,
+    cache: init?.cache ?? "no-store",
+  };
+  await haloRequestThrottle();
+  let res = await fetch(url, requestInit);
+  if (res.status !== 429) return res;
+
+  const waitMs = parseHaloRetryAfterMs(res) ?? HALO_RATE_LIMIT_DEFAULT_WAIT_MS;
+  console.warn("[HaloPSA] 429 rate limited; retrying after", waitMs, "ms:", url);
+  await haloSleep(waitMs);
+
+  await haloRequestThrottle();
+  res = await fetch(url, requestInit);
+  return res;
+}
+
+let haloQueueActive = 0;
+const haloQueueWaiters: Array<() => void> = [];
+let haloBatchDelayTimer: ReturnType<typeof setTimeout> | null = null;
+
+function drainHaloRequestQueue(): void {
+  while (haloQueueActive < HALO_REQUEST_CONCURRENCY && haloQueueWaiters.length > 0) {
+    const next = haloQueueWaiters.shift();
+    if (next) next();
+  }
+}
+
+function scheduleHaloBatchDelay(): void {
+  if (haloBatchDelayTimer != null) return;
+  haloBatchDelayTimer = setTimeout(() => {
+    haloBatchDelayTimer = null;
+    drainHaloRequestQueue();
+  }, HALO_BATCH_DELAY_MS);
+}
+
+function acquireHaloRequestSlot(): Promise<void> {
+  if (haloQueueActive < HALO_REQUEST_CONCURRENCY) {
+    haloQueueActive++;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    haloQueueWaiters.push(() => {
+      haloQueueActive++;
+      resolve();
+    });
+  });
+}
+
+function releaseHaloRequestSlot(): void {
+  haloQueueActive--;
+  if (haloQueueActive === 0 && haloQueueWaiters.length > 0) {
+    scheduleHaloBatchDelay();
+    return;
+  }
+  drainHaloRequestQueue();
+}
+
+/** Queued HaloPSA API fetch with 429 retry (Retry-After or 10s, one retry). */
+export function haloPsaFetch(url: string, init?: RequestInit): Promise<Response> {
+  return acquireHaloRequestSlot().then(async () => {
+    try {
+      return await haloThrottledRawFetch(url, init);
+    } finally {
+      releaseHaloRequestSlot();
+    }
+  });
+}
+
+/** True when Halo returned 429 after retry (caller should use cache or degrade gracefully). */
+export function isHaloRateLimitedResponse(res: Response): boolean {
+  return res.status === 429;
+}
+
 async function pLimit<T>(
   tasks: (() => Promise<T>)[],
   concurrency: number
@@ -42,6 +159,35 @@ async function pLimit<T>(
   const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, worker)
   await Promise.all(workers)
   return results
+}
+
+const HALO_TICKET_DETAIL_EXTRA_429_WAIT_MS = 5_000;
+
+async function haloPsaFetchTicketDetailWithExtra429Retry(
+  url: string,
+  init?: RequestInit,
+): Promise<Response> {
+  let res = await haloPsaFetch(url, init);
+  if (!isHaloRateLimitedResponse(res)) return res;
+  await haloSleep(HALO_TICKET_DETAIL_EXTRA_429_WAIT_MS);
+  return haloPsaFetch(url, init);
+}
+
+async function pLimitBatched<T>(
+  tasks: (() => Promise<T>)[],
+  concurrency: number,
+  batchDelayMs: number,
+): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  for (let i = 0; i < tasks.length; i += concurrency) {
+    if (i > 0) await new Promise((r) => setTimeout(r, batchDelayMs));
+    const batch = tasks.slice(i, i + concurrency);
+    const batchResults = await Promise.all(batch.map((task) => task()));
+    for (let j = 0; j < batchResults.length; j++) {
+      results[i + j] = batchResults[j];
+    }
+  }
+  return results;
 }
 
 export interface HaloCredentials {
@@ -672,11 +818,11 @@ export function mapTicket(
 
   const dateoccurred =
     strField(ticket.dateoccurred) ??
-    strField(ticket.last_update) ??
     strField(ticket.date_occurred) ??
     strField(ticket.dateopened) ??
     strField(ticket.created_at) ??
     strField(ticket.opendate) ??
+    strField(ticket.last_update) ??
     null;
 
   const targetdate = pickTargetDateSkippingHaloNullSentinels(ticket);
@@ -928,7 +1074,7 @@ async function getTicketTypes(
   ticketTypesCache = null;
 
   try {
-    const res = await fetch(`${baseUrl}/api/TicketType`, {
+    const res = await haloPsaFetch(`${baseUrl}/api/TicketType`, {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
     });
@@ -994,7 +1140,7 @@ export async function getHaloTicketStatuses(
   const endpoints = [`${base}/api/TicketStatus`, `${base}/api/ticketstatus`];
   for (const url of endpoints) {
     try {
-      const res = await fetch(url, {
+      const res = await haloPsaFetch(url, {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       });
@@ -1317,12 +1463,12 @@ export async function getAllHaloClients(
     const url = `${base}/api/Clients?pageinate=true&page_size=${pageSize}&page_no=${page}&includeinactive=false`;
     console.log(`[clients] Fetching page ${page}:`, url);
 
-    const res = await fetch(url, { headers, cache: "no-store" });
+    const res = await haloPsaFetch(url, { headers, cache: "no-store" });
 
     if (!res.ok) {
       console.error("[clients] Failed:", res.status);
       if (page === 1 && res.status === 404) {
-        const fallback = await fetch(`${base}/api/Client`, {
+        const fallback = await haloPsaFetch(`${base}/api/Client`, {
           headers,
           cache: "no-store",
         });
@@ -1410,7 +1556,7 @@ export async function getHaloAgents(
 
   const endpoints = [`${base}/api/Agents`, `${base}/api/Agent`];
   for (const url of endpoints) {
-    const res = await fetch(url, { headers, cache: "no-store" });
+    const res = await haloPsaFetch(url, { headers, cache: "no-store" });
     if (!res.ok) continue;
     const data = (await res.json()) as unknown;
     const rows =
@@ -1469,7 +1615,7 @@ async function getCachedHaloAgentNameById(
       const urls = [`${baseUrl}/api/agent/${agentId}`, `${baseUrl}/api/Agent/${agentId}`];
       for (const url of urls) {
         try {
-          const res = await fetch(url, { headers, cache: "no-store" });
+          const res = await haloPsaFetch(url, { headers, cache: "no-store" });
           if (!res.ok) continue;
           const row = parseAgentDetailJson(await res.json());
           if (!row) continue;
@@ -1532,7 +1678,7 @@ export async function getHaloClientsPage(
     Number.isFinite(pageSize) && pageSize >= 1 ? Math.min(200, Math.floor(pageSize)) : 100;
 
   const url = `${base}/api/Clients?pageinate=true&page_size=${safeSize}&page_no=${safePage}&includeinactive=false`;
-  const res = await fetch(url, { headers, cache: "no-store" });
+  const res = await haloPsaFetch(url, { headers, cache: "no-store" });
 
   if (!res.ok) {
     throw new Error("Could not fetch HaloPSA clients.");
@@ -1652,8 +1798,11 @@ async function discoverHaloTicketsClientFilterStyle(
   for (const style of attempts) {
     const url = buildPaginatedTicketsSearchUrl(baseUrl, 1, pageSize, filters, style);
     console.log("[getHaloTickets] trying url:", url);
-    const res = await fetch(url, { headers, cache: "no-store" });
+    const res = await haloPsaFetch(url, { headers, cache: "no-store" });
     console.log("[getHaloTickets] response:", res.status);
+    if (isHaloRateLimitedResponse(res)) {
+      throw new HaloRateLimitError();
+    }
     if (!res.ok) continue;
     const batch = parseTicketsPayload(await res.json());
     if (batch.length > 0) {
@@ -1707,144 +1856,205 @@ export async function getHaloTickets(
     });
   };
 
-  const runLegacyPath = async (): Promise<HaloTicket[]> => {
-    const legacy = new URL(`${baseUrl}/api/Tickets`);
-    if (typeof filters.clientId === "number") {
-      legacy.searchParams.set("client_id", String(filters.clientId));
-    }
-    if (typeof filters.projectId === "number") {
-      legacy.searchParams.set("project_id", String(filters.projectId));
-    }
-    if (typeof filters.statusId === "number") {
-      legacy.searchParams.set("status_id", String(filters.statusId));
-    }
-    if (filters.dateFrom) {
-      legacy.searchParams.set("dateFrom", filters.dateFrom);
-      legacy.searchParams.set("dateopen", filters.dateFrom);
-    }
-    if (filters.dateTo) legacy.searchParams.set("dateTo", filters.dateTo);
-    if (filters.minimalTicketPayload) {
-      legacy.searchParams.set("fields", "id,client_id,clientid");
-    } else {
-      applyHaloTicketsListEnrichment(legacy, filters);
-    }
-    legacy.searchParams.set(
-      "count",
-      String(filters.count && filters.count > 0 ? filters.count : 50),
-    );
-    const legacyRes = await fetch(legacy.toString(), { headers, cache: "no-store" });
-    if (!legacyRes.ok) {
-      throw new Error("Could not fetch HaloPSA tickets.");
-    }
-    const legacyData = (await legacyRes.json()) as { tickets?: unknown[] } | unknown[];
-    const rawTickets = parseTicketsPayload(legacyData);
-    if (rawTickets.length > 0) {
-      logFullRawTicket(rawTickets[0]);
-    }
-    const tickets = rawTickets.map((t) =>
-      mapTicket(t as unknown as Record<string, unknown>, ticketTypes),
-    );
-    if (rawTickets.length > 0 && !filters.minimalTicketPayload) {
-      const r0 = rawTickets[0] as Record<string, unknown>;
-      console.log("[HaloPSA] list (legacy) first ticket raw agent:", r0.agent ?? null);
-    }
-    const keywordFiltered = applyKeywordFilter(tickets);
+  const finalizeTickets = async (mapped: HaloTicket[]): Promise<HaloTicket[]> => {
+    const keywordFiltered = applyKeywordFilter(mapped);
     if (keywordFiltered.length === 0) {
       throw new Error(
         "No tickets found with the current filters. Try expanding the date range or changing the status filters.",
       );
     }
     if (filters.includeDetails) {
-      return pLimit(
-        keywordFiltered.map((t) => () => getTicketDetails(baseUrl, token, t.id)),
-        8
+      return pLimitBatched(
+        keywordFiltered.map((t) => () => getTicketDetails(baseUrl, token, t.id, t)),
+        3,
+        200,
       );
     }
     return keywordFiltered;
   };
 
-  let allRaw: unknown[] = [];
-  let page = 1;
-  let hasMore = true;
-  let clientStyle: HaloTicketsClientUrlStyle | "none" = "none";
+  const mapRawTickets = (rawTickets: unknown[]): HaloTicket[] =>
+    rawTickets.map((t) => mapTicket(t as unknown as Record<string, unknown>, ticketTypes));
 
-  if (typeof filters.clientId === "number") {
-    const disc = await discoverHaloTicketsClientFilterStyle(
-      baseUrl,
-      pageSize,
-      {
-        clientId: filters.clientId,
-        projectId: filters.projectId,
-        statusId: filters.statusId,
-        dateFrom: filters.dateFrom,
-        dateTo: filters.dateTo,
-        minimalTicketPayload: filters.minimalTicketPayload,
-      },
-      headers,
-    );
-    if (disc.mode === "legacy") {
-      return runLegacyPath();
-    }
-    clientStyle = disc.style;
-    allRaw = [...disc.firstBatch];
-    if (disc.firstBatch.length > 0) {
-      logFullRawTicket(disc.firstBatch[0]);
-      page = 2;
-      hasMore = disc.firstBatch.length >= pageSize && allRaw.length < maxTickets;
-    } else {
-      hasMore = false;
-    }
-  }
-
-  while (hasMore && allRaw.length < maxTickets && page <= 20) {
-    const url = buildPaginatedTicketsSearchUrl(baseUrl, page, pageSize, filters, clientStyle);
-
-    const res = await fetch(url, { headers, cache: "no-store" });
-
-    if (!res.ok) {
-      if (page === 1 && clientStyle === "none") {
-        return runLegacyPath();
+  const runLegacyPath = async (): Promise<HaloTicket[] | null> => {
+    try {
+      const legacy = new URL(`${baseUrl}/api/Tickets`);
+      if (typeof filters.clientId === "number") {
+        legacy.searchParams.set("client_id", String(filters.clientId));
       }
-      throw new Error("Could not fetch HaloPSA tickets.");
+      if (typeof filters.projectId === "number") {
+        legacy.searchParams.set("project_id", String(filters.projectId));
+      }
+      if (typeof filters.statusId === "number") {
+        legacy.searchParams.set("status_id", String(filters.statusId));
+      }
+      if (filters.dateFrom) {
+        legacy.searchParams.set("dateFrom", filters.dateFrom);
+        legacy.searchParams.set("dateopen", filters.dateFrom);
+      }
+      if (filters.dateTo) legacy.searchParams.set("dateTo", filters.dateTo);
+      if (filters.minimalTicketPayload) {
+        legacy.searchParams.set("fields", "id,client_id,clientid");
+      } else {
+        applyHaloTicketsListEnrichment(legacy, filters);
+      }
+      legacy.searchParams.set(
+        "count",
+        String(filters.count && filters.count > 0 ? filters.count : 50),
+      );
+      const legacyRes = await haloPsaFetch(legacy.toString(), { headers, cache: "no-store" });
+      console.log("[delivery-health] legacy fetch status:", legacyRes.status);
+      if (isHaloRateLimitedResponse(legacyRes)) {
+        throw new HaloRateLimitError();
+      }
+      if (!legacyRes.ok) {
+        let errBody = "";
+        try {
+          errBody = await legacyRes.text();
+        } catch {
+          errBody = "";
+        }
+        console.error(
+          "[HaloPSA] legacy tickets fetch failed:",
+          legacyRes.status,
+          errBody.slice(0, 800),
+        );
+        return null;
+      }
+      const legacyData = (await legacyRes.json()) as { tickets?: unknown[] } | unknown[];
+      const rawTickets = parseTicketsPayload(legacyData);
+      if (rawTickets.length > 0) {
+        logFullRawTicket(rawTickets[0]);
+      }
+      const tickets = mapRawTickets(rawTickets);
+      if (rawTickets.length > 0 && !filters.minimalTicketPayload) {
+        const r0 = rawTickets[0] as Record<string, unknown>;
+        console.log("[HaloPSA] list (legacy) first ticket raw agent:", r0.agent ?? null);
+      }
+      return await finalizeTickets(tickets);
+    } catch (e) {
+      if (e instanceof HaloRateLimitError) throw e;
+      if (
+        e instanceof Error &&
+        e.message.includes("No tickets found with the current filters")
+      ) {
+        throw e;
+      }
+      console.error("[HaloPSA] legacy tickets path error:", e);
+      return null;
+    }
+  };
+
+  const tryModernPaginated = async (
+    initialAllRaw: unknown[],
+    startPage: number,
+    startHasMore: boolean,
+    style: HaloTicketsClientUrlStyle | "none",
+  ): Promise<HaloTicket[] | null> => {
+    let allRaw = [...initialAllRaw];
+    let page = startPage;
+    let hasMore = startHasMore;
+    try {
+      while (hasMore && allRaw.length < maxTickets && page <= 20) {
+        const url = buildPaginatedTicketsSearchUrl(baseUrl, page, pageSize, filters, style);
+        const res = await haloPsaFetch(url, { headers, cache: "no-store" });
+        if (isHaloRateLimitedResponse(res)) {
+          throw new HaloRateLimitError();
+        }
+        if (!res.ok) {
+          if (page === 1 && style === "none") {
+            return null;
+          }
+          console.error("[HaloPSA] paginated tickets fetch failed:", res.status);
+          break;
+        }
+        const data = (await res.json()) as unknown;
+        const batch = parseTicketsPayload(data);
+        if (page === 1 && batch.length > 0 && style === "none") {
+          logFullRawTicket(batch[0]);
+        }
+        if (batch.length === 0) {
+          hasMore = false;
+        } else {
+          allRaw = [...allRaw, ...batch];
+          page += 1;
+          if (batch.length < pageSize) hasMore = false;
+        }
+      }
+      if (allRaw.length === 0) return null;
+      const sliced = allRaw.slice(0, maxTickets);
+      const tickets = mapRawTickets(sliced);
+      if (sliced.length > 0 && !filters.minimalTicketPayload) {
+        const r0 = sliced[0] as Record<string, unknown>;
+        console.log("[HaloPSA] list first ticket raw agent:", r0.agent ?? null);
+      }
+      return await finalizeTickets(tickets);
+    } catch (e) {
+      if (e instanceof HaloRateLimitError) throw e;
+      if (
+        e instanceof Error &&
+        e.message.includes("No tickets found with the current filters")
+      ) {
+        throw e;
+      }
+      console.error("[HaloPSA] modern tickets path error:", e);
+      return null;
+    }
+  };
+
+  try {
+    if (typeof filters.clientId === "number") {
+      const disc = await discoverHaloTicketsClientFilterStyle(
+        baseUrl,
+        pageSize,
+        {
+          clientId: filters.clientId,
+          projectId: filters.projectId,
+          statusId: filters.statusId,
+          dateFrom: filters.dateFrom,
+          dateTo: filters.dateTo,
+          minimalTicketPayload: filters.minimalTicketPayload,
+        },
+        headers,
+      );
+      if (disc.mode === "legacy") {
+        const legacy = await runLegacyPath();
+        if (legacy) return legacy;
+        const modern = await tryModernPaginated([], 1, true, "none");
+        return modern ?? [];
+      }
+      if (disc.firstBatch.length > 0) {
+        logFullRawTicket(disc.firstBatch[0]);
+      }
+      const startPage = disc.firstBatch.length > 0 ? 2 : 1;
+      const startHasMore =
+        disc.firstBatch.length >= pageSize && disc.firstBatch.length < maxTickets;
+      const modern = await tryModernPaginated(
+        disc.firstBatch,
+        startPage,
+        startHasMore,
+        disc.style,
+      );
+      if (modern) return modern;
+      const legacy = await runLegacyPath();
+      return legacy ?? [];
     }
 
-    const data = (await res.json()) as unknown;
-    const batch = parseTicketsPayload(data);
-    if (page === 1 && batch.length > 0 && clientStyle === "none") {
-      logFullRawTicket(batch[0]);
+    const modern = await tryModernPaginated([], 1, true, "none");
+    if (modern) return modern;
+    const legacy = await runLegacyPath();
+    return legacy ?? [];
+  } catch (e) {
+    if (e instanceof HaloRateLimitError) throw e;
+    if (
+      e instanceof Error &&
+      e.message.includes("No tickets found with the current filters")
+    ) {
+      throw e;
     }
-
-    if (batch.length === 0) {
-      hasMore = false;
-    } else {
-      allRaw = [...allRaw, ...batch];
-      page += 1;
-      if (batch.length < pageSize) hasMore = false;
-    }
+    console.error("[getHaloTickets] all paths failed:", e);
+    return [];
   }
-
-  const sliced = allRaw.slice(0, maxTickets);
-  const tickets = sliced.map((t) =>
-    mapTicket(t as unknown as Record<string, unknown>, ticketTypes),
-  );
-  if (sliced.length > 0 && !filters.minimalTicketPayload) {
-    const r0 = sliced[0] as Record<string, unknown>;
-    console.log("[HaloPSA] list first ticket raw agent:", r0.agent ?? null);
-  }
-  const keywordFiltered = applyKeywordFilter(tickets);
-  if (keywordFiltered.length === 0) {
-    throw new Error(
-      "No tickets found with the current filters. Try expanding the date range or changing the status filters.",
-    );
-  }
-  if (filters.includeDetails) {
-    const details = await pLimit(
-      keywordFiltered.map((t) => () => getTicketDetails(baseUrl, token, t.id)),
-      8
-    );
-    return details;
-  }
-  return keywordFiltered;
 }
 
 export async function getHaloClients(token: string, haloUrl: string): Promise<HaloClient[]> {
@@ -1902,6 +2112,11 @@ type ProjectsCache = {
 } | null;
 
 let projectsCache: ProjectsCache = null;
+
+/** Clears in-memory Halo project list cache (e.g. import modal refresh). */
+export function clearHaloProjectsCache(): void {
+  projectsCache = null;
+}
 
 /**
  * Projects in Halo are ticket records with project-type ticket types.
@@ -2061,7 +2276,7 @@ export async function postNoteToHalo(
       }),
       filename ?? "handover-report.xlsx",
     );
-    const res = await fetch(`${haloUrl}/api/Actions`, {
+    const res = await haloPsaFetch(`${haloUrl}/api/Actions`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -2074,7 +2289,7 @@ export async function postNoteToHalo(
     return;
   }
 
-  const res = await fetch(`${haloUrl}/api/Actions`, {
+  const res = await haloPsaFetch(`${haloUrl}/api/Actions`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -2091,6 +2306,7 @@ export async function getTicketDetails(
   haloUrl: string,
   token: string,
   ticketId: number,
+  fallback?: HaloTicket,
 ): Promise<HaloTicket> {
   const baseUrl = normalizeHaloUrl(haloUrl);
   const headers = { Authorization: `Bearer ${token}` };
@@ -2111,16 +2327,17 @@ export async function getTicketDetails(
   ticketUrl.searchParams.set("includedetails", "true");
   ticketUrl.searchParams.set("fields", HALO_TICKETS_LIST_FIELDS);
 
+  const fetchInit = { headers, cache: "no-store" as const };
   const [ticketRes, actionsAllRes, actionsConversationRes] = await Promise.all([
-    fetch(ticketUrl.toString(), {
-      headers,
-      cache: "no-store",
-    }),
-    fetch(actionsUrlAll, { headers, cache: "no-store" }),
-    fetch(actionsUrlConversation, { headers, cache: "no-store" }),
+    haloPsaFetchTicketDetailWithExtra429Retry(ticketUrl.toString(), fetchInit),
+    haloPsaFetchTicketDetailWithExtra429Retry(actionsUrlAll, fetchInit),
+    haloPsaFetchTicketDetailWithExtra429Retry(actionsUrlConversation, fetchInit),
   ]);
 
   if (!ticketRes.ok) {
+    if (isHaloRateLimitedResponse(ticketRes) && fallback) {
+      return { ...fallback, notes: fallback.notes ?? [] };
+    }
     throw new Error("Could not fetch HaloPSA ticket details.");
   }
   const rawTicket = (await ticketRes.json()) as Record<string, unknown>;
@@ -2182,6 +2399,11 @@ export async function getTicketDetails(
 
 function stripHtmlLite(html: string): string {
   return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/** Raw note/email body for display pipelines (HTML may still be present). */
+export function haloNoteRawText(note: HaloNote): string {
+  return noteText(note);
 }
 
 function noteText(note: HaloNote): string {

@@ -15,7 +15,7 @@ export function MarketingBackgroundLayer() {
       canvas.height = window.innerHeight;
       const ctx = canvas.getContext("2d");
       if (ctx) {
-        ctx.fillStyle = "#080D14";
+        ctx.fillStyle = "#172035";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         const grad = ctx.createRadialGradient(
           canvas.width * 0.8,
@@ -58,7 +58,7 @@ export function MarketingBackgroundLayer() {
     const draw = () => {
       time += 1;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = "#080D14";
+      ctx.fillStyle = "#172035";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       orbs.forEach((orb) => {
@@ -101,13 +101,21 @@ export function MarketingBackgroundLayer() {
  * Remounts on pathname change so CSS can run a 300ms fade + drift-in per route.
  * prefers-reduced-motion disables the animation in globals.css.
  */
+function isPortalCustomerPath(pathname: string): boolean {
+  const segments = pathname.split("/").filter(Boolean);
+  /** `/portal/{msp}/{client}` and deeper (e.g. invite) — no marketing nav; skip top padding reserved for Nav. */
+  return segments[0] === "portal" && segments.length >= 3;
+}
+
 export function RouteTransition({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "";
   const isDashboardRoute = pathname.startsWith("/dashboard");
+  const isWelcomeRoute = pathname === "/welcome";
+  const skipNavTopPad = isDashboardRoute || isWelcomeRoute || isPortalCustomerPath(pathname);
   return (
     <div
       key={pathname}
-      className={`page-route-fade relative flex min-h-0 w-full flex-1 flex-col ${isDashboardRoute ? "" : "pt-20"}`}
+      className={`page-route-fade relative flex min-h-0 w-full flex-1 flex-col ${skipNavTopPad ? "" : "pt-20"}`}
     >
       {children}
     </div>

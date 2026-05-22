@@ -14,13 +14,19 @@ function normalizeHaloBase(url: string): string {
 }
 
 function mapClientRow(c: Record<string, unknown>): { id: number; name: string } {
-  const rawId = c.id;
-  const id = typeof rawId === "number" ? rawId : Number(rawId);
+  const rawId = c.id ?? c.client_id ?? c.clientid ?? c.ClientID ?? c.ClientId;
+  const id =
+    typeof rawId === "number"
+      ? rawId
+      : Number(typeof rawId === "string" ? rawId.trim() : String(rawId ?? "").trim());
   const name =
     (typeof c.name === "string" ? c.name : null) ??
-    (typeof c.clientname === "string" ? c.clientname : "") ??
+    (typeof c.clientname === "string" ? c.clientname : null) ??
+    (typeof c.client_name === "string" ? c.client_name : null) ??
+    (typeof c.ClientName === "string" ? c.ClientName : null) ??
     "";
-  return { id: Number.isFinite(id) ? id : 0, name };
+  const trimmed = String(name).trim();
+  return { id: Number.isFinite(id) ? id : 0, name: trimmed };
 }
 
 function extractClientsPayload(data: unknown): unknown[] {
@@ -34,15 +40,70 @@ function extractClientsPayload(data: unknown): unknown[] {
   return [];
 }
 
+function recordTotalFromPayload(data: unknown, fallbackLen: number): number {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return fallbackLen;
+  const o = data as Record<string, unknown>;
+  const rcPick = o.record_count ?? o.recordCount ?? o.total ?? o.TotalRecordCount;
+  if (typeof rcPick === "number" && Number.isFinite(rcPick)) return rcPick;
+  if (typeof rcPick === "string") {
+    const n = Number.parseInt(rcPick, 10);
+    if (Number.isFinite(n)) return n;
+  }
+  return fallbackLen;
+}
+
+type ListMode = "singular" | "plural";
+
+function buildListUrl(haloUrl: string, mode: ListMode, pageNo: number, pageSize: number, count: number): string {
+  const seg = mode === "singular" ? "Client" : "Clients";
+  return `${haloUrl}/api/${seg}?count=${count}&page_size=${pageSize}&page_no=${pageNo}`;
+}
+
+async function fetchHaloListPage(
+  haloUrl: string,
+  headers: HeadersInit,
+  mode: ListMode,
+  pageNo: number,
+  pageSize: number,
+  count: number,
+): Promise<{ ok: boolean; status: number; data: unknown }> {
+  const url = buildListUrl(haloUrl, mode, pageNo, pageSize, count);
+  const res = await fetch(url, { headers, cache: "no-store" });
+  let data: unknown = null;
+  if (res.ok) {
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
+    }
+  }
+  return { ok: res.ok, status: res.status, data };
+}
+
+async function discoverListMode(
+  haloUrl: string,
+  headers: HeadersInit,
+  pageSize: number,
+  count: number,
+): Promise<{ mode: ListMode; data: unknown } | null> {
+  const s = await fetchHaloListPage(haloUrl, headers, "singular", 1, pageSize, count);
+  if (s.ok && s.data) return { mode: "singular", data: s.data };
+  const p = await fetchHaloListPage(haloUrl, headers, "plural", 1, pageSize, count);
+  if (p.ok && p.data) return { mode: "plural", data: p.data };
+  return null;
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const pageRaw = searchParams.get("page") ?? "1";
-    const pageSizeRaw = searchParams.get("page_size") ?? "100";
-    const page = Math.max(1, Number.parseInt(pageRaw, 10) || 1);
-    const pageSize = Math.min(200, Math.max(1, Number.parseInt(pageSizeRaw, 10) || 100));
+    const countRaw = searchParams.get("count") ?? "2500";
+    const pageSizeRaw = searchParams.get("page_size") ?? countRaw;
+    const qRaw = searchParams.get("q") ?? "";
+    const q = qRaw.trim().toLowerCase();
+    const count = Math.min(2500, Math.max(1, Number.parseInt(countRaw, 10) || 2500));
+    const pageSize = Math.min(2500, Math.max(1, Number.parseInt(pageSizeRaw, 10) || count));
 
-    console.log("[halo/clients] params:", { page, pageSize });
+    console.log("[halo/clients] params:", { count, pageSize, q: q || undefined });
 
     const supabase = await createServerClient();
     const {
@@ -77,8 +138,6 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "No HaloPSA connection" }, { status: 404 });
     }
 
-    console.log("[halo/clients] connection fields:", Object.keys(connection));
-
     let haloUrl: string;
     try {
       haloUrl = normalizeHaloBase(connection.halo_url);
@@ -106,7 +165,7 @@ export async function GET(request: Request) {
       console.log("[halo/clients] token:", "obtained (cached or fresh)");
     } catch (e) {
       console.error("[halo/clients] token error:", e instanceof Error ? e.message : e);
-      return NextResponse.json({ error: "Failed to get HaloPSA token" }, { status: 500 });
+      return NextResponse.json({ clients: [] });
     }
 
     const headers = {
@@ -114,91 +173,78 @@ export async function GET(request: Request) {
       "Content-Type": "application/json",
     };
 
-    const primaryUrl = `${haloUrl}/api/Client?pageinate=true&page_size=${pageSize}&page_no=${page}&includeinactive=false`;
-    console.log("[halo/clients] fetching:", primaryUrl);
+    const applyQ = (rows: { id: number; name: string }[]) =>
+      q.length > 0
+        ? rows.filter((c) => c.name.toLowerCase().includes(q) || String(c.id).includes(q))
+        : rows;
+    const discovered = await discoverListMode(haloUrl, headers, pageSize, count);
+    if (!discovered) {
+      console.error("[halo/clients] could not discover Client/Clients list endpoint");
+      return NextResponse.json({ clients: [] });
+    }
 
-    const clientsRes = await fetch(primaryUrl, { headers, cache: "no-store" });
-    console.log("[halo/clients] clients status:", clientsRes.status);
-
-    if (!clientsRes.ok) {
-      const errText = await clientsRes.text();
-      console.error("[halo/clients] clients error:", errText.slice(0, 500));
-
-      const altUrl = `${haloUrl}/api/Clients?pageinate=true&page_size=${pageSize}&page_no=${page}&includeinactive=false`;
-      console.log("[halo/clients] trying alt:", altUrl);
-
-      const altRes = await fetch(altUrl, { headers, cache: "no-store" });
-      console.log("[halo/clients] alt status:", altRes.status);
-
-      if (!altRes.ok) {
-        const altErr = await altRes.text();
-        console.error("[halo/clients] alt error:", altErr.slice(0, 500));
-        return NextResponse.json(
-          { error: "HaloPSA clients API error", status: clientsRes.status },
-          { status: 500 },
-        );
+    const byId = new Map<number, { id: number; name: string }>();
+    const mergeRows = (data: unknown) => {
+      const rows = extractClientsPayload(data);
+      for (const row of rows) {
+        const mapped = mapClientRow(row as Record<string, unknown>);
+        if (mapped.id > 0 && mapped.name.trim()) byId.set(mapped.id, mapped);
       }
+      return rows.length;
+    };
 
-      const altData: unknown = await altRes.json();
-      const altRaw = extractClientsPayload(altData);
-      const altRecordCount =
-        altData && typeof altData === "object" && "record_count" in altData
-          ? (altData as { record_count?: unknown }).record_count
-          : null;
-      const totalNum =
-        typeof altRecordCount === "number"
-          ? altRecordCount
-          : typeof altRecordCount === "string"
-            ? Number.parseInt(altRecordCount, 10)
-            : altRaw.length;
-
-      console.log("[halo/clients] alt clients:", altRaw.length);
-
-      return NextResponse.json({
-        clients: altRaw.map((c) => mapClientRow(c as Record<string, unknown>)),
-        hasMore: altRaw.length >= pageSize,
-        page,
-        total: Number.isFinite(totalNum) ? totalNum : altRaw.length,
-      });
+    const firstPageRowCount = mergeRows(discovered.data);
+    let targetTotal = recordTotalFromPayload(discovered.data, firstPageRowCount);
+    // Halo often returns fewer rows than requested page_size (e.g. 27 vs 2500) while record_count
+    // reflects the full directory — do not treat a short page as the last page in that case.
+    if (targetTotal <= firstPageRowCount) {
+      targetTotal = Number.POSITIVE_INFINITY;
+    }
+    let pageNo = 2;
+    const maxPages = 500;
+    while (pageNo <= maxPages) {
+      let pageRes: { ok: boolean; status: number; data: unknown };
+      try {
+        pageRes = await fetchHaloListPage(haloUrl, headers, discovered.mode, pageNo, pageSize, count);
+      } catch (pageErr) {
+        console.error("[halo/clients] page fetch threw:", pageNo, pageErr);
+        break;
+      }
+      if (!pageRes.ok || !pageRes.data) {
+        console.error("[halo/clients] page fetch failed:", pageNo, "status:", pageRes.status);
+        break;
+      }
+      const sizeBefore = byId.size;
+      const rowsThisPage = mergeRows(pageRes.data);
+      if (rowsThisPage === 0) break;
+      if (
+        targetTotal === Number.POSITIVE_INFINITY &&
+        byId.size === sizeBefore &&
+        rowsThisPage > 0
+      ) {
+        break;
+      }
+      if (targetTotal !== Number.POSITIVE_INFINITY) {
+        const reported = recordTotalFromPayload(pageRes.data, targetTotal);
+        if (Number.isFinite(reported) && reported > targetTotal) {
+          targetTotal = reported;
+        }
+        if (byId.size >= targetTotal) break;
+      }
+      pageNo += 1;
     }
 
-    const data: unknown = await clientsRes.json();
-    console.log(
-      "[halo/clients] response keys:",
-      data && typeof data === "object" && !Array.isArray(data) ? Object.keys(data as object) : "(array)",
+    const sorted = [...byId.values()].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
     );
-
-    const clientsRaw = extractClientsPayload(data);
-    console.log("[halo/clients] clients found:", clientsRaw.length);
-
-    if (clientsRaw.length > 0) {
-      console.log("[halo/clients] first client:", JSON.stringify(clientsRaw[0]));
-    }
-
-    const recordCount =
-      data && typeof data === "object" && !Array.isArray(data)
-        ? (data as Record<string, unknown>).record_count ??
-          (data as Record<string, unknown>).recordCount ??
-          (data as Record<string, unknown>).total
-        : null;
-    const total =
-      typeof recordCount === "number"
-        ? recordCount
-        : typeof recordCount === "string"
-          ? Number.parseInt(recordCount, 10)
-          : clientsRaw.length;
-
-    return NextResponse.json({
-      clients: clientsRaw.map((c) => mapClientRow(c as Record<string, unknown>)),
-      hasMore: typeof total === "number" && Number.isFinite(total) ? page * pageSize < total : clientsRaw.length >= pageSize,
-      page,
-      total: Number.isFinite(total) ? total : clientsRaw.length,
-    });
+    const filtered = applyQ(sorted);
+    console.log("[halo/clients] total fetched:", sorted.length);
+    return NextResponse.json({ clients: filtered });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     const stack = err instanceof Error ? err.stack : undefined;
     console.error("[halo/clients] EXCEPTION:", message);
     if (stack) console.error("[halo/clients] STACK:", stack);
-    return NextResponse.json({ error: "Internal server error", message }, { status: 500 });
+    return NextResponse.json({ clients: [] });
   }
 }

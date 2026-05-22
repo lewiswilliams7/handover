@@ -1,15 +1,40 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { cn } from "@/lib/utils"
-import { Settings, Webhook, Users, FileText, Layers, Database, Upload, Download, X } from "lucide-react"
+import { Settings, Database, Upload, Download, X, Globe, Check, Loader2, Copy, FlaskConical, Palette, Plug } from "lucide-react"
+import { usePSAStatus } from "@/hooks/usePSAStatus"
+import { PSAEmptyState } from "@/components/psa-empty-state"
+import { useToast } from "@/components/toasts"
+import { createClient } from "@/lib/supabase"
 
-type ConfigSection = "custom-fields" | "report-templates" | "client-profiles" | "webhooks" | "integrations" | "data-sources"
+type DashboardViewMode = "paginated" | "continuous"
+
+type ConfigSection =
+  | "general"
+  | "custom-fields"
+  | "client-portal"
+  | "branding"
+  | "integrations"
+  | "demo-mode"
+
+export type ConfigurationTargetSection = "branding" | "integrations"
 
 type Props = {
   userEmail: string | null
   plan: string | null
   hasProAccess: boolean
+  demoModeActive?: boolean
+  onToggleDemo?: (enabled: boolean) => void
+  /** Shown when `hasProAccess`; Pro+ branding controls from the parent. */
+  brandingSection?: ReactNode | null
+  /** PSA and notification integrations hub (Configuration → Integrations). */
+  integrationsSection?: ReactNode | null
+  /** When set, switches to this section once (then call `onTargetSectionApplied`). */
+  targetSection?: ConfigurationTargetSection | null
+  onTargetSectionApplied?: () => void
+  dashboardViewMode?: DashboardViewMode
+  onDashboardViewModeChange?: (mode: DashboardViewMode) => void
 }
 
 const OUTPUT_OPTIONS = [
@@ -31,69 +56,527 @@ type FieldMapping = {
   outputs: string[]
 }
 
-const NAV_ITEMS: Array<{
+const BASE_NAV_ITEMS: Array<{
   id: ConfigSection
   label: string
   icon: React.ElementType
   description: string
-  comingSoon?: boolean
 }> = [
+  { id: "general", label: "General", icon: Settings, description: "Workspace preferences and performance" },
+  { id: "integrations", label: "Integrations", icon: Plug, description: "Connect and configure your tools" },
   { id: "custom-fields", label: "Custom Fields", icon: Database, description: "Map PSA custom fields to report outputs" },
-  { id: "report-templates", label: "Report Templates", icon: FileText, description: "Default sections, tone, and format per client type", comingSoon: true },
-  { id: "client-profiles", label: "Client Profiles", icon: Users, description: "Per-client settings, portal links, and branding", comingSoon: true },
-  { id: "webhooks", label: "Webhooks", icon: Webhook, description: "Slack and Teams notification rules", comingSoon: true },
-  { id: "integrations", label: "Integrations", icon: Layers, description: "PSA connection settings and field mappings", comingSoon: true },
-  { id: "data-sources", label: "Data Sources", icon: Settings, description: "HaloPSA statistics and custom report imports", comingSoon: true },
+  { id: "client-portal", label: "Client Portal", icon: Globe, description: "Set and manage your customer portal URL" },
+  { id: "branding", label: "Branding", icon: Palette, description: "Logo, colours, and white label for exports and client-facing output" },
 ]
 
-export function ConfigurationPanel({ hasProAccess }: Props) {
+export function ConfigurationPanel({
+  hasProAccess,
+  plan,
+  demoModeActive = false,
+  onToggleDemo,
+  brandingSection = null,
+  integrationsSection = null,
+  targetSection = null,
+  onTargetSectionApplied,
+  dashboardViewMode = "paginated",
+  onDashboardViewModeChange,
+}: Props) {
+  const isEnterprise = plan === "enterprise"
+  const psa = usePSAStatus()
+  const noPsaConnected = !psa.halo && !psa.connectwise
+  const navItems = useMemo(
+    () => {
+      const base = BASE_NAV_ITEMS.filter((item) => {
+        if (item.id === "client-portal") return isEnterprise
+        if (item.id === "branding") return hasProAccess && brandingSection != null
+        if (item.id === "integrations") return integrationsSection != null
+        return true
+      })
+      if (demoModeActive || noPsaConnected) {
+        base.push({
+          id: "demo-mode",
+          label: "Demo Mode",
+          icon: FlaskConical,
+          description: "Control sample demo data visibility",
+        })
+      }
+      return base
+    },
+    [isEnterprise, hasProAccess, brandingSection, integrationsSection, demoModeActive, noPsaConnected],
+  )
   const [activeSection, setActiveSection] = useState<ConfigSection>("custom-fields")
-  const active = NAV_ITEMS.find(n => n.id === activeSection)
+  const active = navItems.find(n => n.id === activeSection) ?? navItems[0]
+
+  useEffect(() => {
+    if (!navItems.some((item) => item.id === activeSection)) {
+      setActiveSection(navItems[0]?.id ?? "custom-fields")
+    }
+  }, [activeSection, navItems])
+
+  useEffect(() => {
+    if (!targetSection) return
+    const match = navItems.find((item) => item.id === targetSection)
+    if (!match) {
+      onTargetSectionApplied?.()
+      return
+    }
+    setActiveSection(targetSection)
+    onTargetSectionApplied?.()
+  }, [targetSection, navItems, onTargetSectionApplied])
 
   return (
-    <div className="flex w-full" style={{ minHeight: 'calc(100vh - 52px)' }}>
+    <div className="flex h-full min-h-0 w-full" style={{ minHeight: "calc(100vh - 52px)" }}>
       {/* Left sidebar */}
-      <div className="flex w-[220px] shrink-0 flex-col border-r border-[var(--border)] overflow-y-auto" style={{ backgroundColor: '#1e2d47' }}>
+      <div className="flex h-full min-h-0 w-[220px] shrink-0 flex-col overflow-y-auto border-r border-[var(--border)] bg-[var(--bg-secondary)]">
         <div className="shrink-0 border-b border-[var(--border)] px-4 py-4">
           <h1 className="text-[15px] font-semibold text-[var(--text-primary)]">Configuration</h1>
           <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">Workspace settings</p>
         </div>
         <nav className="flex-1 p-2">
-          {NAV_ITEMS.map(item => (
+          {navItems.map(item => (
             <button
               key={item.id}
               type="button"
-              onClick={() => !item.comingSoon && setActiveSection(item.id)}
+              onClick={() => setActiveSection(item.id)}
               className={cn(
                 "flex w-full items-center gap-2.5 rounded-[var(--radius)] px-3 py-2 text-left text-[13px] transition-colors",
                 activeSection === item.id
                   ? "bg-[var(--accent)]/15 text-[var(--accent)] font-medium"
-                  : item.comingSoon
-                    ? "cursor-default opacity-50 text-[var(--text-muted)]"
-                    : "text-[var(--text-secondary)] hover:bg-white/[0.06] hover:text-[var(--text-primary)]"
+                  : "text-[var(--text-secondary)] hover:bg-white/[0.06] hover:text-[var(--text-primary)]",
               )}
             >
               <item.icon className="size-[14px] shrink-0" />
               <span className="flex-1 truncate">{item.label}</span>
-              {item.comingSoon && (
-                <span className="rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
-                  Soon
-                </span>
-              )}
             </button>
           ))}
         </nav>
       </div>
 
       {/* Main content */}
-      <div className="min-w-0 flex-1 overflow-y-auto bg-[var(--bg-secondary)]">
-        <div className="mx-auto max-w-3xl px-6 py-8">
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold text-[var(--text-primary)]">{active?.label}</h2>
-            <p className="mt-1 text-[13px] text-[var(--text-secondary)]">{active?.description}</p>
-          </div>
+      <div
+        className={cn(
+          "flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--bg-secondary)]",
+          activeSection === "integrations" && integrationsSection ? "overflow-hidden" : "overflow-y-auto",
+        )}
+      >
+        <div
+          className={cn(
+            "mx-auto flex min-h-0 w-full min-w-0 flex-1 flex-col px-6 py-8",
+            activeSection === "integrations" && integrationsSection
+              ? "max-w-none overflow-y-auto"
+              : "max-w-3xl",
+          )}
+        >
+          {!(activeSection === "integrations" && integrationsSection) ? (
+            <div className="mb-6">
+              <h2 className="text-xl font-semibold text-[var(--text-primary)]">{active?.label}</h2>
+              <p className="mt-1 text-[13px] text-[var(--text-secondary)]">{active?.description}</p>
+            </div>
+          ) : null}
+          {activeSection === "general" ? (
+            <GeneralSection
+              dashboardViewMode={dashboardViewMode}
+              onDashboardViewModeChange={onDashboardViewModeChange}
+            />
+          ) : null}
           {activeSection === "custom-fields" && <CustomFieldsSection hasProAccess={hasProAccess} />}
+          {activeSection === "client-portal" && isEnterprise ? <ClientPortalSection /> : null}
+          {activeSection === "branding" && hasProAccess && brandingSection ? brandingSection : null}
+          {activeSection === "integrations" && integrationsSection ? integrationsSection : null}
+          {activeSection === "demo-mode" ? (
+            <DemoModeSection
+              enabled={demoModeActive}
+              onToggle={(enabled) => onToggleDemo?.(enabled)}
+            />
+          ) : null}
         </div>
+      </div>
+    </div>
+  )
+}
+
+function GeneralSection({
+  dashboardViewMode,
+  onDashboardViewModeChange,
+}: {
+  dashboardViewMode: DashboardViewMode
+  onDashboardViewModeChange?: (mode: DashboardViewMode) => void
+}) {
+  const toast = useToast()
+  const [saving, setSaving] = useState(false)
+
+  const saveMode = async (mode: DashboardViewMode) => {
+    if (mode === dashboardViewMode) return
+    setSaving(true)
+    try {
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) return
+      const { error } = await supabase
+        .from("profiles")
+        .update({ dashboard_view_mode: mode })
+        .eq("id", user.id)
+      if (error) {
+        toast({ message: "Could not save dashboard view mode.", variant: "error" })
+        return
+      }
+      onDashboardViewModeChange?.(mode)
+      toast({ message: "Dashboard view mode saved", durationMs: 2000 })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-5">
+        <h3 className="text-[15px] font-semibold text-[var(--text-primary)]">Performance</h3>
+        <p className="mt-1 text-[13px] text-[var(--text-secondary)]">
+          <span className="font-medium text-[var(--text-primary)]">Dashboard view mode</span>
+          <span className="mt-1 block text-[var(--text-secondary)]">
+            Choose how clients are displayed in the Delivery Health dashboard. Paginated is
+            recommended for MSPs with 50 or more clients.
+          </span>
+        </p>
+        <div
+          className="mt-4 inline-flex rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-0.5"
+          role="group"
+          aria-label="Dashboard view mode"
+        >
+          <button
+            type="button"
+            disabled={saving}
+            className={cn(
+              "rounded-[calc(var(--radius)-2px)] px-3 py-1.5 text-[12px] font-medium transition-colors disabled:opacity-50",
+              dashboardViewMode === "paginated"
+                ? "bg-[var(--accent)] text-white"
+                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
+            )}
+            onClick={() => void saveMode("paginated")}
+          >
+            Paginated
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            className={cn(
+              "rounded-[calc(var(--radius)-2px)] px-3 py-1.5 text-[12px] font-medium transition-colors disabled:opacity-50",
+              dashboardViewMode === "continuous"
+                ? "bg-[var(--accent)] text-white"
+                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
+            )}
+            onClick={() => void saveMode("continuous")}
+          >
+            Continuous
+          </button>
+        </div>
+        <p className="mt-3 text-[12px] text-[var(--text-muted)]">
+          Paginated shows 25 clients per page. Continuous shows all clients in one scrollable list.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function DemoModeSection({
+  enabled,
+  onToggle,
+}: {
+  enabled: boolean
+  onToggle: (enabled: boolean) => void
+}) {
+  return (
+    <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-5">
+      <h3 className="text-[15px] font-semibold text-[var(--text-primary)]">Demo Mode</h3>
+      <p className="mt-1 text-[13px] text-[var(--text-secondary)]">
+        You&apos;re currently viewing sample data. Connect a PSA to see your real data, or toggle
+        demo mode off to use Handover with manual input only.
+      </p>
+      <div className="mt-4 flex items-center justify-between rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2">
+        <div className="flex items-center gap-2">
+          <p className="text-[13px] font-medium text-[var(--text-primary)]">Show demo data</p>
+          <span
+            className={cn(
+              "rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide",
+              enabled
+                ? "bg-[var(--accent)]/15 text-[var(--accent)]"
+                : "bg-white/[0.06] text-[var(--text-muted)]",
+            )}
+          >
+            {enabled ? "On" : "Off"}
+          </span>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          onClick={() => onToggle(!enabled)}
+          className={cn(
+            "inline-flex h-7 min-w-[120px] items-center rounded-full border px-4 py-1.5 transition-colors",
+            enabled ? "border-[var(--accent)] bg-[var(--accent)]" : "border-[var(--border)] bg-[var(--bg-primary)]",
+          )}
+        >
+          <span
+            className={cn(
+              "mx-1 block size-5 rounded-full bg-white transition-transform",
+              enabled ? "translate-x-5" : "translate-x-0",
+            )}
+          />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+const PORTAL_SLUG_RE = /^[a-z0-9-]{3,30}$/
+const PORTAL_DOMAIN_RE = /^(?=.{3,255}$)[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/
+
+function sanitizePortalSlug(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .slice(0, 30)
+}
+
+function ClientPortalSection() {
+  const toast = useToast()
+  const [loading, setLoading] = useState(true)
+  const [savedSlug, setSavedSlug] = useState("")
+  const [savedDomain, setSavedDomain] = useState("")
+  const [slug, setSlug] = useState("")
+  const [domainInput, setDomainInput] = useState("")
+  const [checking, setChecking] = useState(false)
+  const [available, setAvailable] = useState<boolean | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [savingDomain, setSavingDomain] = useState(false)
+  const [editing, setEditing] = useState(true)
+  const fullUrl = savedSlug ? `gethandover.uk/portal/${savedSlug}` : ""
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch("/api/portal/account", { credentials: "same-origin", cache: "no-store" })
+        const data = (await res.json().catch(() => ({}))) as {
+          portal?: { slug?: string | null; allowed_domain?: string | null } | null
+        }
+        if (!cancelled) {
+          const existing = typeof data.portal?.slug === "string" ? data.portal.slug : ""
+          const existingDomain =
+            typeof data.portal?.allowed_domain === "string" ? data.portal.allowed_domain.trim().toLowerCase() : ""
+          setSavedSlug(existing)
+          setSlug(existing)
+          setSavedDomain(existingDomain)
+          setDomainInput(existingDomain)
+          setEditing(!existing)
+          setAvailable(existing ? null : null)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!editing) return
+    if (!slug || !PORTAL_SLUG_RE.test(slug)) {
+      setChecking(false)
+      setAvailable(slug ? false : null)
+      return
+    }
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        setChecking(true)
+        try {
+          const res = await fetch(`/api/portal/check-slug?slug=${encodeURIComponent(slug)}`, {
+            credentials: "same-origin",
+          })
+          const data = (await res.json().catch(() => ({}))) as { available?: boolean }
+          setAvailable(res.ok ? data.available === true : false)
+        } catch {
+          setAvailable(false)
+        } finally {
+          setChecking(false)
+        }
+      })()
+    }, 500)
+    return () => window.clearTimeout(timer)
+  }, [slug, editing])
+
+  const onCopy = async () => {
+    if (!fullUrl) return
+    await navigator.clipboard.writeText(`https://${fullUrl}`)
+    toast({ message: "Copied", variant: "success" })
+  }
+
+  const onSave = async () => {
+    if (!PORTAL_SLUG_RE.test(slug)) return
+    setSaving(true)
+    try {
+      const res = await fetch("/api/portal/save-slug", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ slug }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string; slug?: string }
+      if (!res.ok || data.success !== true) {
+        toast({ message: data.error ?? "Could not save portal slug.", variant: "error" })
+        return
+      }
+      const nextSlug = data.slug ?? slug
+      setSlug(nextSlug)
+      setSavedSlug(nextSlug)
+      setEditing(false)
+      setAvailable(true)
+      toast({ message: "Portal URL saved", variant: "success" })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onSaveDomain = async () => {
+    const normalized = domainInput.trim().toLowerCase()
+    if (normalized && !PORTAL_DOMAIN_RE.test(normalized)) {
+      toast({
+        message: "Enter a valid domain like acme.com (no @).",
+        variant: "error",
+      })
+      return
+    }
+    setSavingDomain(true)
+    try {
+      const res = await fetch("/api/portal/update-domain", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ domain: normalized }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string }
+      if (!res.ok || data.success !== true) {
+        toast({ message: data.error ?? "Could not save domain.", variant: "error" })
+        return
+      }
+      setSavedDomain(normalized)
+      setDomainInput(normalized)
+      toast({ message: "Allowed domain saved", variant: "success" })
+    } finally {
+      setSavingDomain(false)
+    }
+  }
+
+  return (
+    <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-5">
+      <h3 className="text-[15px] font-semibold text-[var(--text-primary)]">Client portal</h3>
+      <p className="mt-1 text-[13px] text-[var(--text-secondary)]">
+        Set your MSP portal URL and which email domain may sign in. Add clients, visibility, and contacts from{" "}
+        <span className="font-medium text-[var(--text-primary)]">Organisation</span> in the main sidebar.
+      </p>
+      <p className="mt-2 text-[12px] leading-snug text-[var(--text-muted)]">
+        Company logo, brand colour, and white label are edited in{" "}
+        <span className="font-medium text-[var(--text-secondary)]">Settings → Branding</span> (profile menu).
+      </p>
+      {loading ? (
+        <p className="mt-4 text-[12px] text-[var(--text-muted)]">Loading portal settings...</p>
+      ) : !editing && savedSlug && PORTAL_SLUG_RE.test(savedSlug) ? (
+        <div className="mt-4 space-y-3">
+          <div className="flex items-center gap-2 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2">
+            <input
+              readOnly
+              value={fullUrl}
+              className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--text-primary)] outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => void onCopy()}
+              className="inline-flex items-center gap-1 rounded-[var(--radius)] border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+            >
+              <Copy className="size-3.5" />
+              Copy
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSlug(savedSlug)
+                setEditing(true)
+                setAvailable(null)
+              }}
+              className="inline-flex items-center rounded-[var(--radius)] border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+            >
+              Edit
+            </button>
+          </div>
+          <a
+            href={`https://${fullUrl}`}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="inline-flex text-[12px] text-[var(--accent)] hover:underline"
+          >
+            View Portal
+          </a>
+        </div>
+      ) : (
+        <div className="mt-4 space-y-3">
+          <div>
+            <label className="mb-1 block text-[12px] font-medium text-[var(--text-secondary)]">Portal slug</label>
+            <div className="flex items-center rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2">
+              <span className="mr-2 shrink-0 text-[12px] text-[var(--text-muted)]">gethandover.uk/portal/</span>
+              <input
+                value={slug}
+                onChange={(e) => setSlug(sanitizePortalSlug(e.target.value))}
+                placeholder="your-msp"
+                className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--text-primary)] outline-none"
+              />
+              {checking ? <Loader2 className="ml-2 size-4 animate-spin text-[var(--accent)]" /> : null}
+              {!checking && available === true ? <Check className="ml-2 size-4 text-green-400" /> : null}
+              {!checking && available === false && PORTAL_SLUG_RE.test(slug) ? <X className="ml-2 size-4 text-red-400" /> : null}
+            </div>
+            <p className="mt-1 text-[11px] text-[var(--text-muted)]">
+              Lowercase letters, numbers, and hyphens only. 3-30 characters.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={!PORTAL_SLUG_RE.test(slug) || available !== true || saving}
+            onClick={() => void onSave()}
+            className="rounded-[var(--radius)] bg-[var(--accent)] px-4 py-2 text-[12px] font-semibold text-white transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-50"
+          >
+            {saving ? "Saving..." : "Save"}
+          </button>
+        </div>
+      )}
+      <div className="mt-5 space-y-3 border-t border-[var(--border)] pt-4">
+        <div>
+          <label className="mb-1 block text-[12px] font-medium text-[var(--text-secondary)]">
+            Allowed email domain
+          </label>
+          <input
+            value={domainInput}
+            onChange={(e) => setDomainInput(e.target.value.toLowerCase().replace(/@/g, "").trimStart())}
+            placeholder="acme.com"
+            className="w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none focus:ring-1 focus:ring-[var(--accent)]"
+          />
+          <p className="mt-1 text-[11px] text-[var(--text-muted)]">
+            Only users with this email domain can access your portal. Leave blank to allow any authenticated user.
+          </p>
+          {savedDomain ? (
+            <p className="mt-1 text-[11px] text-[var(--text-muted)]">Current: {savedDomain}</p>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          onClick={() => void onSaveDomain()}
+          disabled={savingDomain || (domainInput.trim().toLowerCase() === savedDomain && !loading)}
+          className="rounded-[var(--radius)] bg-[var(--accent)] px-4 py-2 text-[12px] font-semibold text-white transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-50"
+        >
+          {savingDomain ? "Saving..." : "Save domain"}
+        </button>
       </div>
     </div>
   )
@@ -256,10 +739,15 @@ function AddMappingForm({
 }
 
 function CustomFieldsSection({ hasProAccess }: { hasProAccess: boolean }) {
+  const psa = usePSAStatus()
+  const toast = useToast()
   const [mappings, setMappings] = useState<FieldMapping[]>([])
   const [loadingMappings, setLoadingMappings] = useState(true)
   const [haloFields, setHaloFields] = useState<Array<{name: string; label: string}>>([])
   const [loadingHaloFields, setLoadingHaloFields] = useState(false)
+  const [cwFields, setCwFields] = useState<Array<{ name: string; label: string }>>([])
+  const [loadingCwFields, setLoadingCwFields] = useState(false)
+  const [cwFieldPickerActive, setCwFieldPickerActive] = useState(false)
   const [showFieldPicker, setShowFieldPicker] = useState(false)
   const [useFieldPicker, setUseFieldPicker] = useState(false)
   const [testingField, setTestingField] = useState(false)
@@ -273,6 +761,8 @@ function CustomFieldsSection({ hasProAccess }: { hasProAccess: boolean }) {
   const [newDisplayName, setNewDisplayName] = useState("")
   const [newOutputs, setNewOutputs] = useState<string[]>(["actions"])
   const csvRef = useRef<HTMLInputElement>(null)
+
+  const hasNoPsa = !psa.loading && !psa.halo && !psa.connectwise
 
   useEffect(() => {
     fetch("/api/configuration/custom-fields", { credentials: "same-origin" })
@@ -396,6 +886,30 @@ function CustomFieldsSection({ hasProAccess }: { hasProAccess: boolean }) {
     }
   }
 
+  const testCwField = async (fieldName: string) => {
+    if (!fieldName.trim()) return
+    setTestingField(true)
+    setTestResult(null)
+    try {
+      const res = await fetch(`/api/cw/customfields/test?field=${encodeURIComponent(fieldName)}`, {
+        credentials: "same-origin",
+      })
+      const data = await res.json() as { exists?: boolean; message?: string }
+      if (res.ok && data.exists) {
+        setTestResult({ ok: true, message: `✓ Field "${fieldName}" found in ConnectWise` })
+      } else {
+        setTestResult({
+          ok: false,
+          message: data.message ?? `Field "${fieldName}" not found in ConnectWise user-defined fields.`,
+        })
+      }
+    } catch {
+      setTestResult({ ok: false, message: "Could not connect to ConnectWise to test this field." })
+    } finally {
+      setTestingField(false)
+    }
+  }
+
   const loadHaloFields = async () => {
     setLoadingHaloFields(true)
     try {
@@ -410,6 +924,46 @@ function CustomFieldsSection({ hasProAccess }: { hasProAccess: boolean }) {
       console.error("[loadHaloFields]", e)
     } finally {
       setLoadingHaloFields(false)
+    }
+  }
+
+  const loadCwFields = async () => {
+    setLoadingCwFields(true)
+    try {
+      const res = await fetch("/api/cw/customfields/list", { credentials: "same-origin" })
+      const data = (await res.json().catch(() => ({}))) as {
+        fields?: Array<{ name: string; label: string }>
+        message?: string
+        error?: string
+      }
+      const fields = Array.isArray(data.fields) ? data.fields : []
+      setCwFields(fields)
+      setCwFieldPickerActive(true)
+      setAddingFor("connectwise")
+      setNewFieldName("")
+      setNewDisplayName("")
+      setNewOutputs(["actions"])
+      setTestResult(null)
+      if (!res.ok) {
+        toast({
+          message: data.error ?? data.message ?? "Could not load ConnectWise custom fields.",
+          variant: "error",
+          durationMs: 6000,
+        })
+        return
+      }
+      if (fields.length === 0 && (data.message || data.error)) {
+        toast({
+          message: data.message ?? data.error ?? "No ConnectWise ticket fields returned.",
+          variant: "error",
+          durationMs: 8000,
+        })
+      }
+    } catch (e) {
+      console.error("[loadCwFields]", e)
+      toast({ message: "Could not load ConnectWise custom fields.", variant: "error", durationMs: 6000 })
+    } finally {
+      setLoadingCwFields(false)
     }
   }
 
@@ -548,6 +1102,13 @@ function CustomFieldsSection({ hasProAccess }: { hasProAccess: boolean }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {hasNoPsa ? (
+        <PSAEmptyState
+          title="No PSA connected"
+          description="Connect HaloPSA or ConnectWise to map custom fields."
+          showButton={true}
+        />
+      ) : null}
       {loadingMappings ? (
         <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-4 py-3 text-[12px] text-[var(--text-secondary)]">
           Loading custom field mappings...
@@ -569,6 +1130,7 @@ function CustomFieldsSection({ hasProAccess }: { hasProAccess: boolean }) {
       )}
 
       {/* HaloPSA */}
+      {psa.connectwise && !psa.halo ? null : (
       <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-5">
         <div className="mb-4 flex items-center justify-between">
           <div>
@@ -582,19 +1144,21 @@ function CustomFieldsSection({ hasProAccess }: { hasProAccess: boolean }) {
                 Import CSV
               </button>
             )}
-            <button
-              type="button"
-              onClick={async () => {
-                await loadHaloFields()
-                setUseFieldPicker(true)
-                setAddingFor("halopsa")
-              }}
-              disabled={loadingHaloFields}
-              className="flex items-center gap-1.5 rounded-[var(--radius)] border border-[var(--border)] px-3 py-1.5 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
-            >
-              <Database className="size-3.5" />
-              {loadingHaloFields ? "Loading..." : "Load from HaloPSA"}
-            </button>
+            {psa.halo ? (
+              <button
+                type="button"
+                onClick={async () => {
+                  await loadHaloFields()
+                  setUseFieldPicker(true)
+                  setAddingFor("halopsa")
+                }}
+                disabled={loadingHaloFields}
+                className="flex items-center gap-1.5 rounded-[var(--radius)] border border-[var(--border)] px-3 py-1.5 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
+              >
+                <Database className="size-3.5" />
+                {loadingHaloFields ? "Loading..." : "Load from HaloPSA"}
+              </button>
+            ) : null}
             <button type="button" onClick={() => {
               setAddingFor("halopsa")
               setUseFieldPicker(false)
@@ -631,8 +1195,10 @@ function CustomFieldsSection({ hasProAccess }: { hasProAccess: boolean }) {
           />
         )}
       </div>
+      )}
 
       {/* ConnectWise */}
+      {psa.halo && !psa.connectwise ? null : (
       <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-5">
         <div className="mb-4 flex items-center justify-between">
           <div>
@@ -646,7 +1212,28 @@ function CustomFieldsSection({ hasProAccess }: { hasProAccess: boolean }) {
                 Import CSV
               </button>
             )}
-            <button type="button" onClick={() => { setAddingFor("connectwise"); setNewFieldName(""); setNewDisplayName(""); setNewOutputs(["actions"]) }} className="rounded-[var(--radius)] bg-[var(--accent)] px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-[var(--accent-hover)] transition-colors">
+            {psa.connectwise ? (
+              <button
+                type="button"
+                onClick={() => void loadCwFields()}
+                disabled={loadingCwFields}
+                className="flex items-center gap-1.5 rounded-[var(--radius)] border border-[var(--border)] px-3 py-1.5 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
+              >
+                <Database className="size-3.5" />
+                {loadingCwFields ? "Loading..." : "Load from ConnectWise"}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                setCwFieldPickerActive(false)
+                setAddingFor("connectwise")
+                setNewFieldName("")
+                setNewDisplayName("")
+                setNewOutputs(["actions"])
+              }}
+              className="rounded-[var(--radius)] bg-[var(--accent)] px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-[var(--accent-hover)] transition-colors"
+            >
               + Add mapping
             </button>
           </div>
@@ -668,13 +1255,22 @@ function CustomFieldsSection({ hasProAccess }: { hasProAccess: boolean }) {
             newOutputs={newOutputs}
             toggleOutput={toggleOutput}
             onSave={() => void addMapping("connectwise")}
-            onCancel={() => { setAddingFor(null); setNewFieldName(""); setNewDisplayName(""); setNewOutputs(["actions"]); setTestResult(null) }}
-            onTestField={testHaloField}
+            onCancel={() => {
+              setAddingFor(null)
+              setNewFieldName("")
+              setNewDisplayName("")
+              setNewOutputs(["actions"])
+              setTestResult(null)
+              setCwFieldPickerActive(false)
+            }}
+            onTestField={testCwField}
             testingField={testingField}
             testResult={testResult}
+            availableFields={cwFieldPickerActive ? cwFields : undefined}
           />
         )}
       </div>
+      )}
 
       <input ref={csvRef} type="file" accept=".csv" onChange={importCSV} className="hidden" />
     </div>

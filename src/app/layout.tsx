@@ -3,13 +3,9 @@ import { Suspense } from "react";
 import Head from "next/head";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { MarketingFooter } from "@/components/marketing-footer";
-import { Nav } from "@/components/nav";
 import { PageLoadOverlay } from "@/components/page-load-overlay";
-import { MarketingBackgroundLayer, RouteTransition } from "@/components/route-transition";
+import { RootLayoutChrome } from "@/components/root-layout-chrome";
 import { ToastProvider } from "@/components/toasts";
-import { CookieConsentBar } from "@/components/cookie-consent-bar";
-import { MarketingConversionClient } from "@/components/marketing-conversion-client";
 import { TrialAutoStartFromPendingStorage } from "@/components/trial-auto-start-pending-storage";
 import { TrialAutoStartFromQuery } from "@/components/trial-auto-start-from-query";
 
@@ -126,27 +122,13 @@ export default function RootLayout({
         />
       </Head>
       <body className="flex min-h-full flex-col" suppressHydrationWarning>
-        <MarketingBackgroundLayer />
         <ToastProvider>
           <Suspense fallback={null}>
             <TrialAutoStartFromQuery />
             <TrialAutoStartFromPendingStorage />
           </Suspense>
           <PageLoadOverlay />
-          <Nav />
-          <main className="flex min-h-0 flex-1 flex-col">
-            <RouteTransition>{children}</RouteTransition>
-          </main>
-          <div
-            style={{
-              height: "1px",
-              background:
-                "linear-gradient(90deg, transparent, var(--border), transparent)",
-            }}
-          />
-          <MarketingFooter />
-          <CookieConsentBar />
-          <MarketingConversionClient />
+          <RootLayoutChrome>{children}</RootLayoutChrome>
         </ToastProvider>
       </body>
     </html>

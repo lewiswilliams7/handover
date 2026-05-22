@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { getHaloToken } from "@/lib/halo";
 import { decrypt } from "@/lib/encryption";
-import { pushHandoverOutputsToHaloTickets } from "@/lib/halo-push-note";
+import {
+  pushHandoverOutputsToHaloTickets,
+  type PushNarrativeScope,
+} from "@/lib/halo-push-note";
 import { resolveBrandLogoUrlForExcel } from "@/lib/branding-logo";
 import {
   assertFreeHaloPushAllowed,
@@ -29,8 +32,19 @@ export async function POST(request: Request) {
       projectName?: string;
       attachExcel?: boolean;
       excelTabs?: string[];
+      pushSummaryScope?: PushNarrativeScope;
+      pushStatusScope?: PushNarrativeScope;
     };
-    const { ticketIds, outputs, selectedOutputs, projectName, attachExcel, excelTabs } = body;
+    const {
+      ticketIds,
+      outputs,
+      selectedOutputs,
+      projectName,
+      attachExcel,
+      excelTabs,
+      pushSummaryScope,
+      pushStatusScope,
+    } = body;
     const pf = await getUserPlan(supabase, user.id);
     const paid = userPlanHasProAccess(pf);
     if (!paid) {
@@ -108,6 +122,14 @@ export async function POST(request: Request) {
       brandLogoUrl: resolvedBrandLogoUrl,
       partnerWhiteLabel: partnerWl,
       logTag: "[push-note]",
+      pushSummaryScope:
+        pushSummaryScope === "per_ticket" || pushSummaryScope === "combined_all"
+          ? pushSummaryScope
+          : "combined_all",
+      pushStatusScope:
+        pushStatusScope === "per_ticket" || pushStatusScope === "combined_all"
+          ? pushStatusScope
+          : "combined_all",
     });
 
     if (!paid && success && posted > 0) {
@@ -121,9 +143,11 @@ export async function POST(request: Request) {
       results,
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
     const stack = err instanceof Error ? err.stack : undefined;
-    console.error("[push-note] Fatal error:", message, stack);
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("[push-note] Fatal error:", err, stack);
+    return NextResponse.json(
+      { error: "Push failed. Please try again." },
+      { status: 500 },
+    );
   }
 }

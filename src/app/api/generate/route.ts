@@ -27,7 +27,10 @@ import { isEnterpriseSoloPlan } from "@/lib/white-label";
 import { verifyUserPlan } from "@/lib/server/verifyUserPlan";
 import { createServerClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
-import { stripClientEmailSeparatorLines } from "@/lib/client-email-sanitize";
+import {
+  stripClientEmailSeparatorLines,
+  normalizeClientEmailOpeningGreeting,
+} from "@/lib/client-email-sanitize";
 import { buildClientEmailSignOffBlock } from "@/lib/client-email-signature";
 import {
   EXTENDED_PM_TAB_KEYS,
@@ -36,6 +39,7 @@ import {
   emptyExtendedOutputsObject,
   normalizeExtendedOutputKeys,
 } from "@/lib/pm-output-tabs";
+import { resolveSavedGenerationProjectName } from "@/lib/generation-project-name";
 
 const ALL_RESPONSE_JSON_KEYS = [
   "actions",
@@ -70,14 +74,10 @@ const DISPOSABLE_DOMAINS = new Set([
 ]);
 
 const EMAIL_GREETING_RULES = `EMAIL GREETING RULES (mandatory for client_email):
-- Always use ONLY the first name in the greeting when addressing a specific contact. Never use their full name.
-- Formal: "Dear [FirstName]," — Professional / Friendly: "Hi [FirstName],"
-- Extract the first name from the client contact field (clientContactName) only — use the given name / first token.
-- Example: "Szymon Slupczewski" → "Hi Szymon," — NEVER "Hi Szymon Slupczewski," or "Dear Szymon Slupczewski,"
-- If no contact name is available: greet the organisation using the Customer/Client/company name from the structured ticket input or the project/client context (see CLIENT EMAIL — RECIPIENT VS SENDER).
-- FORMAL without contact name: "Dear [Client] Team," where [Client] is that organisation name — NEVER output "Dear," with nothing after the comma, and never "Dear Team," without the client name before "Team".
-- PROFESSIONAL or FRIENDLY without contact name: "Hi [Client] team," using the same organisation name — avoid a bare "Hi," with no recipient.
-- NEVER take greeting names from email signatures, ticket notes, or body text — only from the supplied client contact field or explicit Client/Customer field in the structured input.
+- Begin the email with "Hi [contact name]," if a contact name is available, otherwise use "Hi," — never use "Hi there," and never use the company name in the greeting.
+- When clientContactName is provided and is clearly a person's name, use their first name only in the salutation (e.g. clientContactName "Daljit Singh" → "Hi Dal,").
+- When no clientContactName is provided, the salutation line must be exactly "Hi," (comma included).
+- NEVER take greeting names from email signatures, ticket notes, or body text — only use clientContactName or explicit Customer/Client contact fields supplied in the request.
 - NEVER address the client email to an internal engineer or MSP staff member.`;
 
 const PROJECT_TASK_HANDLING = `Project tasks vs tickets:
@@ -146,23 +146,24 @@ function toneInstructionsBlock(
   const normalizedTone = tone;
   if (normalizedTone === "internal") {
     return `Tone mode: internal.
-- Opening: "Hi [FirstName]," per EMAIL GREETING RULES (first name only).
+- client_email opening salutation: per EMAIL GREETING RULES ("Hi [contact name]," or "Hi," — never "Hi there,").
+- Elsewhere (e.g. internal digests): "Hi [FirstName]," where a first name is appropriate (first name only).
 - Direct, task-focused internal delivery language.
 - Use concise action-oriented phrasing and first names for assignments.`;
   }
   return normalizedTone === "formal"
     ? `Tone mode: formal.
-- Opening: "Dear [FirstName]," when clientContactName is set; otherwise "Dear [Client] Team," per EMAIL GREETING RULES — never a bare "Dear," line.
-- No contractions. Structured business letter style.
+- client_email opening salutation: per EMAIL GREETING RULES (do not use "Dear" on line 1 of client_email).
+- No contractions in the body. Structured business letter style after the salutation.
 - Closing: "Yours sincerely,"`
     : normalizedTone === "friendly"
       ? `Tone mode: friendly.
-- Opening: "Hi [FirstName]," per EMAIL GREETING RULES (first name only).
-- Warm but professional; contractions are fine.
+- client_email opening salutation: per EMAIL GREETING RULES.
+- Warm but professional; contractions are fine in the body.
 - Closing: "Thanks,"`
       : `Tone mode: professional.
-- Opening: "Hi [FirstName]," per EMAIL GREETING RULES (first name only).
-- Direct, clear, no fluff.
+- client_email opening salutation: per EMAIL GREETING RULES.
+- Direct, clear, no fluff in the body.
 - Closing: "Kind regards,"`;
 }
 
@@ -475,6 +476,11 @@ const buildSystemPrompt = (
    */
   isScheduledHandoverRun = false,
 ) => {
+  const todayFormatted = new Date().toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
   const signOff = buildClientEmailSignOffBlock(
     signatureOverride,
     displayName,
@@ -511,7 +517,7 @@ The ticket and project blocks in the user message are exactly what the user chos
 - Focus client-facing content on this organisation's projects and tickets.
 - Only include projects and tickets where the Customer field matches "${clientOrg}" or is clearly related to them.
 - Ignore internal or house-account projects (where the customer is your own MSP rather than the client in context) in the client email when they do not relate to this client.
-- Do not use [Client Name] when the name above is the correct generic addressee for the "team" greeting (see greeting rules).`
+- Do not use [Client Name] in the client_email salutation line — follow EMAIL GREETING RULES.`
       : `No project / client filter is set above — infer distinct client organisations from the input (Customer/Client fields). When more than one exists and client_email is in scope, you MUST follow MULTI-CLIENT EMAIL RULE in the CLIENT EMAIL section of this prompt.`;
 
   const recipientEmailPrivacy = outboundEmail
@@ -521,20 +527,13 @@ The user's mail client will open a new message To: ${outboundEmail}. Do NOT incl
 
   const recipientRules = `CLIENT EMAIL — RECIPIENT VS SENDER (mandatory):
 ${recipientEmailPrivacy ? `${recipientEmailPrivacy}\n` : ""}- The sign-off block identifies the MSP sender only. That person must NEVER be the addressee — never greet using the sender's name from the SIGNATURE BLOCK, or any engineer or internal staff name from ticket data, as "Dear ..." / "Hi ...".
-- clientContactName is the individual being emailed TO (when provided). For the greeting use FIRST NAME ONLY — see EMAIL GREETING RULES below.
+- clientContactName is the individual being emailed TO (when provided). Use first name only in the salutation when it is clearly a person — see EMAIL GREETING RULES.
 ${
   scheduledIncludeAllSelectedTickets
-    ? `- Derive organisation names for greetings from Customer/Client fields in the ticket input only (ignore any automated report title that is not a real client name).\n`
-    : `- The project / client context is "${clientOrg}" (may be used for team greetings when appropriate).\n`
-}- Opening line must match tone mode (Dear vs Hi) AND EMAIL GREETING RULES:
-  * If clientContactName is provided: greet with first name only (Formal: "Dear [FirstName]," / Professional or Friendly: "Hi [FirstName],").
-${
-  scheduledIncludeAllSelectedTickets
-    ? `  * Else: derive the client organisation from the Customer/Client line in the ticket input and use the same patterns — never "Dear," or "Hi," alone with no name.\n`
-    : `  * Else if project / client context is provided and non-empty: Formal: "Dear {clientOrg} Team," — Professional/Friendly: "Hi {clientOrg} team," (capitalise Team only in formal).
-  * Else: derive the client organisation from the Customer/Client line in the ticket input and use the same patterns — never "Dear," or "Hi," alone with no name.
-`
-}- Never use an email address, user id, or account identifier in the greeting.`;
+    ? `- Derive organisation context from Customer/Client fields in the ticket input only (ignore any automated report title that is not a real client name).\n`
+    : `- The project / client context is "${clientOrg}" (for subject/body context only — not in the salutation line).\n`
+}- The opening salutation line of client_email must follow EMAIL GREETING RULES — never "Dear ...", never the organisation name, never "Hi there,", and never "team" on that line. Apply tone mode to the body and closings after the salutation.
+- Never use an email address, user id, or account identifier in the greeting.`;
 
   const outputScope = `OUTPUT SCOPE:
 Only generate substantive content for these core keys: ${selectedOutputs.join(", ")}.
@@ -545,9 +544,11 @@ Extended PM keys (raid_log, meeting_notes, etc.): always include every extended 
   const reportTypeBlock =
     reportType === "internal"
       ? `\nREPORT TYPE: INTERNAL DIGEST\nThis is an INTERNAL report for the delivery team, not for clients.\n\nUse direct, task-focused language:\n- Address engineers by first name\n- Be direct: "Darren, action this by Wednesday"\n- No client-friendly pleasantries\n- No 'sorry for the delay' language\n- Focus on what needs doing and by whom\n- Use internal project names and ticket IDs freely\n`
-      : reportType === "note_to_self"
+        : reportType === "note_to_self"
         ? `\nREPORT TYPE: NOTE TO SELF\nThis is a personal note-to-self for the PM only.\n\nFormat as a personal task list:\n- Write in second person: "You need to..."\n- Be brutally concise\n- Group by urgency:\n  URGENT (due today/tomorrow)\n  THIS WEEK\n  BACKLOG\n- Include ticket IDs where known\n- No formal language whatsoever\n- Think: what would you write in your own notebook?\n`
-        : `\nREPORT TYPE: EXTERNAL REPORT\nClient-facing language. Professional updates suitable for forwarding.\n`;
+        : reportType === "qbr"
+          ? `\nREPORT TYPE: QBR PACK\nQuarterly business review context for MSP leadership — executive tone, relationship-focused.\n\nCRITICAL CLIENT ATTRIBUTION:\nOnly attribute tickets and projects to the exact client they belong to. Never combine tickets from different clients in the same client section.\nEach CLIENT BLOCK in the user message lists psa_client_key — treat it as authoritative identity for that client's items.\n`
+          : `\nREPORT TYPE: EXTERNAL REPORT\nClient-facing language. Professional updates suitable for forwarding.\n`;
 
   const actionsTaskRule =
     reportType === "note_to_self"
@@ -564,8 +565,8 @@ Extended PM keys (raid_log, meeting_notes, etc.): always include every extended 
   const normalizedTone = parseRequestTone(tone);
   const engineerNamingBlock = buildEngineerNamingInstructionBlock(normalizedTone);
   const toneInstructions = `${toneInstructionsBlock(normalizedTone)}
-Never use Dear for professional or friendly tone. Only use Dear for formal.
-For client_email and status_report, apply this tone consistently.`;
+Never use Dear on line 1 of client_email — the salutation line follows EMAIL GREETING RULES ("Hi [contact name]," or "Hi,").
+For client_email and status_report, apply this tone consistently to the body and closings after the salutation.`;
 
   const trimmedWritingStyle = (writingStyle ?? "").trim();
   const writingStyleBlock =
@@ -623,16 +624,7 @@ SCHEDULED REPORT INSTRUCTIONS — apply on top of all rules above.
 GREETING
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${reportType === 'external' ? `
-Open with a greeting appropriate to the configured tone:
-- If clientContactName is available and is a person's name (not a company name):
-  - formal tone: "Dear [clientContactName],"
-  - professional tone: "Hi [clientContactName],"
-  - friendly tone: "Hi [clientContactName],"
-- If clientContactName is not available or appears to be a company name rather than a person:
-  - formal tone: "Dear Sir or Madam,"
-  - professional tone: "Hi,"
-  - friendly tone: "Hi there,"
-- Never address the email to a company name like "Hi Panacea Group Limited," - if the name provided is clearly a company not a person, use the fallback greeting above.
+Open the client_email per EMAIL GREETING RULES (mandatory): "Hi [contact name]," when clientContactName is available, otherwise "Hi," — never "Hi there," and never the company name in the greeting.
 - Never open with "I hope this email finds you well" or any similar filler phrase.
 - Never open by referencing the report itself - do not say "Please find below your weekly update."
 ` : ''}
@@ -868,13 +860,29 @@ LOW — assign when ANY of these are true:
 MANDATORY DISTRIBUTION CHECK:
 If more than 60% of your actions are Medium priority, you have made an error. Stop and reassess using the criteria above. A real PM would never mark everything Medium.
 
+DUE DATES:
+For each action, include a due_date field. Rules:
+
+NEVER use a date from the past — if the PSA target date has already passed, ignore it completely and calculate a new date based on priority instead
+NEVER use ticket creation dates, dateEntered, or dateOccurred as due dates
+Only use PSA target/fix-by dates if they are in the future (after today's date)
+If no valid future date exists in PSA data, calculate based on priority using business days only (Monday-Friday, no weekends):
+
+High/P1: 3 business days from today
+Medium/P2: 10 business days from today
+Low/P3: leave as empty string
+
+If the ticket description or notes mention a specific upcoming real-world deadline ('starting Monday', 'before end of week', 'client event Thursday'), use that as the anchor
+Format all dates as DD MMM YYYY
+Today's date is ${todayFormatted}.
+
 ACTION OBJECT SCHEMA:
   - "task": string — specific, verb-led, named action
   - "suggested_owner": string — internal engineer first name only for friendly/internal; full name for professional/formal; never null
   - "priority": "High" | "Medium" | "Low"
   - "notes": string — concise context: blockers, key dates, client name if useful
   - "status": "Open" | "In Progress" | "Blocked" | "Complete" | "Resolved" | "Closed" | "On Hold"
-  - "due_date": ISO date YYYY-MM-DD or null
+  - "due_date": string — per DUE DATES rules above
   - "client_name": string — client organisation name from Customer/Company field
   - "project_name": string — project or contract name
 
@@ -942,6 +950,11 @@ CLIENT EMAIL - [Client Name 2]:
 
 Each email must be completely self-contained. Never reference another client's projects inside a different client's email. If you are writing the Thornfield email, it must not mention Westbridge. If you are writing the Westbridge email, it must not mention Thornfield.
 
+MIXED TICKET AND PROJECT IMPORT — SAME CLIENT:
+When the import contains both tickets AND projects for the same client, the client email must reference BOTH the ticket updates and project updates. Do not omit either. Structure the email to cover all items for that client in one cohesive update.
+
+ConnectWise imports may include both service tickets and project records. The client email MUST reference updates from BOTH ticket items AND project items when both are present in the import. Do not omit project updates from the client email — treat project notes the same as ticket notes when generating client-facing communication.
+
 Set email_note to: "Multiple client emails generated — one per client."
 
 VIOLATION CHECK: Before outputting, count the number of distinct client organisations in the input. If the count is greater than 1, you must have the same number of separate CLIENT EMAIL sections. If you have fewer sections than clients, you have made an error.
@@ -968,7 +981,7 @@ GOOD client email (this is the standard):
   ✓ "Hi Dal, our team will be carrying out the 3CX update this afternoon at 4:30pm as confirmed. Remote access via Splashtop is set up and ready. I will be in touch once the update is complete to confirm everything is working as expected."
 
 EMAIL FORMAT:
-Hi [FirstName],
+Hi [contact first name],   (or "Hi," when no contact name — see EMAIL GREETING RULES)
 
 [1-2 sentence positive status summary — no risks, no problems]
 
@@ -993,23 +1006,43 @@ ${engineerNamingBlock}
 
 ALWAYS generate a complete status report when in scope. Never return empty or placeholder content.
 
-FORMAT:
-STATUS REPORT:
-PROJECT STATUS: [Project Title] - [Status] - [RAG: Red/Amber/Green]
+FORMAT (professional delivery document style):
+- Do NOT include a top label like "STATUS REPORT:".
+- Do NOT use separator lines made of repeated dashes, underscores, or equals signs (no "--------" dividers anywhere).
+- Use clean single spacing throughout — one blank line between sections, no extra blank lines.
+- Start with a single header line on one line:
+  Project: [Project Title] | Status: [Status] | RAG: [Red/Amber/Green]
 
-PROGRESS:
-[2-3 sentences — specific, named, current state]
+Required structure (exactly):
 
-ACTIONS:
-1. [Specific action] ([Owner]) - [Priority]
-2. [Specific action] ([Owner]) - [Priority]
+Project: [Project Title] | Status: [Status] | RAG: [Red/Amber/Green]
 
-RISKS AND ISSUES:
-1. [Named risk] - [Impact] - [Mitigation]
+Progress
 
-NEXT STEPS:
-1. [Next step] ([Owner])
-2. [Next step] ([Owner])
+[Short paragraph in 2-4 sentences describing current delivery state, key movement this period, and immediate context. Do not use bullets in this section.]
+
+Actions
+
+1. [Action description] — [Owner] — [Priority]
+2. [Action description] — [Owner] — [Priority]
+
+Risks
+
+1. [Risk description]
+   Impact: [Clear impact statement]
+   Mitigation: [Concrete mitigation action]
+
+Next Steps
+
+1. [Next step]
+2. [Next step]
+
+List formatting rules:
+- Section headers must be Title Case exactly: "Progress", "Actions", "Risks", "Next Steps" — each with one blank line above and below the header text.
+- Actions must be a numbered list using the format: "1. [action] — [Owner] — [Priority]" where Priority is High, Medium, or Low (not bracketed tags).
+- Risks and Next Steps use numbered lists with consistent punctuation and spacing.
+- Keep wording concise, specific, and delivery-focused.
+- Avoid raw data-dump phrasing.
 
 Never write "null" as a value. If owner unknown: ${clientContactName || "the delivery lead"}.
 
@@ -1316,11 +1349,10 @@ export async function POST(req: Request) {
     const scheduledReportRowId = UUID_RE.test(scheduleIdRaw)
       ? scheduleIdRaw
       : null;
-    const isFileImport = typeof input === "string" && (
-      input.includes("Sheet:") ||
-      input.includes("Headers:")
-    );
-    const maxLength = isCronJob ? 50000 : isFileImport ? 25000 : 15000;
+    const maxLength =
+      isCronJob || reportType === "qbr"
+        ? 50000
+        : 25000;
 
     // `input` is client-provided text. HaloPSA ticket shaping lives in `formatTicketsForPrompt` (@/lib/psa/format), used by halo/tickets, preview, and cron before POSTing here.
     let modelInput = input;
@@ -1477,6 +1509,15 @@ export async function POST(req: Request) {
         hasCompanyName: Boolean(companyName),
         hasSignatureOverride: Boolean(signatureOverride),
       });
+      console.log(
+        "[generate] signature used:",
+        buildClientEmailSignOffBlock(
+          signatureOverride,
+          displayName,
+          jobTitle,
+          companyName,
+        ),
+      );
     }
 
     if (
@@ -1597,7 +1638,24 @@ export async function POST(req: Request) {
     const extendedOutputKeys: ExtendedPmTabKey[] =
       body.extendedOutputKeys !== undefined
         ? normalizeExtendedOutputKeys(body.extendedOutputKeys)
-        : [];
+        : (() => {
+            const op = body.outputPreferences;
+            if (!op || typeof op !== "object") return [];
+            const et = (op as { extendedTabs?: unknown }).extendedTabs;
+            return Array.isArray(et) ? normalizeExtendedOutputKeys(et) : [];
+          })();
+    console.log("[generate][audit] extended keys received (pre-model):", {
+      rawBodyExtendedOutputKeys: body.extendedOutputKeys,
+      rawOutputPreferencesExtendedTabs: (() => {
+        const op = body.outputPreferences;
+        if (!op || typeof op !== "object") return undefined;
+        return (op as { extendedTabs?: unknown }).extendedTabs;
+      })(),
+      normalizedExtendedOutputKeys: extendedOutputKeys,
+      extendedPmPromptBlockChars: buildExtendedPmOutputsPromptBlock(extendedOutputKeys).length,
+      fromTopLevelExtendedField: body.extendedOutputKeys !== undefined,
+    });
+
     const adminClient = createServiceRoleClient();
     const { data: cfMappings } = await adminClient
       .from("custom_field_mappings")
@@ -1646,10 +1704,12 @@ If ticket data contains a CUSTOM FIELDS block, extract values and apply them acc
         : userInputWithContext;
 
       if (input.startsWith("MOCK:")) {
-        const mockEmail =
+        const mockEmail = normalizeClientEmailOpeningGreeting(
           typeof MOCK_RESPONSE.client_email === "string"
             ? stripClientEmailSeparatorLines(MOCK_RESPONSE.client_email)
-            : "";
+            : "",
+          clientContactName,
+        );
         return NextResponse.json({ client_email: mockEmail }, { status: 200 });
       }
 
@@ -1674,8 +1734,9 @@ If ticket data contains a CUSTOM FIELDS block, extract values and apply them acc
       mergeExtendedDefaults(parsedRewrite);
       stripDisabledExtendedOutputs(parsedRewrite, new Set(extendedOutputKeys));
       parsedRewrite = applySelectedOutputsToParsed(parsedRewrite, new Set(emailOnlyOutputs));
-      const rewrittenEmail = stripClientEmailSeparatorLines(
-        String(parsedRewrite.client_email ?? "").trim(),
+      const rewrittenEmail = normalizeClientEmailOpeningGreeting(
+        stripClientEmailSeparatorLines(String(parsedRewrite.client_email ?? "").trim()),
+        clientContactName,
       );
       if (!rewrittenEmail) {
         throw new Error("OpenAI did not return a client_email in JSON.");
@@ -1924,6 +1985,16 @@ If ticket data contains a CUSTOM FIELDS block, extract values and apply them acc
 
     mergeExtendedDefaults(parsed);
     stripDisabledExtendedOutputs(parsed, new Set(extendedOutputKeys));
+    const nonEmptyExtendedAfterStrip = EXTENDED_PM_TAB_KEYS.filter(
+      (k) =>
+        extendedOutputKeys.includes(k) &&
+        typeof parsed[k] === "string" &&
+        String(parsed[k]).trim().length > 0,
+    );
+    console.log("[generate][audit] extended after parse + stripDisabledExtendedOutputs:", {
+      normalizedExtendedOutputKeys: extendedOutputKeys,
+      nonEmptyExtendedKeysInParsed: nonEmptyExtendedAfterStrip,
+    });
     parsed = applySelectedOutputsToParsed(parsed, new Set(selectedOutputs));
 
     if (privacyMode) {
@@ -1942,12 +2013,16 @@ If ticket data contains a CUSTOM FIELDS block, extract values and apply them acc
         });
         const insertDb =
           profileTeamId && !isScheduledCron ? createServiceRoleClient() : supabase;
+        const savedProjectName = resolveSavedGenerationProjectName(
+          projectName,
+          modelInput,
+        );
         const { data: insertedRow, error: insertError } = await insertDb
           .from("generations")
           .insert({
             user_id: user.id,
             input_text: modelInput,
-            project_name: projectName,
+            project_name: savedProjectName,
             tone,
             output_json: parsed,
             source: generationSource,
@@ -1978,6 +2053,13 @@ If ticket data contains a CUSTOM FIELDS block, extract values and apply them acc
         } else if (!input.startsWith("MOCK:")) {
           try {
             const admin = createServiceRoleClient();
+            const { error: lastGenErr } = await admin
+              .from("profiles")
+              .update({ last_generation_at: new Date().toISOString() })
+              .eq("id", user.id);
+            if (lastGenErr) {
+              console.error("[generate] last_generation_at update:", lastGenErr.message);
+            }
             const { error: profIncErr } = await admin.rpc(
               "increment_profile_total_generations",
               { p_user_id: user.id },
@@ -2054,6 +2136,13 @@ If ticket data contains a CUSTOM FIELDS block, extract values and apply them acc
       } catch (dbError) {
         console.error("Failed to save generation:", dbError);
       }
+    }
+
+    if (typeof parsed.client_email === "string" && parsed.client_email.length > 0) {
+      parsed.client_email = normalizeClientEmailOpeningGreeting(
+        parsed.client_email,
+        clientContactName,
+      );
     }
 
     const payload =

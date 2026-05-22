@@ -15,6 +15,7 @@ import {
   CreditCard,
   FileDown,
   FileText,
+  FormInput,
   Handshake,
   Headphones,
   Infinity,
@@ -30,6 +31,7 @@ import {
   PhoneCall,
   Presentation,
   Plug,
+  Send,
   Shield,
   Star,
   Gauge,
@@ -112,8 +114,8 @@ const FEATURE_TIPS: Record<string, string> = {
     "Generate as many reports as you need on demand. No monthly cap on manual generations.",
   "All standard output types":
     "Includes client email, action log, risk log, executive summary, and status report — all generated simultaneously.",
-  "Up to 3 scheduled reports per month":
-    "Set up automated weekly or monthly reports that send directly to your clients on a schedule.",
+  "Up to 3 active scheduled reports":
+    "Run up to three enabled scheduled report campaigns at once. Upgrade to Team for unlimited active schedules.",
   "Basic Excel export":
     "Export your report data as a formatted Excel file with key delivery metrics and ticket summaries.",
   "Push notes to PSA":
@@ -150,7 +152,7 @@ const FEATURE_TIPS: Record<string, string> = {
     "Add as many team members as you need with no per-user pricing above your base contract.",
   "Unlimited QBR packs": "Generate as many QBR packs as needed with no monthly cap.",
   "Client portal with branded login":
-    "Give your clients their own branded login portal to view reports and delivery updates directly. Coming soon.",
+    "Give your clients a branded portal to view tickets, projects and reports.",
   "Partner and reseller multi-tenancy":
     "Manage multiple end-client accounts under one Handover instance — ideal for resellers and large MSP groups. Coming soon.",
   "Custom domain support":
@@ -165,15 +167,24 @@ const FEATURE_TIPS: Record<string, string> = {
     "Bespoke contract terms including payment schedules, data processing agreements, and custom terms.",
   "Custom integrations on request":
     "Additional PSA or platform integrations built to specification for your specific workflow requirements.",
+  "Custom field mapping — maps your PSA custom fields into every report automatically.":
+    "Map PSA custom fields to specific report outputs so every generation reflects your ticket and project data.",
+  "One-click client email send":
+    "Send the generated client email from Handover with a single action when you are ready to share it.",
 };
 
 const professionalFeatureList: { text: string; Icon: LucideIcon }[] = [
   { text: "One PSA connection (HaloPSA or ConnectWise)", Icon: Plug },
   { text: "Unlimited manual report generation", Icon: Zap },
   { text: "All standard output types", Icon: LayoutList },
-  { text: "Up to 3 scheduled reports per month", Icon: CalendarClock },
+  { text: "One-click client email send", Icon: Send },
+  { text: "Up to 3 active scheduled reports", Icon: CalendarClock },
   { text: "Basic Excel export", Icon: FileDown },
   { text: "Push notes to PSA", Icon: ArrowLeftRight },
+  {
+    text: "Custom field mapping — maps your PSA custom fields into every report automatically.",
+    Icon: FormInput,
+  },
   { text: "Delivery health dashboard", Icon: Activity },
   { text: "1 QBR pack per month", Icon: LayoutTemplate },
   { text: "Email support", Icon: Headphones },
@@ -193,11 +204,16 @@ const teamCardFeatures: { text: string; Icon: LucideIcon }[] = [
   { text: "Priority email support", Icon: Headphones },
 ];
 
-const enterpriseFeatures: Array<{ text: string; Icon: LucideIcon; comingSoon?: boolean }> = [
+const enterpriseFeatures: Array<{
+  text: string;
+  Icon: LucideIcon;
+  comingSoon?: boolean;
+  beta?: boolean;
+}> = [
   { text: "Everything in Team", Icon: Layers },
   { text: "Unlimited users", Icon: Users },
   { text: "Unlimited QBR packs", Icon: LayoutTemplate },
-  { text: "Client portal with branded login", Icon: Globe, comingSoon: true },
+  { text: "Client portal with branded login", Icon: Globe, beta: true },
   { text: "Partner and reseller multi-tenancy", Icon: Users, comingSoon: true },
   { text: "Custom domain support", Icon: Webhook, comingSoon: true },
   { text: "Dedicated account manager", Icon: Handshake },
@@ -224,7 +240,7 @@ function PricingBillingFromQuery({
 const faqItems: { q: string; a: string }[] = [
   {
     q: "How does the free trial work?",
-    a: "Start a 14-day Professional or Team trial with no credit card. You get full access to that plan’s features until the trial ends, then you can subscribe in-app to keep going.",
+    a: "Start a 14-day Professional or Team trial with card details collected at signup. You get full access to that plan’s features until the trial ends, then your paid subscription starts automatically unless you cancel. 14-day free trial - cancel anytime.",
   },
   {
     q: "Do I need a PSA account to use Handover?",
@@ -725,8 +741,8 @@ export function PricingPageClient() {
             <span className="text-[var(--text-primary)]">MSP delivery team</span>
           </h1>
           <p className="mx-auto mt-4 max-w-2xl text-lg text-[var(--text-secondary)]">
-            Generate your first report free — no card. Upgrade when you need unlimited push-back,
-            scheduling, and Excel packs. Start a 14-day free trial on Professional or Team — no card required.
+            Generate your first report free. Upgrade when you need unlimited push-back,
+            scheduling, and Excel packs. Start a 14-day free trial on Professional or Team — 14-day free trial - cancel anytime.
           </p>
           </div>
         </div>
@@ -937,7 +953,7 @@ export function PricingPageClient() {
                           ) : null}
                         </div>
                       )}
-                      <p className="mt-2 text-center text-[12px] text-white/40">No credit card required</p>
+                      <p className="mt-2 text-center text-[12px] text-white/40">14-day free trial - cancel anytime.</p>
                     </div>
                     {isSignedIn && !isEnterprisePlanUser ? (
                       <div className="mt-3 flex w-full items-start gap-2.5 rounded-[var(--radius)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/35 px-3 py-2.5 text-left">
@@ -1144,7 +1160,7 @@ export function PricingPageClient() {
                             </div>
                           ) : null}
                           <p className="text-center text-[12px] text-[var(--text-muted)]">
-                            No credit card required
+                            14-day free trial - cancel anytime.
                           </p>
                           <p className="text-center text-[12px] text-[var(--text-muted)]">
                             Refer a friend, get 3 months free -{" "}
@@ -1154,7 +1170,7 @@ export function PricingPageClient() {
                           </p>
                         </>
                       )}
-                      <p className="mt-2 text-center text-[12px] text-white/40">No credit card required</p>
+                      <p className="mt-2 text-center text-[12px] text-white/40">14-day free trial - cancel anytime.</p>
                       </div>
                     </CardFooter>
                   </div>
@@ -1220,7 +1236,14 @@ export function PricingPageClient() {
                           <f.Icon className={cn("mt-0.5", PRICING_ENT_FEATURE_ICON_CLASS)} strokeWidth={2} aria-hidden />
                           <span className="min-w-0">
                             <FeatureTooltip tip={FEATURE_TIPS[f.text]}>
-                              <span>{f.text}</span>
+                              <span className="inline-flex flex-wrap items-center gap-2">
+                                <span>{f.text}</span>
+                                {f.beta ? (
+                                  <span className="rounded-full border border-[#C9A84C]/45 bg-gradient-to-r from-[#C9A84C]/18 via-[#FFD700]/14 to-[#a67c2a]/16 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#3d3318] dark:border-[#C9A84C]/40 dark:from-[#C9A84C]/22 dark:via-[#FFD700]/16 dark:to-[#8a7028]/20 dark:text-[#f5e6a8]">
+                                    Beta
+                                  </span>
+                                ) : null}
+                              </span>
                             </FeatureTooltip>
                           </span>
                         </li>

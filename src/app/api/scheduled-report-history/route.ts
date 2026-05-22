@@ -26,7 +26,10 @@ export async function GET() {
         return NextResponse.json({ history: [] });
       }
       console.error("[scheduled-report-history GET]", error.message);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json(
+        { error: "Could not load report history. Please try again." },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json({ history: data ?? [] });

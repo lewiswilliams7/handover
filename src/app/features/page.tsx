@@ -36,7 +36,7 @@ const FEATURE_CARD_ICON_CLASS = "size-[22px] shrink-0 text-[#0EA5E9]";
 export const metadata: Metadata = {
   title: "Features - Handover | AI-Powered MSP Project Reporting",
   description:
-    "Connect HaloPSA or ConnectWise to generate client updates, action and risk logs, Excel report packs, and scheduled delivery with PSA push-back to tickets. Free to try - no card required.",
+    "Connect HaloPSA or ConnectWise to generate client updates, action and risk logs, Excel report packs, and scheduled delivery with PSA push-back to tickets. Start free - cancel anytime - 14-day free trial — cancel anytime.",
   alternates: {
     canonical: "https://gethandover.uk/features",
   },
@@ -235,51 +235,59 @@ export default function FeaturesPage() {
                   Icon: Plug,
                   title: "HaloPSA and ConnectWise integration",
                   body: "Pull tickets and projects live from HaloPSA or ConnectWise. Choose your client, set a date range, and import in one click - no exports or copy-paste.",
+                  href: "/features/psa-integration",
                 },
                 {
                   badge: "Core",
                   Icon: Sparkles,
                   title: "One-click report generation",
                   body: "Generate actions, risks, summary, client-ready email, and status report from the same run - structured outputs in seconds.",
+                  href: "/features/automated-reports",
                 },
                 {
                   badge: "Pro",
                   Icon: ArrowLeftRight,
                   title: "Push back to HaloPSA or ConnectWise as ticket notes",
                   body: "Post generated content straight into HaloPSA or ConnectWise as ticket notes automatically - keep the ticket record current without tab-switching.",
+                  href: "/features/psa-push",
                 },
                 {
                   badge: "Pro",
                   Icon: CalendarClock,
                   title: "Scheduled reports with automatic PSA push-back",
                   body: "Pick a day and time, choose clients, and Handover runs on a schedule. Reports land in your inbox and push back into HaloPSA or ConnectWise.",
+                  href: "/features/scheduled-reports",
                 },
                 {
                   badge: "Pro",
                   Icon: Activity,
                   title: "Delivery health dashboard (RAG)",
-                  body: "Live RAG-style delivery status across active work on Pro and above - spot risk and drift before the client does.",
+                  body: "Live RAG-style delivery status across active work on Professional and above - spot risk and drift before the client does.",
+                  href: "/features/health-dashboard",
                 },
                 {
                   badge: "Pro",
                   Icon: PanelRight,
                   title: "Expandable ticket detail panel",
                   body: "Open any row for a full progress feed from Halo notes, pipeline context, and one-click “generate report” from that ticket.",
+                  href: "/features/qbr-generator",
                 },
                 {
                   badge: "Pro",
                   Icon: LayoutTemplate,
                   title: "Excel report pack (17 sheets)",
                   body: "Download a full workbook including RAID log, stakeholder update, lessons learned, and the rest of your delivery pack in one click.",
+                  href: "/features/exports",
                 },
                 {
-                  badge: "Enterprise",
+                  badge: "Team+",
                   Icon: Paintbrush,
                   title: "Custom branding & white label",
-                  body: "Custom branding on Excel and outputs on Pro+. True white-label mode (no Handover branding in footers) is Enterprise-only.",
+                  body: "Custom branding on all outputs is available on Professional, Team, and Enterprise. White-label mode (no Handover branding in footers) is available on Team and Enterprise.",
+                  href: "/features/white-label",
                 },
                 {
-                  badge: "Pro",
+                  badge: "Professional+",
                   Icon: MessageSquare,
                   title: "Slack & Microsoft Teams",
                   body: "Notify channels when reports generate - so the team sees updates without digging through email.",
@@ -289,6 +297,7 @@ export default function FeaturesPage() {
                   Icon: Mail,
                   title: "One-click client email (Resend)",
                   body: "Send polished client updates from Handover in one click via Resend, with your tone and signature applied.",
+                  href: "/features/ai-insights",
                 },
                 {
                   badge: "Roadmap",
@@ -301,6 +310,7 @@ export default function FeaturesPage() {
                   Icon: Plug,
                   title: "ConnectWise integration",
                   body: "Native ConnectWise Manage integration with the same end-to-end workflow as HaloPSA.",
+                  href: "/features/psa-integration",
                 },
                 {
                   badge: "Team",
@@ -320,7 +330,7 @@ export default function FeaturesPage() {
                   title: "Automatic closure summary (opt-in)",
                   body: "Optional PSA setting: when a ticket moves to resolved, Handover can draft a closure summary, push it back to HaloPSA or ConnectWise, notify Slack/Teams, and save it to history.",
                 },
-              ] satisfies { badge: string; Icon: LucideIcon; title: string; body: string }[]
+              ] satisfies { badge: string; Icon: LucideIcon; title: string; body: string; href?: string }[]
             ).map((card, i) => (
               <ScrollRevealItem key={card.title} index={i} className="min-w-0">
               <CardMouseSpotlight
@@ -336,6 +346,11 @@ export default function FeaturesPage() {
                 <p className="mt-2 flex-1 text-sm leading-relaxed text-[var(--text-secondary)]">
                   {card.body}
                 </p>
+                {card.href ? (
+                  <Link href={card.href} className="mt-4 text-sm font-medium text-[var(--accent)] hover:underline">
+                    Learn more →
+                  </Link>
+                ) : null}
               </CardMouseSpotlight>
               </ScrollRevealItem>
             ))}
@@ -513,8 +528,8 @@ export default function FeaturesPage() {
             <CardMouseSpotlight className="feature-page-card flex flex-col rounded-[var(--radius-lg)] bg-white/[0.03] backdrop-blur-md border border-white/[0.07] p-6 shadow-sm">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-lg font-semibold text-[var(--text-primary)]">CSV / Excel</h3>
-                <span className="rounded-full bg-[var(--accent)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--accent)]">
-                  Available now
+                <span className="rounded-full bg-emerald-600/15 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                  Available
                 </span>
               </div>
               <p className="mt-3 flex-1 text-sm text-[var(--text-secondary)]">

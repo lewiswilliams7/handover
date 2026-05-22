@@ -89,7 +89,11 @@ export async function GET() {
   } catch (err: unknown) {
     const e = err instanceof Error ? err : new Error(String(err));
     console.error("[ticket-types] error:", e.message);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error("[halo/ticket-types]", e);
+    return NextResponse.json(
+      { error: "Could not load ticket types. Please try again." },
+      { status: 500 },
+    );
   }
 }
 

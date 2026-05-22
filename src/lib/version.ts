@@ -1,4 +1,4 @@
-// Auto-generated - do not edit manually
-export const APP_VERSION = '1.0.0'
-export const BUILD_NUMBER = 319
-export const BUILD_DATE = '2026-04-29'
+import packageJson from "../../package.json";
+
+/** App semver from package.json — single source of truth for UI version labels. */
+export const APP_VERSION = packageJson.version;

@@ -85,7 +85,11 @@ export async function POST(request: Request) {
 
     if (uploadErr) {
       console.error("[upload-logo] storage upload:", uploadErr.message);
-      return NextResponse.json({ error: uploadErr.message || "Upload failed" }, { status: 500 });
+      console.error("[brand/upload-logo]", uploadErr.message);
+      return NextResponse.json(
+        { error: "Upload failed. Please try again." },
+        { status: 500 },
+      );
     }
 
     const base = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").replace(/\/$/, "");

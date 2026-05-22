@@ -67,7 +67,13 @@ export async function POST(req: Request) {
   if (scheduleId) query = query.eq("id", scheduleId);
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[cron/trigger-now]", error.message);
+    return NextResponse.json(
+      { error: "Could not trigger scheduled report. Please try again." },
+      { status: 500 },
+    );
+  }
 
   const rows = (data ?? []) as ScheduleRow[];
   if (rows.length === 0) {

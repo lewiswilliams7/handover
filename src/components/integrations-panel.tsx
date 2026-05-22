@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState, type RefObject } from "react";
-import Link from "next/link";
-import { Check, Cog, Copy, EyeOff, Loader2, Lock, Shield } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Check, ChevronLeft, Cog, Copy, EyeOff, Loader2, Lock, Plus, Shield, X } from "lucide-react";
 
 import { CardMouseSpotlight } from "@/components/card-mouse-spotlight";
 import { Button } from "@/components/ui/button";
@@ -10,7 +9,26 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
-export type IntegrationDetailId = "halo" | "connectwise" | "slack" | "teams" | "zapier";
+/** Hub + inline detail keys — never used for routing. */
+export type ActiveIntegrationId = "halopsa" | "connectwise" | "slack" | "teams" | "zapier";
+
+type DisconnectConfirmId = "halo" | "connectwise" | "slack" | "teams";
+
+const INTEGRATION_DETAIL_TITLES: Record<ActiveIntegrationId, string> = {
+  halopsa: "HaloPSA",
+  connectwise: "ConnectWise Manage",
+  slack: "Slack",
+  teams: "Microsoft Teams",
+  zapier: "Zapier",
+};
+
+const INTEGRATION_DETAIL_LOGOS: Record<ActiveIntegrationId, string> = {
+  halopsa: "/halopsa.png",
+  connectwise: "/images/connectwise.png",
+  slack: "/slack.png",
+  teams: "/teams.png",
+  zapier: "/zapier.png",
+};
 
 type IntegrationsPanelProps = {
   /** Effective paid/trial access (DB plan + trial expiry); drives PSA and notification locks. */
@@ -53,7 +71,6 @@ type IntegrationsPanelProps = {
   onImportTickets: () => void;
   onUpgrade: () => void;
   upgradeDisabled: boolean;
-  fileInputRef: RefObject<HTMLInputElement | null>;
   cwConnected: boolean;
   cwSiteUrl: string;
   cwImportedCount: number;
@@ -93,6 +110,8 @@ type IntegrationsPanelProps = {
   onSaveTeamsWebhook: () => void | Promise<void>;
   onTestSlackWebhook: () => void | Promise<void>;
   onTestTeamsWebhook: () => void | Promise<void>;
+  onDisconnectSlackNotifications?: () => void | Promise<void>;
+  onDisconnectTeamsNotifications?: () => void | Promise<void>;
 };
 
 function BadgeConnected() {
@@ -122,21 +141,6 @@ function BadgeConnectedCheck() {
     >
       <Check className="size-3.5 shrink-0" strokeWidth={2.5} aria-hidden />
       Connected ✓
-    </span>
-  );
-}
-
-function BadgeAvailable() {
-  return (
-    <span
-      className="rounded-full border px-2.5 py-0.5 text-[11px] font-medium"
-      style={{
-        background: "color-mix(in srgb, var(--accent) 12%, transparent)",
-        color: "var(--accent)",
-        borderColor: "color-mix(in srgb, var(--accent) 28%, var(--border))",
-      }}
-    >
-      Available
     </span>
   );
 }
@@ -180,7 +184,20 @@ function BadgeDisconnected() {
   );
 }
 
-function StatusConnectionPill({ connected }: { connected: boolean }) {
+function StatusConnectionPill({
+  connected,
+  unknown = false,
+}: {
+  connected: boolean;
+  unknown?: boolean;
+}) {
+  if (unknown) {
+    return (
+      <span className="rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--text-muted)]">
+        Unknown
+      </span>
+    );
+  }
   if (connected) {
     return (
       <span
@@ -207,6 +224,10 @@ const cardBase =
 
 const cardHover =
   "cursor-default hover:border-[rgba(56,189,248,0.4)] hover:shadow-[0_4px_20px_rgba(56,189,248,0.08)] hover:-translate-y-0.5";
+
+/** Group headers (PSA, Automation, Notifications, etc.) */
+const INTEGRATION_SECTION_HDR =
+  "text-[11px] font-semibold uppercase tracking-widest text-[var(--text-secondary)] mb-3";
 
 const HANDOVER_ZAPIER_WEBHOOK_URL = "https://gethandover.uk/api/webhooks/zapier";
 
@@ -272,7 +293,6 @@ export function IntegrationsPanel({
   onImportTickets,
   onUpgrade,
   upgradeDisabled,
-  fileInputRef,
   onTest,
   onDisconnect,
   cwConnected,
@@ -314,6 +334,8 @@ export function IntegrationsPanel({
   onSaveTeamsWebhook,
   onTestSlackWebhook,
   onTestTeamsWebhook,
+  onDisconnectSlackNotifications,
+  onDisconnectTeamsNotifications,
 }: IntegrationsPanelProps) {
   const isPro = hasProFeatures;
   const zapierComingSoon = true;
@@ -329,26 +351,41 @@ export function IntegrationsPanel({
   const [zapierRevealKey, setZapierRevealKey] = useState(false);
   const [zapierKeyLoading, setZapierKeyLoading] = useState(false);
 
-  const [activeDetail, setActiveDetail] = useState<IntegrationDetailId | null>(null);
+  const [activeIntegration, setActiveIntegration] = useState<ActiveIntegrationId | null>(null);
+  const [disconnectConfirm, setDisconnectConfirm] = useState<DisconnectConfirmId | null>(null);
+  const [haloDetailTab, setHaloDetailTab] = useState<"connection" | "settings">("connection");
+  const [cwDetailTab, setCwDetailTab] = useState<"connection" | "settings">("connection");
 
-  const openDetail = (id: IntegrationDetailId) => {
-    setActiveDetail(id);
-    if (id === "halo" && !haloConnected) setHaloConfigOpen(true);
-    if (id === "connectwise" && !cwConnected) setCwConfigOpen(true);
-  };
+  const openIntegration = useCallback(
+    (id: ActiveIntegrationId) => {
+      setActiveIntegration(id);
+      if (id === "halopsa") {
+        setHaloDetailTab("connection");
+        if (!haloConnected) setHaloConfigOpen(true);
+      }
+      if (id === "connectwise") {
+        setCwDetailTab("connection");
+        if (!cwConnected) setCwConfigOpen(true);
+      }
+    },
+    [haloConnected, cwConnected, setHaloConfigOpen, setCwConfigOpen],
+  );
 
-  const closeDetail = () => {
-    setActiveDetail(null);
+  const closeIntegration = useCallback(() => {
+    setActiveIntegration(null);
     setHaloConfigOpen(false);
     setCwConfigOpen(false);
-  };
+    setDisconnectConfirm(null);
+    setHaloDetailTab("connection");
+    setCwDetailTab("connection");
+  }, [setHaloConfigOpen, setCwConfigOpen]);
 
   useEffect(() => {
     if (!initialOpenDetail) return;
-    openDetail(initialOpenDetail);
+    if (initialOpenDetail === "halo") openIntegration("halopsa");
+    else openIntegration("connectwise");
     queueMicrotask(() => onConsumedInitialOpenDetail?.());
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot deep link from URL
-  }, [initialOpenDetail]);
+  }, [initialOpenDetail, openIntegration, onConsumedInitialOpenDetail]);
 
   useEffect(() => {
     if (!isPro || integrationsBootstrapping) return;
@@ -372,7 +409,8 @@ export function IntegrationsPanel({
         }
         setZapierCanConfigure(data.canConfigure === true);
         setZapierKey(typeof data.zapier_api_key === "string" ? data.zapier_api_key : null);
-      } catch {
+      } catch (error) {
+        console.log("[integrations] load error:", error);
         if (!cancelled) setZapierLoadError("Network error");
       } finally {
         if (!cancelled) setZapierKeyLoading(false);
@@ -423,39 +461,18 @@ export function IntegrationsPanel({
     teamsNotificationsEnabled &&
     Boolean(teamsWebhookUrl.trim());
 
-  if (integrationsBootstrapping) {
-    return (
-      <div className="min-h-full animate-in fade-in duration-300 bg-[var(--bg-secondary)]">
-        <div className="mx-auto w-full max-w-[1100px] px-4 py-6 sm:px-6">
-          <div className="mb-8 flex items-center gap-3">
-            <Loader2 className="size-6 shrink-0 animate-spin text-[var(--accent)]" aria-hidden />
-            <div className="min-w-0 flex-1 space-y-2">
-              <div className="h-5 w-48 max-w-full animate-pulse rounded bg-[var(--border)]/50" />
-              <div className="h-3 w-72 max-w-full animate-pulse rounded bg-[var(--border)]/35" />
-            </div>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="h-56 rounded-[var(--radius-lg)] border border-[var(--border)]/60 bg-[var(--bg-primary)] p-4">
-              <div className="h-4 w-32 animate-pulse rounded bg-[var(--border)]/45" />
-              <div className="mt-6 space-y-3">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="h-3 animate-pulse rounded bg-[var(--border)]/35" />
-                ))}
-              </div>
-            </div>
-            <div className="h-56 rounded-[var(--radius-lg)] border border-[var(--border)]/60 bg-[var(--bg-primary)] p-4">
-              <div className="h-4 w-36 animate-pulse rounded bg-[var(--border)]/45" />
-              <div className="mt-6 space-y-3">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="h-3 animate-pulse rounded bg-[var(--border)]/35" />
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+  async function runConfirmedDisconnect() {
+    if (!disconnectConfirm) return;
+    try {
+      if (disconnectConfirm === "halo") await onDisconnect();
+      else if (disconnectConfirm === "connectwise") await onCwDisconnect();
+      else if (disconnectConfirm === "slack") await onDisconnectSlackNotifications?.();
+      else if (disconnectConfirm === "teams") await onDisconnectTeamsNotifications?.();
+    } finally {
+      setDisconnectConfirm(null);
+    }
   }
+
 
   const proLockCard = (
     <div
@@ -476,388 +493,111 @@ export function IntegrationsPanel({
   );
 
   return (
-    <div className="min-h-full animate-in fade-in duration-300 bg-[var(--bg-secondary)]">
-      <div className="mx-auto w-full max-w-[1100px] px-4 py-6 sm:px-6">
-        <div
-          className="mb-6 flex flex-col gap-6 rounded-[var(--radius-lg)] px-8 py-10 sm:flex-row sm:items-start sm:justify-between"
-          style={{
-            background:
-              "linear-gradient(135deg, rgba(15,23,42,0.97) 0%, rgba(15,23,42,0.95) 100%)",
-            padding: "2.5rem 2rem",
-          }}
-        >
-          <div>
-            <p
-              className="text-[11px] font-semibold uppercase text-[var(--accent)]"
-              style={{ letterSpacing: "0.1em" }}
-            >
-              Integrations
-            </p>
-            <h1 className="mt-1 text-[28px] font-bold text-white">Connect your tools</h1>
-            <p className="mt-1.5 max-w-xl text-[14px] leading-relaxed text-white/60">
-              Pull live data directly into Handover. No copy pasting, no spreadsheet exports.
-            </p>
-          </div>
-          <div className="shrink-0">
-            <p
-              className="text-[13px] font-medium"
-              style={{
-                color: connectedCount > 0 ? "var(--success)" : "var(--text-muted)",
-              }}
-            >
-              {connectedCount} connected
-            </p>
-          </div>
-        </div>
-
-        <section aria-labelledby="psa-integrations-heading">
-          <header className="mb-5">
-            <p
-              className="text-[11px] font-semibold uppercase text-[var(--accent)]"
-              style={{ letterSpacing: "0.1em" }}
-            >
-              PSA integrations
-            </p>
-            <h2
-              id="psa-integrations-heading"
-              className="mt-1 text-[20px] font-bold text-[var(--text-primary)]"
-            >
-              HaloPSA & ConnectWise Manage
-            </h2>
-            <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-[var(--text-secondary)]">
-              Connect HaloPSA or ConnectWise Manage to pull tickets and projects into Handover. Use{" "}
-              <span className="font-medium text-[var(--text-primary)]">Configure</span> or{" "}
-              <span className="font-medium text-[var(--text-primary)]">Manage</span> to set up credentials on a
-              dedicated panel.
-            </p>
-          </header>
-
-          <div
-            className="grid items-stretch gap-5"
-            style={{
-              gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-            }}
-          >
-            <div className="integration-card-glow min-w-0">
-              <CardMouseSpotlight className="pro-card-content integration-card-glass relative flex min-h-full flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/80 bg-[var(--bg-primary)] p-6 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:border-[rgba(56,189,248,0.35)] hover:shadow-[0_4px_20px_rgba(56,189,248,0.08)]">
-                {!isPro ? proLockCard : null}
-                <div className="mb-4 flex items-start justify-between gap-3">
-                  <img
-                    src="/halopsa.png"
-                    alt=""
-                    className="shrink-0"
-                    style={{ width: "48px", height: "48px", objectFit: "contain", borderRadius: "8px" }}
-                  />
-                  {isPro ? (
-                    <StatusConnectionPill connected={haloConnected} />
-                  ) : (
-                    <BadgeProRequired />
-                  )}
-                </div>
-                <p className="mb-1 text-[16px] font-semibold text-[var(--text-primary)]">HaloPSA</p>
-                <p className="mb-6 min-h-[40px] flex-1 text-[13px] leading-relaxed text-[var(--text-secondary)]">
-                  Import tickets and projects from HaloPSA for one-click reporting and push-back.
-                </p>
-                <Button
-                  type="button"
-                  className="mt-auto h-11 w-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
-                  disabled={!isPro}
-                  onClick={() => openDetail("halo")}
-                >
-                  {isPro ? (haloConnected ? "Manage" : "Configure") : "Pro required"}
-                </Button>
-              </CardMouseSpotlight>
+    <div className="flex h-full min-h-0 flex-1 flex-col animate-in fade-in duration-300 bg-[var(--bg-secondary)]">
+      <div
+        className={cn(
+          "flex min-h-0 flex-1 flex-col",
+          activeIntegration ? "w-full min-w-0 px-0 py-0" : "mx-auto w-full max-w-[1100px] overflow-y-auto px-4 py-6 sm:px-6",
+        )}
+      >
+        {activeIntegration ? (
+          <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col bg-[var(--bg-primary)]">
+            <div className="shrink-0 px-4 pt-3">
+              <button
+                type="button"
+                onClick={closeIntegration}
+                className="inline-flex w-fit items-center gap-1.5 border-0 bg-transparent p-0 text-left text-[13px] font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+                aria-label="Back to Integrations hub"
+              >
+                <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden />
+                <span>Back to Integrations</span>
+              </button>
             </div>
-
-            <div className="integration-card-glow min-w-0">
-              <CardMouseSpotlight className="pro-card-content integration-card-glass relative flex min-h-full flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/80 bg-[var(--bg-primary)] p-6 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:border-[rgba(56,189,248,0.35)] hover:shadow-[0_4px_20px_rgba(56,189,248,0.08)]">
-                {!isPro ? proLockCard : null}
-                <div className="mb-4 flex items-start justify-between gap-3">
-                  <img
-                    src="/connectwise.jpeg"
-                    alt=""
-                    className="shrink-0"
-                    style={{ width: "48px", height: "48px", objectFit: "contain", borderRadius: "8px" }}
-                  />
-                  {isPro ? (
-                    <StatusConnectionPill connected={cwConnected} />
-                  ) : (
-                    <BadgeProRequired />
-                  )}
-                </div>
-                <p className="mb-1 text-[16px] font-semibold text-[var(--text-primary)]">ConnectWise Manage</p>
-                <p className="mb-6 min-h-[40px] flex-1 text-[13px] leading-relaxed text-[var(--text-secondary)]">
-                  Connect to Manage API to pull service tickets and sync notes back to tickets.
-                </p>
-                <Button
+            {activeIntegration === "halopsa" && isPro && haloConnected ? (
+              <div className="flex shrink-0 gap-8 border-b border-[var(--border)] px-4">
+                <button
                   type="button"
-                  className="mt-auto h-11 w-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
-                  disabled={!isPro}
-                  onClick={() => openDetail("connectwise")}
-                >
-                  {isPro ? (cwConnected ? "Manage" : "Configure") : "Pro required"}
-                </Button>
-              </CardMouseSpotlight>
-            </div>
-          </div>
-        </section>
-
-        <section className="mt-14" aria-labelledby="notifications-heading">
-          <header className="mb-6">
-            <p
-              className="text-[11px] font-semibold uppercase text-[var(--accent)]"
-              style={{ letterSpacing: "0.1em" }}
-            >
-              Notifications
-            </p>
-            <h2
-              id="notifications-heading"
-              className="mt-1 text-[20px] font-bold text-[var(--text-primary)]"
-            >
-              Slack & Microsoft Teams
-            </h2>
-            <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-[var(--text-secondary)]">
-              Send a short summary to a channel whenever a report is generated—manual runs or scheduled sends.
-            </p>
-          </header>
-          <div
-            className="grid gap-5"
-            style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}
-          >
-            <div className="integration-card-glow min-w-0">
-              <CardMouseSpotlight className="pro-card-content integration-card-glass relative flex min-h-full flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/80 bg-[var(--bg-primary)] p-6 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:border-[rgba(56,189,248,0.35)] hover:shadow-[0_4px_20px_rgba(56,189,248,0.08)]">
-                {!isPro ? proLockCard : null}
-                <div className="mb-4 flex items-start justify-between gap-3">
-                  <img
-                    src="/slack.png"
-                    alt=""
-                    className="shrink-0"
-                    style={{ width: "48px", height: "48px", objectFit: "contain", borderRadius: "8px" }}
-                  />
-                  {isPro ? (
-                    <StatusConnectionPill connected={slackChatConnected} />
-                  ) : (
-                    <BadgeProRequired />
+                  onClick={() => setHaloDetailTab("connection")}
+                  className={cn(
+                    "-mb-px border-b-2 pb-2.5 text-[13px] font-medium transition-colors",
+                    haloDetailTab === "connection"
+                      ? "border-[var(--accent)] text-white"
+                      : "border-transparent text-[var(--text-secondary)] hover:text-white",
                   )}
-                </div>
-                <p className="mb-1 text-[16px] font-semibold text-[var(--text-primary)]">Slack</p>
-                <p className="mb-6 min-h-[40px] flex-1 text-[13px] leading-relaxed text-[var(--text-secondary)]">
-                  Post report-ready digests to a Slack channel using an incoming webhook.
-                </p>
-                <Button
-                  type="button"
-                  className="mt-auto h-11 w-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
-                  disabled={!isPro}
-                  onClick={() => openDetail("slack")}
                 >
-                  {isPro ? (slackChatConnected ? "Manage" : "Configure") : "Pro required"}
-                </Button>
-              </CardMouseSpotlight>
-            </div>
-            <div className="integration-card-glow min-w-0">
-              <CardMouseSpotlight className="pro-card-content integration-card-glass relative flex min-h-full flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/80 bg-[var(--bg-primary)] p-6 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:border-[rgba(56,189,248,0.35)] hover:shadow-[0_4px_20px_rgba(56,189,248,0.08)]">
-                {!isPro ? proLockCard : null}
-                <div className="mb-4 flex items-start justify-between gap-3">
-                  <img
-                    src="/teams.png"
-                    alt=""
-                    className="shrink-0"
-                    style={{ width: "48px", height: "48px", objectFit: "contain", borderRadius: "8px" }}
-                  />
-                  {isPro ? (
-                    <StatusConnectionPill connected={teamsChatConnected} />
-                  ) : (
-                    <BadgeProRequired />
+                  Connection
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHaloDetailTab("settings")}
+                  className={cn(
+                    "-mb-px border-b-2 pb-2.5 text-[13px] font-medium transition-colors",
+                    haloDetailTab === "settings"
+                      ? "border-[var(--accent)] text-white"
+                      : "border-transparent text-[var(--text-secondary)] hover:text-white",
                   )}
-                </div>
-                <p className="mb-1 text-[16px] font-semibold text-[var(--text-primary)]">Microsoft Teams</p>
-                <p className="mb-6 min-h-[40px] flex-1 text-[13px] leading-relaxed text-[var(--text-secondary)]">
-                  Push the same summaries to Teams with a channel incoming webhook.
-                </p>
-                <Button
-                  type="button"
-                  className="mt-auto h-11 w-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
-                  disabled={!isPro}
-                  onClick={() => openDetail("teams")}
                 >
-                  {isPro ? (teamsChatConnected ? "Manage" : "Configure") : "Pro required"}
-                </Button>
-              </CardMouseSpotlight>
-            </div>
-          </div>
-        </section>
+                  Settings
+                </button>
+              </div>
+            ) : null}
+            {activeIntegration === "connectwise" && isPro && cwConnected ? (
+              <div className="flex shrink-0 gap-8 border-b border-[var(--border)] px-4">
+                <button
+                  type="button"
+                  onClick={() => setCwDetailTab("connection")}
+                  className={cn(
+                    "-mb-px border-b-2 pb-2.5 text-[13px] font-medium transition-colors",
+                    cwDetailTab === "connection"
+                      ? "border-[var(--accent)] text-white"
+                      : "border-transparent text-[var(--text-secondary)] hover:text-white",
+                  )}
+                >
+                  Connection
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCwDetailTab("settings")}
+                  className={cn(
+                    "-mb-px border-b-2 pb-2.5 text-[13px] font-medium transition-colors",
+                    cwDetailTab === "settings"
+                      ? "border-[var(--accent)] text-white"
+                      : "border-transparent text-[var(--text-secondary)] hover:text-white",
+                  )}
+                >
+                  Settings
+                </button>
+              </div>
+            ) : null}
+            <div className="min-h-0 w-full flex-1 overflow-y-auto">
 
-        <section className="mt-14" aria-labelledby="automation-heading">
-          <header className="mb-6">
-            <p
-              className="text-[11px] font-semibold uppercase text-[var(--accent)]"
-              style={{ letterSpacing: "0.1em" }}
-            >
-              Automation
-            </p>
-            <h2 id="automation-heading" className="mt-1 text-[20px] font-bold text-[var(--text-primary)]">
-              Zapier
-            </h2>
-            <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-[var(--text-secondary)]">
-              Trigger Handover from other tools. Full configuration opens in a dedicated panel.
-            </p>
-          </header>
-          <div
-            className="grid gap-5"
-            style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}
-          >
-            <div className="integration-card-glow opacity-50">
-              <CardMouseSpotlight className="pro-card-content integration-card-glass relative flex min-h-full flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/80 bg-[var(--bg-primary)] p-6">
-                <div className="mb-4 flex items-start justify-between gap-3">
+            {activeIntegration === "halopsa" ? (
+              <div className="w-full min-w-0 px-4 pb-8 pt-6 sm:px-8">
+                <div className="mb-6 flex items-center gap-4">
                   <img
-                    src="/zapier.svg"
+                    src={INTEGRATION_DETAIL_LOGOS.halopsa}
                     alt=""
-                    className="size-12 shrink-0 rounded-[10px] bg-white object-contain p-1.5"
+                    className="h-12 w-12 shrink-0 object-contain"
                     width={48}
                     height={48}
                   />
-                  <BadgeComingSoon />
+                  <h2 className="text-xl font-semibold text-[var(--text-primary)]">{INTEGRATION_DETAIL_TITLES.halopsa}</h2>
                 </div>
-                <p className="mb-1 text-[16px] font-semibold text-[var(--text-primary)]">Zapier</p>
-                <p className="mb-6 min-h-[40px] flex-1 text-[13px] leading-relaxed text-[var(--text-secondary)]">
-                  Automate ticket-to-report flows from hundreds of apps. API keys and webhooks ship in a future
-                  release.
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="mt-auto h-11 w-full border-[var(--border)]"
-                  onClick={() => openDetail("zapier")}
-                >
-                  Coming soon
-                </Button>
-              </CardMouseSpotlight>
-            </div>
-          </div>
-        </section>
-
-        <section className="mt-14" aria-labelledby="planned-heading">
-          <header className="mb-6">
-            <p
-              className="text-[11px] font-semibold uppercase text-[var(--text-muted)]"
-              style={{ letterSpacing: "0.1em" }}
-            >
-              Coming soon
-            </p>
-            <h2 id="planned-heading" className="mt-1 text-[20px] font-bold text-[var(--text-primary)]">
-              More integrations
-            </h2>
-            <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-[var(--text-secondary)]">
-              Roadmap PSA connectors and productivity surfaces. Join a waitlist or use file import today.
-            </p>
-          </header>
-          <div
-            className="grid gap-5"
-            style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}
-          >
-            <div className="integration-card-glow opacity-50">
-              <CardMouseSpotlight className="pro-card-content integration-card-glass relative flex min-h-full flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/80 bg-[var(--bg-primary)] p-6">
-                <div className="mb-4 flex items-start justify-between gap-3">
-                  <img
-                    src="/autotask.svg"
-                    alt=""
-                    className="size-12 shrink-0 rounded-[10px] bg-white object-contain p-1"
-                    width={48}
-                    height={48}
-                  />
-                  <BadgeComingSoon />
-                </div>
-                <p className="mb-1 text-[16px] font-semibold text-[var(--text-primary)]">Autotask PSA</p>
-                <p className="mb-6 min-h-[40px] flex-1 text-[13px] leading-relaxed text-[var(--text-secondary)]">
-                  Native Autotask reads for tickets and time entries.
-                </p>
-                <a
-                  href="mailto:hello@gethandover.uk?subject=Autotask%20waitlist"
-                  className="mt-auto inline-flex h-11 w-full items-center justify-center rounded-[var(--radius)] border border-[var(--border)] px-4 text-[13px] font-medium text-[var(--text-muted)] hover:bg-[var(--bg-secondary)]"
-                >
-                  Join waitlist →
-                </a>
-              </CardMouseSpotlight>
-            </div>
-            <div className="integration-card-glow opacity-50">
-              <CardMouseSpotlight className="pro-card-content integration-card-glass relative flex min-h-full flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/80 bg-[var(--bg-primary)] p-6">
-                <div className="mb-4 flex items-start justify-between gap-3">
-                  <img
-                    src="/outlook.png"
-                    alt=""
-                    className="shrink-0"
-                    style={{ width: "48px", height: "48px", objectFit: "contain", borderRadius: "8px" }}
-                  />
-                  <BadgeComingSoon />
-                </div>
-                <p className="mb-1 text-[16px] font-semibold text-[var(--text-primary)]">Outlook add-in</p>
-                <p className="mb-6 min-h-[40px] flex-1 text-[13px] leading-relaxed text-[var(--text-secondary)]">
-                  Generate client-ready email from your compose window.
-                </p>
-                <a
-                  href="mailto:hello@gethandover.uk?subject=Outlook%20waitlist"
-                  className="mt-auto inline-flex h-11 w-full items-center justify-center rounded-[var(--radius)] border border-[var(--border)] px-4 text-[13px] font-medium text-[var(--text-muted)] hover:bg-[var(--bg-secondary)]"
-                >
-                  Join waitlist →
-                </a>
-              </CardMouseSpotlight>
-            </div>
-            <div className="integration-card-glow">
-              <CardMouseSpotlight className="pro-card-content integration-card-glass relative flex min-h-full flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/80 bg-[var(--bg-primary)] p-6 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:border-[rgba(56,189,248,0.35)] hover:shadow-[0_4px_20px_rgba(56,189,248,0.08)]">
-                <div className="mb-4 flex items-start justify-between gap-3">
-                  <div
-                    className="flex size-12 shrink-0 items-center justify-center rounded-[10px] text-white"
-                    style={{ background: "#1D6F42" }}
-                    aria-hidden
-                  >
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path
-                        d="M4 4h7v7H4V4zm9 0h7v7h-7V4zM4 13h7v7H4v-7zm9 0h7v7h-7v-7z"
-                        fill="currentColor"
-                        opacity="0.95"
-                      />
-                    </svg>
-                  </div>
-                  <BadgeAvailable />
-                </div>
-                <p className="mb-1 text-[16px] font-semibold text-[var(--text-primary)]">CSV / Excel</p>
-                <p className="mb-6 min-h-[40px] flex-1 text-[13px] leading-relaxed text-[var(--text-secondary)]">
-                  Import spreadsheets from any PSA when a native connector is not available.
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="mt-auto h-11 w-full border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  Import file
-                </Button>
-              </CardMouseSpotlight>
-            </div>
-          </div>
-        </section>
-
-        <Dialog
-          open={activeDetail !== null}
-          onOpenChange={(open) => {
-            if (!open) closeDetail();
-          }}
-        >
-          <DialogContent className="max-h-[min(92dvh,880px)] w-[min(100vw-1.5rem,560px)] gap-0 overflow-y-auto border-[var(--border)] bg-[var(--bg-primary)] p-0 sm:max-w-[560px]">
-            {activeDetail === "halo" ? (
-              <div className="p-6">
-                <DialogHeader className="space-y-1 pb-4 text-left">
-                  <DialogTitle className="text-xl font-semibold text-[var(--text-primary)]">HaloPSA</DialogTitle>
-                  <p className="text-[13px] leading-relaxed text-[var(--text-secondary)]">
-                    Connect Handover read-only to your Halo tenant so you can import tickets, run delivery health
-                    summaries, and push notes back without copy-paste.
-                  </p>
-                </DialogHeader>
-                <ol className="mb-6 list-decimal space-y-2 pl-5 text-[13px] leading-relaxed text-[var(--text-secondary)]">
-                  <li>Create a Halo API application (Client ID + Secret) with ticket read access.</li>
-                  <li>Paste your Halo URL and credentials below.</li>
-                  <li>Run Test connection, then use Import from PSA inside Reports.</li>
-                </ol>
+                {(!haloConnected || haloDetailTab === "connection") ? (
+                  <>
+                    <DialogHeader className="space-y-1 pb-4 text-left">
+                      <p className="text-[13px] leading-relaxed text-[var(--text-secondary)]">
+                        Connect Handover read-only to your Halo tenant so you can import tickets, run delivery health
+                        summaries, and push notes back without copy-paste.
+                      </p>
+                    </DialogHeader>
+                    <ol className="mb-6 list-decimal space-y-2 pl-5 text-[13px] leading-relaxed text-[var(--text-secondary)]">
+                      <li>Create a Halo API application (Client ID + Secret) with ticket read access.</li>
+                      <li>Paste your Halo URL and credentials below.</li>
+                      <li>Run Test connection, then use Import from PSA inside Reports.</li>
+                    </ol>
+                  </>
+                ) : null}
                 {!isPro ? (
                   <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-4 text-[13px] text-[var(--text-secondary)]">
                     PSA connections require Pro.{" "}
@@ -888,180 +628,187 @@ export function IntegrationsPanel({
                         </Button>
                       </div>
                     ) : null}
-                    <div className="mb-4 flex items-center justify-between gap-2 text-[12px] text-[var(--text-muted)]">
-                      <span>Status</span>
-                      <StatusConnectionPill connected={haloConnected} />
-                    </div>
-                    {haloConnected && haloUrl ? (
-                      <p className="mb-4 text-[12px] text-[var(--text-muted)]">Connected to {haloUrl}</p>
+                    {!haloConnected || haloDetailTab === "connection" ? (
+                      <>
+                        <div className="mb-4 flex items-center justify-between gap-2 text-[12px] text-[var(--text-muted)]">
+                          <span>Status</span>
+                          <StatusConnectionPill
+                            connected={haloConnected}
+                            unknown={integrationsBootstrapping}
+                          />
+                        </div>
+                        {haloConnected && haloUrl ? (
+                          <p className="mb-4 text-[12px] text-[var(--text-muted)]">Connected to {haloUrl}</p>
+                        ) : null}
+                        {!haloConnected ? (
+                          <div className="space-y-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-4">
+                            <div className="space-y-2">
+                              <label className="text-[13px] font-medium text-[var(--text-secondary)]">HaloPSA URL</label>
+                              <input
+                                className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)]"
+                                placeholder="https://yourcompany.halopsa.com"
+                                value={haloUrlInput}
+                                onChange={(e) => setHaloUrlInput(e.target.value)}
+                              />
+                              <p className="mt-1.5 text-[11px] text-[var(--text-muted)] leading-relaxed">
+                                Enter your HaloPSA instance URL without any path suffix. Examples:{" "}
+                                <span className="text-[var(--text-secondary)] font-medium">
+                                  https://halo.yourcompany.com
+                                </span>{" "}
+                                or{" "}
+                                <span className="text-[var(--text-secondary)] font-medium">
+                                  https://yourcompany.halopsa.com
+                                </span>
+                                . Do not include /halo or any subfolder path. For on-prem instances ensure your API
+                                application is enabled under Configuration → Integrations → HaloPSA API.
+                              </p>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[13px] font-medium text-[var(--text-secondary)]">
+                                Tenant (optional)
+                              </label>
+                              <input
+                                className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)]"
+                                placeholder="yourcompany"
+                                value={haloTenant}
+                                onChange={(e) => setHaloTenant(e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[13px] font-medium text-[var(--text-secondary)]">Client ID</label>
+                              <input
+                                className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)]"
+                                value={haloClientId}
+                                onChange={(e) => setHaloClientId(e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[13px] font-medium text-[var(--text-secondary)]">
+                                Client Secret
+                              </label>
+                              <input
+                                type="password"
+                                className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)]"
+                                value={haloClientSecret}
+                                onChange={(e) => setHaloClientSecret(e.target.value)}
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              className="w-full px-3 py-2 text-left text-sm font-medium text-[var(--text-primary)]"
+                              onClick={() => setHaloHelpOpen(!haloHelpOpen)}
+                            >
+                              How to get these credentials
+                            </button>
+                            {haloHelpOpen ? (
+                              <ol className="list-decimal space-y-1 pl-5 text-sm text-[var(--text-secondary)]">
+                                <li>In HaloPSA go to Configuration → Integrations → Halo API</li>
+                                <li>Click View Applications then New</li>
+                                <li>Name it Handover, set Authentication Method to Client ID and Secret (Services)</li>
+                                <li>In Permissions tab select read:tickets and read:customers</li>
+                                <li>Copy the Client ID and Client Secret</li>
+                              </ol>
+                            ) : null}
+                            {haloError ? <p className="text-sm text-[var(--danger)]">{haloError}</p> : null}
+                            <Button
+                              type="button"
+                              className="w-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                              onClick={() => void onConnect()}
+                              disabled={haloLoading}
+                            >
+                              {haloLoading ? "Connecting..." : "Connect HaloPSA"}
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-3">
+                            <Button
+                              type="button"
+                              className="w-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                              onClick={onImportTickets}
+                            >
+                              Import tickets →
+                            </Button>
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void onTest()}
+                                disabled={haloTestLoading}
+                              >
+                                {haloTestLoading ? "Testing..." : "Test connection"}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="text-[var(--danger)]"
+                                onClick={() => void onDisconnect()}
+                                disabled={haloLoading}
+                              >
+                                Disconnect
+                              </Button>
+                            </div>
+                            {haloPermissionWarning ? (
+                              <p className="text-xs text-[var(--warning)]">{haloPermissionWarning}</p>
+                            ) : null}
+                            {haloError ? <p className="text-sm text-[var(--danger)]">{haloError}</p> : null}
+                          </div>
+                        )}
+                      </>
                     ) : null}
-                    {haloConnected ? (
-                      <div className="mb-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)]/70 p-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-[13px] font-semibold text-[var(--text-primary)]">
-                            Auto-generate closure summary
-                          </p>
+                    {haloConnected && haloDetailTab === "settings" ? (
+                      <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)]/70 p-4">
+                        <p className="text-[13px] font-semibold text-[var(--text-primary)]">Auto closure summary</p>
+                        <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-muted)]">
+                          Automatically generate and push a summary note when a ticket is closed in HaloPSA.
+                        </p>
+                        <div className="mt-3 flex justify-end">
                           <Switch
                             checked={haloAutoClosureSummary}
                             disabled={haloAutoClosureSummaryBusy}
                             onCheckedChange={(next) => {
                               void onHaloAutoClosureSummaryChange(next);
                             }}
-                            aria-label="Auto-generate closure summary"
+                            aria-label="Auto closure summary for HaloPSA"
                           />
                         </div>
-                        <p className="mt-2 text-[12px] leading-relaxed text-[var(--text-muted)]">
-                          When enabled, Handover can push a closure summary when a ticket resolves in HaloPSA.
-                        </p>
                       </div>
                     ) : null}
-                    {!haloConnected ? (
-                      <div className="space-y-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-4">
-                        <div className="space-y-2">
-                          <label className="text-[13px] font-medium text-[var(--text-secondary)]">HaloPSA URL</label>
-                          <input
-                            className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)]"
-                            placeholder="https://yourcompany.halopsa.com"
-                            value={haloUrlInput}
-                            onChange={(e) => setHaloUrlInput(e.target.value)}
-                          />
-                          <p className="mt-1.5 text-[11px] text-[var(--text-muted)] leading-relaxed">
-                            Enter your HaloPSA instance URL without any path suffix. Examples:{" "}
-                            <span className="text-[var(--text-secondary)] font-medium">
-                              https://halo.yourcompany.com
-                            </span>{" "}
-                            or{" "}
-                            <span className="text-[var(--text-secondary)] font-medium">
-                              https://yourcompany.halopsa.com
-                            </span>
-                            . Do not include /halo or any subfolder path. For on-prem instances ensure your API
-                            application is enabled under Configuration → Integrations → HaloPSA API.
-                          </p>
-                          <a
-                            href="/integrations/halopsa"
-                            target="_blank"
-                            className="mt-1 inline-block text-[11px] text-[var(--accent)] hover:underline"
-                          >
-                            View setup guide →
-                          </a>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[13px] font-medium text-[var(--text-secondary)]">
-                            Tenant (optional)
-                          </label>
-                          <input
-                            className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)]"
-                            placeholder="yourcompany"
-                            value={haloTenant}
-                            onChange={(e) => setHaloTenant(e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[13px] font-medium text-[var(--text-secondary)]">Client ID</label>
-                          <input
-                            className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)]"
-                            value={haloClientId}
-                            onChange={(e) => setHaloClientId(e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[13px] font-medium text-[var(--text-secondary)]">Client Secret</label>
-                          <input
-                            type="password"
-                            className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)]"
-                            value={haloClientSecret}
-                            onChange={(e) => setHaloClientSecret(e.target.value)}
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          className="w-full px-3 py-2 text-left text-sm font-medium text-[var(--text-primary)]"
-                          onClick={() => setHaloHelpOpen(!haloHelpOpen)}
-                        >
-                          How to get these credentials
-                        </button>
-                        {haloHelpOpen ? (
-                          <ol className="list-decimal space-y-1 pl-5 text-sm text-[var(--text-secondary)]">
-                            <li>In HaloPSA go to Configuration → Integrations → Halo API</li>
-                            <li>Click View Applications then New</li>
-                            <li>Name it Handover, set Authentication Method to Client ID and Secret (Services)</li>
-                            <li>In Permissions tab select read:tickets and read:customers</li>
-                            <li>Copy the Client ID and Client Secret</li>
-                          </ol>
-                        ) : null}
-                        {haloError ? <p className="text-sm text-[var(--danger)]">{haloError}</p> : null}
-                        <Button
-                          type="button"
-                          className="w-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
-                          onClick={() => void onConnect()}
-                          disabled={haloLoading}
-                        >
-                          {haloLoading ? "Connecting..." : "Connect HaloPSA"}
-                        </Button>
-                        <Link
-                          href="/integrations/halopsa"
-                          className="block text-center text-[13px] text-[var(--accent)] hover:underline"
-                        >
-                          View the setup guide →
-                        </Link>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-3">
-                        <Button
-                          type="button"
-                          className="w-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
-                          onClick={onImportTickets}
-                        >
-                          Import tickets →
-                        </Button>
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => void onTest()}
-                            disabled={haloTestLoading}
-                          >
-                            {haloTestLoading ? "Testing..." : "Test connection"}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="text-[var(--danger)]"
-                            onClick={() => void onDisconnect()}
-                            disabled={haloLoading}
-                          >
-                            Disconnect
-                          </Button>
-                        </div>
-                        {haloPermissionWarning ? (
-                          <p className="text-xs text-[var(--warning)]">{haloPermissionWarning}</p>
-                        ) : null}
-                        {haloError ? <p className="text-sm text-[var(--danger)]">{haloError}</p> : null}
-                      </div>
-                    )}
                   </>
                 )}
               </div>
             ) : null}
 
-            {activeDetail === "connectwise" ? (
-              <div className="p-6">
-                <DialogHeader className="space-y-1 pb-4 text-left">
-                  <DialogTitle className="text-xl font-semibold text-[var(--text-primary)]">
-                    ConnectWise Manage
-                  </DialogTitle>
-                  <p className="text-[13px] leading-relaxed text-[var(--text-secondary)]">
-                    Use the ConnectWise Manage REST API to pull service tickets into Handover and validate your
-                    integration with a one-click test.
-                  </p>
-                </DialogHeader>
-                <ol className="mb-6 list-decimal space-y-2 pl-5 text-[13px] leading-relaxed text-[var(--text-secondary)]">
-                  <li>Generate API keys from your ConnectWise member profile.</li>
-                  <li>Enter your cloud site URL and company identifier.</li>
-                  <li>Save &amp; connect, then run Test connection.</li>
-                </ol>
+            {activeIntegration === "connectwise" ? (
+              <div className="w-full min-w-0 px-4 pb-8 pt-6 sm:px-8">
+                <div className="mb-6 flex items-center gap-4">
+                  <img
+                    src={INTEGRATION_DETAIL_LOGOS.connectwise}
+                    alt=""
+                    className="h-12 w-12 shrink-0 object-contain"
+                    width={48}
+                    height={48}
+                  />
+                  <h2 className="text-xl font-semibold text-[var(--text-primary)]">
+                    {INTEGRATION_DETAIL_TITLES.connectwise}
+                  </h2>
+                </div>
+                {(!cwConnected || cwDetailTab === "connection") ? (
+                  <>
+                    <DialogHeader className="space-y-1 pb-4 text-left">
+                      <p className="text-[13px] leading-relaxed text-[var(--text-secondary)]">
+                        Use the ConnectWise Manage REST API to pull service tickets into Handover and validate your
+                        integration with a one-click test.
+                      </p>
+                    </DialogHeader>
+                    <ol className="mb-6 list-decimal space-y-2 pl-5 text-[13px] leading-relaxed text-[var(--text-secondary)]">
+                      <li>Generate API keys from your ConnectWise member profile.</li>
+                      <li>Enter your cloud site URL and company identifier.</li>
+                      <li>Save &amp; connect, then run Test connection.</li>
+                    </ol>
+                  </>
+                ) : null}
                 {!isPro ? (
                   <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-4 text-[13px] text-[var(--text-secondary)]">
                     PSA connections require Pro.{" "}
@@ -1075,140 +822,173 @@ export function IntegrationsPanel({
                   </div>
                 ) : (
                   <>
-                    <div className="mb-4 flex items-center justify-between gap-2 text-[12px] text-[var(--text-muted)]">
-                      <span>Status</span>
-                      <StatusConnectionPill connected={cwConnected} />
-                    </div>
-                    {cwConnected && cwSiteUrl ? (
-                      <p className="mb-4 text-[12px] text-[var(--text-muted)]">Connected to {cwSiteUrl}</p>
+                    {!cwConnected || cwDetailTab === "connection" ? (
+                      <>
+                        <div className="mb-4 flex items-center justify-between gap-2 text-[12px] text-[var(--text-muted)]">
+                          <span>Status</span>
+                          <StatusConnectionPill
+                            connected={cwConnected}
+                            unknown={integrationsBootstrapping}
+                          />
+                        </div>
+                        {cwConnected && cwSiteUrl ? (
+                          <p className="mb-4 text-[12px] text-[var(--text-muted)]">Connected to {cwSiteUrl}</p>
+                        ) : null}
+                        {!cwConnected ? (
+                          <div className="space-y-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-4">
+                            <div className="space-y-2">
+                              <label className="text-[13px] font-medium text-[var(--text-secondary)]">Site URL</label>
+                              <input
+                                className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)]"
+                                placeholder="https://yourcompany.connectwise.com"
+                                value={cwSiteUrlInput}
+                                onChange={(e) => setCwSiteUrlInput(e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[13px] font-medium text-[var(--text-secondary)]">Company ID</label>
+                              <input
+                                className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)]"
+                                value={cwCompanyIdInput}
+                                onChange={(e) => setCwCompanyIdInput(e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[13px] font-medium text-[var(--text-secondary)]">Public Key</label>
+                              <input
+                                className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)]"
+                                value={cwPublicKeyInput}
+                                onChange={(e) => setCwPublicKeyInput(e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[13px] font-medium text-[var(--text-secondary)]">Private Key</label>
+                              <input
+                                type="password"
+                                className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)]"
+                                value={cwPrivateKeyInput}
+                                onChange={(e) => setCwPrivateKeyInput(e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[13px] font-medium text-[var(--text-secondary)]">Client ID</label>
+                              <input
+                                className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)]"
+                                value={cwClientIdInput}
+                                onChange={(e) => setCwClientIdInput(e.target.value)}
+                              />
+                            </div>
+                            {cwError ? <p className="text-sm text-[var(--danger)]">{cwError}</p> : null}
+                            {cwTestMessage ? (
+                              <p
+                                className={cn(
+                                  "text-sm",
+                                  cwTestOk === true
+                                    ? "text-[var(--success)]"
+                                    : cwTestOk === false
+                                      ? "text-[var(--danger)]"
+                                      : "text-[var(--text-secondary)]",
+                                )}
+                              >
+                                {cwTestMessage}
+                              </p>
+                            ) : null}
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                type="button"
+                                className="bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                                onClick={() => void onCwSave()}
+                                disabled={cwSaveLoading}
+                              >
+                                {cwSaveLoading ? "Saving..." : "Save & connect"}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => void onCwTest()}
+                                disabled={cwTestLoading}
+                              >
+                                {cwTestLoading ? "Testing..." : "Test connection"}
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-3">
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void onCwTest()}
+                                disabled={cwTestLoading}
+                              >
+                                {cwTestLoading ? "Testing..." : "Test connection"}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="text-[var(--danger)]"
+                                onClick={() => void onCwDisconnect()}
+                                disabled={cwSaveLoading}
+                              >
+                                Disconnect
+                              </Button>
+                            </div>
+                            {cwTestMessage ? (
+                              <p
+                                className={cn(
+                                  "text-sm",
+                                  cwTestOk === true
+                                    ? "text-[var(--success)]"
+                                    : cwTestOk === false
+                                      ? "text-[var(--danger)]"
+                                      : "text-[var(--text-secondary)]",
+                                )}
+                              >
+                                {cwTestMessage}
+                              </p>
+                            ) : null}
+                            {cwError ? <p className="text-sm text-[var(--danger)]">{cwError}</p> : null}
+                          </div>
+                        )}
+                      </>
                     ) : null}
-                    {!cwConnected ? (
-                      <div className="space-y-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-4">
-                        <div className="space-y-2">
-                          <label className="text-[13px] font-medium text-[var(--text-secondary)]">Site URL</label>
-                          <input
-                            className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)]"
-                            placeholder="https://yourcompany.connectwise.com"
-                            value={cwSiteUrlInput}
-                            onChange={(e) => setCwSiteUrlInput(e.target.value)}
+                    {cwConnected && cwDetailTab === "settings" ? (
+                      <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)]/70 p-4">
+                        <p className="text-[13px] font-semibold text-[var(--text-primary)]">Auto closure summary</p>
+                        <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-muted)]">
+                          Automatically generate and push a summary note when a ticket is closed in ConnectWise.
+                          Today the background job only posts closure summaries for HaloPSA; ConnectWise support is on
+                          the roadmap.
+                        </p>
+                        <div className="mt-3 flex justify-end">
+                          <Switch
+                            checked={false}
+                            disabled
+                            aria-label="Auto closure summary for ConnectWise (not available yet)"
                           />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[13px] font-medium text-[var(--text-secondary)]">Company ID</label>
-                          <input
-                            className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)]"
-                            value={cwCompanyIdInput}
-                            onChange={(e) => setCwCompanyIdInput(e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[13px] font-medium text-[var(--text-secondary)]">Public Key</label>
-                          <input
-                            className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)]"
-                            value={cwPublicKeyInput}
-                            onChange={(e) => setCwPublicKeyInput(e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[13px] font-medium text-[var(--text-secondary)]">Private Key</label>
-                          <input
-                            type="password"
-                            className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)]"
-                            value={cwPrivateKeyInput}
-                            onChange={(e) => setCwPrivateKeyInput(e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[13px] font-medium text-[var(--text-secondary)]">Client ID</label>
-                          <input
-                            className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)]"
-                            value={cwClientIdInput}
-                            onChange={(e) => setCwClientIdInput(e.target.value)}
-                          />
-                        </div>
-                        {cwError ? <p className="text-sm text-[var(--danger)]">{cwError}</p> : null}
-                        {cwTestMessage ? (
-                          <p
-                            className={cn(
-                              "text-sm",
-                              cwTestOk === true
-                                ? "text-[var(--success)]"
-                                : cwTestOk === false
-                                  ? "text-[var(--danger)]"
-                                  : "text-[var(--text-secondary)]",
-                            )}
-                          >
-                            {cwTestMessage}
-                          </p>
-                        ) : null}
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            className="bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
-                            onClick={() => void onCwSave()}
-                            disabled={cwSaveLoading}
-                          >
-                            {cwSaveLoading ? "Saving..." : "Save & connect"}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => void onCwTest()}
-                            disabled={cwTestLoading}
-                          >
-                            {cwTestLoading ? "Testing..." : "Test connection"}
-                          </Button>
                         </div>
                       </div>
-                    ) : (
-                      <div className="flex flex-col gap-3">
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => void onCwTest()}
-                            disabled={cwTestLoading}
-                          >
-                            {cwTestLoading ? "Testing..." : "Test connection"}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="text-[var(--danger)]"
-                            onClick={() => void onCwDisconnect()}
-                            disabled={cwSaveLoading}
-                          >
-                            Disconnect
-                          </Button>
-                        </div>
-                        {cwTestMessage ? (
-                          <p
-                            className={cn(
-                              "text-sm",
-                              cwTestOk === true
-                                ? "text-[var(--success)]"
-                                : cwTestOk === false
-                                  ? "text-[var(--danger)]"
-                                  : "text-[var(--text-secondary)]",
-                            )}
-                          >
-                            {cwTestMessage}
-                          </p>
-                        ) : null}
-                        {cwError ? <p className="text-sm text-[var(--danger)]">{cwError}</p> : null}
-                      </div>
-                    )}
+                    ) : null}
                   </>
                 )}
               </div>
             ) : null}
 
-            {activeDetail === "slack" ? (
-              <div className="p-6">
+            {activeIntegration === "slack" ? (
+              <div className="w-full min-w-0 px-4 pb-8 pt-6 sm:px-8">
+                <div className="mb-6 flex items-center gap-4">
+                  <img
+                    src={INTEGRATION_DETAIL_LOGOS.slack}
+                    alt=""
+                    className="h-12 w-12 shrink-0 object-contain"
+                    width={48}
+                    height={48}
+                  />
+                  <h2 className="text-xl font-semibold text-[var(--text-primary)]">{INTEGRATION_DETAIL_TITLES.slack}</h2>
+                </div>
                 <DialogHeader className="space-y-1 pb-4 text-left">
-                  <DialogTitle className="text-xl font-semibold text-[var(--text-primary)]">Slack</DialogTitle>
                   <p className="text-[13px] leading-relaxed text-[var(--text-secondary)]">
                     Route a concise “report ready” message to a channel so your team sees every client send without
                     checking email.
@@ -1273,12 +1053,19 @@ export function IntegrationsPanel({
               </div>
             ) : null}
 
-            {activeDetail === "teams" ? (
-              <div className="p-6">
+            {activeIntegration === "teams" ? (
+              <div className="w-full min-w-0 px-4 pb-8 pt-6 sm:px-8">
+                <div className="mb-6 flex items-center gap-4">
+                  <img
+                    src={INTEGRATION_DETAIL_LOGOS.teams}
+                    alt=""
+                    className="h-12 w-12 shrink-0 object-contain"
+                    width={48}
+                    height={48}
+                  />
+                  <h2 className="text-xl font-semibold text-[var(--text-primary)]">{INTEGRATION_DETAIL_TITLES.teams}</h2>
+                </div>
                 <DialogHeader className="space-y-1 pb-4 text-left">
-                  <DialogTitle className="text-xl font-semibold text-[var(--text-primary)]">
-                    Microsoft Teams
-                  </DialogTitle>
                   <p className="text-[13px] leading-relaxed text-[var(--text-secondary)]">
                     Mirror the same alerts into Teams for delivery leads who live in chat instead of email.
                   </p>
@@ -1342,10 +1129,19 @@ export function IntegrationsPanel({
               </div>
             ) : null}
 
-            {activeDetail === "zapier" ? (
-              <div className="p-6">
+            {activeIntegration === "zapier" ? (
+              <div className="w-full min-w-0 px-4 pb-8 pt-6 sm:px-8">
+                <div className="mb-6 flex items-center gap-4">
+                  <img
+                    src={INTEGRATION_DETAIL_LOGOS.zapier}
+                    alt=""
+                    className="h-12 w-12 shrink-0 object-contain"
+                    width={48}
+                    height={48}
+                  />
+                  <h2 className="text-xl font-semibold text-[var(--text-primary)]">{INTEGRATION_DETAIL_TITLES.zapier}</h2>
+                </div>
                 <DialogHeader className="space-y-1 pb-4 text-left">
-                  <DialogTitle className="text-xl font-semibold text-[var(--text-primary)]">Zapier</DialogTitle>
                   <p className="text-[13px] leading-relaxed text-[var(--text-secondary)]">
                     Zapier will let you trigger Handover when tickets change in other tools. We are finishing the
                     hosted webhook and API key experience—preview the planned workflow below.
@@ -1355,20 +1151,351 @@ export function IntegrationsPanel({
                   <p className="font-medium text-[var(--text-primary)]">Coming soon</p>
                   <p className="mt-1">
                     You will generate an API key, copy the Handover webhook URL into a Zap action, and map ticket JSON
-                    into the request body—same flow you see on our public Zapier overview page.
+                    into the request body—same flow described on the public Zapier overview when it ships.
                   </p>
-                  <Link
-                    href="/integrations/zapier"
-                    className="mt-3 inline-block font-medium text-[var(--accent)] underline-offset-4 hover:underline"
-                  >
-                    Read the marketing overview →
-                  </Link>
                 </div>
               </div>
             ) : null}
-          </DialogContent>
-        </Dialog>
 
+            </div>
+          </div>
+        ) : null}
+
+        {!activeIntegration ? (
+        <>
+        <div className="mb-8">
+          <h1 className="text-2xl font-semibold text-[var(--text-primary)]">Integrations</h1>
+          <p className="mt-1 text-[13px] text-[var(--text-secondary)]">Connect and configure your tools</p>
+        </div>
+
+        <section aria-labelledby="psa-integrations-heading" className="mb-10">
+          <h2 id="psa-integrations-heading" className={INTEGRATION_SECTION_HDR}>
+            PSA integrations
+          </h2>
+          <div className="flex flex-wrap gap-4">
+            <div className="group relative flex w-32 flex-col items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-4 transition-colors transition-transform duration-150 hover:scale-105 hover:bg-white/[0.02]">
+              {!isPro ? proLockCard : null}
+              <button
+                type="button"
+                className="absolute right-2 top-2 z-[11] border-0 bg-transparent p-0 opacity-0 shadow-none outline-none transition-opacity duration-150 focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-1"
+                aria-label={haloConnected ? "Disconnect HaloPSA" : "Connect HaloPSA"}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!isPro) {
+                    onUpgrade();
+                    return;
+                  }
+                  if (haloConnected) setDisconnectConfirm("halo");
+                  else openIntegration("halopsa");
+                }}
+              >
+                {haloConnected ? (
+                  <X className="h-4 w-4 text-red-400 hover:text-red-300" aria-hidden />
+                ) : (
+                  <Plus className="h-4 w-4 text-[var(--accent)] hover:text-white" aria-hidden />
+                )}
+              </button>
+              <button
+                type="button"
+                disabled={!isPro}
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (!isPro) {
+                    onUpgrade();
+                    return;
+                  }
+                  openIntegration("halopsa");
+                }}
+                className={cn("flex flex-col items-center gap-2", isPro ? "cursor-pointer" : "cursor-default")}
+              >
+                <div
+                  className={cn(
+                    "relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full",
+                    haloConnected
+                      ? "border-2 border-[#0EA5E9] bg-[#0c1f3f]"
+                      : "border border-[var(--border)] bg-[var(--bg-secondary)]",
+                  )}
+                >
+                  <img src="/halopsa.png" alt="" className="h-10 w-10 object-contain" />
+                </div>
+                <span className="text-center text-[12px] font-medium text-[var(--text-primary)]">HaloPSA</span>
+              </button>
+            </div>
+
+            <div className="group relative flex w-32 flex-col items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-4 transition-colors transition-transform duration-150 hover:scale-105 hover:bg-white/[0.02]">
+              {!isPro ? proLockCard : null}
+              <button
+                type="button"
+                className="absolute right-2 top-2 z-[11] border-0 bg-transparent p-0 opacity-0 shadow-none outline-none transition-opacity duration-150 focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-1"
+                aria-label={cwConnected ? "Disconnect ConnectWise" : "Connect ConnectWise"}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!isPro) {
+                    onUpgrade();
+                    return;
+                  }
+                  if (cwConnected) setDisconnectConfirm("connectwise");
+                  else openIntegration("connectwise");
+                }}
+              >
+                {cwConnected ? (
+                  <X className="h-4 w-4 text-red-400 hover:text-red-300" aria-hidden />
+                ) : (
+                  <Plus className="h-4 w-4 text-[var(--accent)] hover:text-white" aria-hidden />
+                )}
+              </button>
+              <button
+                type="button"
+                disabled={!isPro}
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (!isPro) {
+                    onUpgrade();
+                    return;
+                  }
+                  openIntegration("connectwise");
+                }}
+                className={cn("flex flex-col items-center gap-2", isPro ? "cursor-pointer" : "cursor-default")}
+              >
+                <div
+                  className={cn(
+                    "relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full",
+                    cwConnected
+                      ? "border-2 border-[#0EA5E9] bg-[#0c1f3f]"
+                      : "border border-[var(--border)] bg-[var(--bg-secondary)]",
+                  )}
+                >
+                  <div className="rounded-lg overflow-hidden bg-white p-1">
+                    <img
+                      src="/images/connectwise.png"
+                      alt=""
+                      className="h-8 w-8 object-contain"
+                    />
+                  </div>
+                </div>
+                <span className="text-center text-[12px] font-medium text-[var(--text-primary)]">ConnectWise</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section aria-labelledby="notifications-heading" className="mb-10">
+          <h2 id="notifications-heading" className={INTEGRATION_SECTION_HDR}>
+            Notifications
+          </h2>
+          <div className="flex flex-wrap gap-4">
+            <div className="group relative flex w-32 flex-col items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-4 transition-colors transition-transform duration-150 hover:scale-105 hover:bg-white/[0.02]">
+              {!isPro ? proLockCard : null}
+              <button
+                type="button"
+                className="absolute right-2 top-2 z-[11] border-0 bg-transparent p-0 opacity-0 shadow-none outline-none transition-opacity duration-150 focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-1"
+                aria-label={slackChatConnected ? "Disconnect Slack" : "Connect Slack"}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!isPro) {
+                    onUpgrade();
+                    return;
+                  }
+                  if (slackChatConnected) setDisconnectConfirm("slack");
+                  else openIntegration("slack");
+                }}
+              >
+                {slackChatConnected ? (
+                  <X className="h-4 w-4 text-red-400 hover:text-red-300" aria-hidden />
+                ) : (
+                  <Plus className="h-4 w-4 text-[var(--accent)] hover:text-white" aria-hidden />
+                )}
+              </button>
+              <button
+                type="button"
+                disabled={!isPro}
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (!isPro) {
+                    onUpgrade();
+                    return;
+                  }
+                  openIntegration("slack");
+                }}
+                className={cn("flex flex-col items-center gap-2", isPro ? "cursor-pointer" : "cursor-default")}
+              >
+                <div
+                  className={cn(
+                    "relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full",
+                    slackChatConnected
+                      ? "border-2 border-[#0EA5E9] bg-[#0c1f3f]"
+                      : "border border-[var(--border)] bg-[var(--bg-secondary)]",
+                  )}
+                >
+                  <img src="/slack.png" alt="" className="h-10 w-10 object-contain" />
+                </div>
+                <span className="text-center text-[12px] font-medium text-[var(--text-primary)]">Slack</span>
+              </button>
+            </div>
+
+            <div className="group relative flex w-32 flex-col items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-4 transition-colors transition-transform duration-150 hover:scale-105 hover:bg-white/[0.02]">
+              {!isPro ? proLockCard : null}
+              <button
+                type="button"
+                className="absolute right-2 top-2 z-[11] border-0 bg-transparent p-0 opacity-0 shadow-none outline-none transition-opacity duration-150 focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-1"
+                aria-label={teamsChatConnected ? "Disconnect Teams" : "Connect Teams"}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!isPro) {
+                    onUpgrade();
+                    return;
+                  }
+                  if (teamsChatConnected) setDisconnectConfirm("teams");
+                  else openIntegration("teams");
+                }}
+              >
+                {teamsChatConnected ? (
+                  <X className="h-4 w-4 text-red-400 hover:text-red-300" aria-hidden />
+                ) : (
+                  <Plus className="h-4 w-4 text-[var(--accent)] hover:text-white" aria-hidden />
+                )}
+              </button>
+              <button
+                type="button"
+                disabled={!isPro}
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (!isPro) {
+                    onUpgrade();
+                    return;
+                  }
+                  openIntegration("teams");
+                }}
+                className={cn("flex flex-col items-center gap-2", isPro ? "cursor-pointer" : "cursor-default")}
+              >
+                <div
+                  className={cn(
+                    "relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full",
+                    teamsChatConnected
+                      ? "border-2 border-[#0EA5E9] bg-[#0c1f3f]"
+                      : "border border-[var(--border)] bg-[var(--bg-secondary)]",
+                  )}
+                >
+                  <img src="/teams.png" alt="" className="h-10 w-10 object-contain" />
+                </div>
+                <span className="text-center text-[12px] font-medium text-[var(--text-primary)]">Microsoft Teams</span>
+              </button>
+            </div>
+          </div>
+        </section>
+        <section className="mt-14" aria-labelledby="automation-heading">
+          <h2 id="automation-heading" className={INTEGRATION_SECTION_HDR}>
+            Automation
+          </h2>
+          <p className="mb-6 max-w-2xl text-[13px] leading-relaxed text-[var(--text-secondary)]">
+            Trigger Handover from other tools. Full configuration opens in the Zapier panel below when available.
+          </p>
+          <div
+            className="grid gap-5"
+            style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}
+          >
+            <div
+              className="group integration-card-glow cursor-pointer rounded-[calc(var(--radius-lg)+2px)] opacity-50 transition-transform duration-150 hover:scale-105"
+              role="button"
+              tabIndex={0}
+              onClick={() => openIntegration("zapier")}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openIntegration("zapier");
+                }
+              }}
+            >
+              <CardMouseSpotlight className="pro-card-content integration-card-glass relative flex min-h-full flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/80 bg-[var(--bg-primary)] p-6">
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <img src="/zapier.png" alt="" className="h-10 w-10 shrink-0 object-contain" width={40} height={40} />
+                  <BadgeComingSoon />
+                </div>
+                <p className="mb-1 text-[16px] font-semibold text-[var(--text-primary)]">Zapier</p>
+                <p className="mb-6 min-h-[40px] flex-1 text-[13px] leading-relaxed text-[var(--text-secondary)]">
+                  Automate ticket-to-report flows from hundreds of apps. API keys and webhooks ship in a future
+                  release.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-auto h-11 w-full border-[var(--border)]"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openIntegration("zapier");
+                  }}
+                >
+                  Coming soon
+                </Button>
+              </CardMouseSpotlight>
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-14" aria-labelledby="planned-heading">
+          <h2 id="planned-heading" className={INTEGRATION_SECTION_HDR}>
+            Coming soon
+          </h2>
+          <p className="mb-6 max-w-2xl text-[13px] leading-relaxed text-[var(--text-secondary)]">
+            Roadmap PSA connectors and productivity surfaces. Join a waitlist to register interest.
+          </p>
+          <div
+            className="grid gap-5"
+            style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}
+          >
+            <div className="integration-card-glow opacity-50">
+              <CardMouseSpotlight className="pro-card-content integration-card-glass relative flex min-h-full flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/80 bg-[var(--bg-primary)] p-6">
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <img
+                    src="/autotask.svg"
+                    alt=""
+                    className="size-12 shrink-0 rounded-[10px] bg-white object-contain p-1"
+                    width={48}
+                    height={48}
+                  />
+                  <BadgeComingSoon />
+                </div>
+                <p className="mb-1 text-[16px] font-semibold text-[var(--text-primary)]">Autotask PSA</p>
+                <p className="mb-6 min-h-[40px] flex-1 text-[13px] leading-relaxed text-[var(--text-secondary)]">
+                  Native Autotask reads for tickets and time entries.
+                </p>
+                <a
+                  href="mailto:hello@gethandover.uk?subject=Autotask%20waitlist"
+                  className="mt-auto inline-flex h-11 w-full items-center justify-center rounded-[var(--radius)] border border-[var(--border)] px-4 text-[13px] font-medium text-[var(--text-muted)] hover:bg-[var(--bg-secondary)]"
+                >
+                  Join waitlist →
+                </a>
+              </CardMouseSpotlight>
+            </div>
+            <div className="integration-card-glow opacity-50">
+              <CardMouseSpotlight className="pro-card-content integration-card-glass relative flex min-h-full flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/80 bg-[var(--bg-primary)] p-6">
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <img
+                    src="/outlook.png"
+                    alt=""
+                    className="shrink-0"
+                    style={{ width: "48px", height: "48px", objectFit: "contain", borderRadius: "8px" }}
+                  />
+                  <BadgeComingSoon />
+                </div>
+                <p className="mb-1 text-[16px] font-semibold text-[var(--text-primary)]">Outlook add-in</p>
+                <p className="mb-6 min-h-[40px] flex-1 text-[13px] leading-relaxed text-[var(--text-secondary)]">
+                  Generate client-ready email from your compose window.
+                </p>
+                <a
+                  href="mailto:hello@gethandover.uk?subject=Outlook%20waitlist"
+                  className="mt-auto inline-flex h-11 w-full items-center justify-center rounded-[var(--radius)] border border-[var(--border)] px-4 text-[13px] font-medium text-[var(--text-muted)] hover:bg-[var(--bg-secondary)]"
+                >
+                  Join waitlist →
+                </a>
+              </CardMouseSpotlight>
+            </div>
+          </div>
+        </section>
         <div className="mt-6 flex flex-wrap items-center gap-8 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] px-6 py-4">
           <div className="flex min-w-[200px] items-start gap-2">
             <Shield className="mt-0.5 size-4 shrink-0 text-[var(--accent)]" aria-hidden />
@@ -1392,6 +1519,48 @@ export function IntegrationsPanel({
             </div>
           </div>
         </div>
+        </>
+        ) : null}
+
+        <Dialog
+          open={disconnectConfirm !== null}
+          onOpenChange={(open) => {
+            if (!open) setDisconnectConfirm(null);
+          }}
+        >
+          <DialogContent
+            className="w-[min(100vw-1.5rem,400px)] border-[var(--border)] bg-[var(--bg-primary)] p-6 sm:max-w-[400px]"
+            showCloseButton
+          >
+            <DialogHeader>
+              <DialogTitle className="text-[var(--text-primary)]">Disconnect?</DialogTitle>
+              <p className="text-[13px] text-[var(--text-secondary)]">
+                {disconnectConfirm === "halo"
+                  ? "HaloPSA will be disconnected from Handover."
+                  : disconnectConfirm === "connectwise"
+                    ? "ConnectWise will be disconnected from Handover."
+                    : disconnectConfirm === "slack"
+                      ? "Slack notifications will be turned off and the webhook URL cleared."
+                      : disconnectConfirm === "teams"
+                        ? "Teams notifications will be turned off and the webhook URL cleared."
+                        : ""}
+              </p>
+            </DialogHeader>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setDisconnectConfirm(null)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="bg-[var(--danger)] text-white hover:opacity-90"
+                onClick={() => void runConfirmedDisconnect()}
+              >
+                Disconnect
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
       </div>
     </div>
   );

@@ -1,0 +1,24 @@
+/** HTML body for /blog/msp-client-portal-guide (dynamic article). */
+export const MSP_CLIENT_PORTAL_GUIDE_HTML = `
+<p>Most MSP client portals promise transparency. In practice, they often show either too much — raw queues that alarm non-technical stakeholders — or too little — a static PDF and a branding exercise. Neither builds the confidence you want heading into a renewal conversation.</p>
+<p>This guide sets out what clients actually want from a portal, what to include (and what to leave out), and how Handover’s client portal is designed around those expectations rather than around what is easiest to expose from the PSA.</p>
+<h2 id="problem-with-most-msp-client-portals" class="blog-h2-anchor">The problem with most MSP client portals</h2>
+<p>Many portals are essentially ticket browsers with a skin. For an IT director, that can work. For a finance sponsor or an operations lead, an unfiltered queue is noise: severities without context, internal chatter, and jargon that reads like blame rather than progress.</p>
+<p>At the other extreme, some portals are little more than a file drop and a logo — which saves you support questions but does not answer the client’s real question: “Are we on track, and what do I need to decide?”</p>
+<p>The gap between those extremes is where retention is won or lost. Clients do not want more software; they want reassurance and clarity on a predictable cadence. If the portal feels like extra homework, they simply stop logging in — and then you are back to email-only visibility, with all the versioning problems that creates.</p>
+<h2 id="what-clients-actually-care-about" class="blog-h2-anchor">What clients actually care about</h2>
+<p>Across industries, client stakeholders consistently care about a short list: what you did recently, what is blocked or risky, what you need from them, and what happens next. They also care that the story matches what they hear from their own line managers — if your portal says “green” while their team says “stuck,” trust erodes quickly.</p>
+<p>They rarely need every internal comment thread. They do need enough detail to defend the engagement internally — especially when budgets are under review. That defence rarely sounds like “we had forty-seven tickets”; it sounds like “here is what we shipped, here is what we are watching, here is what we need from you.”</p>
+<p>Accessibility matters too: busy executives skim on mobile. Dense tables without narrative rarely survive first contact.</p>
+<h2 id="what-to-include-and-leave-out" class="blog-h2-anchor">What to include (and what to leave out)</h2>
+<p><strong>Include:</strong> a concise status narrative, explicit actions with owners, dated risks with mitigations, and a clear “you owe us” section when decisions or access are pending. Where relevant, a sensible summary of major initiatives — not every sub-task.</p>
+<p><strong>Leave out:</strong> engineer-to-engineer triage, internal blame language, excessive ticket IDs without explanation, and anything that exposes personal data or supplier politics. If a detail does not help the client decide or sleep better, it probably should not be in the portal view.</p>
+<p>Think editorial, not exhaustive. The portal should feel curated — because it is. That curation is a service in its own right, not “hiding” work.</p>
+<h2 id="how-handovers-client-portal-works" class="blog-h2-anchor">How Handover’s client portal works</h2>
+<p>Handover generates client-ready material from live HaloPSA or ConnectWise data, then presents an approved view through the client portal. That means the portal reflects the same structured outputs your team already uses internally — status reports, action logs, risk registers, and summaries — rather than exposing the raw PSA feed.</p>
+<p>Your team keeps control of what ships: review, tweak tone, then publish. Clients see a coherent picture aligned with the updates you email them, instead of a second, conflicting source of truth. When something changes mid-week, you regenerate from current data rather than manually patching three places.</p>
+<h2 id="why-visibility-builds-retention" class="blog-h2-anchor">Why visibility builds retention</h2>
+<p>Retention is not only about uptime statistics. It is about whether the client believes you are organised, honest, and ahead of problems. A portal that answers the questions they would ask on a call — before they book the call — reduces anxiety and procurement friction.</p>
+<p>When reporting is consistent and readable, renewals feel less like a price negotiation and more like a partnership checkpoint. That is the practical return on getting the portal right — not vanity metrics on logins, but calmer stakeholders who already know the story.</p>
+<p>To see how Handover’s client portal fits alongside automated reporting from your PSA, try it free for fourteen days at <a href="https://gethandover.uk">gethandover.uk</a> — 14-day free trial — cancel anytime.</p>
+`.trim();

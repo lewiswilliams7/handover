@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { decrypt } from "@/lib/encryption";
 import {
+  clearHaloProjectsCache,
   formatProjectsForHandover,
   formatTicketsForHandover,
   getHaloProjects,
@@ -34,6 +35,13 @@ function logTicketsRouteError(...args: unknown[]) {
 
 export async function POST(req: Request) {
   try {
+    const refreshRequested =
+      new URL(req.url).searchParams.get("refresh") === "1";
+    if (refreshRequested) {
+      clearHaloProjectsCache();
+      logTicketsRoute("refresh=1 — cleared Halo projects cache");
+    }
+
     const supabase = await createServerClient();
     const {
       data: { user },

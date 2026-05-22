@@ -108,7 +108,10 @@ export async function GET(request: Request) {
 
     if (scheduleRes.error) {
       console.error("[preview] schedule query error:", scheduleRes.error.message);
-      return NextResponse.json({ error: scheduleRes.error.message }, { status: 500 });
+      return NextResponse.json(
+        { error: "Could not load scheduled report preview. Please try again." },
+        { status: 500 },
+      );
     }
 
     const scheduleRow = scheduleRes.data;
@@ -255,10 +258,7 @@ export async function GET(request: Request) {
     } catch (e) {
       console.error("[preview] Halo fetch failed:", e);
       return NextResponse.json(
-        {
-          error:
-            e instanceof Error ? e.message : "Could not load data from HaloPSA.",
-        },
+        { error: "Could not load data from HaloPSA. Please try again." },
         { status: 500 },
       );
     }
@@ -379,8 +379,10 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ html, generatedAt });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Error";
     console.error("[preview] unhandled error:", e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json(
+      { error: "Could not load scheduled report preview. Please try again." },
+      { status: 500 },
+    );
   }
 }

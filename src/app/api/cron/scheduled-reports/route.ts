@@ -134,7 +134,11 @@ export async function GET(request: Request) {
 
   if (errDue) {
     console.error("[cron] scheduled_reports query", errDue.message);
-    return NextResponse.json({ error: errDue.message }, { status: 500 });
+    console.error("[cron/scheduled-reports] due query failed:", errDue.message);
+    return NextResponse.json(
+      { error: "Scheduled report cron failed. Please try again." },
+      { status: 500 },
+    );
   }
 
   const { data: dueNull, error: errNull } = await supabase
@@ -145,7 +149,11 @@ export async function GET(request: Request) {
 
   if (errNull) {
     console.error("[cron] scheduled_reports null next_run", errNull.message);
-    return NextResponse.json({ error: errNull.message }, { status: 500 });
+    console.error("[cron/scheduled-reports] null next_run query failed:", errNull.message);
+    return NextResponse.json(
+      { error: "Scheduled report cron failed. Please try again." },
+      { status: 500 },
+    );
   }
 
   const byId = new Map<string, ScheduleRow>();

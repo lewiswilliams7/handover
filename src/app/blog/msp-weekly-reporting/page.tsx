@@ -302,7 +302,7 @@ export default function MspWeeklyReportingPage() {
                   Start free trial
                 </h3>
                 <p className="mt-2 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
-                  Connect HaloPSA and ship your next weekly update in minutes - no card required.
+                  Connect HaloPSA and ship your next weekly update in minutes - 14-day free trial — cancel anytime.
                 </p>
                 <div className="mt-5">
                   <Link

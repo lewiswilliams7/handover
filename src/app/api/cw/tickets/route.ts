@@ -132,27 +132,39 @@ export async function GET(request: Request) {
     connection = { siteUrl: conn.siteUrl, hasHeaders: Boolean(headers) };
     const requestUrl = new URL(request.url);
     const keyword = requestUrl.searchParams.get("keyword")?.trim().toLowerCase() ?? "";
+    const countRaw = Number.parseInt(requestUrl.searchParams.get("count") ?? "", 10);
+    const maxRows =
+      Number.isFinite(countRaw) && countRaw > 0
+        ? Math.min(1000, Math.max(1, countRaw))
+        : 1000;
     const companyId = requestUrl.searchParams.get("companyId")?.trim() ?? ""
     const companyCondition = companyId ? ` and company/id=${companyId}` : ""
     const conditions = encodeURIComponent(`${CW_OPEN_ONLY_CONDITIONS}${companyCondition}`)
-    const url = `${conn.siteUrl}/v4_6_release/apis/3.0/service/tickets?conditions=${conditions}&pageSize=100`
-    const res = await fetch(url, { headers, cache: "no-store" });
-    const text = await res.text();
-    if (!res.ok) {
-      return NextResponse.json(
-        { error: `ConnectWise API error ${res.status}: ${text}` },
-        { status: 500 },
-      );
+    const pageSize = 100;
+    const rows: CwTicket[] = [];
+    for (let page = 1; page <= 20 && rows.length < maxRows; page += 1) {
+      const url = `${conn.siteUrl}/v4_6_release/apis/3.0/service/tickets?conditions=${conditions}&page=${page}&pageSize=${pageSize}`;
+      const res = await fetch(url, { headers, cache: "no-store" });
+      const text = await res.text();
+      if (!res.ok) {
+        return NextResponse.json(
+          { error: `ConnectWise API error ${res.status}: ${text}` },
+          { status: 500 },
+        );
+      }
+      const parsed = JSON.parse(text) as unknown;
+      const batch = Array.isArray(parsed)
+        ? (parsed as CwTicket[])
+        : Array.isArray((parsed as { items?: unknown })?.items)
+          ? ((parsed as { items: unknown[] }).items as CwTicket[])
+          : [];
+      rows.push(...batch);
+      if (batch.length < pageSize) break;
     }
 
-    const parsed = JSON.parse(text) as unknown;
-    const rows = Array.isArray(parsed)
-      ? (parsed as CwTicket[])
-      : Array.isArray((parsed as { items?: unknown })?.items)
-        ? ((parsed as { items: unknown[] }).items as CwTicket[])
-        : [];
+    const slicedRows = rows.slice(0, maxRows);
 
-    const tickets = rows.map((row) => {
+    const tickets = slicedRows.map((row) => {
       console.log("[cw] ticket owner fields:", {
         owner: row.owner,
         assignedTo: row.assignedTo,
@@ -226,9 +238,10 @@ export async function POST(req: Request) {
       `dateEntered >= ${fromBracket} and dateEntered <= ${toBracket}`,
     );
 
-    const pageSize = 1000;
+    const pageSize = 100;
+    const maxRows = 1000;
     const rows: CwTicket[] = [];
-    for (let page = 1; page <= 20; page += 1) {
+    for (let page = 1; page <= 20 && rows.length < maxRows; page += 1) {
       const url = `${conn.siteUrl}/v4_6_release/apis/3.0/service/tickets?conditions=${conditions}&page=${page}&pageSize=${pageSize}`;
       const res = await fetch(url, { headers, cache: "no-store" });
       const text = await res.text();
@@ -248,7 +261,7 @@ export async function POST(req: Request) {
       if (batch.length < pageSize) break;
     }
 
-    const tickets = rows.map((row) => mapCwRowToTicket(row));
+    const tickets = rows.slice(0, maxRows).map((row) => mapCwRowToTicket(row));
     return NextResponse.json({ tickets, count: tickets.length });
   } catch (e) {
     console.log("[cw/tickets POST] error:", e);

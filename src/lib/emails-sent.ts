@@ -17,12 +17,20 @@ export const EmailId = {
   TRIAL_WELCOME: "trial_welcome",
   /** Trial — halfway (7 days after start). */
   TRIAL_SEQ_HALFWAY: "trial_seq_halfway",
+  /** Trial — day 10: personal call offer. */
+  TRIAL_SEQ_DAY10_CALL: "trial_seq_day10_call",
+  /** Trial — day 3 inactive (zero generations). */
+  TRIAL_DAY3_INACTIVE: "trial_day3_inactive",
   /** Trial — 2 days before end. */
   TRIAL_SEQ_2_DAYS: "trial_seq_2_days",
   /** Trial — expiry day. */
   TRIAL_SEQ_EXPIRED_DAY: "trial_seq_expired_day",
   /** Trial — 3 days after expiry, not upgraded. */
   TRIAL_SEQ_POST_EXPIRY: "trial_seq_post_expiry",
+  /** 48h after last generation if user has not emailed client or pushed to PSA. */
+  LOOP_CLOSER_48H: "loop_closer_48h",
+  /** Trial user cold (4+ days since last gen, loop incomplete); founder outreach + internal alert. */
+  COLD_USER_FOUNDER_OUTREACH: "cold_user_founder_outreach",
 } as const;
 
 export type EmailIdValue = (typeof EmailId)[keyof typeof EmailId];

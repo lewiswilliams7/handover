@@ -83,7 +83,10 @@ export async function POST(request: Request) {
 
     if (error) {
       console.error("[profile/branding]", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json(
+        { error: "Could not save branding. Please try again." },
+        { status: 500 },
+      );
     }
 
     console.log("[profile/branding] saved", {

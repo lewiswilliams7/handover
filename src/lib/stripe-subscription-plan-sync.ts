@@ -26,6 +26,11 @@ function mapProfileSubscriptionStatus(sub: Stripe.Subscription): string {
   return "inactive";
 }
 
+function stripeTrialEndsAtIso(sub: Stripe.Subscription): string | null {
+  if (typeof sub.trial_end !== "number") return null;
+  return new Date(sub.trial_end * 1000).toISOString();
+}
+
 function priceIdsFromSubscription(sub: Stripe.Subscription): string[] {
   const out: string[] = [];
   for (const item of sub.items.data) {
@@ -117,14 +122,15 @@ export async function syncProfilesPlanFromStripeSubscription(
 
     if (stripeSubscriptionIsPaid(subscription)) {
       const subStat = mapProfileSubscriptionStatus(subscription);
+      const isTrialing = subscription.status === "trialing";
       await supabase
         .from("profiles")
         .update({
-          plan: "team",
+          plan: isTrialing ? "team_trial" : "team",
           subscription_status: subStat,
           stripe_customer_id: customerId,
-          trial_ends_at: null,
-          trial_plan: null,
+          trial_ends_at: isTrialing ? stripeTrialEndsAtIso(subscription) : null,
+          trial_plan: isTrialing ? "team" : null,
         })
         .eq("team_id", team.id);
       console.log("[stripe plan sync] team subscription → profiles.plan=team", {
@@ -169,11 +175,14 @@ export async function syncProfilesPlanFromStripeSubscription(
   }
 
   const paid = stripeSubscriptionIsPaid(subscription);
-  const planValue: "professional" | "enterprise" | "free" = !paid
+  const isTrialing = subscription.status === "trialing";
+  const planValue: "professional_trial" | "professional" | "enterprise" | "free" = !paid
     ? "free"
-    : isEnterpriseSub
-      ? "enterprise"
-      : "professional";
+    : isTrialing
+      ? "professional_trial"
+      : isEnterpriseSub
+        ? "enterprise"
+        : "professional";
 
   if (paid) {
     await supabase
@@ -182,8 +191,8 @@ export async function syncProfilesPlanFromStripeSubscription(
         plan: planValue,
         stripe_customer_id: customerId,
         subscription_status: mapProfileSubscriptionStatus(subscription),
-        trial_ends_at: null,
-        trial_plan: null,
+        trial_ends_at: isTrialing ? stripeTrialEndsAtIso(subscription) : null,
+        trial_plan: isTrialing ? "professional" : null,
       })
       .eq("id", profileId)
       .is("team_id", null);

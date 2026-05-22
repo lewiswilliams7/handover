@@ -191,7 +191,7 @@ export default function ComparePage() {
                 Start free trial
               </Button>
             </Link>
-            <p className="mt-4 text-sm text-[var(--sidebar-text)]">No card required. 14-day free trial.</p>
+            <p className="mt-4 text-sm text-[var(--sidebar-text)]">14-day free trial — cancel anytime. 14-day free trial.</p>
           </ScrollRevealItem>
         </div>
       </section>

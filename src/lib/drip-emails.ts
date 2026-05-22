@@ -1,7 +1,9 @@
 import {
+  sendColdTrialInternalAlert,
   sendFreeDripFounderNoteEmail,
   sendFreeDripPsaNudgeEmail,
   sendFreeDripSaveTimeEmail,
+  sendLoopCloserEmail,
 } from "@/lib/emails";
 import { EmailId, profileHasEmailSent } from "@/lib/emails-sent";
 import { wholeUtcDaysSince } from "@/lib/email-cron-dates";
@@ -13,6 +15,151 @@ import {
   normalizePlanLabel,
   planFieldsFromProfileRow,
 } from "@/lib/utils/getPlan";
+
+const MS_48H = 48 * 60 * 60 * 1000;
+const MS_4D = 4 * 24 * 60 * 60 * 1000;
+
+function firstNameFromProfileParts(firstName: string | null, displayName: string | null): string {
+  const fn = typeof firstName === "string" ? firstName.trim() : "";
+  if (fn) return fn;
+  const dn = typeof displayName === "string" ? displayName.trim() : "";
+  if (dn) return dn.split(/\s+/)[0] ?? "there";
+  return "there";
+}
+
+/**
+ * 48h loop-closer (any solo user) + 4d cold trial outreach + internal founder alert.
+ * Deduped via `profiles.emails_sent`.
+ */
+export async function runPostGenerationRetentionEmailCron(): Promise<{
+  loopCloser48h: { attempted: number; sent: number };
+  coldTrial: { attempted: number; sent: number; internalAlerts: number };
+  errors: string[];
+}> {
+  const errors: string[] = [];
+  const loopCloser48h = { attempted: 0, sent: 0 };
+  const coldTrial = { attempted: 0, sent: 0, internalAlerts: 0 };
+
+  let admin: ReturnType<typeof createServiceRoleClient>;
+  try {
+    admin = createServiceRoleClient();
+  } catch (e) {
+    errors.push(`service_role: ${e instanceof Error ? e.message : String(e)}`);
+    return { loopCloser48h, coldTrial, errors };
+  }
+
+  const now = new Date();
+  const iso48hAgo = new Date(now.getTime() - MS_48H).toISOString();
+  const iso4dAgo = new Date(now.getTime() - MS_4D).toISOString();
+
+  const page = 300;
+  let offset = 0;
+  for (;;) {
+    const { data: batch, error: qErr } = await admin
+      .from("profiles")
+      .select(
+        "id, email, first_name, display_name, plan, team_id, emails_sent, last_generation_at, has_completed_loop, total_generations, trial_ends_at, subscription_status",
+      )
+      .eq("has_completed_loop", false)
+      .not("last_generation_at", "is", null)
+      .lt("last_generation_at", iso48hAgo)
+      .is("team_id", null)
+      .range(offset, offset + page - 1);
+
+    if (qErr) {
+      errors.push(`postGenRetention select: ${qErr.message}`);
+      break;
+    }
+    const rows = batch ?? [];
+    if (rows.length === 0) break;
+
+    for (const raw of rows) {
+      const row = raw as {
+        id: string;
+        email: string | null;
+        first_name: string | null;
+        display_name: string | null;
+        plan: string | null;
+        emails_sent: unknown;
+        last_generation_at: string | null;
+        has_completed_loop?: boolean | null;
+        total_generations: number | null;
+        trial_ends_at: string | null;
+        subscription_status: string | null;
+        team_id?: string | null;
+      };
+
+      if (row.has_completed_loop === true) continue;
+
+      const lastGen = row.last_generation_at?.trim();
+      if (!lastGen) continue;
+
+      let emailTo = typeof row.email === "string" ? row.email.trim() : "";
+      if (!emailTo) {
+        const { data: u } = await admin.auth.admin.getUserById(row.id);
+        emailTo = u.user?.email?.trim() ?? "";
+      }
+      if (!emailTo) continue;
+
+      const firstName = firstNameFromProfileParts(row.first_name, row.display_name);
+      const emailsSent = row.emails_sent;
+      const plan = normalizePlanLabel(row.plan ?? "");
+      const isTrialPlan = plan === "professional_trial" || plan === "team_trial";
+      const totalGens =
+        typeof row.total_generations === "number" && Number.isFinite(row.total_generations)
+          ? Math.max(0, Math.floor(row.total_generations))
+          : 0;
+
+      const lastGenMs = Date.parse(lastGen);
+      if (!Number.isFinite(lastGenMs)) continue;
+
+      const coldTrialEligible =
+        isTrialPlan &&
+        totalGens >= 1 &&
+        lastGenMs < now.getTime() - MS_4D &&
+        !profileHasEmailSent(emailsSent, EmailId.COLD_USER_FOUNDER_OUTREACH);
+
+      if (coldTrialEligible) {
+        coldTrial.attempted += 1;
+        try {
+          if (!profileHasEmailSent(emailsSent, EmailId.LOOP_CLOSER_48H)) {
+            await sendLoopCloserEmail({ to: emailTo, firstName });
+            coldTrial.sent += 1;
+          }
+          await appendProfileEmailSentIfAbsent(admin, row.id, EmailId.COLD_USER_FOUNDER_OUTREACH);
+          await sendColdTrialInternalAlert({
+            userEmail: emailTo,
+            totalGenerations: totalGens,
+            lastGenerationAtIso: lastGen,
+          });
+          coldTrial.internalAlerts += 1;
+        } catch (e) {
+          errors.push(`coldTrial ${row.id}: ${e instanceof Error ? e.message : String(e)}`);
+        }
+        continue;
+      }
+
+      if (
+        !profileHasEmailSent(emailsSent, EmailId.LOOP_CLOSER_48H) &&
+        !profileHasEmailSent(emailsSent, EmailId.COLD_USER_FOUNDER_OUTREACH)
+      ) {
+        loopCloser48h.attempted += 1;
+        try {
+          await sendLoopCloserEmail({ to: emailTo, firstName });
+          await appendProfileEmailSentIfAbsent(admin, row.id, EmailId.LOOP_CLOSER_48H);
+          loopCloser48h.sent += 1;
+        } catch (e) {
+          errors.push(`loopCloser48h ${row.id}: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+    }
+
+    if (rows.length < page) break;
+    offset += page;
+  }
+
+  return { loopCloser48h, coldTrial, errors };
+}
 
 function hasNeverStartedHandoverTrial(plan: string | null, trialPlan: string | null): boolean {
   const p = normalizePlanLabel(plan ?? "");
@@ -74,6 +221,10 @@ export async function runDripEmailCron(): Promise<{
     founderSent: number;
   };
   trial: Awaited<ReturnType<typeof runTrialSequenceEmailCron>>;
+  postGenRetention: {
+    loopCloser48h: { attempted: number; sent: number };
+    coldTrial: { attempted: number; sent: number; internalAlerts: number };
+  };
   errors: string[];
 }> {
   const errors: string[] = [];
@@ -94,6 +245,10 @@ export async function runDripEmailCron(): Promise<{
     return {
       freeDrip: freeStats,
       trial: { attempted: 0, sent: {}, errors: [] },
+      postGenRetention: {
+        loopCloser48h: { attempted: 0, sent: 0 },
+        coldTrial: { attempted: 0, sent: 0, internalAlerts: 0 },
+      },
       errors,
     };
   }
@@ -217,5 +372,16 @@ export async function runDripEmailCron(): Promise<{
     trial = { attempted: 0, sent: {}, errors: [String(e)] };
   }
 
-  return { freeDrip: freeStats, trial, errors };
+  let postGenRetention = await runPostGenerationRetentionEmailCron();
+  errors.push(...postGenRetention.errors);
+
+  return {
+    freeDrip: freeStats,
+    trial,
+    postGenRetention: {
+      loopCloser48h: postGenRetention.loopCloser48h,
+      coldTrial: postGenRetention.coldTrial,
+    },
+    errors,
+  };
 }

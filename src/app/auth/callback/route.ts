@@ -9,6 +9,7 @@ import { runWelcomeEmailForUser } from "@/lib/email-triggers";
 import { applyReferralAttribution } from "@/lib/referral-server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { getSupabaseEnv } from "@/lib/supabase/env";
+import { normalizePlanLabel } from "@/lib/utils/getPlan";
 
 /**
  * Email confirmation / magic-link style callbacks include `type` (and often `token_hash`, or PKCE `code` with `type`).
@@ -17,6 +18,9 @@ import { getSupabaseEnv } from "@/lib/supabase/env";
  * **Confirm email** may be disabled in Supabase; custom verification uses Resend + `email_verifications`
  * (see `/auth/verify`). Users with `email_confirmed_at` set, or Google SSO (`provider === "google"`),
  * skip the verify-email gate; `email_verifications` is backfilled when Supabase has already confirmed.
+ *
+ * **Billing / trials:** This route must never set `profiles.plan`, `trial_ends_at`, or `trial_plan`.
+ * Trials start only from `/welcome` or explicit `/api/trial/start` after the user chooses (or legacy flows outside signup).
  */
 
 const EMAIL_CONFIRMATION_TYPES = new Set<string>([
@@ -144,6 +148,39 @@ async function postAuthSessionSideEffects(
   return null;
 }
 
+async function resolveEnterprisePortalRedirectPath(
+  admin: ReturnType<typeof createServiceRoleClient>,
+  userId: string,
+): Promise<string | null> {
+  const { data: profile, error: profileErr } = await admin
+    .from("profiles")
+    .select("plan")
+    .eq("id", userId)
+    .maybeSingle();
+  if (profileErr) {
+    console.error("[auth/callback] profile plan lookup:", profileErr.message);
+    return null;
+  }
+
+  const planRaw = profile && typeof profile === "object" ? (profile as { plan?: unknown }).plan : null;
+  const plan = normalizePlanLabel(typeof planRaw === "string" ? planRaw : "");
+  if (plan !== "enterprise") return null;
+
+  const { data: portal, error: portalErr } = await admin
+    .from("portal_accounts")
+    .select("slug")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (portalErr) {
+    console.error("[auth/callback] portal slug lookup:", portalErr.message);
+    return null;
+  }
+  const slugRaw = portal && typeof portal === "object" ? (portal as { slug?: unknown }).slug : null;
+  const slug = typeof slugRaw === "string" ? slugRaw.trim().toLowerCase() : "";
+  if (!slug) return null;
+  return `/portal/${encodeURIComponent(slug)}`;
+}
+
 export async function GET(request: NextRequest) {
   const url = request.nextUrl.clone();
   const searchParams = url.searchParams;
@@ -164,7 +201,7 @@ export async function GET(request: NextRequest) {
    * Never reject redirects based on `profiles.plan` — all trial and paid SKUs use the same session.
    */
   const successPath = nextPath || "/";
-  const successUrl = new URL(successPath, request.nextUrl.origin);
+  let successUrl = new URL(successPath, request.nextUrl.origin);
   const redirectResponse = NextResponse.redirect(successUrl);
 
   const { supabaseUrl, supabaseAnonKey } = getSupabaseEnv();
@@ -231,6 +268,24 @@ export async function GET(request: NextRequest) {
   } catch (e) {
     console.error("[auth/callback] unexpected:", e);
     return callbackFailureRedirect(request, "exchange_failed");
+  }
+
+  if (successPath === "/") {
+    try {
+      const admin = createServiceRoleClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user?.id) {
+        const portalRedirectPath = await resolveEnterprisePortalRedirectPath(admin, user.id);
+        if (portalRedirectPath) {
+          successUrl = new URL(portalRedirectPath, request.nextUrl.origin);
+          return redirectWithCopiedCookies(redirectResponse, successUrl);
+        }
+      }
+    } catch (e) {
+      console.error("[auth/callback] enterprise portal redirect check:", e);
+    }
   }
 
   return redirectResponse;

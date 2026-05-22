@@ -16,6 +16,11 @@ type Body = {
   dateTo?: string;
 };
 
+function isOpenHaloStatus(statusName: string | null | undefined): boolean {
+  const s = (statusName ?? "").trim().toLowerCase();
+  return !/resolved|closed|completed|cancelled|canceled|done/.test(s);
+}
+
 export async function POST(req: Request) {
   try {
     const supabase = await createServerClient();
@@ -89,8 +94,9 @@ export async function POST(req: Request) {
           count: 3000,
           minimalTicketPayload: true,
         });
+        const openTickets = allTickets.filter((t) => isOpenHaloStatus(t.status?.name));
         for (const cid of clientIds) {
-          counts[String(cid)] = allTickets.filter(
+          counts[String(cid)] = openTickets.filter(
             (t) => t.clientId != null && Number(t.clientId) === cid,
           ).length;
         }

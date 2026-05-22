@@ -190,6 +190,7 @@ export async function sendTrialWelcomeEmail(opts: {
   <li style="margin-bottom:8px;">Try the QBR pack generator and export it as a PowerPoint</li>
   <li style="margin-bottom:8px;">Set up a scheduled report so your first automated client update goes out this week</li>
 </ul>
+<p style="margin:0 0 16px;">P.S. Want to get set up in 15 minutes? Book a quick call with me directly and I&apos;ll walk you through everything personally: calendly.com/gethandover/30min</p>
 <p style="margin:0 0 16px;">If you need any help at any point reply to this email directly.</p>
 <p style="margin:0 0 16px;">Your trial ends on ${escapeHtml(endLong)}.</p>
 <p style="margin:0;">Lewis<br/>Handover</p>`;
@@ -231,7 +232,7 @@ export async function sendWelcomeEmail(to: string, firstName: string): Promise<v
   const safeName = escapeHtml(firstName.trim() || "there");
   const origin = getAppOrigin();
   const integrationsUrl = `${origin}/integrations`;
-  const trialUrl = `${origin}/signup?trial=professional`;
+  const trialUrl = `${origin}/welcome`;
 
   const bodyHtml = `
 <p style="margin:0 0 16px;">Hi ${safeName},</p>
@@ -535,13 +536,13 @@ export async function sendFreeDripSaveTimeEmail(to: string, firstName: string): 
   }
   const safeName = escapeHtml(firstName.trim() || "there");
   const origin = getAppOrigin();
-  const trialUrl = `${origin}/signup?trial=professional`;
+  const trialUrl = `${origin}/welcome`;
   const bodyHtml = `
 <p style="margin:0 0 16px;">Hi ${safeName},</p>
 <p style="margin:0 0 16px;">The average MSP service manager spends between 90 minutes and 3 hours per week writing client reports manually.</p>
 <p style="margin:0 0 16px;">Handover reduces that to 30 seconds.</p>
 <p style="margin:0 0 16px;">Connect your PSA, select your tickets and projects, and your first client-ready report is generated instantly. No writing. No formatting. No copy-pasting from your PSA.</p>
-<p style="margin:0 0 16px;">If you have not started your free trial yet there is still time. 14 days, full access, no card required.</p>
+<p style="margin:0 0 16px;">If you have not started your free trial yet there is still time. 14 days, full access, 14-day free trial — cancel anytime.</p>
 <p style="margin:0;">Lewis<br/>Handover</p>`;
 
   const html = emailShell({
@@ -573,7 +574,7 @@ export async function sendFreeDripFounderNoteEmail(to: string, firstName: string
   }
   const safeName = escapeHtml(firstName.trim() || "there");
   const origin = getAppOrigin();
-  const trialUrl = `${origin}/signup?trial=professional`;
+  const trialUrl = `${origin}/welcome`;
   const bodyHtml = `
 <p style="margin:0 0 16px;">Hi ${safeName},</p>
 <p style="margin:0 0 16px;">I noticed you signed up for Handover but have not had a chance to try it yet.</p>
@@ -645,6 +646,81 @@ export async function sendTrialSequenceHalfwayEmail(opts: {
   });
   if (error) {
     console.error("[emails] sendTrialSequenceHalfwayEmail:", error);
+    throw new Error(error.message);
+  }
+}
+
+/** Trial sequence — day 10: call offer. */
+export async function sendTrialSequenceDay10CallEmail(opts: {
+  to: string;
+  firstName: string;
+}): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+  const safeName = escapeHtml(opts.firstName.trim() || "there");
+  const origin = getAppOrigin();
+
+  const bodyHtml = `
+<p style="margin:0 0 16px;">Hi ${safeName},</p>
+<p style="margin:0 0 16px;">Your trial has a few days left and I wanted to reach out personally.</p>
+<p style="margin:0 0 16px;">If you've had a chance to try Handover and something isn't quite clicking, I'd love to know. And if you haven't had a chance yet, I'm happy to walk you through it in 15 minutes.</p>
+<p style="margin:0 0 16px;">No pitch. Just a quick look at your setup and how Handover fits in.</p>
+<p style="margin:0;">Lewis<br/>Founder, Handover</p>`;
+
+  const html = emailShellLightTwoCtas({
+    bodyHtml,
+    primary: { label: "Book a 15 minute call", href: CALENDLY_15_URL },
+    secondary: { label: "Open Handover", href: origin },
+    footerNote: "You're on a Handover trial...",
+  });
+
+  const { error } = await resend.emails.send({
+    from: FOUNDER_WELCOME_FROM,
+    to: opts.to.trim(),
+    subject: "Worth a quick call?",
+    html,
+  });
+  if (error) {
+    console.error("[emails] sendTrialSequenceDay10CallEmail:", error);
+    throw new Error(error.message);
+  }
+}
+
+/** Trial sequence — day 3 inactive (zero generations). */
+export async function sendTrialDay3InactiveEmail(opts: {
+  to: string;
+  firstName: string;
+  trialEndsAtIso: string;
+}): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+  const safeName = escapeHtml(opts.firstName.trim() || "there");
+  const origin = getAppOrigin();
+  const endLong = formatLongDateUtc(opts.trialEndsAtIso);
+
+  const bodyHtml = `
+<p style="margin:0 0 16px;">Hi ${safeName},</p>
+<p style="margin:0 0 16px;">You signed up for a Handover trial a few days ago but have not had a chance to generate anything yet.</p>
+<p style="margin:0 0 16px;">The quickest way to see what it does: paste any ticket notes or project update into the input box and hit Generate. No PSA connection needed to start.</p>
+<p style="margin:0 0 16px;">Your trial runs until ${escapeHtml(endLong)}.</p>
+<p style="margin:0;">Lewis<br/>Founder, Handover</p>`;
+
+  const html = emailShell({
+    bodyHtml,
+    ctaLabel: "Open Handover",
+    ctaHref: origin,
+    footerNote:
+      "You're receiving this because you started a Handover trial. Reply directly to this email with any questions.",
+  });
+
+  const { error } = await resend.emails.send({
+    from: FOUNDER_WELCOME_FROM,
+    to: opts.to.trim(),
+    subject: "Have you tried Handover yet?",
+    html,
+  });
+  if (error) {
+    console.error("[emails] sendTrialDay3InactiveEmail:", error);
     throw new Error(error.message);
   }
 }
@@ -803,6 +879,214 @@ export async function sendReferralRewardEmail(
 
   if (error) {
     console.error("[emails] sendReferralRewardEmail:", error);
+    throw new Error(error.message);
+  }
+}
+
+export type PortalInviteMspProfile = {
+  company_name?: string | null;
+  display_name?: string | null;
+  brand_name?: string | null;
+  brand_logo_url?: string | null;
+  white_label_mode?: boolean | null;
+  plan?: string | null;
+} | null;
+
+/** Client portal — invite end user to set password and access read-only PSA data. */
+export async function sendPortalInviteEmail(opts: {
+  to: string;
+  inviteeDisplayName: string | null;
+  clientName: string;
+  mspSlug: string;
+  clientSlug: string;
+  inviteToken: string;
+  mspProfile: PortalInviteMspProfile;
+}): Promise<void> {
+  const resend = getResend();
+  if (!resend) {
+    console.warn("[emails] sendPortalInviteEmail: RESEND_API_KEY missing");
+    return;
+  }
+
+  const origin = getAppOrigin();
+  const inviteUrl = `${origin}/portal/${encodeURIComponent(opts.mspSlug)}/${encodeURIComponent(opts.clientSlug)}/invite?token=${encodeURIComponent(opts.inviteToken)}`;
+  const mspName =
+    (opts.mspProfile && typeof opts.mspProfile.brand_name === "string" && opts.mspProfile.brand_name.trim()) ||
+    (opts.mspProfile && typeof opts.mspProfile.company_name === "string" && opts.mspProfile.company_name.trim()) ||
+    (opts.mspProfile && typeof opts.mspProfile.display_name === "string" && opts.mspProfile.display_name.trim()) ||
+    "Your MSP";
+  const logoUrl =
+    opts.mspProfile && typeof opts.mspProfile.brand_logo_url === "string" && opts.mspProfile.brand_logo_url.trim()
+      ? opts.mspProfile.brand_logo_url.trim()
+      : `${origin}/icon2.png`;
+  const wl =
+    opts.mspProfile?.white_label_mode === true &&
+    typeof opts.mspProfile?.brand_name === "string" &&
+    opts.mspProfile.brand_name.trim().length > 0;
+  const footer = wl
+    ? escapeHtml(mspName)
+    : `Powered by Handover &middot; ${escapeHtml(origin)}`;
+
+  const greet =
+    typeof opts.inviteeDisplayName === "string" && opts.inviteeDisplayName.trim()
+      ? escapeHtml(opts.inviteeDisplayName.trim())
+      : "there";
+  const safeClient = escapeHtml(opts.clientName.trim() || "your organisation");
+  const safeMsp = escapeHtml(mspName);
+
+  const bodyHtml = `
+<p style="margin:0 0 16px;">Hi ${greet},</p>
+<p style="margin:0 0 16px;">${safeMsp} has set up a client portal for <strong>${safeClient}</strong>. You can view your tickets, projects, and service updates in one place.</p>
+<p style="margin:0 0 16px;">This invite expires in 7 days.</p>
+<p style="margin:0;">If you did not expect this message, you can ignore it.</p>`;
+
+  const headerLogo = `<img src="${escapeAttr(logoUrl)}" alt="" style="max-height:36px;width:auto;object-fit:contain;display:block;"/>`;
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:28px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,0.08);">
+          <tr>
+            <td style="background:${HEADER_BG};padding:22px 26px;">${headerLogo}</td>
+          </tr>
+          <tr>
+            <td style="padding:26px 26px 8px;color:${BODY_TEXT};font-size:15px;line-height:1.65;">${bodyHtml}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 26px 26px;">
+              <a href="${escapeAttr(inviteUrl)}" style="display:inline-block;padding:12px 22px;background:${ACCENT};color:#0f172a;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">Accept invite and set password</a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:16px 26px;border-top:1px solid #e2e8f0;color:${MUTED};font-size:12px;line-height:1.5;">${footer}</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  const subject = `You've been invited to ${opts.clientName.trim() || "your"} portal`;
+  const { error } = await resend.emails.send({
+    from: buildHandoverResendFromHeader(opts.mspProfile),
+    to: opts.to.trim(),
+    subject,
+    html,
+  });
+  if (error) {
+    console.error("[emails] sendPortalInviteEmail:", error);
+    throw new Error(error.message);
+  }
+}
+
+export async function sendPortalPasswordResetEmail(opts: {
+  to: string;
+  mspSlug: string;
+  clientSlug: string;
+  resetToken: string;
+  mspProfile: PortalInviteMspProfile;
+}): Promise<void> {
+  const resend = getResend();
+  if (!resend) {
+    console.warn("[emails] sendPortalPasswordResetEmail: RESEND_API_KEY missing");
+    return;
+  }
+  const origin = getAppOrigin();
+  const url = `${origin}/portal/${encodeURIComponent(opts.mspSlug)}/${encodeURIComponent(opts.clientSlug)}/invite?token=${encodeURIComponent(opts.resetToken)}&reset=1`;
+  const mspName =
+    (opts.mspProfile && typeof opts.mspProfile.brand_name === "string" && opts.mspProfile.brand_name.trim()) ||
+    (opts.mspProfile && typeof opts.mspProfile.company_name === "string" && opts.mspProfile.company_name.trim()) ||
+    "Your MSP";
+  const wl =
+    opts.mspProfile?.white_label_mode === true &&
+    typeof opts.mspProfile?.brand_name === "string" &&
+    opts.mspProfile.brand_name.trim().length > 0;
+  const footer = wl ? escapeHtml(mspName) : `Powered by Handover &middot; ${escapeHtml(origin)}`;
+  const bodyHtml = `
+<p style="margin:0 0 16px;">Hi,</p>
+<p style="margin:0 0 16px;">We received a request to reset the password for your client portal with <strong>${escapeHtml(mspName)}</strong>.</p>
+<p style="margin:0 0 16px;">Click the button below to choose a new password. This link expires in 24 hours.</p>`;
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:28px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:10px;overflow:hidden;">
+        <tr><td style="background:${HEADER_BG};padding:22px 26px;"><img src="${escapeAttr(`${origin}/icon2.png`)}" alt="Handover" style="max-height:32px;width:auto;"/></td></tr>
+        <tr><td style="padding:26px;color:${BODY_TEXT};font-size:15px;line-height:1.65;">${bodyHtml}</td></tr>
+        <tr><td style="padding:8px 26px 26px;">
+          <a href="${escapeAttr(url)}" style="display:inline-block;padding:12px 22px;background:${ACCENT};color:#0f172a;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">Reset password</a>
+        </td></tr>
+        <tr><td style="padding:16px 26px;border-top:1px solid #e2e8f0;color:${MUTED};font-size:12px;">${footer}</td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+  const { error } = await resend.emails.send({
+    from: buildHandoverResendFromHeader(opts.mspProfile),
+    to: opts.to.trim(),
+    subject: "Reset your client portal password",
+    html,
+  });
+  if (error) {
+    console.error("[emails] sendPortalPasswordResetEmail:", error);
+    throw new Error(error.message);
+  }
+}
+
+const LOOP_CLOSER_FROM = "hello@gethandover.uk";
+
+/** Plain founder note — 48h / cold-trial follow-up when the value loop may not have closed. */
+export async function sendLoopCloserEmail(opts: { to: string; firstName: string }): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+  const name = opts.firstName.trim() || "there";
+  const text = `Hey ${name},
+I noticed you generated a report in Handover but I'm not sure if it made it to your client.
+If you need a hand getting it sent — whether that's the one-click email, pushing it to your PSA, or setting up a schedule — reply to this and I'll help directly.
+Lewis
+Founder, Handover`;
+
+  const { error } = await resend.emails.send({
+    from: LOOP_CLOSER_FROM,
+    to: opts.to.trim(),
+    subject: "Did you send that report to your client?",
+    text,
+  });
+  if (error) {
+    console.error("[emails] sendLoopCloserEmail:", error);
+    throw new Error(error.message);
+  }
+}
+
+/** Internal visibility when a trial user is going cold (no loop completion, stale last gen). */
+export async function sendColdTrialInternalAlert(opts: {
+  userEmail: string;
+  totalGenerations: number;
+  lastGenerationAtIso: string;
+}): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+  const text = `Trial user cold-outreach cron matched this account.
+
+Email: ${opts.userEmail}
+Total generations (profile): ${opts.totalGenerations}
+Last generation at (UTC): ${opts.lastGenerationAtIso}`;
+
+  const { error } = await resend.emails.send({
+    from: LOOP_CLOSER_FROM,
+    to: "hello@gethandover.uk",
+    subject: `⚠️ Trial user going cold — ${opts.userEmail}`,
+    text,
+  });
+  if (error) {
+    console.error("[emails] sendColdTrialInternalAlert:", error);
     throw new Error(error.message);
   }
 }

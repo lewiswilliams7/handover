@@ -18,6 +18,9 @@ export const EXTENDED_PM_TAB_KEYS = [
 
 export type ExtendedPmTabKey = (typeof EXTENDED_PM_TAB_KEYS)[number];
 
+/** Generated for Excel export but not shown as tabs in the on-screen output panel. */
+export const EXTENDED_PM_TAB_KEYS_EXCEL_ONLY_STRIP: ReadonlySet<ExtendedPmTabKey> = new Set(EXTENDED_PM_TAB_KEYS);
+
 export const EXTENDED_PM_TAB_LABELS: Record<ExtendedPmTabKey, string> = {
   raid_log: "RAID log",
   meeting_notes: "Meeting notes",

@@ -25,7 +25,13 @@ export async function GET() {
     .select("zapier_api_key")
     .eq("id", user.id)
     .maybeSingle();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[profile/zapier-key]", error.message);
+    return NextResponse.json(
+      { error: "Could not update Zapier key. Please try again." },
+      { status: 500 },
+    );
+  }
 
   return NextResponse.json({
     canConfigure,
@@ -52,7 +58,13 @@ export async function POST() {
     .eq("id", user.id)
     .select("zapier_api_key")
     .maybeSingle();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[profile/zapier-key]", error.message);
+    return NextResponse.json(
+      { error: "Could not update Zapier key. Please try again." },
+      { status: 500 },
+    );
+  }
 
   return NextResponse.json({ zapier_api_key: data?.zapier_api_key ?? key });
 }

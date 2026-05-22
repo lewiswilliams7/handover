@@ -79,7 +79,11 @@ export async function POST(request: Request) {
 
     if (upErr) {
       console.error("[checkout/attach-session] profiles update:", upErr);
-      return NextResponse.json({ error: upErr.message }, { status: 500 });
+      console.error("[checkout/attach-session]", upErr.message);
+      return NextResponse.json(
+        { error: "Could not attach checkout session. Please try again." },
+        { status: 500 },
+      );
     }
 
     const result = await reconcileUserPlanWithStripe(admin, stripe, user.id);

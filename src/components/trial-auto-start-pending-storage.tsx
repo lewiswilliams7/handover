@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
+import { shouldDeferTrialAutoStartForWelcomeChoice } from "@/lib/auth/trial-auto-start-defer-welcome";
 import { PENDING_TRIAL_STORAGE_KEY, parseTrialQueryParam } from "@/lib/auth/trial-query";
 import { createClient } from "@/lib/supabase";
 
@@ -41,6 +42,16 @@ export function TrialAutoStartFromPendingStorage() {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user?.id) return;
+
+      if (await shouldDeferTrialAutoStartForWelcomeChoice(supabase, user)) {
+        try {
+          localStorage.removeItem(PENDING_TRIAL_STORAGE_KEY);
+        } catch {
+          /* ignore */
+        }
+        router.replace("/welcome");
+        return;
+      }
 
       const doneKey = `trial_autostart_ok:${user.id}:${trial}`;
       try {

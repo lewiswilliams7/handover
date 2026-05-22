@@ -156,14 +156,12 @@ export async function POST(req: Request) {
       return badRequest(validated.error);
     }
     parsedBody = validated;
-    const api_key = parsedBody.api_key;
-    console.log("Received api_key:", api_key);
 
     const supabase = createServiceRoleClient();
     const { data: profile, error } = await supabase
       .from("profiles")
       .select("id, plan, team_id, trial_ends_at")
-      .eq("zapier_api_key", api_key)
+      .eq("zapier_api_key", parsedBody.api_key)
       .single();
     console.log("Profile query result:", JSON.stringify({ data: profile, error: error?.message }));
 

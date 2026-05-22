@@ -428,7 +428,9 @@ export function Nav() {
                 ? "border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-primary)_96%,transparent)] shadow-[0_4px_24px_rgba(15,28,63,0.12)] backdrop-blur-md"
                 : "border-b border-[var(--border)] bg-white/95 shadow-[0_4px_24px_rgba(15,28,63,0.08)] backdrop-blur-md"
               : "border-b border-transparent bg-transparent"
-            : "bg-white/[0.06] backdrop-blur-xl border border-white/[0.12] rounded-2xl shadow-lg shadow-black/20",
+            : navScrolled
+              ? "bg-[#0A0F1E]/90 backdrop-blur-xl border border-white/[0.08] rounded-2xl shadow-xl transition-all duration-300"
+              : "bg-white/[0.04] backdrop-blur-xl border border-white/[0.06] rounded-2xl shadow-lg transition-all duration-300",
       )}
     >
       <div

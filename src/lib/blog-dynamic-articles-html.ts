@@ -1,4 +1,9 @@
 import { BEST_HALOPSA_REPORTING_TOOLS_HTML } from "@/lib/blog-articles/best-halopsa-reporting-tools-html";
+import { BEST_MSP_CLIENT_REPORTING_TOOL_2026_HTML } from "@/lib/blog-articles/best-msp-client-reporting-tool-2026-html";
+import { MSP_CLIENT_PORTAL_GUIDE_HTML } from "@/lib/blog-articles/msp-client-portal-guide-html";
+import { MSP_QBR_AUTOMATION_HTML } from "@/lib/blog-articles/msp-qbr-automation-html";
+import { PITCHIT_2026_BUILDING_MSP_SAAS_HTML } from "@/lib/blog-articles/pitchit-2026-building-msp-saas-html";
+import { PITCHIT_2026_HANDOVER_MSP_ACCELERATOR_HTML } from "@/lib/blog-articles/pitchit-2026-handover-msp-accelerator-html";
 
 export function countWordsFromHtml(html: string): number {
   const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
@@ -44,7 +49,7 @@ const halopsaClientReportingAutomation = `
 <p>More importantly, it means reporting actually happens consistently. Manual reporting is prone to being deprioritised when delivery work is busy. Automated reporting runs regardless.</p>
 <h2>Getting started</h2>
 <p>If you use HaloPSA and want to see what automated client reporting looks like on your actual ticket data, Handover connects directly to your HaloPSA instance and generates all five outputs in under 30 seconds. It also supports scheduled weekly reports with automatic push-back to HaloPSA tickets.</p>
-<p>You can try it free at <a href="https://gethandover.uk">gethandover.uk</a> - no card required.</p>
+<p>You can try it free at <a href="https://gethandover.uk">gethandover.uk</a> - 14-day free trial — cancel anytime.</p>
 `.trim();
 
 const mspProjectManagerReportingProblem = `
@@ -80,7 +85,7 @@ const mspProjectManagerReportingProblem = `
 <p>Reporting is not the job. Delivery is the job. Reporting is documentation of the job - necessary, professional, and important for client relationships, but not the work itself.</p>
 <p>The hours MSP PMs spend on manual reporting every week are hours that could go to delivery, to client relationships, to new business, or frankly to finishing at a reasonable time on Friday.</p>
 <p>The tools to automate this exist now. The question is whether you use them.</p>
-<p>If you want to see what automated reporting looks like on your actual PSA data, Handover connects to HaloPSA and generates client updates, action logs, risk registers, and Excel report packs in seconds - with push-back to tickets on Pro. Start with a 14-day free trial at <a href="https://gethandover.uk">gethandover.uk</a> - no card required.</p>
+<p>If you want to see what automated reporting looks like on your actual PSA data, Handover connects to HaloPSA and generates client updates, action logs, risk registers, and Excel report packs in seconds - with push-back to tickets on Pro. Start with a 14-day free trial at <a href="https://gethandover.uk">gethandover.uk</a> - 14-day free trial — cancel anytime.</p>
 `.trim();
 
 const mspReportingHiddenCost = `
@@ -104,7 +109,7 @@ const mspReportingHiddenCost = `
 <h2>What good looks like</h2>
 <p>The MSP teams that have solved this problem share a few characteristics. Their reporting is consistent because it's generated from the same structured data source every week. It's timely because it's scheduled to run automatically rather than depending on PM availability. And it's integrated - the report exists in the PSA as a ticket note, not just in an email thread somewhere.</p>
 <p>This isn't about removing the PM from the communication process. Review, relationship context, and judgement still matter. It's about removing the blank page problem - the hours spent turning raw PSA data into structured written communication from scratch, every week, indefinitely.</p>
-<p>If you manage client delivery at an MSP and want to see what this looks like in practice, Handover connects to HaloPSA and generates professional client updates, logs, and Excel packs from your live ticket data in seconds. Start with a 14-day free trial at <a href="https://gethandover.uk">gethandover.uk</a> - no card required.</p>
+<p>If you manage client delivery at an MSP and want to see what this looks like in practice, Handover connects to HaloPSA and generates professional client updates, logs, and Excel packs from your live ticket data in seconds. Start with a 14-day free trial at <a href="https://gethandover.uk">gethandover.uk</a> - 14-day free trial — cancel anytime.</p>
 `.trim();
 
 const handoverHalopsaMarketplace = `
@@ -131,15 +136,42 @@ const handoverHalopsaMarketplace = `
 <p>ConnectWise integration is on the roadmap, which will extend the same workflow to the significant portion of the MSP market running ConnectWise Manage. A ConnectWise waitlist is available at <a href="https://gethandover.uk/integrations">gethandover.uk/integrations</a>.</p>
 <p>Team plans are also now available - allowing MSP delivery teams to share a HaloPSA connection, pool generation allowances, and manage member permissions from a central admin dashboard.</p>
 <h2>Try it</h2>
-<p>Handover offers a 14-day free trial at <a href="https://gethandover.uk">gethandover.uk</a> - no card required. Pro plan starts at £29 per month. Team plans from £35 per seat per month.</p>
+<p>Handover offers a 14-day free trial at <a href="https://gethandover.uk">gethandover.uk</a> - 14-day free trial — cancel anytime. Pro plan starts at £29 per month. Team plans from £35 per seat per month.</p>
+`.trim();
+
+const sapN8nMspAutomation = `
+<p>Yesterday SAP invested in n8n, valuing the workflow automation platform at $5.2 billion — more than double its valuation from less than a year ago.</p>
+<p>That's a big number. But the more important thing isn't the number. It's what it signals.</p>
+<h2>What is n8n?</h2>
+<p>n8n is a workflow automation platform — it lets businesses connect apps, automate repetitive processes, and build AI-powered workflows without writing much code. Think of it as the plumbing between systems.</p>
+<p>SAP, one of the world's largest enterprise software companies, has not only invested — they're embedding n8n natively inside Joule Studio, their AI agent builder. That means n8n's automation canvas will sit inside the software that runs some of the largest companies on the planet.</p>
+<h2>Why this matters beyond the headline</h2>
+<p>Enterprise software giants don't make $5.2 billion bets on things that aren't already proven. SAP investing in workflow automation at this scale confirms what the market has been moving toward for years: automating manual business processes is not a nice-to-have. It's a competitive necessity.</p>
+<p>The businesses that automate their workflows faster than their competitors will win. The ones that don't will spend their time on the same manual tasks they were doing five years ago — just with more pressure to do them faster.</p>
+<h2>What this means for MSPs specifically</h2>
+<p>MSPs sit in an interesting position. They sell efficiency and technology to their clients — yet internally, many are still running on manual processes that haven't changed in a decade.</p>
+<p>Client reporting is the most obvious example. The average MSP engineer spends 2-4 hours a day writing client updates, building Excel docs, and compiling reports from data that already exists in their PSA. The data is there. The process of turning it into something professional and sending it is entirely manual.</p>
+<p>That's exactly the kind of workflow that SAP just confirmed is worth billions to automate.</p>
+<h2>The automation era is already here</h2>
+<p>The SAP-n8n deal isn't a signal that automation is coming. It's confirmation that automation is already here at enterprise scale — and the gap between MSPs who've adopted it and those who haven't is going to widen fast.</p>
+<p>HaloPSA and ConnectWise already hold the data MSPs need. The question is whether that data sits unused in the PSA or gets turned into professional client communication automatically.</p>
+<p>Handover connects to HaloPSA and ConnectWise, pulls live ticket and project data, and generates professional client reports in 30 seconds — pushed straight back to the PSA or delivered to the client automatically on a schedule.</p>
+<p>The automation era is already here. The question is which MSPs adopt it first.</p>
+<p>Try Handover free for 14 days at <a href="https://gethandover.uk">gethandover.uk</a> - 14-day free trial — cancel anytime.</p>
 `.trim();
 
 export const ARTICLE_HTML: Record<string, string> = {
+  "best-msp-client-reporting-tool-2026": BEST_MSP_CLIENT_REPORTING_TOOL_2026_HTML,
   "best-halopsa-reporting-tools": BEST_HALOPSA_REPORTING_TOOLS_HTML,
   "halopsa-client-reporting-automation": halopsaClientReportingAutomation,
+  "msp-client-portal-guide": MSP_CLIENT_PORTAL_GUIDE_HTML,
   "msp-project-manager-reporting-problem": mspProjectManagerReportingProblem,
+  "msp-qbr-automation": MSP_QBR_AUTOMATION_HTML,
   "msp-reporting-hidden-cost": mspReportingHiddenCost,
   "handover-halopsa-marketplace": handoverHalopsaMarketplace,
+  "pitchit-2026-building-msp-saas": PITCHIT_2026_BUILDING_MSP_SAAS_HTML,
+  "pitchit-2026-handover-msp-accelerator": PITCHIT_2026_HANDOVER_MSP_ACCELERATOR_HTML,
+  "sap-n8n-msp-automation": sapN8nMspAutomation,
 };
 
 export const DYNAMIC_ARTICLE_SLUGS = Object.keys(ARTICLE_HTML);

@@ -216,11 +216,11 @@ export async function POST(request: Request) {
       isTeamPrice && !skipTeamTrial && !noStripeSubscriptionTrial;
     const includeProfessionalStripeTrial =
       !isTeamPrice && !noStripeSubscriptionTrial;
-    const anyStripeSubscriptionTrial =
-      includeTeamStripeTrial || includeProfessionalStripeTrial;
-    const paymentMethodCollection = (
-      anyStripeSubscriptionTrial ? "if_required" : "always"
-    ) as "if_required" | "always";
+    /**
+     * Require a card up front for all Checkout subscription flows, including trials.
+     * Trial still starts immediately and Stripe bills when the trial ends.
+     */
+    const paymentMethodCollection = "always" as const;
 
     let onboardingResolvedPriceId: string | null = null;
     if (includeOnboardingCall && onboardingCallConfig) {

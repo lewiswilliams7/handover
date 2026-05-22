@@ -98,6 +98,8 @@ export type DeliveryHealthApiResponse = {
   cwConnected?: boolean;
   connectHint?: string;
   haloWebBaseUrl?: string;
+  /** HaloPSA returned 429; rows may be partial (e.g. ConnectWise only) or from cache. */
+  rateLimited?: boolean;
   stats: DeliveryHealthStats;
   rows: DeliveryHealthRow[];
   error?: string;
@@ -426,6 +428,76 @@ function applySlaRiskToRag(
     return "amber";
   }
   return rag;
+}
+
+/**
+ * ConnectWise list payloads rarely satisfy Halo's `hasSignalForGrey` (notes/history/actions),
+ * so `computeRag` sees `insufficientData` and returns grey for most young tickets. Re-run RAG
+ * when we still have age, a target, logged time, or a last note so CW rows stay meaningful.
+ */
+/** ConnectWise list rows: age and last activity from `_info` when notes are absent. */
+export function patchConnectWiseHealthRowsFromTickets(
+  rows: DeliveryHealthRow[],
+  tickets: HaloTicket[],
+): DeliveryHealthRow[] {
+  const ticketById = new Map(
+    tickets.filter((t) => !t.is_project).map((t) => [t.id, t] as const),
+  );
+  return rows.map((row) => {
+    if (row.source !== "connectwise" || row.kind !== "ticket") return row;
+    const ticket = ticketById.get(row.id);
+    if (!ticket) return row;
+
+    const createdIso = ticket.dateoccurred ?? null;
+    const ticketAgeDays =
+      row.ticketAgeDays ??
+      (createdIso ? daysSinceIsoDate(createdIso) : null);
+
+    const tRaw = ticket as unknown as Record<string, unknown>;
+    const lastUpdated =
+      (typeof tRaw.last_update === "string" && tRaw.last_update.trim()) ||
+      null;
+    const lastNoteAt = row.lastNoteAt ?? lastUpdated ?? null;
+
+    if (ticketAgeDays === row.ticketAgeDays && lastNoteAt === row.lastNoteAt) {
+      return row;
+    }
+    return { ...row, ticketAgeDays, lastNoteAt };
+  });
+}
+
+export function applyCwDeliveryHealthRagOverlay(rows: DeliveryHealthRow[]): DeliveryHealthRow[] {
+  return rows.map((r, idx) => {
+    if (idx < 2) {
+      console.log("[overlay] row input:", {
+        rag: r.rag,
+        ticketAgeDays: r.ticketAgeDays,
+        lastNoteAt: r.lastNoteAt,
+      });
+    }
+    if (r.rag !== "grey") return r;
+    const hasAge = r.ticketAgeDays != null && r.ticketAgeDays >= 0;
+    const hasSlaAnchor = r.targetDateIso != null;
+    const hasTime = (r.timeLogged ?? 0) > 0;
+    const hasNoteSignal = Boolean(r.lastNoteAt);
+    if (!hasAge && !hasSlaAnchor && !hasTime && !hasNoteSignal) return r;
+
+    const daysSinceLastRealNote = r.lastNoteAt ? daysSinceIsoDate(r.lastNoteAt) : null;
+    const targetPassed = r.daysToTarget != null && r.daysToTarget < 0;
+    const targetWithin7Days = r.daysToTarget != null && r.daysToTarget >= 0 && r.daysToTarget <= 7;
+
+    const baseRag = computeRag({
+      insufficientData: false,
+      targetPassed,
+      targetWithin7Days,
+      openRisks: r.openRisks,
+      overdueActions: 0,
+      daysSinceLastRealNote,
+      ticketAgeDays: r.ticketAgeDays,
+    });
+    const rag = applySlaRiskToRag(baseRag, r.slaRisk);
+    return { ...r, rag };
+  });
 }
 
 export function daysToTargetDate(targetIso: string | null | undefined): number | null {

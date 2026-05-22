@@ -8,7 +8,7 @@ type CwProject = {
   id?: number;
   name?: string | null;
   status?: { name?: string | null } | null;
-  company?: { name?: string | null } | null;
+  company?: { id?: number | string | null; name?: string | null } | null;
   manager?: { name?: string | null } | null;
   estimatedEndDate?: string | null;
   targetDate?: string | null;
@@ -93,25 +93,31 @@ export async function GET(request: Request) {
     const companyId = requestUrl.searchParams.get("companyId")?.trim() ?? ""
     const companyCondition = companyId ? ` and company/id=${companyId}` : ""
     const conditions = encodeURIComponent(`${CW_OPEN_ONLY_CONDITIONS}${companyCondition}`)
-    const url = `${conn.siteUrl}/v4_6_release/apis/3.0/project/projects?conditions=${conditions}&pageSize=100`
-    const res = await fetch(url, { headers, cache: "no-store" });
-    const text = await res.text();
-    if (!res.ok) {
-      return NextResponse.json(
-        { error: `ConnectWise API error ${res.status}: ${text}` },
-        { status: 500 },
-      );
+    const pageSize = 100;
+    const maxRows = 1000;
+    const rows: CwProject[] = [];
+    for (let page = 1; page <= 20 && rows.length < maxRows; page += 1) {
+      const url = `${conn.siteUrl}/v4_6_release/apis/3.0/project/projects?conditions=${conditions}&page=${page}&pageSize=${pageSize}`;
+      const res = await fetch(url, { headers, cache: "no-store" });
+      const text = await res.text();
+      if (!res.ok) {
+        return NextResponse.json(
+          { error: `ConnectWise API error ${res.status}: ${text}` },
+          { status: 500 },
+        );
+      }
+      const parsed = JSON.parse(text) as unknown;
+      const batch = Array.isArray(parsed)
+        ? (parsed as CwProject[])
+        : Array.isArray((parsed as { items?: unknown })?.items)
+          ? ((parsed as { items: unknown[] }).items as CwProject[])
+          : [];
+      rows.push(...batch);
+      if (batch.length < pageSize) break;
     }
 
-    const parsed = JSON.parse(text) as unknown;
-    const rows = Array.isArray(parsed)
-      ? (parsed as CwProject[])
-      : Array.isArray((parsed as { items?: unknown })?.items)
-        ? ((parsed as { items: unknown[] }).items as CwProject[])
-        : [];
-
     const projects = await Promise.all(
-      rows.map(async (row) => {
+      rows.slice(0, maxRows).map(async (row) => {
         const id = Number(row.id ?? 0);
         if (!Number.isFinite(id) || id <= 0) {
           return {
@@ -128,6 +134,7 @@ export async function GET(request: Request) {
             tasks: [],
             teamMembers: [],
             client_name: "Unknown",
+            companyId: null,
           };
         }
 
@@ -233,11 +240,23 @@ export async function GET(request: Request) {
           }),
         );
 
+        const companyIdRaw = detail.company?.id ?? row.company?.id;
+        const companyId =
+          typeof companyIdRaw === "number" && Number.isFinite(companyIdRaw)
+            ? companyIdRaw
+            : typeof companyIdRaw === "string" && companyIdRaw.trim()
+              ? (() => {
+                  const n = Number(companyIdRaw);
+                  return Number.isFinite(n) ? n : null;
+                })()
+              : null;
+
         return {
           id,
           name: (detail.name ?? row.name ?? "Untitled").trim(),
           status: { name: (detail.status?.name ?? row.status?.name ?? "Unknown").trim() },
           client: { name: (detail.company?.name ?? row.company?.name ?? "Unknown").trim() },
+          companyId,
           projectmanager: detail.manager?.name ? { name: detail.manager.name.trim() } : null,
           owner: detail.manager?.name ? { name: detail.manager.name.trim() } : null,
           targetdate:

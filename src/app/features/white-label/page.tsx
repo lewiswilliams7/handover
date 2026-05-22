@@ -46,8 +46,8 @@ export default function WhiteLabelFeaturePage() {
           <p>Your client relationships are built on trust and perceived professionalism. Every touchpoint with a client is an opportunity to reinforce your brand and your identity as a professional service provider.</p>
           <p>A report that arrives branded as your company reinforces that identity. A report that arrives with third-party tool branding, even subtly, introduces a question in the client&apos;s mind about whether the MSP is producing this themselves or just running something through a tool.</p>
           <p>White label removes that question entirely. Your clients experience your service. Your brand. Your professionalism. Handover stays completely in the background.</p>
-          <h2 className="text-2xl font-semibold text-[var(--text-primary)]">Available on Pro and Enterprise Plans</h2>
-          <p>White label mode is available on Pro and Enterprise plans. Upload your logo and set your brand colour in the settings panel and every output from that point forward carries your identity.</p>
+          <h2 className="text-2xl font-semibold text-[var(--text-primary)]">Available on Team and Enterprise Plans</h2>
+          <p>White label mode is available on Team and Enterprise plans. Upload your logo and set your brand colour in the settings panel and every output from that point forward carries your identity.</p>
           <div className="rounded-[var(--radius-lg)] border border-[var(--border)] border-l-[3px] border-l-[#0EA5E9] p-5">
             <h3 className="text-lg font-semibold text-[var(--text-primary)]">Who uses this</h3>
             <p className="mt-2 text-sm">Best fit for <a href="/solutions/account-managers" className="text-[var(--accent)] hover:underline">Account Managers</a>, <a href="/solutions/msp-directors" className="text-[var(--accent)] hover:underline">MSP Directors</a>, and <a href="/solutions/project-managers" className="text-[var(--accent)] hover:underline">Project Managers</a>.</p>

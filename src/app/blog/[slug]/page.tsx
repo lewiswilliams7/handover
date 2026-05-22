@@ -52,6 +52,56 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const wordCount = getArticleWordCount(slug);
   const readMins = post.readMinutesOverride ?? readMinutesFromWordCount(wordCount);
 
+  if (slug === "pitchit-2026-handover-msp-accelerator") {
+    const title =
+      "Handover is joining PitchIT 2026 — here's why we applied | Handover Blog";
+    const keywords = [
+      "PitchIT 2026",
+      "ConnectWise PitchIT",
+      "MSP accelerator",
+      "Handover MSP",
+      "automated MSP reporting",
+      "HaloPSA reporting",
+    ];
+    return {
+      title,
+      description:
+        "Handover has been accepted into PitchIT 2026, ConnectWise's global accelerator for MSP software companies. Here's the problem we're solving and what we're building.",
+      keywords,
+      alternates: {
+        canonical: `https://gethandover.uk/blog/${slug}`,
+      },
+      openGraph: {
+        title,
+        description,
+        type: "article",
+        publishedTime: post.dateISO,
+        authors: [post.author],
+        images: [
+          {
+            url: "/og-image.png",
+            width: 1200,
+            height: 630,
+            alt: "Handover - MSP delivery tool",
+          },
+        ],
+      },
+      twitter: {
+        card: "summary_large_image",
+        title,
+        description,
+        images: ["/og-image.png"],
+      },
+      other: {
+        "article:author": post.author,
+        "article:published_time": post.dateISO,
+        "article:tag": post.tags.join(", "),
+        "twitter:label1": "Reading time",
+        "twitter:data1": `${readMins} min read`,
+      },
+    };
+  }
+
   return {
     title: `${post.title} | Handover`,
     description,

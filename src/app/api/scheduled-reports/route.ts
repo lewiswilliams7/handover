@@ -164,7 +164,10 @@ export async function GET() {
 
     if (error) {
       console.error("[scheduled-reports GET]", error.message);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json(
+        { error: "Could not load scheduled reports. Please try again." },
+        { status: 500 },
+      );
     }
 
     const ref = new Date();
@@ -177,8 +180,11 @@ export async function GET() {
       schedule: (schedules[0] as Record<string, unknown> | undefined) ?? null,
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[scheduled-reports GET]", e);
+    return NextResponse.json(
+      { error: "Could not load scheduled reports. Please try again." },
+      { status: 500 },
+    );
   }
 }
 
@@ -421,7 +427,10 @@ export async function PUT(req: Request) {
         .single();
       if (error) {
         console.error("[scheduled-reports PUT update]", error.message);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json(
+          { error: "Could not save scheduled report. Please try again." },
+          { status: 500 },
+        );
       }
       const row = data as Record<string, unknown>;
       console.log("[scheduled-reports PUT] row after save (DB read):", {
@@ -465,7 +474,10 @@ export async function PUT(req: Request) {
 
     if (error) {
       console.error("[scheduled-reports PUT insert]", error.message);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json(
+        { error: "Could not save scheduled report. Please try again." },
+        { status: 500 },
+      );
     }
     const insertRow = data as Record<string, unknown>;
     console.log("[scheduled-reports PUT] row after insert (DB read):", {
@@ -503,8 +515,11 @@ export async function PUT(req: Request) {
       schedule: mapScheduleRowForDisplay(insertRow, new Date()),
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[scheduled-reports PUT]", e);
+    return NextResponse.json(
+      { error: "Could not save scheduled report. Please try again." },
+      { status: 500 },
+    );
   }
 }
 
@@ -543,11 +558,17 @@ export async function DELETE(req: Request) {
 
     if (error) {
       console.error("[scheduled-reports DELETE]", error.message);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json(
+        { error: "Could not delete scheduled report. Please try again." },
+        { status: 500 },
+      );
     }
     return NextResponse.json({ ok: true });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[scheduled-reports DELETE]", e);
+    return NextResponse.json(
+      { error: "Could not delete scheduled report. Please try again." },
+      { status: 500 },
+    );
   }
 }

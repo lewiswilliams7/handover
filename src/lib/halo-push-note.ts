@@ -7,6 +7,63 @@ export type HaloPushNoteTicketResult = {
   error?: string;
 };
 
+type PushRowWithSourceTicket = { source_ticket?: string | null };
+
+export type PushNarrativeScope = "per_ticket" | "combined_all";
+
+/** Manual push: narrow actions/risks to rows for this ticket when source_ticket is set. */
+export function filterOutputsForTicket(
+  outputs: Record<string, unknown>,
+  ticketId: number | string,
+  isMultiTicket: boolean,
+  summaryScope: PushNarrativeScope = "combined_all",
+  statusScope: PushNarrativeScope = "combined_all",
+): Record<string, unknown> {
+  const ticketIdStr = String(ticketId);
+  const out = { ...outputs };
+
+  if (Array.isArray(out.actions)) {
+    const filtered = (out.actions as PushRowWithSourceTicket[]).filter(
+      (a) => !a.source_ticket || String(a.source_ticket) === ticketIdStr,
+    );
+    out.actions = filtered.length > 0 ? filtered : out.actions;
+  }
+
+  if (Array.isArray(out.risks)) {
+    const filtered = (out.risks as PushRowWithSourceTicket[]).filter(
+      (r) => !r.source_ticket || String(r.source_ticket) === ticketIdStr,
+    );
+    out.risks = filtered.length > 0 ? filtered : out.risks;
+  }
+
+  out.client_email = "";
+  out.email_subject = "";
+  out.email_note = "";
+
+  const actionCount = Array.isArray(out.actions) ? out.actions.length : 0;
+  const riskCount = Array.isArray(out.risks) ? out.risks.length : 0;
+  const perTicketBrief =
+    actionCount > 0 || riskCount > 0
+      ? `${actionCount} action${actionCount !== 1 ? "s" : ""} and ${riskCount} risk${riskCount !== 1 ? "s" : ""} identified.`
+      : "";
+
+  if (isMultiTicket) {
+    if (summaryScope === "per_ticket") {
+      out.summary = perTicketBrief;
+    } else {
+      out.summary = typeof out.summary === "string" ? out.summary : "";
+    }
+
+    if (statusScope === "per_ticket") {
+      out.status_report = "";
+    } else {
+      out.status_report = typeof out.status_report === "string" ? out.status_report : "";
+    }
+  }
+
+  return out;
+}
+
 async function uploadAttachmentToHalo(
   haloUrl: string,
   token: string,
@@ -67,7 +124,7 @@ async function uploadAttachmentToHalo(
   }
 }
 
-function buildNoteHtml(
+export function buildNoteHtml(
   outputs: Record<string, unknown>,
   selectedOutputs: string[],
   projectName: string,
@@ -175,6 +232,8 @@ export async function pushHandoverOutputsToHaloTickets(params: {
   /** Enterprise white label: Halo note footer + Excel footer omit Handover / URL. */
   partnerWhiteLabel?: boolean;
   logTag?: string;
+  pushSummaryScope?: PushNarrativeScope;
+  pushStatusScope?: PushNarrativeScope;
 }): Promise<{
   results: HaloPushNoteTicketResult[];
   posted: number;
@@ -196,6 +255,8 @@ export async function pushHandoverOutputsToHaloTickets(params: {
     brandLogoUrl,
     partnerWhiteLabel = false,
     logTag = "[halo-push-note]",
+    pushSummaryScope = "combined_all",
+    pushStatusScope = "combined_all",
   } = params;
 
   console.log(`${logTag} Starting push:`, {
@@ -204,78 +265,87 @@ export async function pushHandoverOutputsToHaloTickets(params: {
     projectName,
   });
 
-  let excelBuffer: Buffer | null = null;
-  let excelFilename = "";
-
-  if (attachExcel && excelTabs?.length) {
-    try {
-      excelBuffer = await exportFullReportToBuffer(outputs ?? {}, projectName || "Handover Report", {
-        selectedTabs: excelTabs,
-        actionColumns: [
-          "task",
-          "owner",
-          "priority",
-          "status",
-          "due_date",
-          "notes",
-          "project_name",
-          "client_name",
-        ],
-        riskColumns: [
-          "risk",
-          "impact",
-          "mitigation",
-          "status",
-          "owner",
-          "priority",
-          "rag",
-          "project_name",
-          "client_name",
-        ],
-        brandName: brandName ?? null,
-        brandColor: brandColor ?? null,
-        brandSecondaryColor: brandSecondaryColor ?? null,
-        brandLogoUrl: brandLogoUrl ?? null,
-        whiteLabelMode: partnerWhiteLabel,
-      });
-
-      const fileLead =
-        partnerWhiteLabel && typeof brandName === "string" && brandName.trim()
-          ? partnerReportFileSlug(brandName)
-          : "Handover";
-      excelFilename = `${fileLead}-${(projectName || "Report").replace(/[^a-zA-Z0-9]/g, "-")}-${
-        new Date().toISOString().split("T")[0]
-      }.xlsx`;
-
-      console.log(`${logTag} Excel buffer generated:`, excelBuffer?.length, "bytes");
-    } catch (excelErr) {
-      console.error(`${logTag} Excel generation failed:`, excelErr);
-      excelBuffer = null;
-    }
-  }
-
-  const noteHtml = buildNoteHtml(
-    outputs ?? {},
-    selectedOutputs ?? [],
-    projectName ?? "",
-    brandName ?? null,
-    partnerWhiteLabel,
-  );
-  console.log(`${logTag} Note HTML length:`, noteHtml.length);
+  const fileLead =
+    partnerWhiteLabel && typeof brandName === "string" && brandName.trim()
+      ? partnerReportFileSlug(brandName)
+      : "Handover";
+  const excelFilenameBase = `${fileLead}-${(projectName || "Report").replace(/[^a-zA-Z0-9]/g, "-")}-${
+    new Date().toISOString().split("T")[0]
+  }.xlsx`;
 
   const results: HaloPushNoteTicketResult[] = [];
+  const ticketList = ticketIds ?? [];
+  const isMultiTicket = ticketList.length > 1;
 
-  for (const ticketId of ticketIds ?? []) {
+  for (const ticketId of ticketList) {
     try {
+      const filteredOutputs = filterOutputsForTicket(
+        outputs ?? {},
+        ticketId,
+        isMultiTicket,
+        pushSummaryScope,
+        pushStatusScope,
+      );
+      const noteHtml = buildNoteHtml(
+        filteredOutputs,
+        selectedOutputs ?? [],
+        projectName ?? "",
+        brandName ?? null,
+        partnerWhiteLabel,
+      );
+      console.log(`${logTag} Note HTML length for ticket ${ticketId}:`, noteHtml.length);
+
       let attachmentId: number | null = null;
-      if (excelBuffer && excelFilename) {
-        attachmentId = await uploadAttachmentToHalo(
-          haloUrl,
-          token,
-          Number(ticketId),
-          excelBuffer,
-          excelFilename,
-        );
+      if (attachExcel && excelTabs?.length) {
+        try {
+          const excelBuffer = await exportFullReportToBuffer(
+            filteredOutputs,
+            projectName || "Handover Report",
+            {
+              selectedTabs: excelTabs,
+              actionColumns: [
+                "task",
+                "owner",
+                "priority",
+                "status",
+                "due_date",
+                "notes",
+                "project_name",
+                "client_name",
+              ],
+              riskColumns: [
+                "risk",
+                "impact",
+                "mitigation",
+                "status",
+                "owner",
+                "priority",
+                "rag",
+                "project_name",
+                "client_name",
+              ],
+              brandName: brandName ?? null,
+              brandColor: brandColor ?? null,
+              brandSecondaryColor: brandSecondaryColor ?? null,
+              brandLogoUrl: brandLogoUrl ?? null,
+              whiteLabelMode: partnerWhiteLabel,
+            },
+          );
+          console.log(
+            `${logTag} Excel buffer for ticket ${ticketId}:`,
+            excelBuffer?.length,
+            "bytes",
+          );
+          attachmentId = await uploadAttachmentToHalo(
+            haloUrl,
+            token,
+            Number(ticketId),
+            excelBuffer,
+            excelFilenameBase,
+          );
+        } catch (excelErr) {
+          console.error(`${logTag} Excel generation failed for ticket ${ticketId}:`, excelErr);
+        }
       }
 
       const payload = [

@@ -41,6 +41,17 @@ const ROWS: RowDef[] = [
     enterprise: { kind: "tickSub", sub: "Both PSAs" },
   },
   {
+    id: "custom-field-mapping",
+    label: (
+      <span title="Map PSA custom fields to specific report outputs">
+        Custom Field Mapping
+      </span>
+    ),
+    professional: { kind: "tick" },
+    team: { kind: "tick" },
+    enterprise: { kind: "tick" },
+  },
+  {
     id: "push",
     label: "Push Report Notes Back to PSA",
     professional: { kind: "text", value: "Unlimited" },
@@ -125,6 +136,17 @@ const ROWS: RowDef[] = [
     enterprise: { kind: "tick" },
   },
   {
+    id: "overdue-ticket-chaser",
+    label: (
+      <span title="Automatically generate internal chase notes for overdue tickets, @mentioning the assigned engineer directly in your PSA.">
+        Overdue Ticket Chaser
+      </span>
+    ),
+    professional: { kind: "tick" },
+    team: { kind: "tick" },
+    enterprise: { kind: "tick" },
+  },
+  {
     id: "branding",
     label: "Custom Branding on All Outputs",
     professional: { kind: "tick" },
@@ -141,7 +163,7 @@ const ROWS: RowDef[] = [
   {
     id: "slack-teams",
     label: "Slack and Teams Notifications",
-    professional: { kind: "cross" },
+    professional: { kind: "tick" },
     team: { kind: "tick" },
     enterprise: { kind: "tick" },
   },
@@ -195,7 +217,7 @@ const ROWS: RowDef[] = [
     label: "Client Portal with Branded Login",
     professional: { kind: "cross" },
     team: { kind: "cross" },
-    enterprise: { kind: "comingSoon" },
+    enterprise: { kind: "text", value: "Beta" },
   },
   {
     id: "custom-domain",

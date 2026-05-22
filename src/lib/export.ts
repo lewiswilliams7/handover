@@ -1598,49 +1598,18 @@ export async function exportFullReport(
     riskSourceColumn: config?.riskSourceColumn ?? null,
   };
   try {
-    console.log("[excel] Building workbook");
-
     if (!isProOrTeam(plan)) {
       throw new Error("Pro plan required");
     }
 
     const normalized = normalizeFullReportInputs(outputs);
-    console.log("[excel] Data check:", {
-      actionsType: typeof (outputs as Record<string, unknown>).actions,
-      actionsIsArray: Array.isArray(normalized.actions ?? []),
-      actionsLength: (normalized.actions ?? []).length,
-      risksLength: (normalized.risks ?? []).length,
-    });
-    console.log(
-      "[excel] Full outputs keys:",
-      JSON.stringify(Object.keys(outputs as object), null, 2),
-    );
-    const rawO = outputs as Record<string, unknown>;
-    console.log("[excel] actions value type:", typeof rawO.actions);
-    const sample =
-      typeof rawO.actions === "undefined"
-        ? "(undefined)"
-        : JSON.stringify(rawO.actions).substring(0, 200);
-    console.log("[excel] actions sample:", sample);
 
     const tabs = [...new Set(safeConfig.selectedTabs.filter(Boolean))];
     if (tabs.length === 0) {
       throw new Error("Select at least one tab to export.");
     }
     const selectedTabSet = new Set(tabs);
-    const shouldInclude = (tabId: string): boolean => {
-      // Core tabs are always included in the workbook.
-      if (
-        tabId === "actions" ||
-        tabId === "risks" ||
-        tabId === "summary" ||
-        tabId === "client_email" ||
-        tabId === "status_report"
-      ) {
-        return true;
-      }
-      return selectedTabSet.has(tabId);
-    };
+    const shouldInclude = (tabId: string): boolean => selectedTabSet.has(tabId);
 
     const base = fileBaseName(projectName);
     const date = fileDateStamp();
@@ -1678,40 +1647,46 @@ export async function exportFullReport(
     };
 
     // 1 Action Log
-    append(
-      "Action Log",
-      buildActionSheet(
-        actionItems,
-        safeConfig.actionColumns,
-        projectName,
-        meta,
-        genDate,
-        safeConfig.actionSourceColumn,
-      ),
-    );
+    if (shouldInclude("actions")) {
+      append(
+        "Action Log",
+        buildActionSheet(
+          actionItems,
+          safeConfig.actionColumns,
+          projectName,
+          meta,
+          genDate,
+          safeConfig.actionSourceColumn,
+        ),
+      );
+    }
     // 2 Risk Log
-    append(
-      "Risk Log",
-      buildRiskSheet(
-        riskItems,
-        safeConfig.riskColumns,
-        projectName,
-        meta,
-        genDate,
-        safeConfig.riskSourceColumn,
-      ),
-    );
+    if (shouldInclude("risks")) {
+      append(
+        "Risk Log",
+        buildRiskSheet(
+          riskItems,
+          safeConfig.riskColumns,
+          projectName,
+          meta,
+          genDate,
+          safeConfig.riskSourceColumn,
+        ),
+      );
+    }
     // 3 Executive Summary (single sheet only)
-    const execReserveLogoRow = Boolean(safeText(safeConfig.brandLogoUrl).trim());
-    append(
-      "Executive Summary",
-      buildExecutiveSummarySheet(normalized, projectName, meta, genDate, execReserveLogoRow),
-      {
-        skipTrim: true,
-      },
-    );
+    if (shouldInclude("summary")) {
+      const execReserveLogoRow = Boolean(safeText(safeConfig.brandLogoUrl).trim());
+      append(
+        "Executive Summary",
+        buildExecutiveSummarySheet(normalized, projectName, meta, genDate, execReserveLogoRow),
+        {
+          skipTrim: true,
+        },
+      );
+    }
     // 4 Client Email
-    {
+    if (shouldInclude("client_email")) {
       const emailLines = safeText(normalized.client_email).split(/\r?\n/);
       const emailAoA: string[][] = [
         [`Client Email - ${genDate}`, "", ""],
@@ -1726,7 +1701,9 @@ export async function exportFullReport(
       append("Client Email", wsEmail);
     }
     // 5 Status Report
-    append("Status Report", buildStatusReportSheet(safeText(normalized.status_report), genDate));
+    if (shouldInclude("status_report")) {
+      append("Status Report", buildStatusReportSheet(safeText(normalized.status_report), genDate));
+    }
 
     if (shouldInclude("raid_log")) {
       // 6 RAID Log
@@ -2084,7 +2061,6 @@ export async function exportFullReport(
       }
     }
     if (safeConfig.returnBuffer) {
-      console.log("[excel] Export completed (buffer)");
       return Buffer.from(out);
     }
     downloadBlob(
@@ -2093,7 +2069,6 @@ export async function exportFullReport(
       }),
       `${base}-full-report-${date}.xlsx`,
     );
-    console.log("[excel] Export completed");
   } catch (err: unknown) {
     const e = err instanceof Error ? err : new Error(String(err));
     console.error("[excel] Build error:", e.message, e.stack);

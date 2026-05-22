@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   AlertTriangle,
   Check,
@@ -28,8 +28,15 @@ import { formatLoggedHours, hasLoggedWork } from "@/lib/format-logged-hours";
 import { usePSAConnections } from "@/hooks/use-psa-connections";
 import { TICKET_SECTION_RULE } from "@/lib/halo";
 import { Input } from "@/components/ui/input";
-import { useHaloProjects, useHaloTickets } from "@/lib/psa-cache";
+import { invalidatePsaCache, useHaloProjects, useHaloTickets } from "@/lib/psa-cache";
 import { cn } from "@/lib/utils";
+import {
+  DEMO_CLIENTS,
+  DEMO_PROJECTS,
+  DEMO_TICKETS,
+  mapDemoTicketsToHaloTickets,
+} from "@/lib/demo-data";
+import { DemoBanner } from "@/components/demo-banner";
 
 type HaloClient = { id: number; name: string };
 type HaloNote = {
@@ -102,6 +109,24 @@ type TimePresetId =
   | "custom";
 
 type SelClient = { id: number; name: string };
+
+function haloImportTicketClientId(t: HaloTicket): number | null {
+  const raw = (t as unknown as { clientId?: unknown }).clientId;
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string") {
+    const n = Number.parseInt(raw, 10);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function countPickedClientsHiddenAfterFetch(
+  picked: SelClient[],
+  clientIdsWithResults: Set<number>,
+): number {
+  if (picked.length === 0) return 0;
+  return picked.filter((c) => !clientIdsWithResults.has(c.id)).length;
+}
 
 function utcTodayBase(): Date {
   const now = new Date();
@@ -191,11 +216,13 @@ type HaloImportModalProps = {
   onOpenChange: (open: boolean) => void;
   onProRequired?: () => void;
   onConnectionInvalid?: (message: string) => void;
+  forceDemoMode?: boolean;
   onImport: (payload: {
     formatted: string;
     count: number;
     selectedClientName: string | null;
     dataType: "tickets" | "projects";
+    fromDemo?: boolean;
     importedItems: Array<{
       id: number;
       title: string;
@@ -205,19 +232,6 @@ type HaloImportModalProps = {
     }>;
   }) => void;
 };
-
-const DEMO_TICKETS: HaloTicket[] = [
-  { id: "TICK-001", summary: "Azure Migration - Phase 2 Planning", details: null, status: { name: "In Progress" }, client: { name: "Westbrook Solutions" }, agent: { name: "Alex Thompson" }, dateoccurred: "2026-03-20T09:00:00Z", priority: { name: "High" }, targetdate: "2026-04-15", flagged: false, timetaken: 750, notes: [] },
-  { id: "TICK-002", summary: "Fortigate Firewall Configuration", details: null, status: { name: "On Hold" }, client: { name: "Greystone Group" }, agent: null, dateoccurred: "2026-03-20T09:00:00Z", priority: { name: "High" }, targetdate: null, flagged: true, timetaken: 180, notes: [] },
-  { id: "TICK-003", summary: "3CX Installation - Hunt Groups", details: null, status: { name: "In Progress" }, client: { name: "Fernwood Academy" }, agent: { name: "Alex Thompson" }, dateoccurred: "2026-03-20T09:00:00Z", priority: { name: "Medium" }, targetdate: "2026-04-04", flagged: false, timetaken: 1805, notes: [] },
-  { id: "TICK-004", summary: "Intune Autopilot Deployment", details: null, status: { name: "Scheduled" }, client: { name: "Riverside Foundation" }, agent: { name: "Alex Thompson" }, dateoccurred: "2026-03-20T09:00:00Z", priority: { name: "Medium" }, targetdate: "2026-04-03", flagged: false, timetaken: 0, notes: [] },
-  { id: "TICK-005", summary: "CATO Network - RADIUS Config", details: null, status: { name: "In Progress" }, client: { name: "Eastfield Business Solutions" }, agent: null, dateoccurred: "2026-03-20T09:00:00Z", priority: { name: "Medium" }, targetdate: null, flagged: false, timetaken: 3009, notes: [] },
-  { id: "TICK-006", summary: "Email Security - Libraesva Migration", details: null, status: { name: "In Progress" }, client: { name: "Harbour IT Group" }, agent: { name: "Alex Thompson" }, dateoccurred: "2026-03-20T09:00:00Z", priority: { name: "Medium" }, targetdate: "2026-03-31", flagged: false, timetaken: 1, notes: [] },
-  { id: "TICK-007", summary: "Head Office Network Replacement", details: null, status: { name: "In Progress" }, client: { name: "Harbour IT Group" }, agent: { name: "Jamie Clarke" }, dateoccurred: "2026-03-20T09:00:00Z", priority: { name: "High" }, targetdate: "2026-03-31", flagged: false, timetaken: 1, notes: [] },
-  { id: "TICK-008", summary: "SharePoint Migration - Phase 1", details: null, status: { name: "In Progress" }, client: { name: "Northgate Group" }, agent: { name: "Alex Thompson" }, dateoccurred: "2026-03-20T09:00:00Z", priority: { name: "Medium" }, targetdate: "2026-04-30", flagged: false, timetaken: 32, notes: [] },
-  { id: "TICK-009", summary: "Vendor Review - Duty of Care Filtering", details: null, status: { name: "In Progress" }, client: { name: "Harbour IT Group" }, agent: { name: "Alex Thompson" }, dateoccurred: "2026-03-20T09:00:00Z", priority: { name: "Medium" }, targetdate: "2026-03-31", flagged: false, timetaken: 6, notes: [] },
-  { id: "TICK-010", summary: "Hybrid Join - Device Configuration", details: null, status: { name: "Scheduled" }, client: { name: "Ashwood Community College" }, agent: { name: "Alex Thompson" }, dateoccurred: "2026-03-20T09:00:00Z", priority: { name: "Medium" }, targetdate: "2026-04-03", flagged: false, timetaken: 0, notes: [] },
-];
 
 function noteText(note: HaloNote): string {
   return (note.note ?? note.details ?? note.description ?? note.body ?? "").trim();
@@ -278,21 +292,20 @@ export function HaloImportModal({
   onOpenChange,
   onProRequired,
   onConnectionInvalid,
+  forceDemoMode = false,
   onImport,
 }: HaloImportModalProps) {
   const psaConnections = usePSAConnections();
   const toast = useToast();
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step2HiddenClientsCount, setStep2HiddenClientsCount] = useState(0);
   const [importMode, setImportMode] = useState<"tickets" | "projects">("tickets");
   const [clients, setClients] = useState<HaloClient[]>([]);
   const [clientSearch, setClientSearch] = useState("");
-  const [allClientsSelected, setAllClientsSelected] = useState(false);
+  const [allClientsSelected, setAllClientsSelected] = useState(true);
   const [pickedClients, setPickedClients] = useState<SelClient[]>([]);
   const [clientOpenCounts, setClientOpenCounts] = useState<Record<string, number>>({});
   const [countsLoading, setCountsLoading] = useState(false);
-  const [timePreset, setTimePreset] = useState<TimePresetId>("last_7");
-  const [customDateFrom, setCustomDateFrom] = useState("");
-  const [customDateTo, setCustomDateTo] = useState("");
   const [limit] = useState(100);
   const [tickets, setTickets] = useState<HaloTicket[]>([]);
   const [projects, setProjects] = useState<HaloProject[]>([]);
@@ -307,8 +320,106 @@ export function HaloImportModal({
   const [ticketSearch, setTicketSearch] = useState("");
   const [keyword, setKeyword] = useState("");
   const [clientsLoading, setClientsLoading] = useState(false);
-  const { data: haloTicketsCached, mutate: refreshHaloTickets } = useHaloTickets(open);
-  const { data: haloProjectsCached, mutate: refreshHaloProjects } = useHaloProjects(open);
+  const { data: haloTicketsCached, mutate: refreshHaloTickets } = useHaloTickets(
+    open && !forceDemoMode,
+  );
+  const { data: haloProjectsCached, mutate: refreshHaloProjects } = useHaloProjects(
+    open && !forceDemoMode,
+  );
+
+  const fetchHaloClients = useCallback(
+    async (opts?: { bustCache?: boolean; resetSelection?: boolean }) => {
+      if (forceDemoMode) return;
+      setClientsLoading(true);
+      setClients([]);
+      setClientOpenCounts({});
+      if (opts?.resetSelection) {
+        setAllClientsSelected(false);
+        setPickedClients([]);
+      }
+      try {
+        const qs = new URLSearchParams({ all_pages: "1", page_size: "1000" });
+        if (opts?.bustCache) {
+          qs.set("refresh", "1");
+          qs.set("_", String(Date.now()));
+        }
+        const res = await fetch(`/api/halo/clients?${qs.toString()}`, {
+          cache: "no-store",
+        });
+        const data = (await res.json()) as {
+          clients?: HaloClient[];
+          error?: string;
+        };
+
+        if (res.status === 403 && data.error === "pro_required") {
+          onOpenChangeRef.current(false);
+          onProRequiredRef.current?.();
+          return;
+        }
+
+        if (!res.ok && !(data.clients && data.clients.length > 0)) {
+          throw new Error(data.error ?? "Failed to fetch clients.");
+        }
+
+        const allClients = data.clients ?? [];
+        setClients(allClients);
+        console.log("[modal] All clients loaded:", allClients.length);
+      } finally {
+        setClientsLoading(false);
+      }
+    },
+    [forceDemoMode],
+  );
+
+  const applyDemoTicketsToModal = useCallback(() => {
+    const haloTickets = mapDemoTicketsToHaloTickets();
+    setTickets(haloTickets);
+    setProjects([]);
+    setSelectedNotes(buildEmptyNoteSelection(haloTickets));
+    setDemoMode(true);
+  }, []);
+
+  const refreshCachedPsaData = useCallback(async () => {
+    if (forceDemoMode) {
+      applyDemoTicketsToModal();
+      setProjects(
+        DEMO_PROJECTS.map((p) => ({
+          id: p.id,
+          name: p.name,
+          status: p.status,
+          client: p.client,
+          projectmanager: p.projectmanager,
+          targetdate: p.targetdate,
+          completionpercent: p.completionpercent,
+          description: p.description,
+          notes: [],
+        })),
+      );
+      return;
+    }
+    await fetchHaloClients({ bustCache: true, resetSelection: true });
+    await invalidatePsaCache();
+    const cacheBust = Date.now();
+    if (importMode === "tickets") {
+      await fetch(`/api/halo/tickets?refresh=1&_=${cacheBust}`, {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "tickets", count: 1000 }),
+      }).catch((e) => console.error("[modal] tickets refresh fetch:", e));
+      await refreshHaloTickets();
+    } else {
+      await refreshHaloProjects();
+    }
+  }, [
+    forceDemoMode,
+    applyDemoTicketsToModal,
+    fetchHaloClients,
+    importMode,
+    refreshHaloTickets,
+    refreshHaloProjects,
+  ]);
 
   const onOpenChangeRef = useRef(onOpenChange);
   const onProRequiredRef = useRef(onProRequired);
@@ -318,15 +429,30 @@ export function HaloImportModal({
   /** Only true while dialog is open; cleared when it closes so next open runs init again. */
   const haloImportSessionStartedRef = useRef(false);
 
-  const resolvedRange = useMemo(
-    () => getPresetDateRange(timePreset, customDateFrom, customDateTo),
-    [timePreset, customDateFrom, customDateTo],
-  );
+  const openItemsDateRange = useMemo(() => {
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const start = new Date(today);
+    start.setUTCFullYear(start.getUTCFullYear() - 10);
+    return { from: toYmdUtc(start), to: toYmdUtc(today) };
+  }, []);
 
   useEffect(() => {
-    setAllClientsSelected(false);
+    setAllClientsSelected(true);
     setPickedClients([]);
   }, [importMode]);
+
+  useEffect(() => {
+    if (!forceDemoMode) return;
+    setClientOpenCounts(
+      Object.fromEntries(
+        DEMO_CLIENTS.map((c) => [
+          String(c.id),
+          importMode === "projects" ? c.projectCount : c.ticketCount,
+        ]),
+      ),
+    );
+  }, [forceDemoMode, importMode]);
 
   useEffect(() => {
     if (!open) {
@@ -339,6 +465,7 @@ export function HaloImportModal({
     haloImportSessionStartedRef.current = true;
 
     setStep(1);
+    setStep2HiddenClientsCount(0);
     setTickets([]);
     setProjects([]);
     setSelectedIds([]);
@@ -347,13 +474,27 @@ export function HaloImportModal({
     setClientSearch("");
     setKeyword("");
     setTicketSearch("");
-    setAllClientsSelected(false);
+    setAllClientsSelected(true);
     setPickedClients([]);
     setClientOpenCounts({});
     setError(null);
-    setDemoMode(false);
+    setDemoMode(forceDemoMode);
     setFetchProgress(0);
     setFetchProgressText("");
+
+    if (forceDemoMode) {
+      const demoClients: HaloClient[] = DEMO_CLIENTS.map((c) => ({
+        id: c.id,
+        name: c.name,
+      }));
+      setClients(demoClients);
+      setClientOpenCounts(
+        Object.fromEntries(DEMO_CLIENTS.map((c) => [String(c.id), c.ticketCount])),
+      );
+      applyDemoTicketsToModal();
+      setClientsLoading(false);
+      return;
+    }
 
     void (async () => {
       try {
@@ -369,66 +510,16 @@ export function HaloImportModal({
           return;
         }
 
-        setClientsLoading(true);
-        setClients([]);
-        try {
-          const pageSize = 100;
-          let allClients: HaloClient[] = [];
-          let page = 1;
-          let hasMore = true;
-
-          while (hasMore && page <= 20) {
-            const res = await fetch(`/api/halo/clients?page=${page}&page_size=${pageSize}`);
-            const data = (await res.json()) as {
-              clients?: HaloClient[];
-              hasMore?: boolean;
-              error?: string;
-            };
-
-            if (res.status === 403 && data.error === "pro_required") {
-              onOpenChangeRef.current(false);
-              onProRequiredRef.current?.();
-              return;
-            }
-
-            if (!res.ok) {
-              throw new Error(data.error ?? "Failed to fetch clients.");
-            }
-
-            const batch = data.clients ?? [];
-            allClients = [...allClients, ...batch];
-
-            if (data.hasMore === false || batch.length < pageSize) {
-              hasMore = false;
-            } else {
-              page += 1;
-            }
-          }
-
-          setClients(allClients);
-          console.log("[modal] All clients loaded:", allClients.length);
-        } finally {
-          setClientsLoading(false);
-        }
+        await fetchHaloClients();
       } catch (e) {
         setClientsLoading(false);
         setError(e instanceof Error ? e.message : "Failed to load HaloPSA.");
       }
     })();
-  }, [open]);
+  }, [open, forceDemoMode, fetchHaloClients, applyDemoTicketsToModal]);
 
   useEffect(() => {
-    if (!open) return;
-    const preset = importMode === "projects" ? "last_30" : "last_7";
-    setTimePreset(preset);
-    const r = getPresetDateRange(preset, "", "");
-    setCustomDateFrom(r.from);
-    setCustomDateTo(r.to);
-  }, [open, importMode]);
-
-  useEffect(() => {
-    if (!open || clients.length === 0 || demoMode || importMode !== "tickets") return;
-    if (timePreset === "custom" && (!customDateFrom || !customDateTo)) return;
+    if (!open || clients.length === 0 || demoMode || forceDemoMode || importMode !== "tickets") return;
     let cancelled = false;
     setCountsLoading(true);
     void (async () => {
@@ -439,8 +530,8 @@ export function HaloImportModal({
           body: JSON.stringify({
             type: "tickets",
             clientIds: clients.map((c) => c.id),
-            dateFrom: resolvedRange.from,
-            dateTo: resolvedRange.to,
+            dateFrom: openItemsDateRange.from,
+            dateTo: openItemsDateRange.to,
           }),
         });
         const data = (await res.json()) as { counts?: Record<string, number>; error?: string };
@@ -456,11 +547,10 @@ export function HaloImportModal({
     return () => {
       cancelled = true;
     };
-  }, [open, clients, importMode, demoMode, timePreset, customDateFrom, customDateTo, resolvedRange.from, resolvedRange.to]);
+  }, [open, clients, importMode, demoMode, openItemsDateRange.from, openItemsDateRange.to]);
 
   useEffect(() => {
-    if (!open || clients.length === 0 || demoMode || importMode !== "projects") return;
-    if (timePreset === "custom" && (!customDateFrom || !customDateTo)) return;
+    if (!open || clients.length === 0 || demoMode || forceDemoMode || importMode !== "projects") return;
     let cancelled = false;
     setCountsLoading(true);
     void (async () => {
@@ -471,8 +561,8 @@ export function HaloImportModal({
           body: JSON.stringify({
             type: "projects",
             clientIds: clients.map((c) => c.id),
-            dateFrom: resolvedRange.from,
-            dateTo: resolvedRange.to,
+            dateFrom: openItemsDateRange.from,
+            dateTo: openItemsDateRange.to,
           }),
         });
         const data = (await res.json()) as { counts?: Record<string, number>; error?: string };
@@ -488,17 +578,7 @@ export function HaloImportModal({
     return () => {
       cancelled = true;
     };
-  }, [
-    open,
-    clients,
-    importMode,
-    demoMode,
-    timePreset,
-    customDateFrom,
-    customDateTo,
-    resolvedRange.from,
-    resolvedRange.to,
-  ]);
+  }, [open, clients, importMode, demoMode, openItemsDateRange.from, openItemsDateRange.to]);
 
   useEffect(() => {
     if (!open || step !== 1) return;
@@ -676,27 +756,18 @@ export function HaloImportModal({
   }, [allClientsSelected, pickedClients]);
 
   const fetchSummaryLine = useMemo(() => {
-    const period = resolvedRange.label;
     if (importMode !== "tickets") {
-      if (allClientsSelected) return `Fetch all clients · ${period}`;
+      if (allClientsSelected) return "Fetch all clients · open projects";
       if (pickedClients.length === 0) return "";
-      return `Fetch projects for ${pickedClients.map((c) => c.name).join(" · ")} · ${period}`;
+      return `Fetch projects for ${pickedClients.map((c) => c.name).join(" · ")} · open only`;
     }
-    if (allClientsSelected) return `Fetch all clients · ${period}`;
+    if (allClientsSelected) return "Fetch all clients · open tickets";
     if (pickedClients.length === 0) return "";
-    return `Fetch tickets for ${pickedClients.map((c) => c.name).join(" · ")} · ${period}`;
-  }, [importMode, allClientsSelected, pickedClients, resolvedRange.label]);
-
-  const customRangeOk =
-    timePreset !== "custom" ||
-    (Boolean(customDateFrom) &&
-      Boolean(customDateTo) &&
-      customDateFrom <= customDateTo);
+    return `Fetch tickets for ${pickedClients.map((c) => c.name).join(" · ")} · open only`;
+  }, [importMode, allClientsSelected, pickedClients]);
 
   const canFetchStep1 =
-    !clientsLoading &&
-    customRangeOk &&
-    (allClientsSelected || pickedClients.length > 0);
+    !clientsLoading && (allClientsSelected || pickedClients.length > 0);
 
   const toggleAllClients = () => {
     if (allClientsSelected) {
@@ -718,15 +789,25 @@ export function HaloImportModal({
 
   const isClientPicked = (id: number) => pickedClients.some((p) => p.id === id);
 
+  const exitDemoMode = useCallback(() => {
+    setDemoMode(false);
+    setTickets([]);
+    setProjects([]);
+    setSelectedIds([]);
+    setExpandedIds([]);
+    setSelectedNotes({});
+    setTicketSearch("");
+    setError(null);
+    void fetchHaloClients();
+  }, [fetchHaloClients]);
+
   const loadDemoData = () => {
     setImportMode("tickets");
     setAllClientsSelected(true);
     setPickedClients([]);
-    setTickets(DEMO_TICKETS);
+    applyDemoTicketsToModal();
     setSelectedIds([]);
     setExpandedIds([]);
-    setSelectedNotes(buildEmptyNoteSelection(DEMO_TICKETS));
-    setDemoMode(true);
     setStep(2);
   };
 
@@ -736,6 +817,65 @@ export function HaloImportModal({
     setFetchProgress(0);
     setFetchProgressText("");
     try {
+      if (forceDemoMode) {
+        const selectedDemoNames = allClientsSelected
+          ? null
+          : new Set(
+              pickedClients
+                .map((p) => DEMO_CLIENTS.find((c) => c.id === p.id)?.name)
+                .filter((name): name is string => Boolean(name)),
+            );
+        if (importMode === "projects") {
+          const projectRows = DEMO_PROJECTS.filter((p) =>
+            selectedDemoNames ? selectedDemoNames.has(p.client.name) : true,
+          );
+          setProjects(
+            projectRows.map((p) => ({
+              id: p.id,
+              name: p.name,
+              status: p.status,
+              client: p.client,
+              projectmanager: p.projectmanager,
+              targetdate: p.targetdate,
+              completionpercent: p.completionpercent,
+              description: p.description,
+              notes: [],
+            })),
+          );
+          setTickets([]);
+          setSelectedIds([]);
+          setSelectedNotes(
+            buildEmptyNoteSelection(
+              projectRows.map((p) => ({
+                id: p.id,
+                name: p.name,
+                status: p.status,
+                client: p.client,
+                projectmanager: p.projectmanager,
+                targetdate: p.targetdate,
+                completionpercent: p.completionpercent,
+                description: p.description,
+                notes: [],
+              })),
+            ),
+          );
+            setDemoMode(true);
+          setStep(2);
+          return;
+        }
+        const ticketRows = mapDemoTicketsToHaloTickets().filter((t) =>
+          selectedDemoNames ? selectedDemoNames.has(t.client?.name ?? "") : true,
+        );
+        setTickets(ticketRows);
+        setProjects([]);
+        setSelectedIds([]);
+        setExpandedIds([]);
+        setSelectedNotes(buildEmptyNoteSelection(ticketRows));
+        setDemoMode(true);
+        setStep(2);
+        return;
+      }
+
       const clientIdsPayload = allClientsSelected
         ? undefined
         : pickedClients.map((p) => p.id);
@@ -771,6 +911,18 @@ export function HaloImportModal({
             };
           }),
         );
+        const projectClientIds = new Set<number>();
+        for (const p of detailedProjects) {
+          const match = clients.find(
+            (c) => c.name.toLowerCase() === (p.client?.name ?? "").toLowerCase(),
+          );
+          if (match) projectClientIds.add(match.id);
+        }
+        const hiddenProjects =
+          !allClientsSelected && pickedClients.length > 0
+            ? countPickedClientsHiddenAfterFetch(pickedClients, projectClientIds)
+            : 0;
+        setStep2HiddenClientsCount(hiddenProjects);
         setProjects(detailedProjects);
         setTickets([]);
         void refreshHaloProjects();
@@ -787,17 +939,12 @@ export function HaloImportModal({
         : [];
       const selectedClientIdSet = new Set(clientIdsPayload ?? []);
       const keywordLower = keyword.trim().toLowerCase();
-      const fromMs = Date.parse(`${resolvedRange.from}T00:00:00.000Z`);
-      const toMs = Date.parse(`${resolvedRange.to}T23:59:59.999Z`);
       const baseTickets =
         cachedBase.length > 0
           ? cachedBase.filter((t) => {
               const cid = Number((t as unknown as { clientId?: unknown }).clientId ?? 0);
-              const occurred = Date.parse(String(t.dateoccurred ?? ""));
               const inClientScope =
                 selectedClientIdSet.size === 0 || (Number.isFinite(cid) && selectedClientIdSet.has(cid));
-              const inDateScope =
-                Number.isFinite(occurred) && occurred >= fromMs && occurred <= toMs;
               const inKeywordScope =
                 !keywordLower ||
                 (t.summary ?? "").toLowerCase().includes(keywordLower) ||
@@ -805,7 +952,7 @@ export function HaloImportModal({
                 String((t as Record<string, unknown>).category_1 ?? "").toLowerCase().includes(keywordLower) ||
                 String((t as Record<string, unknown>).category_2 ?? "").toLowerCase().includes(keywordLower) ||
                 (t.client?.name ?? "").toLowerCase().includes(keywordLower);
-              return inClientScope && inDateScope && inKeywordScope;
+              return inClientScope && inKeywordScope;
             })
           : [];
       let resolvedTickets = baseTickets;
@@ -816,8 +963,8 @@ export function HaloImportModal({
           body: JSON.stringify({
             type: "tickets",
             ...(clientIdsPayload && clientIdsPayload.length > 0 ? { clientIds: clientIdsPayload } : {}),
-            dateFrom: resolvedRange.from,
-            dateTo: resolvedRange.to,
+            dateFrom: openItemsDateRange.from,
+            dateTo: openItemsDateRange.to,
             count: limit,
             keyword: keyword.trim() || undefined,
           }),
@@ -837,6 +984,9 @@ export function HaloImportModal({
         resolvedTickets = Array.isArray(data.tickets) ? data.tickets : [];
       }
       if (resolvedTickets.length === 0) {
+        const hiddenEmpty =
+          !allClientsSelected && pickedClients.length > 0 ? pickedClients.length : 0;
+        setStep2HiddenClientsCount(hiddenEmpty);
         setTickets([]);
         setProjects([]);
         setSelectedIds([]);
@@ -857,6 +1007,16 @@ export function HaloImportModal({
           return dd.ticket;
         }),
       );
+      const ticketClientIds = new Set<number>();
+      for (const t of detailed) {
+        const cid = haloImportTicketClientId(t);
+        if (cid != null) ticketClientIds.add(cid);
+      }
+      const hiddenTickets =
+        !allClientsSelected && pickedClients.length > 0
+          ? countPickedClientsHiddenAfterFetch(pickedClients, ticketClientIds)
+          : 0;
+      setStep2HiddenClientsCount(hiddenTickets);
       setTickets(detailed);
       setProjects([]);
       void refreshHaloTickets();
@@ -1038,8 +1198,10 @@ export function HaloImportModal({
       count: allImportedItems.length,
       selectedClientName,
       dataType: selectedProjects.length > 0 && selectedTickets.length === 0 ? "projects" : "tickets",
+      fromDemo: demoMode,
       importedItems: allImportedItems,
     });
+    window.setTimeout(() => onOpenChange(false), 500);
   };
 
   return (
@@ -1098,10 +1260,24 @@ export function HaloImportModal({
         </p>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        {demoMode ? (
-          <div className="rounded-[var(--radius)] border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-100">
-            Demo mode - using sample ticket data
+        {forceDemoMode ? (
+          <div
+            className="mb-4 rounded-[var(--radius)] border px-3 py-2 text-[12px]"
+            style={{
+              background: "rgba(245, 158, 11, 0.08)",
+              borderColor: "rgba(245, 158, 11, 0.35)",
+              color: "rgb(251, 191, 36)",
+            }}
+          >
+            Demo mode — showing sample tickets. Connect HaloPSA to import your real data.
           </div>
+        ) : demoMode ? (
+          <DemoBanner
+            onConnectPSA={() => {
+              onOpenChange(false);
+              onConnectionInvalid?.("Connect HaloPSA to import your live tickets.");
+            }}
+          />
         ) : null}
         {error ? (
           /No projects found/i.test(error) ? (
@@ -1181,103 +1357,7 @@ export function HaloImportModal({
                 ))}
               </div>
 
-              {importMode === "tickets" ? (
-                <section>
-                  <h3 className="text-[16px] font-semibold text-[var(--text-primary)]">Time period</h3>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {TIME_PRESET_ROW.map((p) => {
-                      const active = timePreset === p.id;
-                      return (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => setTimePreset(p.id)}
-                          className={cn(
-                            "cursor-pointer rounded-full border text-[13px] transition-colors",
-                            active
-                              ? "border-[var(--accent)] bg-[var(--accent)] text-white"
-                              : "border-[var(--border)] bg-transparent text-[var(--text-secondary)]",
-                          )}
-                          style={{ padding: "6px 14px" }}
-                        >
-                          {p.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {timePreset === "custom" ? (
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <label className="mb-1.5 block text-sm text-[var(--text-secondary)]">From:</label>
-                        <Input
-                          type="date"
-                          className="h-10 rounded-[var(--radius)] border-[var(--border)] text-[14px]"
-                          value={customDateFrom}
-                          onChange={(e) => setCustomDateFrom(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1.5 block text-sm text-[var(--text-secondary)]">To:</label>
-                        <Input
-                          type="date"
-                          className="h-10 rounded-[var(--radius)] border-[var(--border)] text-[14px]"
-                          value={customDateTo}
-                          onChange={(e) => setCustomDateTo(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  ) : null}
-                </section>
-              ) : (
-                <section>
-                  <h3 className="text-[16px] font-semibold text-[var(--text-primary)]">Time period</h3>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {PROJECT_TIME_PRESET_ROW.map((p) => {
-                      const active = timePreset === p.id;
-                      return (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => setTimePreset(p.id)}
-                          className={cn(
-                            "cursor-pointer rounded-full border text-[13px] transition-colors",
-                            active
-                              ? "border-[var(--accent)] bg-[var(--accent)] text-white"
-                              : "border-[var(--border)] bg-transparent text-[var(--text-secondary)]",
-                          )}
-                          style={{ padding: "6px 14px" }}
-                        >
-                          {p.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {timePreset === "custom" ? (
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <label className="mb-1.5 block text-sm text-[var(--text-secondary)]">From:</label>
-                        <Input
-                          type="date"
-                          className="h-10 rounded-[var(--radius)] border-[var(--border)] text-[14px]"
-                          value={customDateFrom}
-                          onChange={(e) => setCustomDateFrom(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1.5 block text-sm text-[var(--text-secondary)]">To:</label>
-                        <Input
-                          type="date"
-                          className="h-10 rounded-[var(--radius)] border-[var(--border)] text-[14px]"
-                          value={customDateTo}
-                          onChange={(e) => setCustomDateTo(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  ) : null}
-                </section>
-              )}
-
-              <section className={importMode === "tickets" || importMode === "projects" ? "pt-2" : ""}>
+              <section>
                 <div className="mb-3">
                   <label className="mb-1 block text-[12px] text-[var(--text-secondary)]">
                     Filter by keyword or project name (optional)
@@ -1286,7 +1366,7 @@ export function HaloImportModal({
                     type="text"
                     value={keyword}
                     onChange={(e) => setKeyword(e.target.value)}
-                    placeholder={'e.g. "bako project" or "firewall"'}
+                    placeholder={'e.g. "Migration project" or "firewall"'}
                     className="w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
                   />
                 </div>
@@ -1513,6 +1593,27 @@ export function HaloImportModal({
                   })}
                 </div>
                 ) : null}
+
+                {forceDemoMode && importMode === "tickets" && tickets.length > 0 ? (
+                  <div className="mt-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)]/40 p-3">
+                    <p className="text-[12px] font-semibold text-[var(--text-primary)]">
+                      Sample open tickets ({tickets.length})
+                    </p>
+                    <ul className="mt-2 max-h-48 space-y-2 overflow-y-auto">
+                      {tickets.map((t) => (
+                        <li key={String(t.id)} className="text-[12px] leading-snug text-[var(--text-secondary)]">
+                          <span className="font-medium text-[var(--text-primary)]">
+                            {t.summary ?? `Ticket ${t.id}`}
+                          </span>
+                          <span className="text-[var(--text-muted)]">
+                            {" "}
+                            · {t.client?.name ?? "Unknown"} · {t.status?.name ?? "Open"}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
               </section>
             </>
           ) : null}
@@ -1523,7 +1624,10 @@ export function HaloImportModal({
                 type="button"
                 className="flex items-center gap-1 text-slate-400 hover:text-white text-sm transition-colors duration-200 mb-4"
                 onClick={() => {
+                  if (demoMode && !forceDemoMode) exitDemoMode();
+                  if (forceDemoMode) applyDemoTicketsToModal();
                   setStep(1);
+                  setStep2HiddenClientsCount(0);
                   setSelectedIds([]);
                 }}
               >
@@ -1550,15 +1654,25 @@ export function HaloImportModal({
                 }}
               />
               <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-[13px] text-[var(--text-muted)]">
-                  {importMode === "tickets" ? (
-                    <>
-                      {step2Totals.ticketCount} tickets found across {step2Totals.clientCount} clients
-                    </>
-                  ) : (
-                    <>{step2Totals.ticketCount} projects found</>
-                  )}
-                </p>
+                <div className="min-w-0">
+                  <p className="text-[13px] text-[var(--text-muted)]">
+                    {importMode === "tickets" ? (
+                      <>
+                        {step2Totals.ticketCount} tickets found across {step2Totals.clientCount} clients
+                      </>
+                    ) : (
+                      <>{step2Totals.ticketCount} projects found</>
+                    )}
+                  </p>
+                  {step2HiddenClientsCount > 0 ? (
+                    <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+                      {step2HiddenClientsCount} client
+                      {step2HiddenClientsCount === 1 ? "" : "s"} had no open{" "}
+                      {importMode === "tickets" ? "tickets" : "projects"} and{" "}
+                      {step2HiddenClientsCount === 1 ? "was" : "were"} hidden
+                    </p>
+                  ) : null}
+                </div>
                 <button
                   type="button"
                   className="shrink-0 text-[13px] font-medium text-[var(--accent)] hover:underline"
@@ -2057,8 +2171,8 @@ export function HaloImportModal({
                   {selectedNotesCount} selected
                 </p>
                 <p>
-                  <span className="text-[var(--text-muted)]">Time period: </span>
-                  {resolvedRange.label}
+                  <span className="text-[var(--text-muted)]">Scope: </span>
+                  All open {importMode === "tickets" ? "tickets" : "projects"}
                 </p>
               </div>
               {allClientsSelected ? (
@@ -2086,21 +2200,26 @@ export function HaloImportModal({
                 {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
                 {importMode === "tickets" ? "Fetch tickets →" : "Fetch projects →"}
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-10 w-full"
-                onClick={() => {
-                  if (importMode === "tickets") void refreshHaloTickets();
-                  else void refreshHaloProjects();
-                }}
-              >
-                <RefreshCw className="mr-2 size-4" />
-                Refresh cached PSA data
-              </Button>
-              <button type="button" className="w-full text-center text-xs text-[var(--text-muted)]" onClick={loadDemoData}>
-                No HaloPSA account? Load demo data →
-              </button>
+              {!forceDemoMode ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 w-full"
+                  onClick={() => void refreshCachedPsaData()}
+                >
+                  <RefreshCw className="mr-2 size-4" />
+                  Refresh cached PSA data
+                </Button>
+              ) : null}
+              {!forceDemoMode ? (
+                <button
+                  type="button"
+                  className="w-full text-center text-xs text-[var(--text-muted)]"
+                  onClick={loadDemoData}
+                >
+                  No HaloPSA account? Load demo data →
+                </button>
+              ) : null}
             </div>
           ) : null}
           {step === 2 ? (
@@ -2124,7 +2243,7 @@ export function HaloImportModal({
                 Back
               </Button>
               <Button type="button" className="h-11 bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]" onClick={importSelected}>
-                Generate outputs →
+                Import to Handover →
               </Button>
             </div>
           ) : null}

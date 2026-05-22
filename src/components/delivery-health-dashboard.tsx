@@ -11,7 +11,6 @@ import {
   CalendarClock,
   ClipboardList,
   FolderKanban,
-  Inbox,
   LayoutDashboard,
   ListChecks,
   Loader2,
@@ -30,8 +29,16 @@ import type {
   DeliveryHealthSlaRisk,
 } from "@/lib/delivery-health";
 import { formatDeliveryHealthRowForGeneration } from "@/lib/delivery-health";
+import {
+  buildDeliveryHealthSwrKey,
+  DELIVERY_HEALTH_SWR_OPTIONS,
+  fetchDeliveryHealth,
+} from "@/lib/delivery-health-swr";
 import { DeliveryHealthDetailPanel } from "@/components/delivery-health-detail-panel";
 import { usePSAConnections } from "@/hooks/use-psa-connections";
+import { usePSAStatus } from "@/hooks/usePSAStatus";
+import { PSAEmptyState } from "@/components/psa-empty-state";
+import { DemoBanner } from "@/components/demo-banner";
 import {
   ellipsizeOwnerAtWord,
   isUnassignedOwnerCell,
@@ -41,6 +48,8 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/toasts";
+import { DEMO_CLIENTS, DEMO_PROJECTS, DEMO_TICKETS } from "@/lib/demo-data";
+import { cleanTicketNoteContent } from "@/lib/note-cleaner";
 
 const VIEW_STORAGE_KEY = "delivery-health-view";
 
@@ -150,17 +159,24 @@ type SortKey =
   | "rag"
   | "openTickets"
   | "overdueTickets"
-  | "avgResponseTimeHours"
+  | "timeLogged"
   | "ticketsThisWeek"
   | "activeProjects"
   | "projectHealth"
   | "lastReportSent"
   | "nextScheduledReport";
 
+export type DeliveryHealthClientListViewMode = "paginated" | "continuous";
+
+const CLIENTS_PER_PAGE = 25;
+
 type Props = {
   focusRing: string;
   /** read: table only - no row detail or generate-from-dashboard (team permission). */
   dashboardAccess?: "full" | "read";
+  /** Display-only pagination for the client portfolio table (all data still fetched). */
+  viewMode?: DeliveryHealthClientListViewMode;
+  demoMode?: boolean;
   onOpenIntegrations?: () => void;
   onOpenHaloImport?: () => void;
   onStartGenerationFromDelivery?: (payload: {
@@ -290,11 +306,19 @@ function RagBadge({ rag, slaRisk }: { rag: DeliveryHealthRag; slaRisk?: Delivery
   );
 }
 
-function formatResponseTime(hours: number | null): string {
-  if (hours == null || !Number.isFinite(hours) || hours < 0) return "0m";
-  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))}m`;
-  if (hours < 24) return `${Math.round(hours * 10) / 10}h`;
-  return `${Math.round((hours / 24) * 10) / 10}d`;
+function formatTimeLogged(hours: number | null): string {
+  if (hours == null || !Number.isFinite(hours) || hours <= 0) return "0m";
+  const totalMinutes = Math.max(0, Math.round(hours * 60));
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+  if (totalMinutes < 8 * 60) {
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  }
+  const totalHours = Math.floor(totalMinutes / 60);
+  const days = Math.floor(totalHours / 8);
+  const remHours = totalHours % 8;
+  return remHours > 0 ? `${days}d ${remHours}h` : `${days}d`;
 }
 
 function StatCardSkeleton({ className }: { className?: string }) {
@@ -326,14 +350,50 @@ function TableRowSkeleton() {
   );
 }
 
+function CustomersLoadingState() {
+  return (
+    <div className="p-4">
+      <div className="flex items-center gap-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-4">
+        <Loader2 className="h-4 w-4 animate-spin text-[var(--accent)]" aria-hidden />
+        <span className="text-[13px] text-[var(--text-secondary)]">Loading customers...</span>
+      </div>
+      <div className="mt-4 w-full overflow-x-auto md:overflow-visible">
+        <table className="w-full table-fixed border-collapse text-left text-[13px]">
+          <colgroup>
+            <col style={{ width: "22%", minWidth: "240px" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "9%" }} />
+            <col style={{ width: "9%" }} />
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "120px" }} />
+          </colgroup>
+          <tbody>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <TableRowSkeleton key={i} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export function DeliveryHealthDashboard({
   focusRing,
   dashboardAccess = "full",
+  viewMode: clientListViewMode = "paginated",
+  demoMode = false,
   onOpenIntegrations,
   onOpenHaloImport,
   onStartGenerationFromDelivery,
 }: Props) {
   const psaConnections = usePSAConnections();
+  const psaStatus = usePSAStatus();
   const cwEnabled = psaConnections.connectwise;
   const toast = useToast();
   const [loading, setLoading] = useState(true);
@@ -369,6 +429,145 @@ export function DeliveryHealthDashboard({
   const [defaultChaseMessage, setDefaultChaseMessage] = useState(
     "Hi @{engineer}, this ticket is overdue and requires your attention. Please update with your current status and expected resolution date. Thank you.",
   );
+  const [clientPage, setClientPage] = useState(1);
+
+  const demoResponse = useMemo<DeliveryHealthApiResponse | null>(() => {
+    if (!demoMode) return null;
+    const now = Date.now();
+    const rows: DeliveryHealthRow[] = [
+      ...DEMO_TICKETS.map((t, idx) => {
+        const targetIso = new Date(t.targetdate).toISOString();
+        const daysToTarget = Math.floor(
+          (new Date(t.targetdate).getTime() - Date.now()) / 86400000,
+        );
+        const slaRisk: DeliveryHealthSlaRisk | null =
+          daysToTarget < 0 ? "overdue" : daysToTarget <= 7 ? "at_risk" : null;
+        const rag: DeliveryHealthRag =
+          t.overdue || daysToTarget < 0 ? "red" : t.priorityLevel === 1 ? "amber" : "green";
+        return {
+          id: 10000 + idx,
+          kind: "ticket" as const,
+          source: "halopsa" as const,
+          name: t.summary,
+          clientName: t.client.name,
+          owner: t.agent.name,
+          statusName: t.status.name,
+          priorityName: t.priority.name,
+          rag,
+          openActions: t.priorityLevel === 1 ? 3 : 1,
+          openRisks: t.overdue ? 1 : 0,
+          daysToTarget,
+          lastGeneratedAt: null,
+          ticketAgeDays: Math.max(
+            0,
+            Math.floor((now - new Date(t.dateoccurred).getTime()) / 86400000),
+          ),
+          lastNoteAt: t.dateoccurred,
+          lastNotePreview: cleanTicketNoteContent(t.details ?? ""),
+          targetDateIso: targetIso,
+          targetHours: null,
+          timeLogged: t.timetaken / 60,
+          description: cleanTicketNoteContent(t.details ?? ""),
+          notes: [],
+          latestOpenActions: [],
+          latestOpenRisks: [],
+          haloTicketUrl: "#",
+          slaRisk,
+          createdAtIso: t.dateoccurred,
+          firstResponseHours: null,
+          projectTaskTotal: null,
+          projectTaskCompleted: null,
+        };
+      }),
+      ...DEMO_PROJECTS.map((p, idx) => {
+        const daysToTarget = Math.floor(
+          (new Date(p.targetdate).getTime() - Date.now()) / 86400000,
+        );
+        const rag: DeliveryHealthRag =
+          p.status.name.toLowerCase() === "on hold"
+            ? "amber"
+            : p.percentcomplete >= 70
+              ? "green"
+              : "amber";
+        return {
+          id: 20000 + idx,
+          kind: "project" as const,
+          source: "halopsa" as const,
+          name: p.name,
+          clientName: p.client.name,
+          owner: p.agent.name,
+          statusName: p.status.name,
+          priorityName: null,
+          rag,
+          openActions: p.percentcomplete < 50 ? 3 : 1,
+          openRisks: p.status.name.toLowerCase() === "on hold" ? 1 : 0,
+          daysToTarget,
+          lastGeneratedAt: null,
+          ticketAgeDays: Math.max(
+            0,
+            Math.floor((now - new Date(p.dateoccurred).getTime()) / 86400000),
+          ),
+          lastNoteAt: p.dateoccurred,
+          lastNotePreview: cleanTicketNoteContent(p.description ?? ""),
+          targetDateIso: new Date(p.targetdate).toISOString(),
+          targetHours: null,
+          timeLogged: p.timetaken / 60,
+          description: cleanTicketNoteContent(p.description ?? ""),
+          notes: [],
+          latestOpenActions: [],
+          latestOpenRisks: [],
+          haloTicketUrl: "#",
+          slaRisk: null,
+          createdAtIso: p.dateoccurred,
+          firstResponseHours: null,
+          projectTaskTotal: 10,
+          projectTaskCompleted: Math.round((p.percentcomplete / 100) * 10),
+        };
+      }),
+    ];
+
+    const buildStrip = (subset: DeliveryHealthRow[]) => {
+      const activeCount = subset.length;
+      const totalOpenActions = subset.reduce((sum, r) => sum + r.openActions, 0);
+      const totalOpenRisks = subset.reduce((sum, r) => sum + r.openRisks, 0);
+      const overdueTargets = subset.filter(
+        (r) => r.daysToTarget != null && r.daysToTarget < 0,
+      ).length;
+      const perDay = subset
+        .filter((r) => r.targetDateIso && r.daysToTarget != null && r.daysToTarget >= 0)
+        .map((r) => r.timeLogged / Math.max(1, r.daysToTarget ?? 1));
+      return {
+        activeCount,
+        totalOpenActions,
+        totalOpenRisks,
+        overdueTargets,
+        avgHoursPerDayToTarget:
+          perDay.length > 0
+            ? Math.round((perDay.reduce((sum, v) => sum + v, 0) / perDay.length) * 10) / 10
+            : null,
+      };
+    };
+
+    const projectRows = rows.filter((r) => r.kind === "project");
+    const ticketRows = rows.filter((r) => r.kind === "ticket");
+
+    return {
+      access: "full",
+      refreshedAt: new Date().toISOString(),
+      haloConnected: false,
+      cwConnected: false,
+      stats: {
+        projects: buildStrip(projectRows),
+        tickets: buildStrip(ticketRows),
+      },
+      rows,
+      statDetails: {
+        openRisks: [],
+        overdueTickets: [],
+        slaAtRisk: [],
+      },
+    };
+  }, [demoMode]);
 
   useEffect(() => {
     if (data?.access !== "full" && ragFilter === "sla_at_risk") {
@@ -401,13 +600,10 @@ export function DeliveryHealthDashboard({
     };
   }, []);
 
-  const swrKey = useMemo(() => {
-    const params = new URLSearchParams();
-    if (cwEnabled && psaConnections.primary === "connectwise") {
-      params.set("source", "connectwise");
-    }
-    return `/api/delivery-health${params.toString() ? `?${params.toString()}` : ""}`;
-  }, [cwEnabled, psaConnections.primary]);
+  const swrKey = useMemo(
+    () => buildDeliveryHealthSwrKey(demoMode, cwEnabled, psaConnections.primary),
+    [demoMode, cwEnabled, psaConnections.primary],
+  );
 
   const {
     data: swrData,
@@ -416,21 +612,20 @@ export function DeliveryHealthDashboard({
     mutate: mutateHealth,
   } = useSWR<DeliveryHealthApiResponse>(
     swrKey,
-    async (url: string) => {
-      const res = await fetch(url, { credentials: "same-origin", cache: "no-store" });
-      const json = (await res.json()) as DeliveryHealthApiResponse & { error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Could not load dashboard.");
-      return json;
-    },
+    fetchDeliveryHealth,
     {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: false,
-      dedupingInterval: 3 * 60 * 1000,
-      keepPreviousData: true,
+      ...DELIVERY_HEALTH_SWR_OPTIONS,
     },
   );
 
   useEffect(() => {
+    if (demoMode) {
+      setData(demoResponse);
+      setFetchError(null);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     setLoading(swrLoading);
     if (swrErr) {
       setFetchError(swrErr instanceof Error ? swrErr.message : "Could not load dashboard.");
@@ -441,12 +636,27 @@ export function DeliveryHealthDashboard({
       setFetchError(null);
     }
     setRefreshing(false);
-  }, [swrData, swrErr, swrLoading]);
+  }, [demoMode, demoResponse, swrData, swrErr, swrLoading]);
+
+  useEffect(() => {
+    if (demoMode) return;
+    const timer = window.setTimeout(() => {
+      setLoading(false);
+    }, 15_000);
+    return () => window.clearTimeout(timer);
+  }, [demoMode, swrKey]);
 
   const scopedRows = useMemo(() => {
     if (!data?.rows) return [];
-    if (viewMode === "all") return data.rows;
-    return data.rows.filter((r) => (viewMode === "projects" ? r.kind === "project" : r.kind === "ticket"));
+    const cleanedRows = data.rows.map((r) => ({
+      ...r,
+      lastNotePreview: cleanTicketNoteContent(r.lastNotePreview ?? ""),
+      description: cleanTicketNoteContent(r.description ?? ""),
+    }));
+    if (viewMode === "all") return cleanedRows;
+    return cleanedRows.filter((r) =>
+      viewMode === "projects" ? r.kind === "project" : r.kind === "ticket",
+    );
   }, [data, viewMode]);
 
   const filteredRows = useMemo(() => {
@@ -474,6 +684,14 @@ export function DeliveryHealthDashboard({
     slaPortfolioFilter,
   ]);
 
+  const visibleTicketTimeLoggedHours = useMemo(
+    () =>
+      filteredRows
+        .filter((r) => r.kind === "ticket")
+        .reduce((sum, r) => sum + (Number.isFinite(r.timeLogged) ? r.timeLogged : 0), 0),
+    [filteredRows],
+  );
+
   const overdueRows = useMemo(() => {
     let rows = (data?.rows ?? []).filter(
       (r) => r.daysToTarget !== null && r.daysToTarget < 0 && r.owner !== null,
@@ -500,6 +718,27 @@ export function DeliveryHealthDashboard({
       .forEach((r) => owners.add(r.owner!));
     return Array.from(owners).sort();
   }, [data]);
+
+  const clientFilterOptions = useMemo(() => {
+    if (demoMode) {
+      return DEMO_CLIENTS.map((c) => c.name).sort((a, b) => a.localeCompare(b));
+    }
+    const names = new Set<string>();
+    for (const row of scopedRows) {
+      const name = String(row.clientName ?? "").trim();
+      if (name) names.add(name);
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [demoMode, scopedRows]);
+
+  const ownerFilterOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const row of scopedRows) {
+      const name = String(row.owner ?? "").trim();
+      if (name) names.add(name);
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [scopedRows]);
 
   const dynamicStatusOptions = useMemo(() => {
     const base = new Set(["new", "in progress", "on hold", "resolved", "closed"]);
@@ -556,8 +795,10 @@ export function DeliveryHealthDashboard({
         case "overdueTickets":
           cmp = ((a as unknown as { overdueTickets?: number }).overdueTickets ?? 0) - ((b as unknown as { overdueTickets?: number }).overdueTickets ?? 0);
           break;
-        case "avgResponseTimeHours":
-          cmp = ((a as unknown as { avgResponseTimeHours?: number | null }).avgResponseTimeHours ?? -1) - ((b as unknown as { avgResponseTimeHours?: number | null }).avgResponseTimeHours ?? -1);
+        case "timeLogged":
+          cmp =
+            ((a as unknown as { timeLoggedHours?: number }).timeLoggedHours ?? 0) -
+            ((b as unknown as { timeLoggedHours?: number }).timeLoggedHours ?? 0);
           break;
         case "ticketsThisWeek":
           cmp = ((a as unknown as { ticketsThisWeek?: number }).ticketsThisWeek ?? 0) - ((b as unknown as { ticketsThisWeek?: number }).ticketsThisWeek ?? 0);
@@ -588,7 +829,6 @@ export function DeliveryHealthDashboard({
     }
     const now = nowMs;
     const sevenDaysMs = 7 * 24 * 3600 * 1000;
-    const thirtyDaysMs = 30 * 24 * 3600 * 1000;
     const ragOrder: Record<DeliveryHealthRag, number> = { red: 3, amber: 2, green: 1, grey: 0 };
     return [...byClient.entries()].map(([clientName, list]) => {
       const tickets = list.filter((r) => r.kind === "ticket");
@@ -599,44 +839,10 @@ export function DeliveryHealthDashboard({
         const created = t.createdAtIso ? new Date(t.createdAtIso).getTime() : NaN;
         return Number.isFinite(created) && now - created <= sevenDaysMs;
       }).length;
-      const responseRows = tickets.filter((t) => {
-        const created = t.createdAtIso ? new Date(t.createdAtIso).getTime() : NaN;
-        return Number.isFinite(created) && now - created <= thirtyDaysMs;
-      });
-      const responseValues = responseRows
-        .map((t) => {
-          if (t.firstResponseHours != null && Number.isFinite(t.firstResponseHours)) {
-            return t.firstResponseHours;
-          }
-          const created = t.createdAtIso ? new Date(t.createdAtIso).getTime() : NaN;
-          if (!Number.isFinite(created)) return null;
-          const fallback = Math.max(0, (now - created) / 3600000);
-          return Number.isFinite(fallback) ? Math.round(fallback * 10) / 10 : null;
-        })
-        .filter((n): n is number => n != null);
-      for (const t of responseRows.slice(0, 3)) {
-        const createdIso = t.createdAtIso ?? null;
-        const createdMs = createdIso ? new Date(createdIso).getTime() : NaN;
-        const firstHours =
-          t.firstResponseHours != null && Number.isFinite(t.firstResponseHours)
-            ? t.firstResponseHours
-            : null;
-        const responseIso =
-          firstHours != null && Number.isFinite(createdMs)
-            ? new Date(createdMs + firstHours * 3600000).toISOString()
-            : null;
-        // Temporary debug output requested by user for verification.
-        console.log("[delivery-health][response-time-debug]", {
-          clientName,
-          ticketId: t.id,
-          createdAt: createdIso,
-          firstResponseAt: responseIso,
-          firstResponseHours: firstHours,
-        });
-      }
-      const avgResponseTimeHours = responseValues.length > 0
-        ? Math.round((responseValues.reduce((sum, n) => sum + n, 0) / responseValues.length) * 10) / 10
-        : 0;
+      const timeLoggedHours = tickets.reduce(
+        (sum, t) => sum + (Number.isFinite(t.timeLogged) ? t.timeLogged : 0),
+        0,
+      );
       const activeProjects = projects.length;
       const worstRag = list.reduce<DeliveryHealthRag>((acc, r) => (ragOrder[r.rag] > ragOrder[acc] ? r.rag : acc), "grey");
       const projectRag = projects.reduce<DeliveryHealthRag>(
@@ -675,7 +881,7 @@ export function DeliveryHealthDashboard({
         representative,
         openTickets,
         overdueTickets,
-        avgResponseTimeHours,
+        timeLoggedHours,
         ticketsThisWeek,
         activeProjects,
         overallRag: worstRag,
@@ -758,8 +964,8 @@ export function DeliveryHealthDashboard({
         case "overdueTickets":
           cmp = a.overdueTickets - b.overdueTickets;
           break;
-        case "avgResponseTimeHours":
-          cmp = (a.avgResponseTimeHours ?? 0) - (b.avgResponseTimeHours ?? 0);
+        case "timeLogged":
+          cmp = (a.timeLoggedHours ?? 0) - (b.timeLoggedHours ?? 0);
           break;
         case "ticketsThisWeek":
           cmp = a.ticketsThisWeek - b.ticketsThisWeek;
@@ -790,6 +996,41 @@ export function DeliveryHealthDashboard({
     return rows;
   }, [clientRows, sortKey, sortDir]);
 
+  const totalClientCount = sortedClientRows.length;
+  const totalClientPages = Math.max(1, Math.ceil(totalClientCount / CLIENTS_PER_PAGE));
+  const safeClientPage = Math.min(Math.max(1, clientPage), totalClientPages);
+
+  useEffect(() => {
+    setClientPage(1);
+  }, [
+    clientFilter,
+    ownerFilter,
+    ragFilter,
+    statusPortfolioFilter,
+    priorityPortfolioFilter,
+    slaPortfolioFilter,
+    viewMode,
+    sortKey,
+    sortDir,
+    clientListViewMode,
+  ]);
+
+  const visibleClientRows = useMemo(() => {
+    if (clientListViewMode === "continuous") return sortedClientRows;
+    const start = (safeClientPage - 1) * CLIENTS_PER_PAGE;
+    return sortedClientRows.slice(start, start + CLIENTS_PER_PAGE);
+  }, [sortedClientRows, clientListViewMode, safeClientPage]);
+
+  const visibleMobileRows = useMemo(() => {
+    if (clientListViewMode === "continuous") return sortedRows;
+    const names = new Set(visibleClientRows.map((r) => r.clientName));
+    return sortedRows.filter((r) => names.has(r.clientName));
+  }, [sortedRows, visibleClientRows, clientListViewMode]);
+
+  const clientPageRangeStart =
+    totalClientCount === 0 ? 0 : (safeClientPage - 1) * CLIENTS_PER_PAGE + 1;
+  const clientPageRangeEnd = Math.min(safeClientPage * CLIENTS_PER_PAGE, totalClientCount);
+
   const openRowDetail = useCallback(
     (row: DeliveryHealthRow) => {
       if (detailCloseTimerRef.current) {
@@ -817,16 +1058,8 @@ export function DeliveryHealthDashboard({
       assignedEngineer?: string;
       source: "halopsa" | "connectwise";
     }) => {
-      if (!ticket.assignedEngineer) {
-        toast({
-          message: "No engineer assigned to this ticket",
-          variant: "error",
-          durationMs: 3000,
-        });
-        return;
-      }
-
-      const note = `Hi @${ticket.assignedEngineer}, this ticket is overdue and requires your attention. Please update the ticket with your current status and expected resolution date. Thank you.`;
+      const engineer = ticket.assignedEngineer?.trim() || "team";
+      const note = chaseNoteTemplate.replace(/\{engineer\}/g, engineer);
 
       try {
         const res = await fetch("/api/psa/chase-ticket", {
@@ -844,7 +1077,10 @@ export function DeliveryHealthDashboard({
 
         toast({
           message: "Chase note sent",
-          subtitle: `Internal note pushed to ticket with @${ticket.assignedEngineer}`,
+          subtitle:
+            engineer === "team"
+              ? undefined
+              : `Internal note pushed to ticket with @${engineer}`,
           variant: "success",
           durationMs: 4000,
         });
@@ -856,7 +1092,7 @@ export function DeliveryHealthDashboard({
         });
       }
     },
-    [toast],
+    [chaseNoteTemplate, toast],
   );
 
   const handleBulkChase = useCallback(async () => {
@@ -1007,8 +1243,26 @@ export function DeliveryHealthDashboard({
                 focusRing,
               )}
               onClick={async () => {
+                if (demoMode) return;
                 setRefreshing(true);
-                await mutateHealth();
+                try {
+                  const params = new URLSearchParams();
+                  params.set("refresh", "1");
+                  if (cwEnabled && psaConnections.primary === "connectwise") {
+                    params.set("source", "connectwise");
+                  }
+                  const res = await fetch(`/api/delivery-health?${params.toString()}`, {
+                    credentials: "same-origin",
+                    cache: "no-store",
+                  });
+                  const json = (await res.json()) as DeliveryHealthApiResponse & { error?: string };
+                  if (!res.ok) throw new Error(json.error ?? "Could not load dashboard.");
+                  await mutateHealth(json, { revalidate: false });
+                } catch (e) {
+                  setFetchError(e instanceof Error ? e.message : "Could not load dashboard.");
+                } finally {
+                  setRefreshing(false);
+                }
               }}
             >
               {refreshing ? (
@@ -1020,6 +1274,16 @@ export function DeliveryHealthDashboard({
             </Button>
           </div>
         </div>
+
+        {demoMode ? (
+          <div className="mb-4">
+            <DemoBanner
+              onConnectPSA={() => {
+                onOpenIntegrations?.();
+              }}
+            />
+          </div>
+        ) : null}
 
         {fetchError ? (
           <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6 text-sm text-[var(--text-secondary)]">
@@ -1093,12 +1357,9 @@ export function DeliveryHealthDashboard({
                         gradient: "from-red-500/10 to-transparent",
                       },
                       {
-                        label: "Avg hrs / day to target",
-                        value:
-                          statStrip.avgHoursPerDayToTarget != null
-                            ? String(statStrip.avgHoursPerDayToTarget)
-                            : "N/A",
-                        sub: "Hours logged per day until deadline",
+                        label: "Time Logged",
+                        value: formatTimeLogged(visibleTicketTimeLoggedHours),
+                        sub: "Total across visible tickets",
                         delay: "300ms",
                         icon: Timer,
                         gradient: "from-emerald-500/12 to-transparent",
@@ -1250,11 +1511,17 @@ export function DeliveryHealthDashboard({
                         placeholder="Filter by client"
                         value={clientFilter}
                         onChange={(e) => setClientFilter(e.target.value)}
+                        list="delivery-health-client-options"
                         className={cn(
                           "h-9 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] py-1 pl-9 pr-3 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]",
                           focusRing,
                         )}
                       />
+                      <datalist id="delivery-health-client-options">
+                        {clientFilterOptions.map((name) => (
+                          <option key={name} value={name} />
+                        ))}
+                      </datalist>
                     </div>
                     <div className="relative min-w-[160px] flex-1">
                       <User className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-[var(--text-muted)]" />
@@ -1263,11 +1530,17 @@ export function DeliveryHealthDashboard({
                         placeholder="Filter by owner"
                         value={ownerFilter}
                         onChange={(e) => setOwnerFilter(e.target.value)}
+                        list="delivery-health-owner-options"
                         className={cn(
                           "h-9 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] py-1 pl-9 pr-3 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]",
                           focusRing,
                         )}
                       />
+                      <datalist id="delivery-health-owner-options">
+                        {ownerFilterOptions.map((name) => (
+                          <option key={name} value={name} />
+                        ))}
+                      </datalist>
                     </div>
                     <div className="min-w-[140px]">
                       <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
@@ -1695,43 +1968,14 @@ export function DeliveryHealthDashboard({
                   )}
                 </div>
               ) : loading ? (
-                <div className="w-full overflow-x-auto md:overflow-visible">
-                  <table className="w-full table-fixed border-collapse text-left text-[13px]">
-                    <thead>
-                      <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)]">
-                        {Array.from({ length: 11 }).map((_, i) => (
-                          <th key={i} className="px-3 py-2.5">
-                            <div className="h-3 w-16 animate-pulse rounded bg-[var(--border)]/60" />
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Array.from({ length: 10 }).map((_, i) => (
-                        <TableRowSkeleton key={i} />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : liveAccess && data && !data.haloConnected && !data.cwConnected ? (
-                <div className="flex flex-col items-center px-6 py-14 text-center">
-                  <div className="flex size-20 items-center justify-center rounded-full bg-[var(--bg-secondary)] ring-1 ring-[var(--border)]">
-                    <Inbox className="size-9 text-[var(--text-muted)]" aria-hidden />
-                  </div>
-                  <p className="mt-6 max-w-md text-[15px] font-semibold text-[var(--text-primary)]">
-                    Connect a PSA
-                  </p>
-                  <p className="mt-2 max-w-md text-[13px] leading-relaxed text-[var(--text-muted)]">
-                    {data.connectHint ??
-                      "Connect HaloPSA or ConnectWise to load live projects and tickets."}
-                  </p>
-                  <Button
-                    type="button"
-                    className={cn("mt-6 bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]", focusRing)}
-                    onClick={() => onOpenIntegrations?.()}
-                  >
-                    Open Integrations
-                  </Button>
+                <CustomersLoadingState />
+              ) : !demoMode && !psaStatus.loading && !psaStatus.halo && !psaStatus.connectwise ? (
+                <div className="px-6 py-10">
+                  <PSAEmptyState
+                    title="No PSA connected"
+                    description="Connect HaloPSA or ConnectWise to view your delivery health."
+                    showButton={false}
+                  />
                 </div>
               ) : sortedRows.length === 0 && liveAccess ? (
                 <div className="flex flex-col items-center px-6 py-14 text-center">
@@ -1795,7 +2039,7 @@ export function DeliveryHealthDashboard({
                           {headerCell("rag", "Overall RAG")}
                           {headerCell("openTickets", "Open Tickets")}
                           {headerCell("overdueTickets", "Overdue Tickets")}
-                          {headerCell("avgResponseTimeHours", "Avg Response Time")}
+                          {headerCell("timeLogged", "Time Logged")}
                           {headerCell("ticketsThisWeek", "Tickets This Week")}
                           {headerCell("activeProjects", "Active Projects")}
                           {headerCell("projectHealth", "Health")}
@@ -1805,7 +2049,7 @@ export function DeliveryHealthDashboard({
                         </tr>
                       </thead>
                       <tbody>
-                        {sortedClientRows.map((row) => {
+                        {visibleClientRows.map((row) => {
                           const representativeTicket = row.rows.find((r) => r.kind === "ticket");
                           const canChase =
                             representativeTicket != null &&
@@ -1864,8 +2108,8 @@ export function DeliveryHealthDashboard({
                               >
                                 {row.overdueTickets}
                               </td>
-                              <td className={cn("px-3 py-2.5 align-top tabular-nums", (row.avgResponseTimeHours ?? 0) > 24 ? "font-semibold text-red-400" : "text-[var(--text-primary)]")}>
-                                {formatResponseTime(row.avgResponseTimeHours)}
+                              <td className="px-3 py-2.5 align-top tabular-nums text-[var(--text-primary)]">
+                                {formatTimeLogged(row.timeLoggedHours ?? 0)}
                               </td>
                               <td className="px-3 py-2.5 align-top tabular-nums text-[var(--text-primary)]">
                                 {row.ticketsThisWeek}
@@ -1931,10 +2175,43 @@ export function DeliveryHealthDashboard({
                       </tbody>
                     </table>
                   </div>
+                  {clientListViewMode === "paginated" && totalClientCount > 0 ? (
+                    <div className="flex flex-col gap-3 border-t border-[var(--border)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-[12px] text-[var(--text-secondary)]">
+                        {`Showing ${clientPageRangeStart}-${clientPageRangeEnd} of ${totalClientCount} clients`}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <p className="text-[12px] text-[var(--text-secondary)]">
+                          {`Page ${safeClientPage} of ${totalClientPages}`}
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className={focusRing}
+                          disabled={safeClientPage <= 1}
+                          onClick={() => setClientPage((p) => Math.max(1, p - 1))}
+                        >
+                          Previous
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className={focusRing}
+                          disabled={safeClientPage >= totalClientPages}
+                          onClick={() => setClientPage((p) => Math.min(totalClientPages, p + 1))}
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+
 
                   {/* Mobile cards (stacked per account row) */}
                   <div className="space-y-3 p-4 md:hidden">
-                    {sortedRows.map((row) =>
+                    {visibleMobileRows.map((row) =>
                       rowDetailInteractive ? (
                         <button
                           key={`m-${row.source === "connectwise" ? "cw" : "halo"}-${row.kind}-${row.id}`}
@@ -2058,6 +2335,7 @@ export function DeliveryHealthDashboard({
       <DeliveryHealthDetailPanel
         open={detailOpen}
         row={detailRow}
+        demoMode={demoMode}
         onClose={closeRowDetail}
         focusRing={focusRing}
         allowGenerateFromDashboard={dashboardAccess === "full"}

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { X } from "lucide-react";
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -116,21 +116,52 @@ export function TrialBanner({ className, plan }: { className?: string; plan?: st
       ? "trial-banner-dot-pulse"
       : "trial-banner-dot-pulse-amber";
 
-  let headline: string;
+  const trialLengthDays = 14;
+  const trialConsumedPct =
+    urgency === "expired"
+      ? 100
+      : Math.min(
+          100,
+          Math.max(
+            0,
+            Math.round(
+              ((trialLengthDays - Math.min(trialLengthDays, Math.max(0, daysRemaining))) /
+                trialLengthDays) *
+                100,
+            ),
+          ),
+        );
+
+  let headline: ReactNode;
   let subtext: string;
   if (urgency === "expired") {
     headline = "Your trial has ended. Upgrade to restore your team's access.";
     subtext =
       "Upgrade now to keep your team's access and scheduled reports running.";
+  } else if (urgency === "calm") {
+    headline = isPro ? (
+      <>
+        <span className="font-semibold tabular-nums">
+          {daysRemaining} day{daysRemaining === 1 ? "" : "s"} left
+        </span>
+        {" on your Professional trial"}
+      </>
+    ) : (
+      <>
+        <span className="font-semibold tabular-nums">
+          {daysRemaining} day{daysRemaining === 1 ? "" : "s"} left
+        </span>
+        {" on your team trial"}
+      </>
+    );
+    subtext = isPro
+      ? `Trial ends ${dateStr}. Upgrade to keep generating client-ready reports.`
+      : `Trial ends ${dateStr}. Upgrade now to keep your team's access and scheduled reports running.`;
   } else {
     headline = isPro
       ? `${daysRemaining} day${daysRemaining === 1 ? "" : "s"} left on your Professional trial`
       : `${daysRemaining} day${daysRemaining === 1 ? "" : "s"} left on your team trial`;
-    if (urgency === "calm") {
-      subtext = isPro
-        ? `Trial ends ${dateStr}. Upgrade to keep generating client-ready reports.`
-        : `Trial ends ${dateStr}. Upgrade now to keep your team's access and scheduled reports running.`;
-    } else if (urgency === "amber") {
+    if (urgency === "amber") {
       subtext = "Your trial ends soon - upgrade to avoid losing access.";
     } else {
       subtext = `Your trial expires in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"}. Upgrade now to avoid interruption to your team.`;
@@ -158,23 +189,24 @@ export function TrialBanner({ className, plan }: { className?: string; plan?: st
       }
       role="status"
     >
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
-        <div className="flex min-w-0 gap-3">
-          <span
-            className={cn("mt-1.5 size-2.5 shrink-0 rounded-full", dotPulseClass)}
-            style={{ backgroundColor: `rgb(var(--trial-banner-rgb))` }}
-            aria-hidden
-          />
-          <div className="min-w-0">
-            <p className="text-[15px] font-bold leading-snug text-[var(--text-primary)]">
-              {headline}
-            </p>
-            <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--text-muted)]">
-              {subtext}
-            </p>
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
+          <div className="flex min-w-0 gap-3">
+            <span
+              className={cn("mt-1.5 size-2.5 shrink-0 rounded-full", dotPulseClass)}
+              style={{ backgroundColor: `rgb(var(--trial-banner-rgb))` }}
+              aria-hidden
+            />
+            <div className="min-w-0">
+              <p className="text-[15px] font-bold leading-snug text-[var(--text-primary)]">
+                {headline}
+              </p>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--text-muted)]">
+                {subtext}
+              </p>
+            </div>
           </div>
-        </div>
-        <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+          <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
           <button
             onClick={() => setDismissed(true)}
             className="ml-auto p-1 text-white/60 hover:text-white transition-colors"
@@ -202,7 +234,28 @@ export function TrialBanner({ className, plan }: { className?: string; plan?: st
           >
             See what&apos;s included →
           </Link>
+          </div>
         </div>
+        {urgency !== "expired" ? (
+          <div
+            className="h-0.5 w-full overflow-hidden rounded-full bg-[var(--border)]/50"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={trialConsumedPct}
+            aria-label="Trial time used"
+          >
+            <div
+              className={cn(
+                "h-full rounded-full transition-[width] duration-500 ease-out",
+                urgency === "calm" && "bg-[var(--accent)]",
+                urgency === "amber" && "bg-amber-500",
+                urgency === "red" && "bg-red-500",
+              )}
+              style={{ width: `${trialConsumedPct}%` }}
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   );

@@ -47,12 +47,21 @@ export async function runAutoClosureSummaryCheck(opts: {
   const closureOn =
     conn &&
     (conn.auto_closure_summary === true || conn.auto_closure_summary_enabled === true);
-  if (cErr || !closureOn) return;
+  if (cErr) {
+    console.error("[auto-closure] halo_connections load error:", cErr);
+    return;
+  }
+  if (!closureOn) return;
 
-  const { data: processedRows } = await admin
+  const { data: processedRows, error: processedErr } = await admin
     .from("halo_closure_processed")
     .select("ticket_id")
     .eq("user_id", userId);
+
+  if (processedErr) {
+    console.error("[auto-closure] halo_closure_processed load error:", processedErr);
+    return;
+  }
 
   const processed = new Set(
     (processedRows ?? [])
@@ -64,7 +73,7 @@ export async function runAutoClosureSummaryCheck(opts: {
     (t) => !t.is_project && !isHaloTicketActive(t.status?.name ?? "Open"),
   );
 
-  const candidates = resolved.filter((t) => !processed.has(t.id)).slice(0, 2);
+  const candidates = resolved.filter((t) => !processed.has(t.id)).slice(0, 5);
 
   if (candidates.length === 0) return;
   if (!process.env.OPENAI_API_KEY) {

@@ -7,6 +7,7 @@ type AuthPageProps = {
   searchParams: Promise<{
     error?: string;
     tab?: string;
+    next?: string;
     returnTo?: string;
     trial?: string;
     auth_callback_error?: string;
@@ -34,10 +35,14 @@ export default async function AuthPage({ searchParams }: AuthPageProps) {
       ? params.reason.trim()
       : null;
   const initialTab = params.tab === "signup" ? "signup" : "signin";
+  const nextParam =
+    typeof params.next === "string" && params.next.trim().startsWith("/portal/")
+      ? params.next.trim()
+      : undefined;
   const returnTo =
     typeof params.returnTo === "string" && params.returnTo.trim().startsWith("/")
       ? params.returnTo.trim()
-      : undefined;
+      : nextParam;
   const trialPlan = parseTrialQueryParam(params.trial);
 
   return (

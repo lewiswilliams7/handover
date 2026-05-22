@@ -10,13 +10,6 @@ type Props = {
   isTrial?: boolean;
   /** First name for welcome line; null → generic welcome */
   welcomeFirstName: string | null;
-  profileJobTitle: string;
-  profileCompanyName: string;
-  signatureOverride: string;
-  setProfileJobTitle: (v: string) => void;
-  setProfileCompanyName: (v: string) => void;
-  setSignatureOverride: (v: string) => void;
-  onSaveProfileStep: () => Promise<boolean>;
   haloUrl: string;
   setHaloUrl: (v: string) => void;
   haloTenant: string;
@@ -39,13 +32,6 @@ export function FirstRunOnboardingOverlay({
   open,
   isTrial,
   welcomeFirstName,
-  profileJobTitle,
-  profileCompanyName,
-  signatureOverride,
-  setProfileJobTitle,
-  setProfileCompanyName,
-  setSignatureOverride,
-  onSaveProfileStep,
   haloUrl,
   setHaloUrl,
   haloTenant,
@@ -63,7 +49,6 @@ export function FirstRunOnboardingOverlay({
 }: Props) {
   const [step, setStep] = useState(1);
   const [slide, setSlide] = useState<"in" | "out">("in");
-  const [savingProfile, setSavingProfile] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -82,14 +67,11 @@ export function FirstRunOnboardingOverlay({
     }, 200);
   };
 
-  const profileStepHasInput = Boolean(
-    profileJobTitle.trim() || profileCompanyName.trim() || signatureOverride.trim(),
-  );
   const haloStepHasInput = Boolean(haloUrl.trim() || haloClientId.trim() || haloClientSecret.trim());
 
   const dots = (
     <div className="mb-6 flex items-center justify-center gap-0">
-      {[1, 2, 3].map((n, i) => (
+      {[1, 2].map((n, i) => (
         <div key={n} className="flex items-center">
           <div
             className={cn(
@@ -98,7 +80,7 @@ export function FirstRunOnboardingOverlay({
             )}
             aria-current={step === n ? "step" : undefined}
           />
-          {i < 2 ? (
+          {i < 1 ? (
             <div
               className="mx-1 h-px w-8 sm:w-12"
               style={{
@@ -153,74 +135,6 @@ export function FirstRunOnboardingOverlay({
               id="onboard-title"
               className="text-xl font-bold tracking-tight text-[var(--text-primary)] sm:text-2xl"
             >
-              Let&apos;s set up your signature
-            </h2>
-            <p className="mt-2 text-[14px] leading-relaxed text-[var(--text-secondary)]">
-              This appears on every client email Handover generates for you.
-            </p>
-            <div className="mt-6 grid gap-3">
-              <label className="text-[12px] font-medium text-[var(--text-secondary)]">
-                Job title
-                <input
-                  className="mt-1 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-[14px] text-[var(--text-primary)]"
-                  value={profileJobTitle}
-                  onChange={(e) => setProfileJobTitle(e.target.value)}
-                  placeholder="e.g. Technical Project Manager"
-                />
-              </label>
-              <label className="text-[12px] font-medium text-[var(--text-secondary)]">
-                Company name
-                <input
-                  className="mt-1 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-[14px] text-[var(--text-primary)]"
-                  value={profileCompanyName}
-                  onChange={(e) => setProfileCompanyName(e.target.value)}
-                  placeholder="Your MSP name"
-                />
-              </label>
-              <label className="text-[12px] font-medium text-[var(--text-secondary)]">
-                Custom sign-off
-                <textarea
-                  rows={4}
-                  placeholder={"Optional override.\nKind regards,\nAlex Taylor\nDelivery Manager\nExample MSP Ltd"}
-                  className="mt-1 w-full resize-y rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-[14px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
-                  value={signatureOverride}
-                  onChange={(e) => setSignatureOverride(e.target.value)}
-                />
-              </label>
-            </div>
-            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <button
-                type="button"
-                className="self-end text-[12px] text-[var(--text-muted)] underline-offset-4 hover:text-[var(--text-primary)] hover:underline sm:self-center"
-                onClick={() => void onSkipEntirely()}
-              >
-                I&apos;ll come back to this
-              </button>
-              <Button
-                type="button"
-                className="bg-[var(--accent)] font-semibold text-white hover:bg-[var(--accent-hover)]"
-                disabled={savingProfile}
-                onClick={() => {
-                  void (async () => {
-                    setSavingProfile(true);
-                    try {
-                      const ok = await onSaveProfileStep();
-                      if (ok) go(2);
-                    } finally {
-                      setSavingProfile(false);
-                    }
-                  })();
-                }}
-              >
-                {profileStepHasInput ? "Next →" : "Skip →"}
-              </Button>
-            </div>
-          </>
-        ) : null}
-
-        {step === 2 ? (
-          <>
-            <h2 className="text-xl font-bold tracking-tight text-[var(--text-primary)] sm:text-2xl">
               Connect HaloPSA when you&apos;re ready
             </h2>
             <p className="mt-2 text-[14px] leading-relaxed text-[var(--text-secondary)]">
@@ -272,32 +186,41 @@ export function FirstRunOnboardingOverlay({
                 </p>
               ) : null}
             </div>
-            <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-              <Button
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <button
                 type="button"
-                className="bg-[var(--accent)] font-semibold text-white hover:bg-[var(--accent-hover)]"
-                disabled={haloLoading}
-                onClick={() =>
-                  void (async () => {
-                    await onHaloConnect();
-                  })()
-                }
+                className="self-end text-[12px] text-[var(--text-muted)] underline-offset-4 hover:text-[var(--text-primary)] hover:underline sm:self-center"
+                onClick={() => void onSkipEntirely()}
               >
-                Connect HaloPSA →
-              </Button>
-              <Button type="button" variant="outline" onClick={() => go(3)}>
-                {haloStepHasInput ? "Next →" : "Skip →"}
-              </Button>
+                I&apos;ll skip setup for now
+              </button>
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+                <Button
+                  type="button"
+                  className="bg-[var(--accent)] font-semibold text-white hover:bg-[var(--accent-hover)]"
+                  disabled={haloLoading}
+                  onClick={() =>
+                    void (async () => {
+                      await onHaloConnect();
+                    })()
+                  }
+                >
+                  Connect HaloPSA →
+                </Button>
+                <Button type="button" variant="outline" onClick={() => go(2)}>
+                  {haloStepHasInput ? "Next →" : "Skip →"}
+                </Button>
+              </div>
             </div>
             {haloConnected ? (
-              <Button type="button" className="mt-3 w-full" variant="secondary" onClick={() => go(3)}>
+              <Button type="button" className="mt-3 w-full" variant="secondary" onClick={() => go(2)}>
                 Continue →
               </Button>
             ) : null}
           </>
         ) : null}
 
-        {step === 3 ? (
+        {step === 2 ? (
           <>
             <h2 className="text-xl font-bold tracking-tight text-[var(--text-primary)] sm:text-2xl">
               You&apos;re all set - want to see it in action?

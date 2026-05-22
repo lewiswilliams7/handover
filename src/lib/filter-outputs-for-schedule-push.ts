@@ -21,12 +21,17 @@ function rowMatchesItem(
   return false;
 }
 
+type PushRowWithSourceTicket = { source_ticket?: string | null };
+
 /** Narrow generated JSON to rows that likely belong to this ticket/project. */
 export function filterOutputsForSchedulePushItem(
   outputs: Record<string, unknown>,
   item: SchedulePushItem,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = { ...outputs };
+  const itemIdStr = String(
+    item.kind === "support" ? item.ticket.id : item.project.id ?? "",
+  );
   const title =
     item.kind === "support"
       ? (item.ticket.summary ?? "").trim()
@@ -42,12 +47,20 @@ export function filterOutputsForSchedulePushItem(
   const actions = Array.isArray(outputs.actions) ? outputs.actions : [];
   const risks = Array.isArray(outputs.risks) ? outputs.risks : [];
 
-  out.actions = actions.filter((a) =>
-    rowMatchesItem(a as Record<string, unknown>, titleLc, clientLc),
-  );
-  out.risks = risks.filter((r) =>
-    rowMatchesItem(r as Record<string, unknown>, titleLc, clientLc),
-  );
+  out.actions = actions.filter((a) => {
+    const row = a as PushRowWithSourceTicket;
+    if (row.source_ticket && itemIdStr) {
+      return String(row.source_ticket) === itemIdStr;
+    }
+    return rowMatchesItem(a as Record<string, unknown>, titleLc, clientLc);
+  });
+  out.risks = risks.filter((r) => {
+    const row = r as PushRowWithSourceTicket;
+    if (row.source_ticket && itemIdStr) {
+      return String(row.source_ticket) === itemIdStr;
+    }
+    return rowMatchesItem(r as Record<string, unknown>, titleLc, clientLc);
+  });
 
   const ac = out.actions as unknown[];
   const label = title || (item.kind === "support" ? "This ticket" : "This project");

@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 
 import { getCWAuthHeaders, getCWConnectionForUser } from "@/lib/cw-auth";
+import {
+  buildNoteHtml,
+  filterOutputsForTicket,
+  type PushNarrativeScope,
+} from "@/lib/halo-push-note";
 import { createServerClient } from "@/lib/supabase/server";
 
 type PushBody = {
@@ -9,6 +14,11 @@ type PushBody = {
   itemTypes?: Record<string, "ticket" | "project">;
   outputs?: Record<string, unknown>;
   selectedOutputs?: string[];
+  projectName?: string;
+  brandName?: string | null;
+  partnerWhiteLabel?: boolean;
+  pushSummaryScope?: PushNarrativeScope;
+  pushStatusScope?: PushNarrativeScope;
 };
 const RECENT_PUSH_TTL_MS = 10_000;
 const recentPushSignatures = new Map<string, number>();
@@ -24,14 +34,22 @@ function normaliseNoteText(value: string): string {
   return value.replace(/\r\n/g, "\n").trim();
 }
 
+function notePlainComparable(html: string): string {
+  const stripped = html
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return normaliseNoteText(stripped);
+}
+
 async function hasRecentIdenticalNote(params: {
   siteUrl: string;
   headers: HeadersInit;
   ticketId: number;
   itemType: "ticket" | "project";
-  text: string;
+  comparePlain: string;
 }): Promise<boolean> {
-  const { siteUrl, headers, ticketId, itemType, text } = params;
+  const { siteUrl, headers, ticketId, itemType, comparePlain } = params;
   const base = siteUrl.replace(/\/+$/, "");
   const listUrl =
     itemType === "project"
@@ -45,53 +63,17 @@ async function hasRecentIdenticalNote(params: {
     : Array.isArray((raw as { items?: unknown[] })?.items)
       ? (raw as { items: unknown[] }).items
       : []) as CwNote[];
-  const wanted = normaliseNoteText(text);
+  const wanted = comparePlain;
   const now = Date.now();
   return rows.some((row) => {
-    const content = normaliseNoteText(String(row.text ?? row.note ?? ""));
+    const rawContent = String(row.text ?? row.note ?? "");
+    const content = notePlainComparable(rawContent);
     if (!content || content !== wanted) return false;
     if (!row.dateCreated) return false;
     const createdAtMs = new Date(row.dateCreated).getTime();
     if (!Number.isFinite(createdAtMs)) return false;
     return now - createdAtMs <= IDEMPOTENCY_WINDOW_MS;
   });
-}
-
-function buildPushText(outputs: Record<string, unknown>, selectedOutputs: string[]): string {
-  const dateLabel = new Date().toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-  const lines: string[] = [`HANDOVER REPORT - ${dateLabel}`];
-
-  if (selectedOutputs.includes("summary") && outputs.summary) {
-    lines.push("", "SUMMARY", String(outputs.summary).trim());
-  }
-
-  if (selectedOutputs.includes("actions") && Array.isArray(outputs.actions)) {
-    lines.push("", "ACTIONS");
-    for (const row of outputs.actions as Array<Record<string, unknown>>) {
-      lines.push(
-        `- ${String(row.task ?? "").trim()} | Owner: ${String(row.suggested_owner ?? "Unassigned").trim()} | Priority: ${String(row.priority ?? "Medium").trim()}`,
-      );
-    }
-  }
-
-  if (selectedOutputs.includes("risks") && Array.isArray(outputs.risks)) {
-    lines.push("", "RISKS");
-    for (const row of outputs.risks as Array<Record<string, unknown>>) {
-      lines.push(
-        `- ${String(row.risk ?? "").trim()} | Impact: ${String(row.impact ?? "").trim()} | Mitigation: ${String(row.mitigation ?? "").trim()}`,
-      );
-    }
-  }
-
-  if (selectedOutputs.includes("client_email") && outputs.client_email) {
-    lines.push("", "CLIENT EMAIL", String(outputs.client_email).trim());
-  }
-
-  return lines.join("\n").trim();
 }
 
 export async function POST(request: Request) {
@@ -111,6 +93,17 @@ export async function POST(request: Request) {
     const outputs = body.outputs ?? {};
     const itemTypes = body.itemTypes ?? {};
     const selectedOutputs = body.selectedOutputs ?? [];
+    const projectName =
+      typeof body.projectName === "string" && body.projectName.trim()
+        ? body.projectName.trim()
+        : "";
+    const brandName =
+      typeof body.brandName === "string" && body.brandName.trim() ? body.brandName.trim() : null;
+    const partnerWhiteLabel = body.partnerWhiteLabel === true;
+    const pushSummaryScope: PushNarrativeScope =
+      body.pushSummaryScope === "per_ticket" ? "per_ticket" : "combined_all";
+    const pushStatusScope: PushNarrativeScope =
+      body.pushStatusScope === "per_ticket" ? "per_ticket" : "combined_all";
     if (ticketIds.length === 0 || selectedOutputs.length === 0) {
       return NextResponse.json({ error: "No ticket ids or outputs selected." }, { status: 400 });
     }
@@ -150,17 +143,31 @@ export async function POST(request: Request) {
       getCWConnectionForUser(user.id),
       getCWAuthHeaders(user.id),
     ]);
-    const text = buildPushText(outputs, selectedOutputs);
-
+    const isMultiTicket = ticketIds.length > 1;
     const results = await Promise.all(
       ticketIds.map(async (ticketId) => {
+        const filteredOutputs = filterOutputsForTicket(
+          outputs,
+          ticketId,
+          isMultiTicket,
+          pushSummaryScope,
+          pushStatusScope,
+        );
+        const text = buildNoteHtml(
+          filteredOutputs,
+          selectedOutputs,
+          projectName,
+          brandName,
+          partnerWhiteLabel,
+        );
         const itemType = itemTypes[String(ticketId)] === "project" ? "project" : "ticket";
+        const comparePlain = notePlainComparable(text);
         const alreadyExists = await hasRecentIdenticalNote({
           siteUrl: conn.siteUrl,
           headers,
           ticketId,
           itemType,
-          text,
+          comparePlain,
         });
         if (alreadyExists) {
           return {
@@ -208,8 +215,9 @@ export async function POST(request: Request) {
       results,
     });
   } catch (e) {
+    console.error("[cw/push-note] Fatal error:", e);
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Failed to push note to ConnectWise." },
+      { error: "Push failed. Please try again." },
       { status: 500 },
     );
   }

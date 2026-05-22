@@ -181,7 +181,7 @@ export function computeTicketBreakdownPack(tickets: QbrTicketLike[]): TicketBrea
       ok: true,
       rows,
       mode: "status",
-      note: "Showing breakdown by status — category data did not meet the minimum diversity threshold.",
+      note: null,
     };
   }
 

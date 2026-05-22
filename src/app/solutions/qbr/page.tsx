@@ -145,7 +145,7 @@ export default function QbrSolutionPage() {
           </section>
 
           <section className="rounded-[var(--radius-lg)] border border-white/[0.08] border-l-[3px] border-l-[#0EA5E9] bg-white/[0.04] backdrop-blur-sm p-6">
-            <h2 className="text-2xl font-semibold text-[var(--text-primary)]">First QBR Pack Free. No Card Required.</h2>
+            <h2 className="text-2xl font-semibold text-[var(--text-primary)]">First QBR Pack Free. 14-day free trial — cancel anytime.</h2>
             <p className="mt-3">
               Connect HaloPSA or ConnectWise Manage, select your client, choose your date range, and generate your
               first QBR pack today.

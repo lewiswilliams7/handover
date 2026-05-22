@@ -182,7 +182,7 @@ export default function HalopsaReportingPage() {
                   <p className="mt-6 max-w-[760px] text-[17px] leading-relaxed text-[var(--text-secondary)]">
                     Handover connects directly to HaloPSA, pulls your live ticket and project data, and generates
                     professional client updates, action logs, risk registers, and Excel report packs in seconds - then
-                    pushes notes back to your tickets automatically. Free to try - no card required.
+                    pushes notes back to your tickets automatically. Start free - cancel anytime - 14-day free trial — cancel anytime.
                   </p>
                   <div className="mt-8 flex flex-wrap gap-3">
                     <Link href="/auth?tab=signup&returnTo=/welcome">
@@ -463,7 +463,7 @@ export default function HalopsaReportingPage() {
               </Link>
             </div>
             <p className="mt-6 text-sm text-[var(--text-muted)]">
-              No card required — 14-day free trial.
+              14-day free trial — cancel anytime. — 14-day free trial.
             </p>
           </ScrollRevealItem>
         </div>

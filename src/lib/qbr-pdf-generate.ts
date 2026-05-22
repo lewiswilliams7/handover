@@ -290,21 +290,6 @@ export function generateQbrPdf(qbr: QbrPdfPackData, sections: QbrSectionsLike): 
   };
 
   // —— Cover (page 1, no running header) ——
-  if (qbr.autoExcludedSectionLabels && qbr.autoExcludedSectionLabels.length > 0) {
-    doc.setFillColor(255, 251, 235);
-    doc.setDrawColor(252, 211, 77);
-    doc.roundedRect(margin, yPos, contentWidth, 14, 1, 1, "FD");
-    doc.setTextColor(120, 53, 15);
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "normal");
-    const note = `${qbr.autoExcludedSectionLabels.length} section(s) excluded (insufficient data): ${qbr.autoExcludedSectionLabels.join(", ")}.`;
-    const noteLines = doc.splitTextToSize(normaliseText(note), contentWidth - 4);
-    noteLines.forEach((ln: string, i: number) => {
-      doc.text(ln, margin + 2, yPos + 5 + i * 4);
-    });
-    yPos += 18;
-  }
-
   doc.setFillColor(...navy);
   doc.rect(0, yPos, pageWidth, 32, "F");
   doc.setTextColor(...white);
@@ -313,7 +298,7 @@ export function generateQbrPdf(qbr: QbrPdfPackData, sections: QbrSectionsLike): 
   doc.text("Quarterly Business Review", pageWidth / 2, yPos + 14, { align: "center" });
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
-  doc.text(`${company} — ${normaliseText(qbr.dateRangeLabel)}`, pageWidth / 2, yPos + 24, { align: "center" });
+  doc.text(company, pageWidth / 2, yPos + 24, { align: "center" });
   yPos += 42;
 
   if (sections.executiveSummary && qbr.executiveSummary.trim()) {
@@ -366,9 +351,6 @@ export function generateQbrPdf(qbr: QbrPdfPackData, sections: QbrSectionsLike): 
 
   if (sections.ticketBreakdown && qbr.ticketBreakdown.length > 0) {
     addSectionHeading(qbr.ticketBreakdownMode === "status" ? "Ticket breakdown (status)" : "Ticket breakdown (category)");
-    if (qbr.ticketBreakdownNote) {
-      addBodyText(qbr.ticketBreakdownNote, 9);
-    }
     const top = [...qbr.ticketBreakdown].sort((a, b) => b.value - a.value).slice(0, 12);
     addBarChart(
       top.map((t) => ({ label: t.name, value: t.value })),

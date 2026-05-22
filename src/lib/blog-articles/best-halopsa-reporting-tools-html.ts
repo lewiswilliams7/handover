@@ -194,5 +194,5 @@ export const BEST_HALOPSA_REPORTING_TOOLS_HTML = `
 <h2 id="bottom-line" class="blog-h2-anchor">The bottom line</h2>
 <p>For MSP delivery teams who need to produce client-ready reports quickly and consistently, Handover is the only tool designed specifically for that workflow. Dashboard tools like Squared Up and analytics platforms like Renada solve different problems - important ones, but not the weekly delivery reporting problem that most MSP PMs face.</p>
 <p>If your Friday afternoons are spent writing the same client emails and action logs week after week, a purpose-built tool will save you more time than any dashboard configuration.</p>
-<p><a href="/auth?tab=signup&returnTo=/welcome">Start free trial — no card required →</a></p>
+<p><a href="/auth?tab=signup&returnTo=/welcome">Start free trial — 14-day free trial — cancel anytime →</a></p>
 `.trim();

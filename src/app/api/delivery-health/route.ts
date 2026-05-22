@@ -7,6 +7,8 @@ import {
   computeSlaRiskFromTargetIso,
   emptyDeliveryHealthStats,
   enrichTicketsMissingAgentsForDashboard,
+  applyCwDeliveryHealthRagOverlay,
+  patchConnectWiseHealthRowsFromTickets,
   haloTicketsToHealthRows,
   isHaloTicketActive,
   type DeliveryHealthApiResponse,
@@ -20,6 +22,7 @@ import {
   getHaloTickets,
   getHaloToken,
   getTicketDetails,
+  HaloRateLimitError,
   type HaloTicket,
 } from "@/lib/halo";
 import { runAutoClosureSummaryCheck } from "@/lib/auto-closure-summary-runner";
@@ -28,13 +31,14 @@ import { getDeliveryHealthDashboardAccess } from "@/lib/utils/getPlan";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { createServerClient } from "@/lib/supabase/server";
 
-const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_TTL_MS = 3 * 60 * 1000;
 
 /** Cap detail fetches per request so the route stays responsive for large tenants. */
 const MAX_ACTIVE_WITH_DETAILS = 600;
 const DETAIL_CONCURRENCY = 8;
 
 type CacheEntry = {
+  cachedAt: number;
   expiresAt: number;
   body: Record<string, unknown>;
 };
@@ -45,6 +49,10 @@ type CwProjectRow = {
   status?: { name?: string | null } | null;
   company?: { id?: number | string | null; name?: string | null } | null;
   manager?: { name?: string | null } | null;
+  /** When the project record was entered in Manage (common CW REST field). */
+  dateEntered?: string | null;
+  /** Scheduled / contractual start when exposed on the project payload. */
+  startDate?: string | null;
   targetDate?: string | null;
   estimatedEndDate?: string | null;
   closedDate?: string | null;
@@ -55,9 +63,57 @@ type CwProjectTaskRow = {
   id?: number;
   status?: { name?: string | null } | null;
 };
-type CwTicketResource = { name?: unknown; identifier?: unknown } | null;
+type CwTicketResource = { name?: unknown; identifier?: unknown; member?: unknown } | null;
 
 const responseCache = new Map<string, CacheEntry>();
+
+function deliveryHealthCachedResponse(
+  cacheKey: string,
+  allowExpired = false,
+): Record<string, unknown> | null {
+  const hit = responseCache.get(cacheKey);
+  if (!hit) return null;
+  if (!allowExpired && Date.now() >= hit.expiresAt) return null;
+  const ageMs = Date.now() - hit.cachedAt;
+  console.log("[delivery-health] returning cached data, age:", ageMs);
+  return hit.body;
+}
+
+function cacheDeliveryHealthBody(
+  cacheKey: string,
+  body: DeliveryHealthApiResponse,
+): void {
+  responseCache.set(cacheKey, {
+    cachedAt: Date.now(),
+    expiresAt: Date.now() + CACHE_TTL_MS,
+    body: body as unknown as Record<string, unknown>,
+  });
+}
+
+function buildRateLimitedHealthBody(
+  partial: {
+    access: DeliveryHealthApiResponse["access"];
+    refreshedAt: string;
+    haloWebBaseUrl?: string;
+    rows: DeliveryHealthRow[];
+    cwConnected?: boolean;
+    error?: string;
+  },
+): DeliveryHealthApiResponse {
+  const stats = buildDeliveryHealthStats(partial.rows);
+  return {
+    access: partial.access,
+    refreshedAt: partial.refreshedAt,
+    haloConnected: true,
+    cwConnected: partial.cwConnected ?? false,
+    haloWebBaseUrl: partial.haloWebBaseUrl,
+    rateLimited: true,
+    stats,
+    rows: partial.rows,
+    error: partial.error,
+  };
+}
+
 const CW_OPEN_ONLY_CONDITIONS = [
   'status/name!="Closed"',
   'status/name!="Closed (resolved)"',
@@ -224,36 +280,101 @@ function normalizeCwPriorityName(raw: unknown): string {
   return "Medium";
 }
 
-function applyCwRagDefaults(rows: ReturnType<typeof haloTicketsToHealthRows>) {
-  return rows.map((row) => {
-    const status = row.statusName.trim().toLowerCase();
-    const isClosed =
-      status.includes("closed") || status.includes("resolved") || status.includes("completed");
-    if (isClosed) return { ...row, rag: "green" as const };
+function cwResourceAssigneeName(resource: CwTicketResource): string | null {
+  if (!resource || typeof resource !== "object") return null;
+  const member = resource.member;
+  if (member && typeof member === "object") {
+    const m = member as Record<string, unknown>;
+    const firstLast =
+      `${String(m.firstName ?? "").trim()} ${String(m.lastName ?? "").trim()}`.trim();
+    const fromMember =
+      (typeof m.name === "string" && m.name.trim()) ||
+      (typeof m.identifier === "string" && m.identifier.trim()) ||
+      firstLast ||
+      "";
+    if (fromMember) return fromMember;
+  }
+  const direct =
+    (typeof resource.name === "string" && resource.name.trim()) ||
+    (typeof resource.identifier === "string" && resource.identifier.trim()) ||
+    "";
+  return direct || null;
+}
 
-    const isOverdue = row.daysToTarget != null && row.daysToTarget < 0;
-    if (isOverdue) return { ...row, rag: "red" as const };
+/** Resolve display owner from ConnectWise service/tickets list payloads (matches cw/tickets patterns). */
+function resolveCwListTicketOwnerName(row: Record<string, unknown>): string {
+  const resourcesRaw = row.resources;
+  if (typeof resourcesRaw === "string" && resourcesRaw.trim()) {
+    return resourcesRaw.trim();
+  }
 
-    const ageDays = row.ticketAgeDays ?? 0;
-    if (ageDays > 14) return { ...row, rag: "amber" as const };
+  const owner = row.owner as { name?: unknown; identifier?: unknown } | null | undefined;
+  const ownerName = typeof owner?.name === "string" ? owner.name.trim() : "";
+  if (ownerName) return ownerName;
+  const ownerIdent = typeof owner?.identifier === "string" ? owner.identifier.trim() : "";
+  if (ownerIdent) return ownerIdent;
 
-    return { ...row, rag: "green" as const };
-  });
+  const contact = row.contact as { name?: unknown } | null | undefined;
+  const contactName = typeof contact?.name === "string" ? contact.name.trim() : "";
+  if (contactName) return contactName;
+
+  const assignedToRaw = row.assignedTo;
+  if (typeof assignedToRaw === "string" && assignedToRaw.trim()) return assignedToRaw.trim();
+  if (assignedToRaw && typeof assignedToRaw === "object") {
+    const at = assignedToRaw as { name?: unknown; identifier?: unknown };
+    const n = typeof at.name === "string" ? at.name.trim() : "";
+    if (n) return n;
+    const id = typeof at.identifier === "string" ? at.identifier.trim() : "";
+    if (id) return id;
+  }
+
+  const resources = (Array.isArray(row.resources) ? row.resources : []) as CwTicketResource[];
+  for (const resource of resources) {
+    const fromPath = cwResourceAssigneeName(resource);
+    if (fromPath?.trim()) return fromPath.trim();
+  }
+
+  return "Unassigned";
+}
+
+function cwTicketInfoDates(row: Record<string, unknown>): {
+  dateEntered: string | null;
+  lastUpdated: string | null;
+} {
+  const info = row._info;
+  if (info && typeof info === "object") {
+    const o = info as Record<string, unknown>;
+    return {
+      dateEntered:
+        typeof o.dateEntered === "string" && o.dateEntered.trim()
+          ? o.dateEntered.trim()
+          : null,
+      lastUpdated:
+        typeof o.lastUpdated === "string" && o.lastUpdated.trim()
+          ? o.lastUpdated.trim()
+          : null,
+    };
+  }
+  return {
+    dateEntered:
+      typeof row.dateEntered === "string" && row.dateEntered.trim()
+        ? row.dateEntered.trim()
+        : null,
+    lastUpdated:
+      typeof row.lastUpdated === "string" && row.lastUpdated.trim()
+        ? row.lastUpdated.trim()
+        : null,
+  };
 }
 
 function mapCwTicketToHaloShape(row: Record<string, unknown>): HaloTicket {
+  const { dateEntered, lastUpdated } = cwTicketInfoDates(row);
   const company = (row.company as { id?: unknown; name?: unknown } | null) ?? null;
   const companyId =
     company && (typeof company.id === "number" || typeof company.id === "string")
       ? company.id
       : null;
-  const resources =
-    (Array.isArray(row.resources) ? row.resources : []) as CwTicketResource[];
-  const firstResource = resources.find(
-    (resource) =>
-      String(resource?.name ?? "").trim().length > 0 ||
-      String(resource?.identifier ?? "").trim().length > 0,
-  );
+  const ownerName = resolveCwListTicketOwnerName(row);
   const assignedToRaw = row.assignedTo;
   const assignedTo =
     typeof assignedToRaw === "string"
@@ -265,13 +386,6 @@ function mapCwTicketToHaloShape(row: Record<string, unknown>): HaloTicket {
               "",
           ).trim()
         : "";
-  const ownerName =
-    String((row.owner as { name?: unknown; identifier?: unknown } | null)?.name ?? "").trim() ||
-    String((row.owner as { identifier?: unknown } | null)?.identifier ?? "").trim() ||
-    assignedTo ||
-    String(firstResource?.name ?? "").trim() ||
-    String(firstResource?.identifier ?? "").trim() ||
-    "Unassigned";
   return {
     id: Number(row.id ?? 0),
     summary: String(row.summary ?? "Untitled"),
@@ -282,7 +396,7 @@ function mapCwTicketToHaloShape(row: Record<string, unknown>): HaloTicket {
     agent: {
       name: ownerName,
     },
-    dateoccurred: typeof row.dateEntered === "string" ? row.dateEntered : null,
+    dateoccurred: dateEntered,
     targetdate:
       (typeof row.requiredDate === "string" && row.requiredDate) ||
       (typeof row.targetDate === "string" && row.targetDate) ||
@@ -293,18 +407,31 @@ function mapCwTicketToHaloShape(row: Record<string, unknown>): HaloTicket {
         ? row.actualHours
         : 0,
     notes: [],
-    ...(typeof row.lastUpdated === "string" && row.lastUpdated
-      ? { last_update: row.lastUpdated }
-      : {}),
+    ...(lastUpdated ? { last_update: lastUpdated } : {}),
     companyId: companyId as number | string | null,
     site: { name: "" },
     manager: { name: "" },
     clientContact: { name: "" },
     tickettype: { name: "" },
+    ...(assignedTo ? { assignedto: assignedTo } : {}),
   } as HaloTicket;
 }
 
 function mapCwProjectToHaloShape(row: CwProjectRow): HaloTicket {
+  const dateEntered =
+    typeof row.dateEntered === "string" && row.dateEntered.trim() ? row.dateEntered.trim() : null;
+  const startDate =
+    typeof row.startDate === "string" && row.startDate.trim() ? row.startDate.trim() : null;
+  const dateoccurred = dateEntered ?? startDate ?? null;
+
+  const ext = row as CwProjectRow & Record<string, unknown>;
+  const pmObj = ext.projectManager;
+  let pmName = typeof row.manager?.name === "string" ? row.manager.name.trim() : "";
+  if (!pmName && pmObj && typeof pmObj === "object") {
+    const n = (pmObj as { name?: unknown }).name;
+    if (typeof n === "string" && n.trim()) pmName = n.trim();
+  }
+
   return {
     id: Number(row.id ?? 0),
     summary: String(row.name ?? "Untitled project"),
@@ -312,18 +439,76 @@ function mapCwProjectToHaloShape(row: CwProjectRow): HaloTicket {
     status: { name: String(row.status?.name ?? "Open") },
     priority: null,
     client: { name: String(row.company?.name ?? "Unknown") },
-    agent: row.manager?.name ? { name: row.manager.name } : null,
-    dateoccurred: null,
+    agent: pmName ? { name: pmName } : null,
+    dateoccurred,
     targetdate: row.targetDate ?? row.estimatedEndDate ?? row.closedDate ?? null,
     timetaken: typeof row.actualHours === "number" && Number.isFinite(row.actualHours) ? row.actualHours : 0,
     notes: [],
     is_project: true,
     companyId: row.company?.id ?? null,
     site: { name: "" },
-    manager: { name: row.manager?.name ?? "" },
+    manager: { name: pmName },
     clientContact: { name: "" },
     tickettype: { name: "" },
   } as HaloTicket;
+}
+
+async function loadConnectWiseHealthRows(
+  userId: string,
+  historyIndex: ReturnType<typeof buildHistoryIndex>,
+  access: DeliveryHealthApiResponse["access"],
+): Promise<{ rows: DeliveryHealthRow[]; siteUrl: string } | null> {
+  try {
+    const cwConn = await getCWConnectionForUser(userId);
+    const cwHeaders = await getCWAuthHeaders(userId);
+    const conditions = encodeURIComponent(CW_OPEN_ONLY_CONDITIONS);
+    const [ticketRes, projectRes] = await Promise.all([
+      fetch(
+        `${cwConn.siteUrl}/v4_6_release/apis/3.0/service/tickets?conditions=${conditions}&pageSize=500`,
+        { headers: cwHeaders, cache: "no-store" },
+      ),
+      fetch(
+        `${cwConn.siteUrl}/v4_6_release/apis/3.0/project/projects?conditions=${conditions}&pageSize=500`,
+        { headers: cwHeaders, cache: "no-store" },
+      ),
+    ]);
+    const ticketRaw = (await ticketRes.json().catch(() => [])) as unknown;
+    const projectRaw = (await projectRes.json().catch(() => [])) as unknown;
+    const ticketRows = Array.isArray(ticketRaw)
+      ? ticketRaw
+      : Array.isArray((ticketRaw as { items?: unknown })?.items)
+        ? ((ticketRaw as { items: unknown[] }).items as unknown[])
+        : [];
+    const projectRows = Array.isArray(projectRaw)
+      ? projectRaw
+      : Array.isArray((projectRaw as { items?: unknown })?.items)
+        ? ((projectRaw as { items: unknown[] }).items as unknown[])
+        : [];
+    const cwTickets = [
+      ...ticketRows.map((r) => mapCwTicketToHaloShape(r as Record<string, unknown>)),
+      ...projectRows.map((r) => mapCwProjectToHaloShape(r as CwProjectRow)),
+    ].filter((t) => Number(t.id) > 0);
+    const cwTaskSummary = await fetchCwProjectTaskSummary(
+      cwConn.siteUrl,
+      cwHeaders,
+      cwTickets.filter((t) => t.is_project).map((t) => t.id),
+    );
+    const cwRowsAfterOverlay = applyCwDeliveryHealthRagOverlay(
+      patchConnectWiseHealthRowsFromTickets(
+        haloTicketsToHealthRows(cwTickets, historyIndex, cwConn.siteUrl).map((row) => ({
+          ...row,
+          source: "connectwise" as const,
+          haloTicketUrl: buildConnectWiseTicketDeepLink(cwConn.siteUrl, row.id, row.kind),
+        })),
+        cwTickets,
+      ),
+    );
+    const rows = attachProjectTaskSummary(cwRowsAfterOverlay, cwTaskSummary);
+    return { rows, siteUrl: cwConn.siteUrl };
+  } catch (e) {
+    console.error("[delivery-health] CW prefetch error:", e);
+    return null;
+  }
 }
 
 async function attachTicketDetails(
@@ -344,6 +529,7 @@ async function attachTicketDetails(
 }
 
 export async function GET(request: Request) {
+  let responseCacheKey: string | null = null;
   try {
     const supabase = await createServerClient();
     const {
@@ -360,11 +546,10 @@ export async function GET(request: Request) {
     const forceConnectWise = forceSource === "connectwise";
 
     const cacheKey = user.id;
+    responseCacheKey = cacheKey;
     if (!bypassCache) {
-      const hit = responseCache.get(cacheKey);
-      if (hit && Date.now() < hit.expiresAt) {
-        return NextResponse.json(hit.body);
-      }
+      const cached = deliveryHealthCachedResponse(cacheKey);
+      if (cached) return NextResponse.json(cached);
     }
 
     const access = await getDeliveryHealthDashboardAccess(supabase, user.id);
@@ -423,6 +608,12 @@ export async function GET(request: Request) {
           : Array.isArray((projectRaw as { items?: unknown })?.items)
             ? ((projectRaw as { items: unknown[] }).items as unknown[])
             : [];
+        if (ticketRows.length > 0) {
+          console.log(
+            "[delivery-health] CW raw ticket sample:",
+            JSON.stringify(ticketRows[0], null, 2),
+          );
+        }
         const listTickets = [
           ...ticketRows.map((r) => mapCwTicketToHaloShape(r as Record<string, unknown>)),
           ...projectRows.map((r) => mapCwProjectToHaloShape(r as CwProjectRow)),
@@ -438,10 +629,13 @@ export async function GET(request: Request) {
           const slice = listTickets.slice(0, detailLimit);
           const withNotes = await Promise.all(
             slice.map(async (t) => {
-              const notesRes = await fetch(
-                `${cwConn.siteUrl}/v4_6_release/apis/3.0/service/tickets/${t.id}/notes?pageSize=100`,
-                { headers: cwHeaders, cache: "no-store" },
-              );
+              const notesPath = t.is_project
+                ? `/v4_6_release/apis/3.0/project/projects/${t.id}/notes?pageSize=100`
+                : `/v4_6_release/apis/3.0/service/tickets/${t.id}/notes?pageSize=100`;
+              const notesRes = await fetch(`${cwConn.siteUrl.replace(/\/+$/, "")}${notesPath}`, {
+                headers: cwHeaders,
+                cache: "no-store",
+              });
               const notesRaw = (await notesRes.json().catch(() => [])) as unknown;
               const noteRows = Array.isArray(notesRaw)
                 ? notesRaw
@@ -460,18 +654,30 @@ export async function GET(request: Request) {
           for (let i = 0; i < withNotes.length; i += 1) listTickets[i] = withNotes[i]!;
         }
 
-        const rows = attachProjectTaskSummary(
-          applyCwRagDefaults(haloTicketsToHealthRows(listTickets, historyIndex, cwConn.siteUrl)).map((row) => ({
-            ...row,
-            source: "connectwise" as const,
-            haloTicketUrl: buildConnectWiseTicketDeepLink(
-              cwConn.siteUrl,
-              row.id,
-              row.kind,
-            ),
-          })),
-          cwTaskSummary,
+        const cwRowsAfterOverlay = applyCwDeliveryHealthRagOverlay(
+          patchConnectWiseHealthRowsFromTickets(
+            haloTicketsToHealthRows(listTickets, historyIndex, cwConn.siteUrl).map((row) => ({
+              ...row,
+              source: "connectwise" as const,
+              haloTicketUrl: buildConnectWiseTicketDeepLink(
+                cwConn.siteUrl,
+                row.id,
+                row.kind,
+              ),
+            })),
+            listTickets,
+          ),
         );
+        console.log(
+          "[delivery-health] CW rows after overlay sample:",
+          cwRowsAfterOverlay.slice(0, 2).map((r) => ({
+            rag: r.rag,
+            ticketAgeDays: r.ticketAgeDays,
+            lastNoteAt: r.lastNoteAt,
+            openActions: r.openActions,
+          })),
+        );
+        const rows = attachProjectTaskSummary(cwRowsAfterOverlay, cwTaskSummary);
         const stats = buildDeliveryHealthStats(rows);
         const aiRisks = parseAiRiskDetails(
           (gens ?? []).map((g) => ({
@@ -501,12 +707,10 @@ export async function GET(request: Request) {
             slaAtRisk: slaRiskDetails,
           },
         };
-        responseCache.set(cacheKey, {
-          expiresAt: Date.now() + CACHE_TTL_MS,
-          body: body as unknown as Record<string, unknown>,
-        });
+        cacheDeliveryHealthBody(cacheKey, body);
         return NextResponse.json(body);
-      } catch {
+      } catch (e) {
+        console.error("[delivery-health] CW error:", e);
         // fall through to existing "not connected" response
       }
       const empty = emptyDeliveryHealthStats();
@@ -520,10 +724,7 @@ export async function GET(request: Request) {
         stats: empty,
         rows: [],
       };
-      responseCache.set(cacheKey, {
-        expiresAt: Date.now() + CACHE_TTL_MS,
-        body: body as unknown as Record<string, unknown>,
-      });
+      cacheDeliveryHealthBody(cacheKey, body);
       return NextResponse.json(body);
     }
 
@@ -541,10 +742,7 @@ export async function GET(request: Request) {
         stats: empty,
         rows: [],
       };
-      responseCache.set(cacheKey, {
-        expiresAt: Date.now() + CACHE_TTL_MS,
-        body: body as unknown as Record<string, unknown>,
-      });
+      cacheDeliveryHealthBody(cacheKey, body);
       return NextResponse.json(body);
     }
 
@@ -567,12 +765,13 @@ export async function GET(request: Request) {
         stats: empty,
         rows: [],
       };
-      responseCache.set(cacheKey, {
-        expiresAt: Date.now() + CACHE_TTL_MS,
-        body: body as unknown as Record<string, unknown>,
-      });
+      cacheDeliveryHealthBody(cacheKey, body);
       return NextResponse.json(body);
     }
+
+    const cwPrefetch = await loadConnectWiseHealthRows(user.id, historyIndex, access);
+    const prefetchCwRows = cwPrefetch?.rows ?? [];
+    const prefetchCwConnected = cwPrefetch != null;
 
     let listTickets: HaloTicket[] = [];
     try {
@@ -581,25 +780,37 @@ export async function GET(request: Request) {
         includeDetails: false,
       });
     } catch (e) {
+      if (e instanceof HaloRateLimitError) {
+        const stale = deliveryHealthCachedResponse(cacheKey, true);
+        if (stale) return NextResponse.json(stale);
+        const body = buildRateLimitedHealthBody({
+          access,
+          refreshedAt,
+          haloWebBaseUrl: conn.halo_url,
+          rows: prefetchCwRows,
+          cwConnected: prefetchCwConnected,
+          error: "HaloPSA rate limit reached. Showing available data.",
+        });
+        cacheDeliveryHealthBody(cacheKey, body);
+        return NextResponse.json(body);
+      }
       console.error("[delivery-health] getHaloTickets:", e);
-      const empty = emptyDeliveryHealthStats();
+      const rows = prefetchCwRows;
+      const stats = buildDeliveryHealthStats(rows);
       const body: DeliveryHealthApiResponse = {
         access,
         refreshedAt,
         haloConnected: true,
-        cwConnected: false,
+        cwConnected: prefetchCwConnected,
         haloWebBaseUrl: conn.halo_url,
-        stats: empty,
-        rows: [],
+        stats,
+        rows,
         error:
           e instanceof Error
             ? e.message
             : "Could not load tickets from HaloPSA. Try again in a few minutes.",
       };
-      responseCache.set(cacheKey, {
-        expiresAt: Date.now() + CACHE_TTL_MS,
-        body: body as unknown as Record<string, unknown>,
-      });
+      cacheDeliveryHealthBody(cacheKey, body);
       return NextResponse.json(body);
     }
 
@@ -633,26 +844,12 @@ export async function GET(request: Request) {
           DETAIL_CONCURRENCY,
         );
       } catch (e) {
+        if (e instanceof HaloRateLimitError) {
+          const stale = deliveryHealthCachedResponse(cacheKey, true);
+          if (stale) return NextResponse.json(stale);
+        }
         console.error("[delivery-health] getTicketDetails batch:", e);
-        const empty = emptyDeliveryHealthStats();
-        const body: DeliveryHealthApiResponse = {
-          access,
-          refreshedAt,
-          haloConnected: true,
-          cwConnected: false,
-          haloWebBaseUrl: conn.halo_url,
-          stats: empty,
-          rows: [],
-          error:
-            e instanceof Error
-              ? e.message
-              : "Could not load ticket notes from HaloPSA. Try again in a few minutes.",
-        };
-        responseCache.set(cacheKey, {
-          expiresAt: Date.now() + CACHE_TTL_MS,
-          body: body as unknown as Record<string, unknown>,
-        });
-        return NextResponse.json(body);
+        ticketsWithNotes = capped;
       }
     } else {
       ticketsWithNotes = await enrichTicketsMissingAgentsForDashboard(
@@ -679,59 +876,8 @@ export async function GET(request: Request) {
     );
     const haloTaskSummary = buildProjectTaskSummaryFromTickets(listTickets);
     rows = attachProjectTaskSummary(rows, haloTaskSummary);
-    let cwConnected = false;
-    try {
-      const cwConn = await getCWConnectionForUser(user.id);
-      const cwHeaders = await getCWAuthHeaders(user.id);
-      const conditions = encodeURIComponent(CW_OPEN_ONLY_CONDITIONS);
-      const [ticketRes, projectRes] = await Promise.all([
-        fetch(
-          `${cwConn.siteUrl}/v4_6_release/apis/3.0/service/tickets?conditions=${conditions}&pageSize=500`,
-          { headers: cwHeaders, cache: "no-store" },
-        ),
-        fetch(
-          `${cwConn.siteUrl}/v4_6_release/apis/3.0/project/projects?conditions=${conditions}&pageSize=500`,
-          { headers: cwHeaders, cache: "no-store" },
-        ),
-      ]);
-      const ticketRaw = (await ticketRes.json().catch(() => [])) as unknown;
-      const projectRaw = (await projectRes.json().catch(() => [])) as unknown;
-      const ticketRows = Array.isArray(ticketRaw)
-        ? ticketRaw
-        : Array.isArray((ticketRaw as { items?: unknown })?.items)
-          ? ((ticketRaw as { items: unknown[] }).items as unknown[])
-          : [];
-      const projectRows = Array.isArray(projectRaw)
-        ? projectRaw
-        : Array.isArray((projectRaw as { items?: unknown })?.items)
-          ? ((projectRaw as { items: unknown[] }).items as unknown[])
-          : [];
-      const cwTickets = [
-        ...ticketRows.map((r) => mapCwTicketToHaloShape(r as Record<string, unknown>)),
-        ...projectRows.map((r) => mapCwProjectToHaloShape(r as CwProjectRow)),
-      ].filter((t) => Number(t.id) > 0);
-      const cwTaskSummary = await fetchCwProjectTaskSummary(
-        cwConn.siteUrl,
-        cwHeaders,
-        cwTickets.filter((t) => t.is_project).map((t) => t.id),
-      );
-      const cwRows = attachProjectTaskSummary(
-        applyCwRagDefaults(haloTicketsToHealthRows(cwTickets, historyIndex, cwConn.siteUrl)).map((row) => ({
-          ...row,
-          source: "connectwise" as const,
-          haloTicketUrl: buildConnectWiseTicketDeepLink(
-            cwConn.siteUrl,
-            row.id,
-            row.kind,
-          ),
-        })),
-        cwTaskSummary,
-      );
-      rows = [...rows, ...cwRows];
-      cwConnected = true;
-    } catch {
-      cwConnected = false;
-    }
+    rows = [...rows, ...prefetchCwRows];
+    const cwConnected = prefetchCwConnected;
     const stats = buildDeliveryHealthStats(rows);
     const aiRisks = parseAiRiskDetails(
       (gens ?? []).map((g) => ({
@@ -763,13 +909,26 @@ export async function GET(request: Request) {
       },
     };
 
-    responseCache.set(cacheKey, {
-      expiresAt: Date.now() + CACHE_TTL_MS,
-      body: body as unknown as Record<string, unknown>,
-    });
+    cacheDeliveryHealthBody(cacheKey, body);
 
     return NextResponse.json(body);
   } catch (e) {
+    if (e instanceof HaloRateLimitError && responseCacheKey) {
+      const stale = deliveryHealthCachedResponse(responseCacheKey, true);
+      if (stale) return NextResponse.json(stale);
+      const empty = emptyDeliveryHealthStats();
+      const body: DeliveryHealthApiResponse = {
+        access: "basic",
+        refreshedAt: new Date().toISOString(),
+        haloConnected: true,
+        cwConnected: false,
+        rateLimited: true,
+        stats: empty,
+        rows: [],
+        error: "HaloPSA rate limit reached. Try again shortly.",
+      };
+      return NextResponse.json(body);
+    }
     console.error("[delivery-health]", e);
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Server error" },

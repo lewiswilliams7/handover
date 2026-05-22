@@ -1,4 +1,6 @@
 import {
+  sendTrialDay3InactiveEmail,
+  sendTrialSequenceDay10CallEmail,
   sendTrialSequenceExpiredDayEmail,
   sendTrialSequenceHalfwayEmail,
   sendTrialSequencePostExpiryEmail,
@@ -29,6 +31,7 @@ type ProfileTrialRow = {
   subscription_status: string | null;
   team_id: string | null;
   emails_sent: unknown;
+  total_generations: number | null;
 };
 
 function firstNameFromRow(row: ProfileTrialRow): string {
@@ -69,7 +72,9 @@ export async function runTrialSequenceEmailCron(): Promise<{
 }> {
   const sent: Record<string, number> = {
     [EmailId.TRIAL_SEQ_STARTED]: 0,
+    [EmailId.TRIAL_DAY3_INACTIVE]: 0,
     [EmailId.TRIAL_SEQ_HALFWAY]: 0,
+    [EmailId.TRIAL_SEQ_DAY10_CALL]: 0,
     [EmailId.TRIAL_SEQ_2_DAYS]: 0,
     [EmailId.TRIAL_SEQ_EXPIRED_DAY]: 0,
     [EmailId.TRIAL_SEQ_POST_EXPIRY]: 0,
@@ -94,7 +99,7 @@ export async function runTrialSequenceEmailCron(): Promise<{
     const { data: rows, error: qErr } = await admin
       .from("profiles")
       .select(
-        "id, email, plan, first_name, display_name, trial_ends_at, trial_plan, subscription_status, team_id, emails_sent",
+        "id, email, plan, first_name, display_name, trial_ends_at, trial_plan, subscription_status, team_id, emails_sent, total_generations",
       )
       .not("trial_ends_at", "is", null)
       .is("team_id", null)
@@ -121,7 +126,9 @@ export async function runTrialSequenceEmailCron(): Promise<{
       attempted += 1;
 
       const trialStartMs = endMs - 14 * 86_400_000;
+      const day3 = utcCalendarDay(new Date(trialStartMs + 3 * 86_400_000));
       const day7 = utcCalendarDay(new Date(trialStartMs + 7 * 86_400_000));
+      const day10 = utcCalendarDay(new Date(trialStartMs + 10 * 86_400_000));
       const twoDaysBeforeEnd = utcCalendarDay(new Date(addUtcDaysMs(trialEnds, -2)));
       const endDay = parseIsoToUtcDay(trialEnds);
       const threeDaysAfterEndMs = endMs + 3 * 86_400_000;
@@ -154,6 +161,17 @@ export async function runTrialSequenceEmailCron(): Promise<{
       // Day-1 welcome is sent only from POST /api/trial/start (Resend + emails_sent TRIAL_WELCOME).
       // Cron no longer sends TRIAL_SEQ_STARTED to avoid duplicate "trial started" emails.
 
+      // Day 3 inactive trial (zero generations)
+      if (trialStillActive && day3 === today && (row.total_generations ?? 0) === 0) {
+        await sendIfDue(EmailId.TRIAL_DAY3_INACTIVE, async () => {
+          await sendTrialDay3InactiveEmail({
+            to,
+            firstName,
+            trialEndsAtIso: trialEnds,
+          });
+        });
+      }
+
       // Day 7 halfway
       if (trialStillActive && day7 === today) {
         await sendIfDue(EmailId.TRIAL_SEQ_HALFWAY, async () => {
@@ -163,6 +181,13 @@ export async function runTrialSequenceEmailCron(): Promise<{
             trialEndsAtIso: trialEnds,
             planSku: sku,
           });
+        });
+      }
+
+      // Day 10 — call offer
+      if (trialStillActive && day10 === today) {
+        await sendIfDue(EmailId.TRIAL_SEQ_DAY10_CALL, async () => {
+          await sendTrialSequenceDay10CallEmail({ to, firstName });
         });
       }
 

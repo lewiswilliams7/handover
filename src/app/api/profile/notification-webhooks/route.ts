@@ -48,7 +48,10 @@ export async function GET() {
 
     if (error) {
       console.error("[notification-webhooks GET]", error.message);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json(
+        { error: "Could not load notification webhooks. Please try again." },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json({
@@ -59,8 +62,11 @@ export async function GET() {
       canConfigure,
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[notification-webhooks GET]", e);
+    return NextResponse.json(
+      { error: "Could not load notification webhooks. Please try again." },
+      { status: 500 },
+    );
   }
 }
 
@@ -130,12 +136,18 @@ export async function PATCH(req: Request) {
 
     if (error) {
       console.error("[notification-webhooks PATCH]", error.message);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json(
+        { error: "Could not save notification webhooks. Please try again." },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json({ profile: data });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[notification-webhooks PATCH]", e);
+    return NextResponse.json(
+      { error: "Could not save notification webhooks. Please try again." },
+      { status: 500 },
+    );
   }
 }

@@ -27,6 +27,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/toasts";
+import { PSAEmptyState } from "@/components/psa-empty-state";
+import { DemoBanner } from "@/components/demo-banner";
+import { usePSAStatus } from "@/hooks/usePSAStatus";
 import {
   applySectionValidationToToggles,
   buildQbrValidationSnapshot,
@@ -39,6 +42,7 @@ import {
 } from "@/lib/qbr-validation";
 import { generateQbrPdf } from "@/lib/qbr-pdf-generate";
 import { useCwProjects, useCwTickets, useHaloProjects, useHaloTickets } from "@/lib/psa-cache";
+import { DEMO_CLIENTS, DEMO_PROJECTS, DEMO_TICKETS } from "@/lib/demo-data";
 import { cn } from "@/lib/utils";
 
 type HaloNoteLike = {
@@ -81,6 +85,41 @@ type ProjectRow = {
   tasks?: Array<unknown> | null;
   source?: "halopsa" | "connectwise";
 };
+
+/** Stable PSA client identity for filtering and prompts — never match on display name alone. */
+function qbrPsaClientKey(row: {
+  source?: unknown;
+  clientId?: unknown;
+  client_id?: unknown;
+  /** ConnectWise list/detail payloads use company id on tickets and projects. */
+  companyId?: unknown;
+}): string | null {
+  const isCw = row.source === "connectwise";
+  const rawId = isCw ? (row.clientId ?? row.client_id ?? row.companyId) : (row.clientId ?? row.client_id);
+  if (rawId === null || rawId === undefined || rawId === "") return null;
+  const src = isCw ? "connectwise" : "halopsa";
+  return `${src}:${String(rawId)}`;
+}
+
+function qbrPromptEscapeDisplayName(name: string): string {
+  return name.replace(/\\/g, "\\\\").replace(/"/g, "'");
+}
+
+function qbrResolveClientDisplayName(
+  clientKey: string,
+  sampleTicketOrProject: TicketRow | ProjectRow | undefined,
+  availableClients: Array<{ name: string; id: number | string; source: "halopsa" | "connectwise" }>,
+): string {
+  const hit = availableClients.find((c) => `${c.source}:${String(c.id)}` === clientKey);
+  if (hit?.name?.trim()) return hit.name.trim();
+  const rec = sampleTicketOrProject as Record<string, unknown> | undefined;
+  const nested = rec?.client as { name?: unknown } | undefined;
+  const n =
+    (typeof nested?.name === "string" && nested.name) ||
+    (typeof rec?.client_name === "string" && rec.client_name) ||
+    "";
+  return typeof n === "string" && n.trim() ? n.trim() : clientKey;
+}
 
 type QbrSections = {
   executiveSummary: boolean;
@@ -411,6 +450,7 @@ type Props = {
   /** Account branding logo (e.g. from profile); shown on PowerPoint when set. */
   brandLogoUrl?: string | null;
   embedded?: boolean;
+  demoMode?: boolean;
   /** Plan copy for monthly QBR allowance (enforced server-side on `/api/generate`). */
   usageHint?: string | null;
 };
@@ -439,6 +479,13 @@ function colorNoHash(color: string): string {
   return safeColorHex(color).replace("#", "").toUpperCase();
 }
 
+/** PowerPoint cover: hide period when range is All time; otherwise labels are formatted dates (not presets). */
+function qbrPptPeriodLine(dateRangeLabel: string): string | null {
+  const t = dateRangeLabel.trim().toLowerCase();
+  if (!t || t === "all time") return null;
+  return `Period: ${dateRangeLabel.trim()}`;
+}
+
 function generateApiErrorMessage(data: Record<string, unknown>, fallback: string): string {
   const msg = data.message;
   if (typeof msg === "string" && msg.trim()) return msg.trim();
@@ -453,15 +500,17 @@ export function QbrPackBuilder({
   defaultBrandColor,
   brandLogoUrl: brandLogoUrlProp = null,
   embedded = false,
+  demoMode = false,
   usageHint = null,
 }: Props) {
   const toast = useToast();
+  const psaStatus = usePSAStatus();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [qbr, setQbr] = useState<GeneratedQbr | null>(null);
   const [sources, setSources] = useState<{ halopsa: boolean; connectwise: boolean }>({
-    halopsa: true,
-    connectwise: true,
+    halopsa: false,
+    connectwise: false,
   });
   const [qbrSelectedClients, setQbrSelectedClients] = useState<string[]>([]);
   const [qbrExpandedClients, setQbrExpandedClients] = useState<Set<string>>(new Set());
@@ -482,22 +531,49 @@ export function QbrPackBuilder({
   const [selectedTicketIds, setSelectedTicketIds] = useState<Set<string>>(new Set());
   const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());
   const [clientSearch, setClientSearch] = useState("");
-  const [dateRange, setDateRange] = useState<"last_30_days" | "last_60_days" | "last_90_days" | "custom">(
-    "last_90_days",
-  );
+  const [dateRange, setDateRange] = useState<
+    "all_time" | "last_30_days" | "last_90_days" | "last_6_months" | "last_12_months" | "custom"
+  >("all_time");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [sections, setSections] = useState<QbrSections>(DEFAULT_SECTIONS);
   const [brandName, setBrandName] = useState(defaultBrandName);
   const [brandColor, setBrandColor] = useState(defaultBrandColor || "#38bdf8");
   const [brandLogoUrl, setBrandLogoUrl] = useState(brandLogoUrlProp?.trim() || "");
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [step3Snapshot, setStep3Snapshot] = useState<QbrValidationSnapshot | null>(null);
   const [step3Loading, setStep3Loading] = useState(false);
-  const { data: haloTicketsCached, mutate: refreshHaloTickets } = useHaloTickets(sources.halopsa);
-  const { data: haloProjectsCached, mutate: refreshHaloProjects } = useHaloProjects(sources.halopsa);
-  const { data: cwTicketsCached, mutate: refreshCwTickets } = useCwTickets(sources.connectwise);
-  const { data: cwProjectsCached, mutate: refreshCwProjects } = useCwProjects(sources.connectwise);
+  const [selectionCounts, setSelectionCounts] = useState<{ tickets: number; projects: number; clients: number }>({
+    tickets: 0,
+    projects: 0,
+    clients: 0,
+  });
+  const [clientsWithData, setClientsWithData] = useState<Record<string, { tickets: number; projects: number }>>({});
+  const [clientsWithDataLoading, setClientsWithDataLoading] = useState(false);
+  useEffect(() => {
+    if (demoMode) return;
+    if (psaStatus.loading) return;
+    setSources((prev) => ({
+      halopsa: psaStatus.halo ? prev.halopsa || true : false,
+      connectwise: psaStatus.connectwise ? prev.connectwise || true : false,
+    }));
+  }, [demoMode, psaStatus.halo, psaStatus.connectwise, psaStatus.loading]);
+
+  const noPsaConnected =
+    !demoMode && !psaStatus.loading && !psaStatus.halo && !psaStatus.connectwise;
+
+  const { data: haloTicketsCached, mutate: refreshHaloTickets } = useHaloTickets(
+    sources.halopsa && !demoMode,
+  );
+  const { data: haloProjectsCached, mutate: refreshHaloProjects } = useHaloProjects(
+    sources.halopsa && !demoMode,
+  );
+  const { data: cwTicketsCached, mutate: refreshCwTickets } = useCwTickets(
+    sources.connectwise && !demoMode,
+  );
+  const { data: cwProjectsCached, mutate: refreshCwProjects } = useCwProjects(
+    sources.connectwise && !demoMode,
+  );
 
   useEffect(() => {
     const u = brandLogoUrlProp?.trim();
@@ -505,6 +581,17 @@ export function QbrPackBuilder({
   }, [brandLogoUrlProp]);
 
   useEffect(() => {
+    if (demoMode) {
+      const demoClients = DEMO_CLIENTS.map((c) => ({
+        name: c.name,
+        id: c.id,
+        source: "halopsa" as const,
+        tickets: [],
+      }));
+      setQbrAvailableClients(demoClients);
+      setQbrClientsLoading(false);
+      return;
+    }
     if (!sources.halopsa && !sources.connectwise) {
       setQbrAvailableClients([]);
       setQbrSelectedClients([]);
@@ -524,19 +611,15 @@ export function QbrPackBuilder({
         }> = [];
 
         if (sources.halopsa) {
-          let page = 1;
-          let hasMore = true;
-          while (hasMore) {
-            const res = await fetch(`/api/halo/clients?page=${page}&page_size=100`, { credentials: "same-origin" });
-            if (!res.ok) break;
-            const json = (await res.json()) as { clients?: Array<{ id: number; name: string }>; hasMore?: boolean };
+          const res = await fetch("/api/halo/clients?all_pages=1&page_size=1000", {
+            credentials: "same-origin",
+          });
+          if (res.ok) {
+            const json = (await res.json()) as { clients?: Array<{ id: number; name: string }> };
             const arr = json.clients ?? [];
             arr.forEach((c) => {
               result.push({ name: c.name, id: c.id, source: "halopsa", tickets: [] });
             });
-            hasMore = json.hasMore === true && arr.length > 0;
-            page++;
-            if (page > 20) break;
           }
         }
 
@@ -570,30 +653,40 @@ export function QbrPackBuilder({
     return () => {
       cancelled = true;
     };
-  }, [sources.halopsa, sources.connectwise]);
+  }, [demoMode, sources.halopsa, sources.connectwise]);
 
   const loadTicketsForClient = async (
     clientId: number | string,
     source: "halopsa" | "connectwise",
-  ) => {
+  ): Promise<Array<{ id: number; title: string }>> => {
     const key = `${source}:${String(clientId)}`
-    if (clientTickets[key] || loadingTickets[key]) return
+    if (clientTickets[key]) return clientTickets[key] ?? []
+    if (loadingTickets[key]) return []
     setLoadingTickets(prev => ({ ...prev, [key]: true }))
     try {
       let tickets: Array<{ id: number; title: string }> = []
-      if (source === "halopsa") {
+      if (demoMode) {
+        const selectedClientName =
+          qbrAvailableClients.find(
+            (c) => String(c.id) === String(clientId) && c.source === source,
+          )?.name ?? "";
+        tickets = DEMO_TICKETS.filter((t) => t.client.name === selectedClientName).map((t) => ({
+          id: Number(String(t.id).replace(/\D/g, "")) || 0,
+          title: t.summary || String(t.id),
+        }));
+      } else if (source === "halopsa") {
         const res = await fetch("/api/halo/tickets", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "same-origin",
-          body: JSON.stringify({ type: "tickets", clientId, count: 50 }),
+          body: JSON.stringify({ type: "tickets", clientId, count: 200 }),
         })
         if (res.ok) {
           const data = await res.json() as { tickets?: Array<{ id: number; summary?: string }> }
           tickets = (data.tickets ?? []).map(t => ({ id: t.id, title: t.summary || String(t.id) }))
         }
       } else {
-        const res = await fetch(`/api/cw/tickets?companyId=${clientId}&count=50`, {
+        const res = await fetch(`/api/cw/tickets?companyId=${clientId}&count=200`, {
           credentials: "same-origin",
         })
         if (res.ok) {
@@ -603,8 +696,10 @@ export function QbrPackBuilder({
         }
       }
       setClientTickets(prev => ({ ...prev, [key]: tickets }))
+      return tickets
     } catch (e) {
       console.error("[loadTickets]", e)
+      return []
     } finally {
       setLoadingTickets(prev => ({ ...prev, [key]: false }))
     }
@@ -613,13 +708,23 @@ export function QbrPackBuilder({
   const loadProjectsForClient = async (
     clientId: number | string,
     source: "halopsa" | "connectwise",
-  ) => {
+  ): Promise<Array<{ id: number; title: string }>> => {
     const key = `${source}:${String(clientId)}`
-    if (clientProjects[key] || loadingProjects[key]) return
+    if (clientProjects[key]) return clientProjects[key] ?? []
+    if (loadingProjects[key]) return []
     setLoadingProjects(prev => ({ ...prev, [key]: true }))
     try {
       let projects: Array<{ id: number; title: string }> = []
-      if (source === "halopsa") {
+      if (demoMode) {
+        const selectedClientName =
+          qbrAvailableClients.find(
+            (c) => String(c.id) === String(clientId) && c.source === source,
+          )?.name ?? "";
+        projects = DEMO_PROJECTS.filter((p) => p.client.name === selectedClientName).map((p) => ({
+          id: p.id,
+          title: p.name || String(p.id),
+        }));
+      } else if (source === "halopsa") {
         const res = await fetch(`/api/halo/projects?clientId=${clientId}`, {
           credentials: "same-origin",
         })
@@ -639,8 +744,10 @@ export function QbrPackBuilder({
         }
       }
       setClientProjects(prev => ({ ...prev, [key]: projects }))
+      return projects
     } catch (e) {
       console.error("[loadProjects]", e)
+      return []
     } finally {
       setLoadingProjects(prev => ({ ...prev, [key]: false }))
     }
@@ -649,9 +756,9 @@ export function QbrPackBuilder({
   const canGenerate = useMemo(
     () =>
       hasProAccess &&
-      (sources.halopsa || sources.connectwise) &&
+      (demoMode || sources.halopsa || sources.connectwise) &&
       (dateRange !== "custom" || (customFrom.trim() && customTo.trim())),
-    [hasProAccess, sources.halopsa, sources.connectwise, dateRange, customFrom, customTo],
+    [hasProAccess, demoMode, sources.halopsa, sources.connectwise, dateRange, customFrom, customTo],
   );
 
   /** Sections shown in the on-screen preview (subset of the generated pack). */
@@ -665,28 +772,57 @@ export function QbrPackBuilder({
     };
   }, [qbr]);
 
-  const step1Valid = sources.halopsa || sources.connectwise;
-  const step2Valid = dateRange !== "custom" || (Boolean(customFrom.trim()) && Boolean(customTo.trim()));
-  const step3NextDisabled = !canGenerate || step3Loading;
+  const step1Valid = dateRange !== "custom" || (Boolean(customFrom.trim()) && Boolean(customTo.trim()));
+  const step2Valid = demoMode || sources.halopsa || sources.connectwise;
+  const step3Valid = qbrSelectedClients.length > 0;
+  const step4NextDisabled = !canGenerate || step3Loading;
+  const qbrAvailableClientsFiltered = useMemo(
+    () =>
+      qbrAvailableClients.filter((c) => {
+        const key = `${c.source}:${String(c.id)}`;
+        const m = clientsWithData[key];
+        return (m?.tickets ?? 0) > 0 || (m?.projects ?? 0) > 0;
+      }),
+    [qbrAvailableClients, clientsWithData],
+  );
 
   useEffect(() => {
-    if (step !== 3 || !canGenerate) {
-      if (step !== 3) setStep3Snapshot(null);
+    const allowed = new Set(qbrAvailableClientsFiltered.map((c) => `${c.source}:${String(c.id)}`));
+    setQbrSelectedClients((prev) => prev.filter((k) => allowed.has(k)));
+    setSelectedTicketIds((prev) => new Set([...prev].filter((k) => allowed.has(k.split(":").slice(0, 2).join(":")))));
+    setSelectedProjectIds((prev) => new Set([...prev].filter((k) => allowed.has(k.split(":").slice(0, 2).join(":")))));
+  }, [qbrAvailableClientsFiltered]);
+
+  const getRangeBoundsIso = useMemo((): { fromIso: string | null; toIso: string | null } => {
+    if (dateRange === "all_time") return { fromIso: null, toIso: null };
+    const now = new Date();
+    if (dateRange === "custom") {
+      if (!customFrom.trim() || !customTo.trim()) return { fromIso: null, toIso: null };
+      return { fromIso: new Date(customFrom).toISOString(), toIso: new Date(customTo).toISOString() };
+    }
+    const days =
+      dateRange === "last_30_days"
+        ? 30
+        : dateRange === "last_90_days"
+          ? 90
+          : dateRange === "last_6_months"
+            ? 183
+            : 365;
+    return {
+      fromIso: new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString(),
+      toIso: now.toISOString(),
+    };
+  }, [dateRange, customFrom, customTo]);
+
+  useEffect(() => {
+    if (step !== 4 || !canGenerate) {
       return;
     }
     let cancelled = false;
     setStep3Loading(true);
     void (async () => {
       try {
-        const now = new Date();
-        const toIso = dateRange === "custom" ? new Date(customTo).toISOString() : now.toISOString();
-        const fromIso =
-          dateRange === "custom"
-            ? new Date(customFrom).toISOString()
-            : new Date(
-                now.getTime() -
-                  (dateRange === "last_30_days" ? 30 : dateRange === "last_60_days" ? 60 : 90) * 24 * 60 * 60 * 1000,
-              ).toISOString();
+        const { fromIso, toIso } = getRangeBoundsIso;
 
         const { tickets, projects } = await fetchTicketsAndProjects(fromIso, toIso);
 
@@ -709,14 +845,20 @@ export function QbrPackBuilder({
           }
         }
 
-        const fromMs = new Date(fromIso).getTime();
-        const toMs = new Date(toIso).getTime();
-        const durationMs = Math.max(0, toMs - fromMs);
-        const prevToMs = fromMs - 1;
-        const prevFromMs = prevToMs - durationMs;
-        const prevFromIso = new Date(prevFromMs).toISOString();
-        const prevToIso = new Date(prevToMs).toISOString();
-        const { tickets: prevTickets } = await fetchTicketsAndProjects(prevFromIso, prevToIso);
+        const prevTickets =
+          fromIso && toIso
+            ? await (async () => {
+                const fromMs = new Date(fromIso).getTime();
+                const toMs = new Date(toIso).getTime();
+                const durationMs = Math.max(0, toMs - fromMs);
+                const prevToMs = fromMs - 1;
+                const prevFromMs = prevToMs - durationMs;
+                const prevFromIso = new Date(prevFromMs).toISOString();
+                const prevToIso = new Date(prevToMs).toISOString();
+                const prev = await fetchTicketsAndProjects(prevFromIso, prevToIso);
+                return prev.tickets;
+              })()
+            : [];
 
         const weeklyMap = new Map<string, number>();
         for (const t of tickets) {
@@ -745,13 +887,102 @@ export function QbrPackBuilder({
       cancelled = true;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, canGenerate, sources.halopsa, sources.connectwise, dateRange, customFrom, customTo, qbrSelectedClients.join(","), Array.from(selectedTicketIds).join(","), Array.from(selectedProjectIds).join(",")]);
+  }, [step, canGenerate, getRangeBoundsIso, sources.halopsa, sources.connectwise, qbrSelectedClients.join(","), Array.from(selectedTicketIds).join(","), Array.from(selectedProjectIds).join(",")]);
 
-  async function fetchTicketsAndProjects(fromIso: string, toIso: string): Promise<{ tickets: TicketRow[]; projects: ProjectRow[] }> {
+  useEffect(() => {
+    if (!canGenerate) {
+      setClientsWithData({});
+      setSelectionCounts({ tickets: 0, projects: 0, clients: 0 });
+      return;
+    }
+    let cancelled = false;
+    setClientsWithDataLoading(true);
+    void (async () => {
+      try {
+        const { fromIso, toIso } = getRangeBoundsIso;
+        const { tickets, projects } = await fetchTicketsAndProjects(fromIso, toIso, { applySelection: false });
+        if (cancelled) return;
+        const metrics: Record<string, { tickets: number; projects: number }> = {};
+        for (const c of qbrAvailableClients) {
+          metrics[`${c.source}:${String(c.id)}`] = { tickets: 0, projects: 0 };
+        }
+        for (const t of tickets) {
+          const key = qbrPsaClientKey(t as TicketRow & Record<string, unknown>);
+          if (!key) continue;
+          if (!metrics[key]) metrics[key] = { tickets: 0, projects: 0 };
+          metrics[key].tickets += 1;
+        }
+        for (const p of projects) {
+          const key = qbrPsaClientKey(p as ProjectRow & Record<string, unknown>);
+          if (!key) continue;
+          if (!metrics[key]) metrics[key] = { tickets: 0, projects: 0 };
+          metrics[key].projects += 1;
+        }
+        setClientsWithData(metrics);
+
+        const selected = await fetchTicketsAndProjects(fromIso, toIso, { applySelection: true });
+        const selectedClientKeys = new Set<string>();
+        for (const t of selected.tickets) {
+          const key = qbrPsaClientKey(t as TicketRow & Record<string, unknown>);
+          if (key) selectedClientKeys.add(key);
+        }
+        for (const p of selected.projects) {
+          const key = qbrPsaClientKey(p as ProjectRow & Record<string, unknown>);
+          if (key) selectedClientKeys.add(key);
+        }
+        if (!cancelled) {
+          setSelectionCounts({
+            tickets: selected.tickets.length,
+            projects: selected.projects.length,
+            clients: selectedClientKeys.size,
+          });
+        }
+      } finally {
+        if (!cancelled) setClientsWithDataLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canGenerate, getRangeBoundsIso, qbrAvailableClients, qbrSelectedClients.join(","), Array.from(selectedTicketIds).join(","), Array.from(selectedProjectIds).join(",")]);
+
+  async function fetchTicketsAndProjects(
+    fromIso: string | null,
+    toIso: string | null,
+    opts?: { applySelection?: boolean },
+  ): Promise<{ tickets: TicketRow[]; projects: ProjectRow[] }> {
     const tickets: TicketRow[] = [];
     const projects: ProjectRow[] = [];
 
-    if (sources.halopsa) {
+    if (demoMode) {
+      const demoClientIdByName = new Map(DEMO_CLIENTS.map((c) => [c.name, c.id]));
+      tickets.push(
+        ...DEMO_TICKETS.map((t) => {
+          const clientId = demoClientIdByName.get(t.client.name) ?? 0;
+          return {
+            ...t,
+            id: Number(String(t.id).replace(/\D/g, "")) || 0,
+            source: "halopsa" as const,
+            clientId,
+            client_id: clientId,
+          } as TicketRow & Record<string, unknown>;
+        }),
+      );
+      projects.push(
+        ...DEMO_PROJECTS.map((p) => {
+          const clientId = demoClientIdByName.get(p.client.name) ?? 0;
+          return {
+            ...p,
+            source: "halopsa" as const,
+            clientId,
+            client_id: clientId,
+          } as ProjectRow & Record<string, unknown>;
+        }),
+      );
+    }
+
+    if (!demoMode && sources.halopsa) {
       const tData = (haloTicketsCached ??
         (await refreshHaloTickets())) as { tickets?: TicketRow[] } | undefined;
       const pData = (haloProjectsCached ??
@@ -760,7 +991,7 @@ export function QbrPackBuilder({
       projects.push(...(Array.isArray(pData?.projects) ? pData.projects.map((p) => ({ ...p, source: "halopsa" as const })) : []));
     }
 
-    if (sources.connectwise) {
+    if (!demoMode && sources.connectwise) {
       const tData = (cwTicketsCached ??
         (await refreshCwTickets())) as { tickets?: TicketRow[]; error?: string } | undefined;
       const pData = (cwProjectsCached ??
@@ -769,81 +1000,61 @@ export function QbrPackBuilder({
       projects.push(...(Array.isArray(pData?.projects) ? pData.projects.map((p) => ({ ...p, source: "connectwise" as const })) : []));
     }
 
-    const fromMs = new Date(fromIso).getTime();
-    const toMs = new Date(toIso).getTime();
+    const shouldApplyDateFilter = Boolean(fromIso && toIso);
+    const fromMs = shouldApplyDateFilter ? new Date(fromIso as string).getTime() : Number.NEGATIVE_INFINITY;
+    const toMs = shouldApplyDateFilter ? new Date(toIso as string).getTime() : Number.POSITIVE_INFINITY;
     const filteredTickets = tickets.filter((t) => {
+      if (!shouldApplyDateFilter) return true;
       const d = new Date(String(t.dateoccurred ?? "")).getTime();
       return Number.isFinite(d) && d >= fromMs && d <= toMs;
     });
-    // Filter by selected clients if any are chosen
-    const selectedClientIds = qbrSelectedClients
-      .map(key => {
-        const parts = key.split(":");
-        return parts.slice(1).join(":");
-      });
+    // Filter by selected clients if any are chosen (exact source:id keys — never name-only matching).
+    const applySelection = opts?.applySelection !== false;
+    const selectedClientKeys =
+      applySelection && qbrSelectedClients.length > 0 ? new Set(qbrSelectedClients) : null;
 
-    const filteredByClient = selectedClientIds.length === 0
-      ? filteredTickets
-      : filteredTickets.filter(t => {
-          const raw = t as unknown as {
-            clientId?: number | null
-            client?: { name?: string | null } | null
-            client_id?: number | null
-            client_name?: string | null
-          };
-          const ticketClientId = String(raw.clientId ?? raw.client_id ?? "");
-          return selectedClientIds.includes(ticketClientId);
-        });
+    const filteredByClient =
+      selectedClientKeys == null || selectedClientKeys.size === 0
+        ? filteredTickets
+        : filteredTickets.filter((t) => {
+            const k = qbrPsaClientKey(t as TicketRow & Record<string, unknown>);
+            return k != null && selectedClientKeys.has(k);
+          });
 
-    const filteredProjectsByClient = selectedClientIds.length === 0
-      ? projects
-      : projects.filter(p => {
-          const raw = p as unknown as {
-            clientId?: number | null
-            client?: { name?: string | null } | null
-            client_id?: number | null
-            client_name?: string | null
-          };
-          const projectClientId = String(raw.clientId ?? raw.client_id ?? "");
-          return selectedClientIds.includes(projectClientId);
-        });
+    const filteredProjectsByClient =
+      selectedClientKeys == null || selectedClientKeys.size === 0
+        ? projects
+        : projects.filter((p) => {
+            const k = qbrPsaClientKey(p as ProjectRow & Record<string, unknown>);
+            return k != null && selectedClientKeys.has(k);
+          });
 
     // If specific tickets are selected for any client, filter to just those
-    const hasSpecificTickets = selectedTicketIds.size > 0
+    const hasSpecificTickets = applySelection && selectedTicketIds.size > 0;
     const finalTickets = !hasSpecificTickets
       ? filteredByClient
-      : filteredByClient.filter(t => {
-          // Check if any specific tickets selected for this ticket's client
-          const raw = t as unknown as { clientId?: number | null }
-          const clientId = String(raw.clientId ?? "")
-          const matchingClientKey = qbrSelectedClients.find(k => k.endsWith(`:${clientId}`))
-          if (!matchingClientKey) return true // no specific selection for this client
-          const hasClientSpecific = Array.from(selectedTicketIds).some(k => k.startsWith(matchingClientKey))
-          if (!hasClientSpecific) return true // client selected but no specific tickets — include all
-          return selectedTicketIds.has(`${matchingClientKey}:${t.id}`)
-        })
+      : filteredByClient.filter((t) => {
+          const ck = qbrPsaClientKey(t as TicketRow & Record<string, unknown>);
+          if (!ck || !qbrSelectedClients.includes(ck)) return false;
+          const hasClientSpecific = Array.from(selectedTicketIds).some((idKey) =>
+            idKey.startsWith(`${ck}:`),
+          );
+          if (!hasClientSpecific) return true;
+          return selectedTicketIds.has(`${ck}:${t.id}`);
+        });
 
-    const hasSpecificProjects = selectedProjectIds.size > 0
+    const hasSpecificProjects = applySelection && selectedProjectIds.size > 0;
     const finalProjects = !hasSpecificProjects
       ? filteredProjectsByClient
-      : filteredProjectsByClient.filter(p => {
-          const raw = p as unknown as { clientId?: number | null }
-          const clientId = String(raw.clientId ?? "")
-          const matchingClientKey = qbrSelectedClients.find(k => k.endsWith(`:${clientId}`))
-          if (!matchingClientKey) return true
-          const hasClientSpecific = Array.from(selectedProjectIds).some(k => k.startsWith(matchingClientKey))
-          if (!hasClientSpecific) return true
-          return selectedProjectIds.has(`${matchingClientKey}:${p.id}`)
-        })
-
-    console.log('[qbr filter debug]', {
-      selectedClientIds,
-      qbrSelectedClients,
-      firstTicketClientId: filteredTickets[0] ? (filteredTickets[0] as any).clientId : 'no tickets',
-      firstTicketClient: filteredTickets[0] ? (filteredTickets[0] as any).client : 'no tickets',
-      filteredByClientCount: filteredByClient.length,
-      totalTickets: filteredTickets.length,
-    })
+      : filteredProjectsByClient.filter((p) => {
+          const ck = qbrPsaClientKey(p as ProjectRow & Record<string, unknown>);
+          if (!ck || !qbrSelectedClients.includes(ck)) return false;
+          const hasClientSpecific = Array.from(selectedProjectIds).some((idKey) =>
+            idKey.startsWith(`${ck}:`),
+          );
+          if (!hasClientSpecific) return true;
+          return selectedProjectIds.has(`${ck}:${p.id}`);
+        });
 
     return { tickets: finalTickets, projects: finalProjects }
   }
@@ -898,26 +1109,153 @@ export function QbrPackBuilder({
     return riskMeaningful || actionMeaningful;
   }
 
-  async function buildAiSections(tickets: TicketRow[], projects: ProjectRow[], fromIso: string, toIso: string) {
-    const input = [
+  function truncText(v: string, max = 500): string {
+    const t = v.trim();
+    if (!t) return "";
+    return t.length > max ? `${t.slice(0, max)}…` : t;
+  }
+
+  function ticketDetailsForPrompt(t: TicketRow & Record<string, unknown>): string {
+    const detailsRaw =
+      (typeof t.details === "string" && t.details) ||
+      (typeof t.description === "string" && t.description) ||
+      "";
+    const details = truncText(detailsRaw, 500);
+    const customFields =
+      Array.isArray(t.customfields) && t.customfields.length > 0
+        ? truncText(
+            JSON.stringify(
+              t.customfields.map((cf) => {
+                if (cf && typeof cf === "object") {
+                  const row = cf as Record<string, unknown>;
+                  return {
+                    name: row.name ?? row.label ?? row.field ?? row.key ?? null,
+                    value: row.value ?? row.display ?? row.text ?? null,
+                  };
+                }
+                return cf;
+              }),
+            ),
+            500,
+          )
+        : "";
+
+    const detailBits = [
+      details ? `details=${details}` : "",
+      customFields ? `custom_fields=${customFields}` : "",
+    ].filter(Boolean);
+    return detailBits.length > 0 ? ` | ${detailBits.join(" | ")}` : "";
+  }
+
+  async function buildAiSections(
+    tickets: TicketRow[],
+    projects: ProjectRow[],
+    fromIso: string | null,
+    toIso: string | null,
+  ) {
+    const hasExplicitSelections =
+      qbrSelectedClients.length > 0 || selectedTicketIds.size > 0 || selectedProjectIds.size > 0;
+
+    const ticketBudgetTotal = hasExplicitSelections ? 150 : 80;
+    const projectBudgetTotal = hasExplicitSelections ? 60 : 40;
+
+    const groupedTickets = new Map<string, TicketRow[]>();
+    for (const t of tickets) {
+      const k = qbrPsaClientKey(t as TicketRow & Record<string, unknown>);
+      if (!k) continue;
+      const arr = groupedTickets.get(k) ?? [];
+      arr.push(t);
+      groupedTickets.set(k, arr);
+    }
+    const groupedProjects = new Map<string, ProjectRow[]>();
+    for (const p of projects) {
+      const k = qbrPsaClientKey(p as ProjectRow & Record<string, unknown>);
+      if (!k) continue;
+      const arr = groupedProjects.get(k) ?? [];
+      arr.push(p);
+      groupedProjects.set(k, arr);
+    }
+
+    for (const [, arr] of groupedTickets) {
+      arr.sort((a, b) => {
+        const aMs = new Date(String(a.dateoccurred ?? "")).getTime();
+        const bMs = new Date(String(b.dateoccurred ?? "")).getTime();
+        const av = Number.isFinite(aMs) ? aMs : 0;
+        const bv = Number.isFinite(bMs) ? bMs : 0;
+        return bv - av;
+      });
+    }
+
+    const unionKeys = [...new Set([...groupedTickets.keys(), ...groupedProjects.keys()])];
+    const orderedKeys =
+      qbrSelectedClients.length > 0
+        ? [
+            ...qbrSelectedClients.filter(
+              (k) =>
+                (groupedTickets.get(k)?.length ?? 0) > 0 ||
+                (groupedProjects.get(k)?.length ?? 0) > 0,
+            ),
+            ...unionKeys.filter((k) => !qbrSelectedClients.includes(k)).sort(),
+          ]
+        : [...unionKeys].sort();
+
+    let ticketBudget = ticketBudgetTotal;
+    let projectBudget = projectBudgetTotal;
+
+    const promptLines: string[] = [
       "QBR CONTEXT: Write for MSP business reviews, client-facing and business language. Avoid deep technical jargon.",
-      `Period: ${fromIso} to ${toIso}`,
+      "This is a quarterly business review, not a status update. Do not describe individual open tickets. Focus on trends, performance, patterns and outcomes across the period.",
+      "Executive summary guidance: cover overall service performance, total volume delivered, key themes/patterns, notable wins, and areas for improvement for a director/decision-maker audience.",
+      "Do NOT produce an operational backlog update, ticket-by-ticket narrative, or pending-action list in the executive summary.",
+      "Top issues guidance: describe repeated categories/patterns and business impact, not individual ticket descriptions.",
+      "Tone guidance: strategic and reflective, not day-to-day operational status reporting.",
+      `Period: ${fromIso && toIso ? `${fromIso} to ${toIso}` : "All time"}`,
       `Tickets in scope: ${tickets.length}`,
       `Projects in scope: ${projects.length}`,
+      "CLIENT ATTRIBUTION:",
+      "Only attribute tickets and projects to the exact client they belong to. Never combine tickets from different clients in the same client section.",
+      "- Each line lists psa_client_key and client_display_name — treat psa_client_key as authoritative identity.",
+      "- Keep each client's narrative strictly inside its CLIENT BLOCK.",
       "CRITICAL — status_report field: Use this key ONLY for a concise bullet list of next-quarter recommendations and next steps for the client relationship.",
       "Do NOT put ticket lists, weekly operational narrative, project status dumps, or full status-report prose in status_report. No more than 8 bullets.",
-      "Top tickets:",
-      ...tickets.slice(0, 80).map(
-        (t) =>
-          `- #${t.id}: ${t.summary ?? "Untitled"} | status=${t.status?.name ?? "Unknown"} | priority=${t.priority?.name ?? "Unknown"} | hours=${t.timetaken ?? 0}`,
-      ),
-      "Projects:",
-      ...projects.slice(0, 40).map(
-        (p) =>
-          `- #${p.id}: ${p.name ?? "Untitled"} | status=${p.status?.name ?? "Unknown"} | completion=${Number.isFinite(Number(p.completionpercent)) ? Number(p.completionpercent) : 0}%`,
-      ),
+    ];
+
+    for (const clientKey of orderedKeys) {
+      if (ticketBudget <= 0 && projectBudget <= 0) break;
+      const ts = groupedTickets.get(clientKey) ?? [];
+      const ps = groupedProjects.get(clientKey) ?? [];
+      if (ts.length === 0 && ps.length === 0) continue;
+
+      const displayRaw = qbrResolveClientDisplayName(clientKey, ts[0] ?? ps[0], qbrAvailableClients);
+      const display = qbrPromptEscapeDisplayName(displayRaw);
+
+      promptLines.push(
+        `--- BEGIN CLIENT BLOCK psa_client_key=${clientKey} client_display_name="${display}" ---`,
+      );
+      promptLines.push("Tickets:");
+      for (const t of ts) {
+        if (ticketBudget <= 0) break;
+        promptLines.push(
+          `- #${t.id}: ${t.summary ?? "Untitled"} | psa_client_key=${clientKey} | client_display_name="${display}" | status=${t.status?.name ?? "Unknown"} | priority=${t.priority?.name ?? "Unknown"} | hours=${t.timetaken ?? 0}${ticketDetailsForPrompt(t as TicketRow & Record<string, unknown>)}`,
+        );
+        ticketBudget--;
+      }
+      promptLines.push("Projects:");
+      for (const p of ps) {
+        if (projectBudget <= 0) break;
+        promptLines.push(
+          `- #${p.id}: ${p.name ?? "Untitled"} | psa_client_key=${clientKey} | client_display_name="${display}" | status=${p.status?.name ?? "Unknown"} | completion=${Number.isFinite(Number(p.completionpercent)) ? Number(p.completionpercent) : 0}%`,
+        );
+        projectBudget--;
+      }
+      promptLines.push(`--- END CLIENT BLOCK psa_client_key=${clientKey} ---`);
+    }
+
+    promptLines.push(
       "Include forward-looking recommendations for next quarter (these belong in status_report only, as bullets).",
-    ].join("\n");
+    );
+
+    const input = promptLines.join("\n");
 
     const res = await fetch("/api/generate", {
       method: "POST",
@@ -945,12 +1283,7 @@ export function QbrPackBuilder({
     if (!canGenerate) return;
     setLoading(true);
     try {
-      const now = new Date();
-      const toIso = dateRange === "custom" ? new Date(customTo).toISOString() : now.toISOString();
-      const fromIso =
-        dateRange === "custom"
-          ? new Date(customFrom).toISOString()
-          : new Date(now.getTime() - (dateRange === "last_30_days" ? 30 : dateRange === "last_60_days" ? 60 : 90) * 24 * 60 * 60 * 1000).toISOString();
+      const { fromIso, toIso } = getRangeBoundsIso;
 
       const { tickets, projects } = await fetchTicketsAndProjects(fromIso, toIso);
 
@@ -972,14 +1305,20 @@ export function QbrPackBuilder({
         }
       }
 
-      const fromMs = new Date(fromIso).getTime();
-      const toMs = new Date(toIso).getTime();
-      const durationMs = Math.max(0, toMs - fromMs);
-      const prevToMs = fromMs - 1;
-      const prevFromMs = prevToMs - durationMs;
-      const prevFromIso = new Date(prevFromMs).toISOString();
-      const prevToIso = new Date(prevToMs).toISOString();
-      const { tickets: prevTickets } = await fetchTicketsAndProjects(prevFromIso, prevToIso);
+      const prevTickets =
+        fromIso && toIso
+          ? await (async () => {
+              const fromMs = new Date(fromIso).getTime();
+              const toMs = new Date(toIso).getTime();
+              const durationMs = Math.max(0, toMs - fromMs);
+              const prevToMs = fromMs - 1;
+              const prevFromMs = prevToMs - durationMs;
+              const prevFromIso = new Date(prevFromMs).toISOString();
+              const prevToIso = new Date(prevToMs).toISOString();
+              const prev = await fetchTicketsAndProjects(prevFromIso, prevToIso);
+              return prev.tickets;
+            })()
+          : [];
 
       const weeklyMap = new Map<string, number>();
       const resolutionByPriority = new Map<"P1" | "P2" | "P3", { total: number; count: number }>();
@@ -1050,10 +1389,15 @@ export function QbrPackBuilder({
           pct: raised > 0 ? Math.round((count / raised) * 1000) / 10 : 0,
         }));
 
+      if (effective.recurringIssues && recurringRows.length === 0) {
+        effective = { ...effective, recurringIssues: false };
+        autoExcludedLabels.push(SECTION_UI.recurringIssues.label);
+      }
+
       let recurringInsight =
         recurringRows[0] != null
           ? `Consider root-cause review for "${recurringRows[0].name}" (${recurringRows[0].count} occurrences, ${recurringRows[0].pct}% of tickets).`
-          : "";
+          : "No recurring issues identified this quarter — all tickets were unique incidents.";
       if (recurringRows.length > 0 && effective.recurringIssues) {
         try {
           const ir = await fetch("/api/generate", {
@@ -1159,7 +1503,10 @@ export function QbrPackBuilder({
 
       const generated: GeneratedQbr = {
         generatedAt: new Date().toISOString(),
-        dateRangeLabel: `${new Date(fromIso).toLocaleDateString("en-GB")} - ${new Date(toIso).toLocaleDateString("en-GB")}`,
+        dateRangeLabel:
+          fromIso && toIso
+            ? `${new Date(fromIso).toLocaleDateString("en-GB")} - ${new Date(toIso).toLocaleDateString("en-GB")}`
+            : "All time",
         brandName: brandName.trim() || "Handover",
         brandColor: brandColor.trim() || "#38bdf8",
         brandLogoUrl: brandLogoUrl.trim() || null,
@@ -1496,23 +1843,27 @@ export function QbrPackBuilder({
     let page = 1;
     const cover = pptx.addSlide();
     addChrome(cover, "Quarterly Business Review", page++);
-    cover.addText(`Period: ${qbr.dateRangeLabel}`, {
-      x: leftX,
-      y: bodyTop,
-      w: 12.3,
-      h: 0.35,
-      fontFace: "Calibri",
-      bold: true,
-      fontSize: BODY_FS,
-      color: NAVY,
-    });
+    const pptPeriodLine = qbrPptPeriodLine(qbr.dateRangeLabel);
+    const coverExecY = pptPeriodLine ? bodyTop + 0.45 : bodyTop;
+    if (pptPeriodLine) {
+      cover.addText(pptPeriodLine, {
+        x: leftX,
+        y: bodyTop,
+        w: 12.3,
+        h: 0.35,
+        fontFace: "Calibri",
+        bold: true,
+        fontSize: BODY_FS,
+        color: NAVY,
+      });
+    }
     cover.addText(
       qbr.includedSections.executiveSummary ? qbr.executiveSummary || "Executive summary not available." : " ",
       {
         x: leftX,
-        y: bodyTop + 0.45,
+        y: coverExecY,
         w: 12.3,
-        h: SLIDE_H - bodyTop - FOOTER_H - 0.55,
+        h: SLIDE_H - coverExecY - FOOTER_H - 0.1,
         fontFace: "Calibri",
         fontSize: BODY_FS,
         color: BODY,
@@ -1851,14 +2202,22 @@ export function QbrPackBuilder({
 
   const builder = (
     <>
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-5 md:p-8 max-w-4xl">
+      {demoMode ? <DemoBanner className="mb-3" /> : null}
+      {noPsaConnected ? (
+        <PSAEmptyState
+          title="No PSA connected"
+          description="Connect your PSA to build QBR packs from live ticket and project data."
+        />
+      ) : (
+      <div className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-5 md:p-8">
         {usageHint ? <p className="mb-4 text-xs text-[var(--text-muted)]">{usageHint}</p> : null}
         <div className="mb-5 flex flex-wrap gap-2">
           {([
-            { id: 1, title: "Sources" },
-            { id: 2, title: "Date Range" },
-            { id: 3, title: "Sections" },
-            { id: 4, title: "Branding" },
+            { id: 1, title: "Date Range" },
+            { id: 2, title: "Sources" },
+            { id: 3, title: "Clients" },
+            { id: 4, title: "Sections" },
+            { id: 5, title: "Branding" },
           ] as const).map((item) => (
             <button
               key={item.id}
@@ -1873,53 +2232,97 @@ export function QbrPackBuilder({
         </div>
 
         {step === 1 ? (
-          <>
-            <div className="grid gap-5 md:grid-cols-2">
-              <div>
-                <h3 className="text-lg font-semibold text-[var(--text-primary)]">Select PSA Sources</h3>
-                <p className="mt-1 text-sm text-[var(--text-secondary)]">Choose which connected PSA systems feed this QBR pack.</p>
-              </div>
-              <div className="space-y-3">
-                <label className="flex items-center justify-between rounded-lg border border-[var(--border)] p-3">
-                  <span className="text-sm font-medium">HaloPSA</span>
-                  <Switch checked={sources.halopsa} onCheckedChange={(v) => setSources((s) => ({ ...s, halopsa: Boolean(v) }))} />
-                </label>
-                <label className="flex items-center justify-between rounded-lg border border-[var(--border)] p-3">
-                  <span className="text-sm font-medium">ConnectWise</span>
-                  <Switch checked={sources.connectwise} onCheckedChange={(v) => setSources((s) => ({ ...s, connectwise: Boolean(v) }))} />
-                </label>
-              </div>
+          <div className="grid gap-5 md:grid-cols-2">
+            <div>
+              <h3 className="text-lg font-semibold text-[var(--text-primary)]">Choose Date Range</h3>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">Define the period covered by this QBR pack.</p>
             </div>
-            {(qbrAvailableClients.length > 0 || qbrClientsLoading) && (
-              <div className="mt-6 border-t border-[var(--border)] pt-5">
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {(["all_time", "last_30_days", "last_90_days", "last_6_months", "last_12_months", "custom"] as const).map((r) => (
+                  <Button key={r} type="button" variant={dateRange === r ? "default" : "outline"} onClick={() => setDateRange(r)}>
+                    {r === "all_time"
+                      ? "All time"
+                      : r === "custom"
+                        ? "Custom"
+                        : r.replaceAll("_", " ")}
+                  </Button>
+                ))}
+              </div>
+              {dateRange === "custom" ? (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+                  <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {step === 2 ? (
+          <div className="grid gap-5 md:grid-cols-2">
+            <div>
+              <h3 className="text-lg font-semibold text-[var(--text-primary)]">Select PSA Sources</h3>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">Choose which connected PSA systems feed this QBR pack.</p>
+            </div>
+            <div className="space-y-3">
+              <label className="flex items-center justify-between rounded-lg border border-[var(--border)] p-3">
+                <span className="text-sm font-medium">HaloPSA</span>
+                <Switch
+                  checked={sources.halopsa}
+                  disabled={!psaStatus.halo}
+                  onCheckedChange={(v) => setSources((s) => ({ ...s, halopsa: Boolean(v) }))}
+                />
+              </label>
+              <label className="flex items-center justify-between rounded-lg border border-[var(--border)] p-3">
+                <span className="text-sm font-medium">ConnectWise</span>
+                <Switch
+                  checked={sources.connectwise}
+                  disabled={!psaStatus.connectwise}
+                  onCheckedChange={(v) => setSources((s) => ({ ...s, connectwise: Boolean(v) }))}
+                />
+              </label>
+            </div>
+          </div>
+        ) : null}
+
+        {step === 3 ? (
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-lg font-semibold text-[var(--text-primary)]">Select Clients</h3>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                Choose clients with data in the selected date range.
+              </p>
+            </div>
+            {(qbrAvailableClientsFiltered.length > 0 || qbrClientsLoading || clientsWithDataLoading) && (
+              <div className="border-t border-[var(--border)] pt-5">
                 <div className="mb-3 flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <input
                       type="checkbox"
-                      checked={qbrSelectedClients.length === qbrAvailableClients.length && qbrAvailableClients.length > 0}
+                      checked={qbrSelectedClients.length === qbrAvailableClientsFiltered.length && qbrAvailableClientsFiltered.length > 0}
                       onChange={(e) => {
                         if (e.target.checked) {
-                          setQbrSelectedClients(qbrAvailableClients.map((c) => `${c.source}:${String(c.id)}`));
+                          setQbrSelectedClients(qbrAvailableClientsFiltered.map((c) => `${c.source}:${String(c.id)}`));
                         } else {
                           setQbrSelectedClients([]);
+                          setSelectedTicketIds(new Set());
+                          setSelectedProjectIds(new Set());
                         }
                       }}
                       className="rounded border-[var(--border)] accent-[var(--accent)]"
                     />
-                    <span className="text-[13px] font-semibold text-[var(--text-primary)]">
-                      Clients
-                    </span>
-                    {qbrSelectedClients.length > 0 && (
+                    <span className="text-[13px] font-semibold text-[var(--text-primary)]">Clients</span>
+                    {qbrSelectedClients.length > 0 ? (
                       <span className="rounded-full bg-[var(--accent)]/15 px-2 py-0.5 text-[11px] font-medium text-[var(--accent)]">
                         {qbrSelectedClients.length} selected
                       </span>
-                    )}
+                    ) : null}
                   </div>
                   <span className="text-[11px] text-[var(--text-muted)]">
-                    {qbrAvailableClients.length} clients
+                    {qbrAvailableClientsFiltered.length} clients
                   </span>
                 </div>
-
                 <input
                   type="text"
                   placeholder="Search clients..."
@@ -1928,46 +2331,51 @@ export function QbrPackBuilder({
                   className="mb-2 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1.5 text-[12px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
                   id="qbr-client-search"
                 />
-
-                {qbrClientsLoading ? (
-                  <div className="flex items-center gap-2 py-6 text-[13px] text-[var(--text-muted)]">
-                    <svg className="size-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Loading clients...
-                  </div>
+                {qbrClientsLoading || clientsWithDataLoading ? (
+                  <p className="py-4 text-[13px] text-[var(--text-muted)]">Loading clients...</p>
                 ) : (
                   <div className="overflow-y-auto rounded-[var(--radius-lg)] border border-[var(--border)]" style={{ maxHeight: "260px" }}>
-                    {qbrAvailableClients
+                    {qbrAvailableClientsFiltered
                       .filter((c) => !clientSearch || c.name.toLowerCase().includes(clientSearch.toLowerCase()))
                       .map((client, idx) => {
                         const clientKey = `${client.source}:${String(client.id)}`;
                         const isSelected = qbrSelectedClients.includes(clientKey);
                         const isExpanded = qbrExpandedClients.has(clientKey);
-                        const tickets = clientTickets[clientKey] ?? [];
-                        const isLoadingTickets = loadingTickets[clientKey] ?? false;
+                        const metrics = clientsWithData[clientKey] ?? { tickets: 0, projects: 0 };
                         return (
                           <div key={clientKey} className={cn(idx > 0 && "border-t border-[var(--border)]")}>
                             <div
                               className={cn(
                                 "flex cursor-pointer select-none items-center gap-3 px-3 py-2.5 transition-colors",
-                                isSelected
-                                  ? "bg-[var(--accent)]/[0.07]"
-                                  : "hover:bg-[var(--bg-secondary)]",
+                                isSelected ? "bg-[var(--accent)]/[0.07]" : "hover:bg-[var(--bg-secondary)]",
                               )}
-                              onClick={() => setQbrSelectedClients((prev) =>
-                                isSelected ? prev.filter((id) => id !== clientKey) : [...prev, clientKey]
-                              )}
+                              onClick={async () => {
+                                if (isSelected) {
+                                  setQbrSelectedClients((prev) => prev.filter((id) => id !== clientKey));
+                                  setSelectedTicketIds((prev) => new Set([...prev].filter((id) => !id.startsWith(`${clientKey}:`))));
+                                  setSelectedProjectIds((prev) => new Set([...prev].filter((id) => !id.startsWith(`${clientKey}:`))));
+                                  return;
+                                }
+                                setQbrSelectedClients((prev) => (prev.includes(clientKey) ? prev : [...prev, clientKey]));
+                                const [clientTicketRows, clientProjectRows] = await Promise.all([
+                                  loadTicketsForClient(client.id, client.source),
+                                  loadProjectsForClient(client.id, client.source),
+                                ]);
+                                setSelectedTicketIds((prev) => {
+                                  const next = new Set(prev);
+                                  for (const t of clientTicketRows) next.add(`${clientKey}:${t.id}`);
+                                  return next;
+                                });
+                                setSelectedProjectIds((prev) => {
+                                  const next = new Set(prev);
+                                  for (const p of clientProjectRows) next.add(`${clientKey}:${p.id}`);
+                                  return next;
+                                });
+                              }}
                             >
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => {}}
-                                className="pointer-events-none shrink-0 rounded accent-[var(--accent)]"
-                              />
+                              <input type="checkbox" checked={isSelected} onChange={() => {}} className="pointer-events-none shrink-0 rounded accent-[var(--accent)]" />
                               <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--text-primary)]">
-                                {client.name}
+                                {client.name} ({metrics.tickets} tickets, {metrics.projects} projects)
                               </span>
                               <button
                                 type="button"
@@ -1975,35 +2383,26 @@ export function QbrPackBuilder({
                                   e.stopPropagation();
                                   setQbrExpandedClients((prev) => {
                                     const next = new Set(prev);
-                                    if (next.has(clientKey)) {
-                                      next.delete(clientKey);
-                                    } else {
-                                      next.add(clientKey);
-                                      void loadTicketsForClient(client.id, client.source);
-                                    setClientExpandTab((prev) => ({ ...prev, [clientKey]: "tickets" }));
-                                    }
+                                    if (next.has(clientKey)) next.delete(clientKey);
+                                    else next.add(clientKey);
                                     return next;
                                   });
+                                  setClientExpandTab((prev) => ({ ...prev, [clientKey]: "tickets" }));
+                                  void loadTicketsForClient(client.id, client.source);
+                                  void loadProjectsForClient(client.id, client.source);
                                 }}
                                 className={cn(
                                   "flex shrink-0 items-center justify-center rounded p-1 transition-colors",
-                                  isExpanded
-                                    ? "text-[var(--accent)]"
-                                    : "text-[var(--text-muted)] hover:text-[var(--text-primary)]",
+                                  isExpanded ? "text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]",
                                 )}
                                 title="Show tickets and projects"
                               >
-                                <svg
-                                  className={cn("size-3.5 transition-transform duration-200", isExpanded && "rotate-180")}
-                                  viewBox="0 0 20 20"
-                                  fill="currentColor"
-                                >
+                                <svg className={cn("size-3.5 transition-transform duration-200", isExpanded && "rotate-180")} viewBox="0 0 20 20" fill="currentColor">
                                   <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
                                 </svg>
                               </button>
                             </div>
-
-                            {isExpanded && (
+                            {isExpanded ? (
                               <div className="border-t border-[var(--border)]/60 bg-[var(--bg-secondary)]/50">
                                 <div className="flex border-b border-[var(--border)]/60 px-3">
                                   {(["tickets", "projects"] as const).map((tab) => (
@@ -2031,7 +2430,7 @@ export function QbrPackBuilder({
                                     loadingTickets[clientKey] ? (
                                       <p className="py-2 text-[12px] text-[var(--text-muted)]">Loading tickets...</p>
                                     ) : (clientTickets[clientKey] ?? []).length === 0 ? (
-                                      <p className="py-2 text-[12px] text-[var(--text-muted)]">No open tickets found</p>
+                                      <p className="py-2 text-[12px] text-[var(--text-muted)]">No tickets found</p>
                                     ) : (
                                       <div className="flex flex-col gap-0.5">
                                         {(clientTickets[clientKey] ?? []).map((ticket) => (
@@ -2039,19 +2438,14 @@ export function QbrPackBuilder({
                                             <input
                                               type="checkbox"
                                               checked={selectedTicketIds.has(`${clientKey}:${ticket.id}`)}
-                                              onChange={e => {
-                                                const ticketKey = `${clientKey}:${ticket.id}`
-                                                setSelectedTicketIds(prev => {
-                                                  const next = new Set(prev)
-                                                  if (e.target.checked) {
-                                                    next.add(ticketKey)
-                                                    // Auto-select parent client
-                                                    setQbrSelectedClients(c => c.includes(clientKey) ? c : [...c, clientKey])
-                                                  } else {
-                                                    next.delete(ticketKey)
-                                                  }
-                                                  return next
-                                                })
+                                              onChange={(e) => {
+                                                const ticketKey = `${clientKey}:${ticket.id}`;
+                                                setSelectedTicketIds((prev) => {
+                                                  const next = new Set(prev);
+                                                  if (e.target.checked) next.add(ticketKey);
+                                                  else next.delete(ticketKey);
+                                                  return next;
+                                                });
                                               }}
                                               className="shrink-0 rounded accent-[var(--accent)]"
                                             />
@@ -2060,42 +2454,36 @@ export function QbrPackBuilder({
                                         ))}
                                       </div>
                                     )
+                                  ) : loadingProjects[clientKey] ? (
+                                    <p className="py-2 text-[12px] text-[var(--text-muted)]">Loading projects...</p>
+                                  ) : (clientProjects[clientKey] ?? []).length === 0 ? (
+                                    <p className="py-2 text-[12px] text-[var(--text-muted)]">No projects found</p>
                                   ) : (
-                                    loadingProjects[clientKey] ? (
-                                      <p className="py-2 text-[12px] text-[var(--text-muted)]">Loading projects...</p>
-                                    ) : (clientProjects[clientKey] ?? []).length === 0 ? (
-                                      <p className="py-2 text-[12px] text-[var(--text-muted)]">No projects found</p>
-                                    ) : (
-                                      <div className="flex flex-col gap-0.5">
-                                        {(clientProjects[clientKey] ?? []).map((project) => (
-                                          <label key={project.id} className="flex cursor-pointer items-center gap-2.5 rounded px-2 py-1.5 hover:bg-[var(--bg-primary)] transition-colors">
-                                            <input
-                                              type="checkbox"
-                                              checked={selectedProjectIds.has(`${clientKey}:${project.id}`)}
-                                              onChange={e => {
-                                                const projectKey = `${clientKey}:${project.id}`
-                                                setSelectedProjectIds(prev => {
-                                                  const next = new Set(prev)
-                                                  if (e.target.checked) {
-                                                    next.add(projectKey)
-                                                    setQbrSelectedClients(c => c.includes(clientKey) ? c : [...c, clientKey])
-                                                  } else {
-                                                    next.delete(projectKey)
-                                                  }
-                                                  return next
-                                                })
-                                              }}
-                                              className="shrink-0 rounded accent-[var(--accent)]"
-                                            />
-                                            <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-secondary)]">{project.title}</span>
-                                          </label>
-                                        ))}
-                                      </div>
-                                    )
+                                    <div className="flex flex-col gap-0.5">
+                                      {(clientProjects[clientKey] ?? []).map((project) => (
+                                        <label key={project.id} className="flex cursor-pointer items-center gap-2.5 rounded px-2 py-1.5 hover:bg-[var(--bg-primary)] transition-colors">
+                                          <input
+                                            type="checkbox"
+                                            checked={selectedProjectIds.has(`${clientKey}:${project.id}`)}
+                                            onChange={(e) => {
+                                              const projectKey = `${clientKey}:${project.id}`;
+                                              setSelectedProjectIds((prev) => {
+                                                const next = new Set(prev);
+                                                if (e.target.checked) next.add(projectKey);
+                                                else next.delete(projectKey);
+                                                return next;
+                                              });
+                                            }}
+                                            className="shrink-0 rounded accent-[var(--accent)]"
+                                          />
+                                          <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-secondary)]">{project.title}</span>
+                                        </label>
+                                      ))}
+                                    </div>
                                   )}
                                 </div>
                               </div>
-                            )}
+                            ) : null}
                           </div>
                         );
                       })}
@@ -2103,34 +2491,10 @@ export function QbrPackBuilder({
                 )}
               </div>
             )}
-          </>
-        ) : null}
-
-        {step === 2 ? (
-          <div className="grid gap-5 md:grid-cols-2">
-            <div>
-              <h3 className="text-lg font-semibold text-[var(--text-primary)]">Choose Date Range</h3>
-              <p className="mt-1 text-sm text-[var(--text-secondary)]">Define the period covered by this QBR pack.</p>
-            </div>
-            <div className="space-y-3">
-              <div className="flex flex-wrap gap-2">
-                {(["last_30_days", "last_60_days", "last_90_days", "custom"] as const).map((r) => (
-                  <Button key={r} type="button" variant={dateRange === r ? "default" : "outline"} onClick={() => setDateRange(r)}>
-                    {r === "custom" ? "Custom" : r.replaceAll("_", " ")}
-                  </Button>
-                ))}
-              </div>
-              {dateRange === "custom" ? (
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
-                  <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
-                </div>
-              ) : null}
-            </div>
           </div>
         ) : null}
 
-        {step === 3 ? (
+        {step === 4 ? (
           <div className="space-y-4">
             <div>
               <h3 className="text-lg font-semibold text-[var(--text-primary)]">Configure Sections</h3>
@@ -2151,12 +2515,16 @@ export function QbrPackBuilder({
                 {step3Snapshot.stats.ticketCount === 1 ? "ticket" : "tickets"} and{" "}
                 <strong>{step3Snapshot.stats.projectCount}</strong>{" "}
                 {step3Snapshot.stats.projectCount === 1 ? "project" : "projects"}{" "}
-                {dateRange === "custom" && customFrom.trim() && customTo.trim()
+                {dateRange === "all_time"
+                  ? "across all available data."
+                  : dateRange === "custom" && customFrom.trim() && customTo.trim()
                   ? `from ${new Date(customFrom).toLocaleDateString("en-GB")} to ${new Date(customTo).toLocaleDateString("en-GB")}.`
                   : dateRange === "last_30_days"
                     ? "in the last 30 days."
-                    : dateRange === "last_60_days"
-                      ? "in the last 60 days."
+                    : dateRange === "last_6_months"
+                      ? "in the last 6 months."
+                      : dateRange === "last_12_months"
+                        ? "in the last 12 months."
                       : "in the last 90 days."}{" "}
                 <strong>{countSectionsAvailable(step3Snapshot)}</strong> of 12 section types have enough data to generate.
                 {12 - countSectionsAvailable(step3Snapshot) > 0 ? (
@@ -2224,12 +2592,34 @@ export function QbrPackBuilder({
           </div>
         ) : null}
 
-        {step === 4 ? (
+        {step === 5 ? (
           <div className="grid gap-5 md:grid-cols-2">
             <div>
               <h3 className="text-lg font-semibold text-[var(--text-primary)]">Branding</h3>
               <p className="mt-1 text-sm text-[var(--text-secondary)]">Set identity details used in exports and chart styling.</p>
               <p className="mt-2 text-sm font-medium text-[var(--text-primary)]">Your logo will appear on every slide.</p>
+              <div className="mt-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+                <p>
+                  <strong>{selectionCounts.tickets}</strong> tickets and{" "}
+                  <strong>{selectionCounts.projects}</strong> projects selected across{" "}
+                  <strong>{selectionCounts.clients}</strong>{" "}
+                  clients
+                </p>
+                <p className="mt-1">
+                  Date range:{" "}
+                  {dateRange === "all_time"
+                    ? "All time"
+                    : dateRange === "custom" && customFrom.trim() && customTo.trim()
+                    ? `${new Date(customFrom).toLocaleDateString("en-GB")} to ${new Date(customTo).toLocaleDateString("en-GB")}`
+                    : dateRange === "last_30_days"
+                      ? "Last 30 days"
+                      : dateRange === "last_6_months"
+                        ? "Last 6 months"
+                        : dateRange === "last_12_months"
+                          ? "Last 12 months"
+                          : "Last 90 days"}
+                </p>
+              </div>
             </div>
             <div className="grid gap-2">
               <Input placeholder="Company name" value={brandName} onChange={(e) => setBrandName(e.target.value)} />
@@ -2275,19 +2665,22 @@ export function QbrPackBuilder({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-h-9 min-w-0 flex-1 items-center">
               {step > 1 ? (
-                <Button type="button" variant="outline" onClick={() => setStep((s) => (s > 1 ? ((s - 1) as 1 | 2 | 3 | 4) : s))}>
+                <Button type="button" variant="outline" onClick={() => setStep((s) => (s > 1 ? ((s - 1) as 1 | 2 | 3 | 4 | 5) : s))}>
                   Back
                 </Button>
               ) : null}
             </div>
             <div className="flex shrink-0 gap-2">
-              {step < 4 ? (
+              {step < 5 ? (
                 <Button
                   type="button"
                   disabled={
-                    (step === 1 && !step1Valid) || (step === 2 && !step2Valid) || (step === 3 && step3NextDisabled)
+                    (step === 1 && !step1Valid) ||
+                    (step === 2 && !step2Valid) ||
+                    (step === 3 && !step3Valid) ||
+                    (step === 4 && step4NextDisabled)
                   }
-                  onClick={() => setStep((s) => (s < 4 ? ((s + 1) as 1 | 2 | 3 | 4) : s))}
+                  onClick={() => setStep((s) => (s < 5 ? ((s + 1) as 1 | 2 | 3 | 4 | 5) : s))}
                 >
                   Next
                 </Button>
@@ -2318,6 +2711,7 @@ export function QbrPackBuilder({
           ) : null}
         </div>
       </div>
+      )}
 
       {qbr && pdfIncludedSections ? (
         <>
@@ -2345,24 +2739,6 @@ export function QbrPackBuilder({
           >
             <QbrPdfChunk>
               <div className="flex flex-col" style={{ gap: 24 }}>
-                {qbr.autoExcludedSectionLabels && qbr.autoExcludedSectionLabels.length > 0 ? (
-                  <div
-                    className="rounded-lg px-3 py-2.5"
-                    style={{
-                      border: "1px solid #FCD34D",
-                      backgroundColor: "#FFFBEB",
-                      color: "#78350F",
-                      fontSize: 13,
-                      fontFamily: PDF_FONT_STACK,
-                      whiteSpace: "normal",
-                    }}
-                    role="status"
-                  >
-                    {qbr.autoExcludedSectionLabels.length} section
-                    {qbr.autoExcludedSectionLabels.length === 1 ? " was" : "s were"} excluded because insufficient data was
-                    available for the selected period: {qbr.autoExcludedSectionLabels.join(", ")}.
-                  </div>
-                ) : null}
                 <div
                   className="qbr-pdf-header-shell w-full rounded p-4"
                   style={{
@@ -2389,9 +2765,6 @@ export function QbrPackBuilder({
                         >
                           {qbr.brandName} QBR Pack
                         </h3>
-                        <p style={{ fontSize: 13, fontWeight: 400, color: BODY_TEXT, fontFamily: PDF_FONT_STACK, margin: "8px 0 0" }}>
-                          {qbr.dateRangeLabel}
-                        </p>
                       </div>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
@@ -2414,9 +2787,6 @@ export function QbrPackBuilder({
                       >
                         {qbr.brandName} QBR Pack
                       </h3>
-                      <p style={{ fontSize: 13, fontWeight: 400, color: BODY_TEXT, fontFamily: PDF_FONT_STACK, margin: "8px 0 0" }}>
-                        {qbr.dateRangeLabel}
-                      </p>
                     </>
                   )}
                 </div>
@@ -2545,9 +2915,6 @@ export function QbrPackBuilder({
                 <h4 style={QBR_PDF_H4}>
                   {qbr.ticketBreakdownMode === "status" ? "Ticket Breakdown by Status" : "Ticket Breakdown by Type and Category"}
                 </h4>
-                {qbr.ticketBreakdownNote ? (
-                  <p style={{ ...QBR_PDF_CAPTION, margin: "0 0 8px", color: "#b45309" }}>{normaliseQbrPdfText(qbr.ticketBreakdownNote)}</p>
-                ) : null}
                 <div
                   className="relative z-0 w-full shrink-0 overflow-hidden"
                   style={{ height: 320, pageBreakInside: "avoid", breakInside: "avoid" }}

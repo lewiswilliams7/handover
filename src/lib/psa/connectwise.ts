@@ -135,11 +135,17 @@ export async function testCWConnection(
 
 export async function fetchCWCompanies(
   conn: ConnectWiseConnection,
+  opts?: { page?: number; pageSize?: number },
 ): Promise<{ id: number; name: string }[]> {
+  const page = typeof opts?.page === "number" && opts.page >= 1 ? Math.floor(opts.page) : 1;
+  const pageSize =
+    typeof opts?.pageSize === "number" && opts.pageSize >= 1
+      ? Math.min(1000, Math.floor(opts.pageSize))
+      : 1000;
   const conditions = encodeURIComponent('status/name="Active"');
   const res = await cwFetch(
     conn,
-    `/company/companies?pageSize=1000&fields=id,name&conditions=${conditions}`,
+    `/company/companies?page=${page}&pageSize=${pageSize}&fields=id,name&conditions=${conditions}`,
   );
   const data: unknown = await res.json();
   const rows = parseCwListPayload<CwCompanyRow>(data);
@@ -152,6 +158,23 @@ export async function fetchCWCompanies(
     }
   }
   return out;
+}
+
+/** Active companies across all pages (1000 per request). */
+export async function fetchAllCWCompanies(conn: ConnectWiseConnection): Promise<{ id: number; name: string }[]> {
+  const byId = new Map<number, { id: number; name: string }>();
+  const pageSize = 1000;
+  let page = 1;
+  const maxPages = 100;
+  while (page <= maxPages) {
+    const batch = await fetchCWCompanies(conn, { page, pageSize });
+    for (const c of batch) {
+      if (!byId.has(c.id)) byId.set(c.id, c);
+    }
+    if (batch.length < pageSize) break;
+    page += 1;
+  }
+  return [...byId.values()];
 }
 
 export async function fetchCWServiceTickets(

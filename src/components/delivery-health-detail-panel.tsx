@@ -13,18 +13,71 @@ import {
 } from "@/lib/delivery-health";
 import {
   haloNoteDisplayType,
+  haloNoteRawText,
   mapHaloNoteToNormalised,
   sortHaloNotesOldestFirst,
   type HaloNote,
   type HaloTicket,
 } from "@/lib/halo";
+import type { NormalisedNote } from "@/lib/psa/types";
 import { formatLoggedHours } from "@/lib/format-logged-hours";
+import { stripHtmlToPlainText } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { usePSAConnections } from "@/hooks/use-psa-connections";
+import { usePSAStatus } from "@/hooks/usePSAStatus";
+import { DEMO_TICKETS } from "@/lib/demo-data";
 
 const DETAIL_CACHE_MS = 2 * 60 * 1000;
 const detailCache = new Map<string, { fetchedAt: number; ticket: HaloTicket }>();
+
+function panelNoteContent(raw: string, type: NormalisedNote["type"]): string {
+  if (!raw || raw.trim().length === 0) return "";
+
+  const rawHasEmailContent =
+    raw.includes("philip@") ||
+    raw.includes("@hogans") ||
+    (raw.includes("From:") && raw.includes("To:")) ||
+    raw.includes("thank you for contacting");
+  const isLikelyEmail =
+    type === "email_sent" || type === "email_received" || rawHasEmailContent;
+
+  if (isLikelyEmail) {
+    const stripped = stripHtmlToPlainText(raw);
+    return stripped.trim().length >= 5 ? stripped.trim() : "";
+  }
+
+  let cleaned = raw
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/[a-zA-Z][a-zA-Z0-9\s\-_.,#:*[\]()>~+]+\{[^}]*\}/g, "");
+
+  cleaned = stripHtmlToPlainText(cleaned);
+
+  cleaned = cleaned
+    .split(/\r?\n/)
+    .filter((line) => {
+      const t = line.trim();
+      if (!t) return false;
+      if (/^[-=─━]{5,}$/.test(t)) return false;
+      if (/^CAUTION:/i.test(t)) return false;
+      if (/This message was sent from outside/i.test(t)) return false;
+      if (/Do not click links or open attachments/i.test(t)) return false;
+      if (/legal privilege/i.test(t)) return false;
+      if (/unauthorised/i.test(t) && /intended recipient/i.test(t)) return false;
+      if (/registered in England/i.test(t)) return false;
+      if (/Solicitors Regulation Authority/i.test(t)) return false;
+      if (/virus free/i.test(t)) return false;
+      if (/^\s*p\s*\{/.test(t)) return false;
+      if (/^span\.fr-/.test(t)) return false;
+      return true;
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return cleaned;
+}
 
 type CwDetailNote = {
   id?: string;
@@ -207,6 +260,7 @@ type Props = {
   row: DeliveryHealthRow | null;
   onClose: () => void;
   focusRing: string;
+  demoMode?: boolean;
   /** When false, hide generate actions (team dashboard read-only). */
   allowGenerateFromDashboard?: boolean;
   onGenerateReport: (payload: { text: string; clientName: string | null }) => void;
@@ -217,16 +271,74 @@ export function DeliveryHealthDetailPanel({
   row,
   onClose,
   focusRing,
+  demoMode = false,
   allowGenerateFromDashboard = true,
   onGenerateReport,
 }: Props) {
   const psaConnections = usePSAConnections();
+  const psaStatus = usePSAStatus();
   const cwEnabled = psaConnections.connectwise;
   const [ticket, setTicket] = useState<HaloTicket | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadTicket = useCallback(async (id: number, source: "halopsa" | "connectwise") => {
+    if (demoMode) {
+      const idx = id >= 10000 ? id - 10000 : -1;
+      const demoTicket = idx >= 0 ? DEMO_TICKETS[idx] : undefined;
+      if (!demoTicket) {
+        setTicket(null);
+        setError("Could not load ticket.");
+        setLoading(false);
+        return;
+      }
+      const nowIso = new Date().toISOString();
+      const demoNotes: HaloNote[] = [
+        {
+          id: "demo-note-1",
+          who: demoTicket.agent.name,
+          posted: demoTicket.dateoccurred,
+          note: "Initial investigation complete - awaiting vendor response.",
+        },
+        {
+          id: "demo-note-2",
+          who: "Senior Engineer",
+          posted: nowIso,
+          note: "Escalated to senior engineer for deeper network trace analysis.",
+        },
+        {
+          id: "demo-note-3",
+          who: demoTicket.agent.name,
+          posted: nowIso,
+          note: "Client updated via email - awaiting confirmation to proceed with change window.",
+        },
+      ];
+      const demoActions: HaloNote[] = [
+        {
+          id: "demo-action-1",
+          who: demoTicket.agent.name,
+          posted: nowIso,
+          note: "Action: Confirm maintenance window and complete pending remediation steps.",
+        },
+      ];
+      setTicket({
+        id,
+        summary: demoTicket.summary,
+        details: demoTicket.details,
+        status: { name: demoTicket.status.name },
+        priority: { name: demoTicket.priority.name },
+        client: { name: demoTicket.client.name },
+        agent: { name: demoTicket.agent.name },
+        dateoccurred: demoTicket.dateoccurred,
+        targetdate: demoTicket.targetdate,
+        timetaken: demoTicket.timetaken / 60,
+        notes: demoNotes,
+        actions: demoActions,
+      } as HaloTicket);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     const cacheKey = `${source}-${id}`;
     const hit = detailCache.get(cacheKey);
     if (hit && Date.now() - hit.fetchedAt < DETAIL_CACHE_MS) {
@@ -257,6 +369,17 @@ export function DeliveryHealthDetailPanel({
           ? mapCwDetailToHaloShape(id, json.ticket as CwDetailTicket, json.notes ?? [])
           : (json.ticket as HaloTicket);
       detailCache.set(cacheKey, { fetchedAt: Date.now(), ticket: normalisedTicket });
+      console.log("[panel-ticket-raw]", {
+        hasTicket: !!normalisedTicket,
+        notesCount: normalisedTicket?.notes?.length,
+        notesSample: normalisedTicket?.notes?.slice(0, 3).map((n: any) => ({
+          id: n.id,
+          who: n.who,
+          outcome: n.outcome,
+          noteLen: (n.note || "").length,
+          emailbodyLen: (n.emailbody || "").length,
+        })),
+      });
       setTicket(normalisedTicket);
     } catch (e) {
       setTicket(null);
@@ -264,7 +387,7 @@ export function DeliveryHealthDetailPanel({
     } finally {
       setLoading(false);
     }
-  }, [cwEnabled]);
+  }, [cwEnabled, demoMode]);
 
   useEffect(() => {
     if (!open || !row) {
@@ -314,6 +437,18 @@ export function DeliveryHealthDetailPanel({
             ? "View in HaloPSA"
             : "View in PSA";
   const haloNotes = ticket ? notesOldestFirst(ticket) : [];
+  console.log("[panel-notes-raw]", {
+    totalNotes: haloNotes.length,
+    notes: haloNotes.map((n) => ({
+      id: (n as any).id,
+      who: (n as any).who,
+      outcome: (n as any).outcome,
+      noteLength: ((n as any).note || "").length,
+      emailbodyLength: ((n as any).emailbody || "").length,
+      emailbody_htmlLength: ((n as any).emailbody_html || "").length,
+      detailsLength: ((n as any).details || "").length,
+    })),
+  });
   const headerTitle = (ticket?.summary?.trim() || row.name).trim();
   const targetIsoForSla = ticket?.targetdate ?? row.targetDateIso;
   const effectiveSlaRisk =
@@ -332,6 +467,9 @@ export function DeliveryHealthDetailPanel({
     });
     onClose();
   };
+  const canShowViewInPsa =
+    (row.source === "halopsa" && psaStatus.halo) ||
+    (row.source === "connectwise" && psaStatus.connectwise);
 
   return (
     <div
@@ -487,6 +625,19 @@ export function DeliveryHealthDetailPanel({
               ) : (
                 haloNotes.map((note, idx) => {
                   const norm = mapHaloNoteToNormalised(note);
+                  console.log("[panel-note-debug]", {
+                    idx,
+                    author: norm.author,
+                    type: norm.type,
+                    rawLength: haloNoteRawText(note).length,
+                    rawPreview: haloNoteRawText(note).substring(0, 200),
+                    noteKeys: Object.keys(note),
+                    noteField: (note as any).note?.substring?.(0, 100),
+                    emailbody: (note as any).emailbody?.substring?.(0, 100),
+                    emailbody_html: (note as any).emailbody_html?.substring?.(0, 100),
+                  });
+                  const cleaned = panelNoteContent(haloNoteRawText(note), norm.type);
+                  const hasContent = cleaned.trim().length >= 5;
                   const typeLabel = haloNoteDisplayType(note);
                   const timeTaken = formatNoteTimeTaken(note);
                   const author = norm.author || "Unknown";
@@ -527,8 +678,15 @@ export function DeliveryHealthDetailPanel({
                               Time: {timeTaken}
                             </p>
                           ) : null}
-                          <p className="mt-2 whitespace-pre-wrap text-[11px] leading-relaxed text-[var(--text-secondary)]">
-                            {norm.content || " - "}
+                          <p
+                            className={cn(
+                              "mt-2 whitespace-pre-wrap text-[11px] leading-relaxed",
+                              hasContent
+                                ? "text-[var(--text-secondary)]"
+                                : "text-[var(--text-muted)] italic",
+                            )}
+                          >
+                            {hasContent ? cleaned : "No content"}
                           </p>
                         </div>
                       </div>
@@ -658,18 +816,20 @@ export function DeliveryHealthDetailPanel({
                   Generate report
                 </Button>
               ) : null}
-              <a
-                href={row.haloTicketUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={cn(
-                  focusRing,
-                  "flex h-10 w-full items-center justify-center gap-2 rounded-[var(--radius)] border border-[var(--border)] bg-transparent text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-secondary)]",
-                )}
-              >
-                <ExternalLink className="size-4" aria-hidden />
-                {viewInPsaLabel}
-              </a>
+              {canShowViewInPsa ? (
+                <a
+                  href={row.haloTicketUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={cn(
+                    focusRing,
+                    "flex h-10 w-full items-center justify-center gap-2 rounded-[var(--radius)] border border-[var(--border)] bg-transparent text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-secondary)]",
+                  )}
+                >
+                  <ExternalLink className="size-4" aria-hidden />
+                  {viewInPsaLabel}
+                </a>
+              ) : null}
             </div>
           </div>
         </div>
