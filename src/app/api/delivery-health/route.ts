@@ -6,7 +6,6 @@ import {
   buildHistoryIndex,
   computeSlaRiskFromTargetIso,
   emptyDeliveryHealthStats,
-  enrichTicketsMissingAgentsForDashboard,
   applyCwDeliveryHealthRagOverlay,
   patchConnectWiseHealthRowsFromTickets,
   haloTicketsToHealthRows,
@@ -21,7 +20,6 @@ import {
   getHaloAgents,
   getHaloTickets,
   getHaloToken,
-  getTicketDetails,
   HaloRateLimitError,
   type HaloTicket,
 } from "@/lib/halo";
@@ -31,11 +29,7 @@ import { getDeliveryHealthDashboardAccess } from "@/lib/utils/getPlan";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { createServerClient } from "@/lib/supabase/server";
 
-const CACHE_TTL_MS = 3 * 60 * 1000;
-
-/** Cap detail fetches per request so the route stays responsive for large tenants. */
-const MAX_ACTIVE_WITH_DETAILS = 600;
-const DETAIL_CONCURRENCY = 8;
+const CACHE_TTL_MS = 5 * 60 * 1000;
 
 type CacheEntry = {
   cachedAt: number;
@@ -154,6 +148,22 @@ function buildProxyRiskDetails(rows: DeliveryHealthRow[]): DeliveryHealthRiskDet
       reportLink: r.haloTicketUrl ?? null,
       source: "proxy_overdue_ticket" as const,
     }));
+}
+
+/** Split open-risk KPI counts — openRiskDetails have no kind; avoid duplicating full length on both strips. */
+function openRiskCountsForStats(openRiskDetails: DeliveryHealthRiskDetail[]): {
+  projects: number;
+  tickets: number;
+} {
+  const withKind = openRiskDetails as Array<DeliveryHealthRiskDetail & { kind?: string }>;
+  if (withKind.some((r) => r.kind === "project" || r.kind === "ticket")) {
+    return {
+      projects: withKind.filter((r) => r.kind === "project").length,
+      tickets: withKind.filter((r) => r.kind === "ticket").length,
+    };
+  }
+  const half = Math.round(openRiskDetails.length / 2);
+  return { projects: half, tickets: openRiskDetails.length - half };
 }
 
 function buildDriverDetails(
@@ -461,14 +471,15 @@ async function loadConnectWiseHealthRows(
   try {
     const cwConn = await getCWConnectionForUser(userId);
     const cwHeaders = await getCWAuthHeaders(userId);
-    const conditions = encodeURIComponent(CW_OPEN_ONLY_CONDITIONS);
+    const conditions = `?conditions=${encodeURIComponent(CW_OPEN_ONLY_CONDITIONS)}`;
+    const separator = "&";
     const [ticketRes, projectRes] = await Promise.all([
       fetch(
-        `${cwConn.siteUrl}/v4_6_release/apis/3.0/service/tickets?conditions=${conditions}&pageSize=500`,
+        `${cwConn.siteUrl}/v4_6_release/apis/3.0/service/tickets${conditions}${separator}pageSize=500`,
         { headers: cwHeaders, cache: "no-store" },
       ),
       fetch(
-        `${cwConn.siteUrl}/v4_6_release/apis/3.0/project/projects?conditions=${conditions}&pageSize=500`,
+        `${cwConn.siteUrl}/v4_6_release/apis/3.0/project/projects${conditions}${separator}pageSize=500`,
         { headers: cwHeaders, cache: "no-store" },
       ),
     ]);
@@ -495,7 +506,7 @@ async function loadConnectWiseHealthRows(
     );
     const cwRowsAfterOverlay = applyCwDeliveryHealthRagOverlay(
       patchConnectWiseHealthRowsFromTickets(
-        haloTicketsToHealthRows(cwTickets, historyIndex, cwConn.siteUrl).map((row) => ({
+        haloTicketsToHealthRows(cwTickets, historyIndex, cwConn.siteUrl, undefined, "connectwise").map((row) => ({
           ...row,
           source: "connectwise" as const,
           haloTicketUrl: buildConnectWiseTicketDeepLink(cwConn.siteUrl, row.id, row.kind),
@@ -509,23 +520,6 @@ async function loadConnectWiseHealthRows(
     console.error("[delivery-health] CW prefetch error:", e);
     return null;
   }
-}
-
-async function attachTicketDetails(
-  haloUrl: string,
-  token: string,
-  tickets: HaloTicket[],
-  concurrency: number,
-): Promise<HaloTicket[]> {
-  const out: HaloTicket[] = [];
-  for (let i = 0; i < tickets.length; i += concurrency) {
-    const chunk = tickets.slice(i, i + concurrency);
-    const detailed = await Promise.all(
-      chunk.map((t) => getTicketDetails(haloUrl, token, t.id)),
-    );
-    out.push(...detailed);
-  }
-  return out;
 }
 
 export async function GET(request: Request) {
@@ -544,8 +538,7 @@ export async function GET(request: Request) {
     const bypassCache = url.searchParams.get("refresh") === "1";
     const forceSource = url.searchParams.get("source");
     const forceConnectWise = forceSource === "connectwise";
-
-    const cacheKey = user.id;
+    const cacheKey = `${user.id}:${forceConnectWise ? "connectwise" : "halopsa"}:open`;
     responseCacheKey = cacheKey;
     if (!bypassCache) {
       const cached = deliveryHealthCachedResponse(cacheKey);
@@ -585,14 +578,15 @@ export async function GET(request: Request) {
       try {
         const cwConn = await getCWConnectionForUser(user.id);
         const cwHeaders = await getCWAuthHeaders(user.id);
-        const conditions = encodeURIComponent(CW_OPEN_ONLY_CONDITIONS);
+        const conditions = `?conditions=${encodeURIComponent(CW_OPEN_ONLY_CONDITIONS)}`;
+        const separator = "&";
         const [ticketRes, projectRes] = await Promise.all([
           fetch(
-            `${cwConn.siteUrl}/v4_6_release/apis/3.0/service/tickets?conditions=${conditions}&pageSize=500`,
+            `${cwConn.siteUrl}/v4_6_release/apis/3.0/service/tickets${conditions}${separator}pageSize=500`,
             { headers: cwHeaders, cache: "no-store" },
           ),
           fetch(
-            `${cwConn.siteUrl}/v4_6_release/apis/3.0/project/projects?conditions=${conditions}&pageSize=500`,
+            `${cwConn.siteUrl}/v4_6_release/apis/3.0/project/projects${conditions}${separator}pageSize=500`,
             { headers: cwHeaders, cache: "no-store" },
           ),
         ]);
@@ -656,7 +650,7 @@ export async function GET(request: Request) {
 
         const cwRowsAfterOverlay = applyCwDeliveryHealthRagOverlay(
           patchConnectWiseHealthRowsFromTickets(
-            haloTicketsToHealthRows(listTickets, historyIndex, cwConn.siteUrl).map((row) => ({
+            haloTicketsToHealthRows(listTickets, historyIndex, cwConn.siteUrl, undefined, "connectwise").map((row) => ({
               ...row,
               source: "connectwise" as const,
               haloTicketUrl: buildConnectWiseTicketDeepLink(
@@ -689,8 +683,9 @@ export async function GET(request: Request) {
         const openRiskDetails = aiRisks.length > 0 ? aiRisks : buildProxyRiskDetails(rows);
         const projectAvg = avgHoursPerDayFromProjects(rows);
         stats.projects.avgHoursPerDayToTarget = projectAvg;
-        stats.projects.totalOpenRisks = openRiskDetails.length;
-        stats.tickets.totalOpenRisks = openRiskDetails.length;
+        const openRiskCounts = openRiskCountsForStats(openRiskDetails);
+        stats.projects.totalOpenRisks = openRiskCounts.projects;
+        stats.tickets.totalOpenRisks = openRiskCounts.tickets;
         const overdueDetails = buildDriverDetails(rows, (r) => r.kind === "ticket" && (r.daysToTarget ?? 1) < 0);
         const slaRiskDetails = buildDriverDetails(rows, (r) => r.kind === "ticket" && r.slaRisk === "at_risk");
         const body: DeliveryHealthApiResponse = {
@@ -829,36 +824,9 @@ export async function GET(request: Request) {
       }
     }
 
-    const activeTickets = listTickets.filter((t) =>
-      isHaloTicketActive(t.status?.name ?? "Open"),
-    );
-    const capped = activeTickets.slice(0, MAX_ACTIVE_WITH_DETAILS);
-
-    let ticketsWithNotes: HaloTicket[] = capped;
-    if (access === "full") {
-      try {
-        ticketsWithNotes = await attachTicketDetails(
-          conn.halo_url,
-          token,
-          capped,
-          DETAIL_CONCURRENCY,
-        );
-      } catch (e) {
-        if (e instanceof HaloRateLimitError) {
-          const stale = deliveryHealthCachedResponse(cacheKey, true);
-          if (stale) return NextResponse.json(stale);
-        }
-        console.error("[delivery-health] getTicketDetails batch:", e);
-        ticketsWithNotes = capped;
-      }
-    } else {
-      ticketsWithNotes = await enrichTicketsMissingAgentsForDashboard(
-        conn.halo_url,
-        token,
-        capped,
-        { maxFetches: MAX_ACTIVE_WITH_DETAILS, concurrency: DETAIL_CONCURRENCY },
-      );
-    }
+    const activeTickets = listTickets.filter((t) => isHaloTicketActive(t.status?.name ?? "Open"));
+    const capped = activeTickets;
+    const ticketsWithNotes: HaloTicket[] = capped;
 
     let agents: { id: number; name: string }[] = [];
     try {
@@ -873,6 +841,7 @@ export async function GET(request: Request) {
       historyIndex,
       conn.halo_url,
       agentsById,
+      "halopsa",
     );
     const haloTaskSummary = buildProjectTaskSummaryFromTickets(listTickets);
     rows = attachProjectTaskSummary(rows, haloTaskSummary);
@@ -889,8 +858,9 @@ export async function GET(request: Request) {
     const openRiskDetails = aiRisks.length > 0 ? aiRisks : buildProxyRiskDetails(rows);
     const projectAvg = avgHoursPerDayFromProjects(rows);
     stats.projects.avgHoursPerDayToTarget = projectAvg;
-    stats.projects.totalOpenRisks = openRiskDetails.length;
-    stats.tickets.totalOpenRisks = openRiskDetails.length;
+    const openRiskCounts = openRiskCountsForStats(openRiskDetails);
+    stats.projects.totalOpenRisks = openRiskCounts.projects;
+    stats.tickets.totalOpenRisks = openRiskCounts.tickets;
     const overdueDetails = buildDriverDetails(rows, (r) => r.kind === "ticket" && (r.daysToTarget ?? 1) < 0);
     const slaRiskDetails = buildDriverDetails(rows, (r) => r.kind === "ticket" && r.slaRisk === "at_risk");
 

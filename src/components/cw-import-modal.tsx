@@ -104,7 +104,7 @@ function buildDemoTicketNotesState(): {
     const notes = t.notes.map((n) => ({
       id: String(n.id),
       author: n.who,
-      date: n.dateoccurred,
+      date: n.dateoccurred ?? null,
       content: n.note,
     }));
     notesById[t.id] = notes;
@@ -322,7 +322,7 @@ export function CwImportModal({
         const notes = demoTicket.notes.map((n) => ({
           id: String(n.id),
           author: n.who,
-          date: n.dateoccurred,
+          date: n.dateoccurred ?? null,
           content: n.note,
         }));
         setTicketNotesById((prev) => ({ ...prev, [id]: notes }));

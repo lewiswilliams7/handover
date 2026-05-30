@@ -391,7 +391,7 @@ export function HaloImportModal({
           projectmanager: p.projectmanager,
           targetdate: p.targetdate,
           completionpercent: p.completionpercent,
-          description: p.description,
+          description: p.description ?? null,
           notes: [],
         })),
       );
@@ -448,7 +448,7 @@ export function HaloImportModal({
       Object.fromEntries(
         DEMO_CLIENTS.map((c) => [
           String(c.id),
-          importMode === "projects" ? c.projectCount : c.ticketCount,
+          1,
         ]),
       ),
     );
@@ -489,7 +489,7 @@ export function HaloImportModal({
       }));
       setClients(demoClients);
       setClientOpenCounts(
-        Object.fromEntries(DEMO_CLIENTS.map((c) => [String(c.id), c.ticketCount])),
+        Object.fromEntries(DEMO_CLIENTS.map((c) => [String(c.id), 1])),
       );
       applyDemoTicketsToModal();
       setClientsLoading(false);
@@ -838,7 +838,7 @@ export function HaloImportModal({
               projectmanager: p.projectmanager,
               targetdate: p.targetdate,
               completionpercent: p.completionpercent,
-              description: p.description,
+              description: p.description ?? null,
               notes: [],
             })),
           );
@@ -854,7 +854,7 @@ export function HaloImportModal({
                 projectmanager: p.projectmanager,
                 targetdate: p.targetdate,
                 completionpercent: p.completionpercent,
-                description: p.description,
+                description: p.description ?? null,
                 notes: [],
               })),
             ),
@@ -1044,12 +1044,15 @@ export function HaloImportModal({
   };
 
   const selectAllVisible = () => {
-    setSelectedIds(Array.from(new Set([...selectedIds, ...rows.map((r) => r.id)])));
+    const allIds = rows.map((r) => r.id);
+    setSelectedIds(Array.from(new Set([...selectedIds, ...allIds])));
+    allIds.forEach((id) => setAllNotesForTicket(id, true));
   };
 
   const deselectAllVisible = () => {
     const visible = new Set(rows.map((r) => r.id));
     setSelectedIds((prev) => prev.filter((id) => !visible.has(id)));
+    rows.forEach((r) => setAllNotesForTicket(r.id, false));
   };
 
   const allGroupSelected = (items: Array<HaloTicket | HaloProject>) =>
@@ -1058,11 +1061,13 @@ export function HaloImportModal({
   const selectAllInGroup = (items: Array<HaloTicket | HaloProject>) => {
     const ids = items.map((i) => i.id);
     setSelectedIds((prev) => Array.from(new Set([...prev, ...ids])));
+    ids.forEach((id) => setAllNotesForTicket(id, true));
   };
 
   const deselectAllInGroup = (items: Array<HaloTicket | HaloProject>) => {
     const drop = new Set(items.map((i) => i.id));
     setSelectedIds((prev) => prev.filter((id) => !drop.has(id)));
+    items.forEach((item) => setAllNotesForTicket(item.id, false));
   };
 
   const setAllNotesForTicket = (itemId: number | string, on: boolean) => {

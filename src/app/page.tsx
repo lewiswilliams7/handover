@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
-import dynamic from "next/dynamic";
 import PageTransition from "@/components/PageTransition";
-
-const HomeClient = dynamic(() => import("./home-client"), { ssr: true });
+import { HomeClientLoader } from "@/components/home-client-loader";
 
 export const metadata: Metadata = {
   title: "Handover - The Reporting Tool Built for MSP Delivery Teams",
@@ -16,7 +14,9 @@ export const metadata: Metadata = {
 export default function HomePage() {
   return (
     <PageTransition>
-      <HomeClient />
+      <main className="marketing-aurora overflow-x-hidden">
+        <HomeClientLoader />
+      </main>
     </PageTransition>
   );
 }

@@ -9,6 +9,9 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
+  title: "Product Roadmap | Handover",
+  description:
+    "See what's coming to Handover — new PSA integrations, report types, and delivery features.",
   alternates: {
     canonical: "https://gethandover.uk/roadmap",
   },

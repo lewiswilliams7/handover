@@ -102,6 +102,7 @@ import {
   exportRisksCSV,
   exportStatusReportTXT,
   exportToExcel,
+  splitStatusReportDisplayBlocks,
   getActionLogExportFilename,
   getClientEmailExportFilename,
   getFullReportExportFilename,
@@ -111,6 +112,10 @@ import {
   type ExportMeta,
   type FullReportOutputs,
 } from "@/lib/export";
+import {
+  getCachedMeetingPrepContentFromKeys,
+  getCachedMeetingPrepTicketTitleFromKeys,
+} from "@/lib/meeting-prep-cache";
 import { deriveAutoTitle } from "@/lib/derive-generation-title";
 import { markUpgradePromptConsumed, readUpgradePromptConsumed } from "@/lib/upgrade-prompt-session";
 import {
@@ -152,6 +157,8 @@ import { getDateRangeEndIso, getDateRangeStartIso } from "@/lib/scheduled-report
 import { APP_VERSION } from "@/lib/version";
 import { buildClientEmailSignOffBlock } from "@/lib/client-email-signature";
 import { buildDefaultClientEmailSubject } from "@/lib/client-email-send-html";
+import { buildDeliveryHealthSwrKey } from "@/lib/delivery-health-swr";
+import type { DeliveryHealthRow } from "@/lib/delivery-health";
 import { DEMO_CLIENTS, DEMO_EXAMPLE_INPUT, DEMO_PROJECTS, DEMO_TICKETS } from "@/lib/demo-data";
 
 /** Signed-in shell background — shared by top bar and main content for a seamless join. */
@@ -214,6 +221,7 @@ const LS_FIRST_GEN_TIP_DISMISSED = "handover_first_gen_tip_dismissed";
 const LS_FIRST_GEN_CELEBRATED = "handover_first_gen_celebrated";
 const LS_EXCEL_EXPORTED = "handover_excel_exported";
 const LS_ONBOARDING_TABS = "handover_onboarding_explored_tabs";
+const ONBOARDING_PAGE_SEEN_KEY = "handover_onboarding_page_seen";
 const LS_BASIC_ACTION_EXPORT = "handover_onboarding_basic_action_export";
 /** Soft cap for manual paste / PSA export text sent to /api/generate (matches server maxLength). */
 const GENERATION_INPUT_CHAR_LIMIT = 25000;
@@ -460,6 +468,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { HeroProductMockup } from "@/components/hero-product-mockup";
 import { HomeRoiCalculator } from "@/components/home-roi-calculator";
+import { CountUp } from "@/components/count-up";
+import { HandoverDemoSection } from "@/components/marketing/HandoverDemoSection";
 import { TestimonialMarquee } from "@/components/testimonial-marquee";
 import { ScrollRevealItem } from "@/components/scroll-reveal-item";
 import { IntegrationsPanel } from "@/components/integrations-panel";
@@ -489,6 +499,7 @@ import { PremiumHardLimitModal, ProFeatureGateModal } from "@/components/premium
 import { UpgradePlanCards } from "@/components/upgrade-plan-cards";
 import { QbrPackBuilder } from "@/components/qbr-pack-builder";
 import { OverviewHomeView } from "@/components/overview-home-view";
+import { PageHeader } from "@/components/page-header";
 import { ChangelogView } from "@/components/changelog-view";
 import { PSAEmptyState } from "@/components/psa-empty-state";
 import {
@@ -1246,7 +1257,24 @@ type ProjectItem = {
   created_at: string;
   source?: string | null;
   scheduled_report_id?: string | null;
+  report_type?: string | null;
+  reportType?: string | null;
 };
+
+function CyanBoltIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="var(--accent)"
+      className={cn("shrink-0", className)}
+      aria-hidden
+    >
+      <path d="M13 2L4.5 13.5H11L10 22L19.5 10.5H13L13 2Z" />
+    </svg>
+  );
+}
 
 function formatShortRelativeTime(iso: string): string {
   const t = Date.parse(iso);
@@ -1750,22 +1778,22 @@ function priorityBadgeClass(priority: string | null): string {
 const focusRing =
   "transition-all duration-[120ms] ease-in-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] focus-visible:outline-offset-2";
 
-/** Generation output tab panel — fills remaining height and scrolls internally */
+/** Generation output tab panel — single scroll container for tab content */
 const OUTPUT_TAB_PANEL_CLASS =
   "mt-0 flex min-h-0 flex-1 flex-col overflow-y-auto rounded-b-[var(--radius-lg)] border-x border-b border-[var(--border)] bg-[var(--bg-secondary)] p-3 outline-none";
 
 /** Inset surface wrapping Card inside each output tab */
 const OUTPUT_TAB_CONTENT_SHELL =
-  "animate-in fade-in duration-150 flex min-h-0 flex-1 flex-col overflow-y-auto rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] shadow-[inset_0_1px_0_color-mix(in_srgb,var(--border)_70%,transparent),inset_0_18px_36px_-18px_color-mix(in_srgb,var(--bg-secondary)_85%,transparent)]";
+  "animate-in fade-in duration-150 flex flex-col rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] shadow-[inset_0_1px_0_color-mix(in_srgb,var(--border)_70%,transparent),inset_0_18px_36px_-18px_color-mix(in_srgb,var(--bg-secondary)_85%,transparent)]";
 
 const OUTPUT_TAB_CARD_CLASS =
-  "flex min-h-0 flex-1 flex-col gap-0 border-0 bg-transparent py-0 shadow-none";
+  "flex flex-col gap-0 overflow-visible border-0 bg-transparent py-0 shadow-none";
 
 const OUTPUT_TAB_CARD_BODY_SCROLL =
-  "flex min-h-0 flex-1 flex-col overflow-hidden";
+  "flex flex-col overflow-visible";
 
 const OUTPUT_TAB_CARD_BODY_INNER_SCROLL =
-  "min-h-0 flex-1 overflow-x-hidden overflow-y-auto";
+  "min-h-0 w-full overflow-visible";
 
 const FOLLOW_UP_ALL_CLIENTS = "__all__";
 
@@ -1807,25 +1835,6 @@ function startOfMonthUtcIso(): string {
   return new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0),
   ).toISOString();
-}
-
-function animateValue(
-  start: number,
-  end: number,
-  duration: number,
-  setter: (n: number) => void,
-) {
-  const startTime = performance.now();
-  const update = (currentTime: number) => {
-    const elapsed = currentTime - startTime;
-    const progress = Math.min(elapsed / duration, 1);
-    const eased = 1 - Math.pow(1 - progress, 3);
-    setter(Math.round(start + (end - start) * eased));
-    if (progress < 1) {
-      requestAnimationFrame(update);
-    }
-  };
-  requestAnimationFrame(update);
 }
 
 const HANDOVER_BRAND_PRIMARY_HEX = "#2563EB";
@@ -1880,6 +1889,28 @@ function formatScheduledPreviewAgeLabel(iso: string | null, tick: number): strin
   if (h < 48) return `${h} hours ago`;
   const d = Math.floor(h / 24);
   return d === 1 ? "1 day ago" : `${d} days ago`;
+}
+
+function UpgradeWall({ message }: { message: string }) {
+  return (
+    <div className="flex min-h-[400px] w-full flex-col items-center justify-center gap-5 rounded-[var(--radius-lg)] border border-amber-500/25 bg-amber-500/[0.06] px-8 py-12 text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/15">
+        <svg width="22" height="22" fill="none" stroke="#f59e0b" strokeWidth="2" viewBox="0 0 24 24">
+          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+        </svg>
+      </div>
+      <div>
+        <p className="mb-2 text-[17px] font-semibold text-white/90">{message}</p>
+        <p className="mb-5 text-[14px] text-white/55">Upgrade to restore full access to your workspace.</p>
+        <Link
+          href="/pricing"
+          className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] px-5 py-2.5 text-[14px] font-semibold text-[#0f172a] transition-all hover:scale-[1.02]"
+        >
+          Upgrade now →
+        </Link>
+      </div>
+    </div>
+  );
 }
 
 export default function Home() {
@@ -1941,6 +1972,11 @@ export default function Home() {
       profileSubscriptionStatus,
     ],
   );
+
+  const isExpiredTrial = useMemo(() => {
+    if (!trialEndsAt) return false;
+    return new Date(trialEndsAt) <= new Date();
+  }, [trialEndsAt]);
 
   const qbrUsageHint = useMemo(
     () =>
@@ -2018,7 +2054,6 @@ export default function Home() {
   const [smartActionsOpen, setSmartActionsOpen] = useState(false);
   const GENERATION_EMAIL_TONE: Tone = "professional";
   const [lastGeneratedTone, setLastGeneratedTone] = useState<Tone>("professional");
-  const demoInputAutofillDoneRef = useRef(false);
   const [lastInput, setLastInput] = useState("");
   const ticketTitlesForSourceColumn = useMemo(
     () => extractTicketTitlesFromGenerationInput((input.trim() || lastInput.trim()).trim()),
@@ -2099,6 +2134,7 @@ export default function Home() {
   const [sendEmailButtonHighlight, setSendEmailButtonHighlight] = useState(false);
   const [genProgressMsgIx, setGenProgressMsgIx] = useState(0);
   const [activeClientEmailIndex, setActiveClientEmailIndex] = useState(0);
+  const [activeStatusReportIndex, setActiveStatusReportIndex] = useState(-1);
 
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2191,6 +2227,19 @@ export default function Home() {
   const [onboardingProfileLoaded, setOnboardingProfileLoaded] = useState(false);
   const [onboardingRequiredExplicit, setOnboardingRequiredExplicit] = useState(false);
   const [onboardingOverlayOpen, setOnboardingOverlayOpen] = useState(false);
+  const [onboardingPageVisited, setOnboardingPageVisited] = useState(false);
+  const onboardingRedirectPending = useMemo(() => {
+    if (!userEmail) return false;
+    if (!onboardingProfileLoaded) return true;
+    if (!onboardingRequiredExplicit) return false;
+    if (onboardingPageVisited) return false;
+    return true;
+  }, [
+    userEmail,
+    onboardingProfileLoaded,
+    onboardingRequiredExplicit,
+    onboardingPageVisited,
+  ]);
   const lastOnboardingHydratedUserIdRef = useRef<string | null>(null);
   const autoRestoreLastSessionRanRef = useRef(false);
   const [proFeatureGate, setProFeatureGate] = useState<string | null>(null);
@@ -2257,6 +2306,7 @@ export default function Home() {
     | "organisation"
     | "changelog"
   >("overview");
+  const [deliveryHealthPresetClient, setDeliveryHealthPresetClient] = useState("");
   const [sidebarPinned, setSidebarPinned] = useState(false);
   const [sidebarHovered, setSidebarHovered] = useState(false);
   const [projectsBootstrapped, setProjectsBootstrapped] = useState(false);
@@ -2375,6 +2425,7 @@ export default function Home() {
   const [dataLoaded, setDataLoaded] = useState(false);
   const [dataLoading, setDataLoading] = useState(false);
   const [demoDisabled, setDemoDisabled] = useState(false);
+  const [demoForceEnabled, setDemoForceEnabled] = useState(false);
   const [schEmailPrefs, setSchEmailPrefs] = useState<NormalizedEmailContentPrefs>({
     ...DEFAULT_EMAIL_CONTENT_PREFS,
   });
@@ -2422,6 +2473,9 @@ export default function Home() {
   const [portalSlugCopied, setPortalSlugCopied] = useState(false);
   const [sharePortalClientId, setSharePortalClientId] = useState<string | null>(null);
   const [sharePortalBusy, setSharePortalBusy] = useState(false);
+  const [deliveryPortalClients, setDeliveryPortalClients] = useState<
+    Array<{ clientName: string; slug: string; mspSlug: string }>
+  >([]);
   const [brandName, setBrandName] = useState("");
   const [brandColour, setBrandColour] = useState(HANDOVER_BRAND_PRIMARY_HEX);
   const [brandSecondaryColour, setBrandSecondaryColour] = useState(HANDOVER_BRAND_SECONDARY_HEX);
@@ -2505,11 +2559,6 @@ export default function Home() {
     const saved = window.localStorage.getItem("handover-theme");
     return saved === "light" ? "light" : "dark";
   });
-  const [heroStat45, setHeroStat45] = useState(0);
-  const [heroStat1300, setHeroStat1300] = useState(0);
-  const [heroStat30, setHeroStat30] = useState(0);
-  const heroStatsRef = useRef<HTMLDivElement | null>(null);
-  const [heroStatsVisible, setHeroStatsVisible] = useState(false);
   const [heroDashboard3dHovered, setHeroDashboard3dHovered] = useState(false);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [haloConnected, setHaloConnected] = useState(false);
@@ -2539,9 +2588,19 @@ export default function Home() {
   const [haloHelpOpen, setHaloHelpOpen] = useState(false);
   const [haloConfigOpen, setHaloConfigOpen] = useState(false);
   const [cwConnected, setCwConnected] = useState(false);
+  const [haloLastSynced, setHaloLastSynced] = useState<Date | null>(null);
+  const [cwLastSynced, setCwLastSynced] = useState<Date | null>(null);
   const { data: cachedHaloTickets, mutate: refreshHaloTicketsCache } = useHaloTickets(haloConnected);
   const { data: cachedCwTickets, mutate: refreshCwTicketsCache } = useCwTickets(cwConnected);
   const { data: cachedCwProjects, mutate: refreshCwProjectsCache } = useCwProjects(cwConnected);
+
+  useEffect(() => {
+    if (cachedHaloTickets) setHaloLastSynced(new Date());
+  }, [cachedHaloTickets]);
+
+  useEffect(() => {
+    if (cachedCwTickets) setCwLastSynced(new Date());
+  }, [cachedCwTickets]);
   const [cwSiteUrl, setCwSiteUrl] = useState("");
   const [cwImportedCount, setCwImportedCount] = useState<number>(0);
   const [cwSiteUrlInput, setCwSiteUrlInput] = useState("");
@@ -2564,16 +2623,16 @@ export default function Home() {
   useEffect(() => {
     try {
       setDemoDisabled(window.localStorage.getItem("handover_demo_disabled") === "true");
+      setDemoForceEnabled(window.localStorage.getItem("handover_demo_force_enabled") === "true");
     } catch {
       setDemoDisabled(false);
+      setDemoForceEnabled(false);
     }
   }, []);
   const demoModeActive =
     Boolean(userEmail) &&
     !psaStatus.loading &&
-    !psaStatus.halo &&
-    !psaStatus.connectwise &&
-    !demoDisabled;
+    ((noPsaConnected && !demoDisabled) || demoForceEnabled);
   const showDemoDataBanner = demoModeActive && sessionUsesDemoData;
   const importPsaLabel =
     psaConnections.primary === "connectwise" && !psaConnections.multiple
@@ -2639,6 +2698,7 @@ export default function Home() {
       setHasCompletedLoop(false);
       setTemplates([]);
       setProjects([]);
+      setOverviewHealthRows([]);
       setCollections([]);
       lastOnboardingHydratedUserIdRef.current = null;
       setOnboardingProfileLoaded(true);
@@ -3060,7 +3120,7 @@ export default function Home() {
       const { data, error } = await supabase
         .from("generations")
         .select(
-          "id, project_name, title, collection_id, input_text, output_json, created_at, source, scheduled_report_id",
+          "id, project_name, title, collection_id, input_text, output_json, created_at, source, scheduled_report_id, report_type",
         )
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
@@ -3117,7 +3177,7 @@ export default function Home() {
   const sidebarNavItemClass = useCallback(
     (active: boolean) =>
       cn(
-        "relative flex h-10 w-full items-center rounded-[var(--radius)] border-l-2 text-[12px] transition-colors duration-[120ms] ease-in-out",
+        "relative flex h-8 w-full items-center rounded-[var(--radius)] border-l-2 text-[12px] transition-all duration-[120ms] ease-in-out",
         sidebarExpanded
           ? "gap-1.5 px-2.5 max-md:gap-1.5 max-md:px-2.5 md:gap-1.5 md:px-2.5"
           : "max-md:gap-1.5 max-md:px-2.5 md:justify-center md:gap-0 md:px-0",
@@ -3126,6 +3186,11 @@ export default function Home() {
           : "border-transparent text-[var(--text-secondary)] hover:bg-white/5 hover:text-white",
       ),
     [sidebarExpanded],
+  );
+
+  const sidebarSectionLabelClass = cn(
+    "mt-4 mb-1 px-3 text-[9.5px] font-medium uppercase tracking-[0.16em] text-white/30",
+    !sidebarExpanded && "md:hidden",
   );
 
   const shellPageTitle = useMemo(() => {
@@ -3197,6 +3262,16 @@ export default function Home() {
     setActiveClientEmailIndex(0);
   }, [result?.client_email]);
 
+  const statusReportSections = useMemo(() => {
+    if (!result?.status_report?.trim()) return [];
+    const blocks = splitStatusReportDisplayBlocks(coerceStringOutput(result.status_report));
+    return blocks.length > 1 ? blocks : [];
+  }, [result?.status_report]);
+
+  useEffect(() => {
+    setActiveStatusReportIndex(-1);
+  }, [result?.status_report]);
+
   const activeClientEmailBody = useMemo(() => {
     if (!result) return "";
     const max = Math.max(0, clientEmailSections.length - 1);
@@ -3258,6 +3333,32 @@ export default function Home() {
     () => normalizedProfilePlan === "enterprise",
     [normalizedProfilePlan],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!userEmail || !isEnterprisePlanUser || !portalSlug.trim()) {
+      setDeliveryPortalClients([]);
+      return;
+    }
+    void (async () => {
+      const res = await fetch("/api/portal/clients", { credentials: "same-origin", cache: "no-store" });
+      if (!res.ok || cancelled) return;
+      const j = (await res.json().catch(() => ({}))) as {
+        clients?: Array<{ client_name?: string | null; slug?: string | null }>;
+      };
+      const clients = (j.clients ?? [])
+        .map((c) => ({
+          clientName: typeof c.client_name === "string" ? c.client_name : "",
+          slug: typeof c.slug === "string" ? c.slug : "",
+          mspSlug: portalSlug,
+        }))
+        .filter((c) => c.clientName && c.slug && c.mspSlug);
+      if (!cancelled) setDeliveryPortalClients(clients);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userEmail, isEnterprisePlanUser, portalSlug]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3369,29 +3470,6 @@ export default function Home() {
   }, [authUserId]);
 
   useEffect(() => {
-    demoInputAutofillDoneRef.current = false;
-  }, [authUserId, demoModeActive]);
-
-  useEffect(() => {
-    if (!demoModeActive) return;
-    if (!(totalGenerationCount === 0 || totalGenerationCount === null)) return;
-    if (demoInputAutofillDoneRef.current) return;
-    if (input.trim()) return;
-    let nextInput = DEMO_EXAMPLE_INPUT;
-    try {
-      const stored = window.sessionStorage.getItem(SS_DEMO_INPUT);
-      if (stored && stored.trim()) {
-        nextInput = stored;
-      }
-    } catch {
-      /* ignore */
-    }
-    demoInputAutofillDoneRef.current = true;
-    setInput(nextInput);
-    setSessionUsesDemoData(true);
-  }, [demoModeActive, totalGenerationCount, input]);
-
-  useEffect(() => {
     if (!demoModeActive) return;
     if (!input.trim()) return;
     try {
@@ -3491,20 +3569,122 @@ export default function Home() {
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
     );
     const last = sorted[0];
-    const lastTitle = last
+    const rawTitle = last
       ? last.project_name?.trim() ||
         (last.input_text || "").trim().slice(0, 48) ||
         "Untitled"
       : "-";
+    const PROMPT_PREFIXES = ["QBR:", "One concise", "Write a", "Generate", "You are", "CONTEXT:", "MSP"];
+    const isPromptLeak =
+      rawTitle !== "-" &&
+      PROMPT_PREFIXES.some((prefix) => rawTitle.startsWith(prefix));
+    const lastTitle = isPromptLeak
+      ? "Report"
+      : rawTitle.length > 40
+        ? `${rawTitle.slice(0, 40)}…`
+        : rawTitle;
     return {
       total: totalLifetime,
       thisMonth,
       monthName: now.toLocaleString("en-GB", { month: "long" }),
       lastAgo: last ? relativeTimeLabel(last.created_at) : "-",
-      lastTitle:
-        lastTitle.length > 40 ? `${lastTitle.slice(0, 40)}…` : lastTitle,
+      lastTitle,
     };
   }, [userEmail, projects, monthCount, totalGenerationCount]);
+
+  const [overviewHealthRows, setOverviewHealthRows] = useState<DeliveryHealthRow[]>([]);
+  const [overviewHealthLoading, setOverviewHealthLoading] = useState(false);
+
+  const overviewAttentionItems = useMemo(() => {
+    if (!overviewHealthRows.length) return [];
+
+    const clientMap = new Map<
+      string,
+      {
+        clientName: string;
+        worstRag: "red" | "amber" | "green" | "grey";
+        openCount: number;
+        overdueCount: number;
+        reason: string;
+      }
+    >();
+
+    const ragOrder: Record<"red" | "amber" | "green" | "grey", number> = {
+      red: 3,
+      amber: 2,
+      green: 1,
+      grey: 0,
+    };
+
+    for (const row of overviewHealthRows) {
+      const name = row.clientName?.trim() || "";
+      if (!name) continue;
+
+      const existing = clientMap.get(name);
+      const rag = row.rag || "grey";
+
+      const currentWorst = existing?.worstRag || "grey";
+      const newWorst = ragOrder[rag] > ragOrder[currentWorst] ? rag : currentWorst;
+
+      let reason = "";
+      if (row.daysToTarget !== null && row.daysToTarget < 0) {
+        reason = `${Math.abs(row.daysToTarget)} days past target`;
+      } else if (row.slaRisk === "overdue") {
+        reason = "SLA breached";
+      } else if (row.slaRisk === "at_risk") {
+        reason = "SLA at risk";
+      } else if (row.daysToTarget !== null && row.daysToTarget <= 7) {
+        reason = `Due in ${row.daysToTarget} day${row.daysToTarget === 1 ? "" : "s"}`;
+      } else if (row.rag === "red") {
+        reason = "No recent activity";
+      } else if (row.rag === "amber") {
+        reason = "Needs review";
+      }
+
+      clientMap.set(name, {
+        clientName: name,
+        worstRag: newWorst,
+        openCount: (existing?.openCount || 0) + 1,
+        overdueCount:
+          (existing?.overdueCount || 0) +
+          (row.daysToTarget !== null && row.daysToTarget < 0 ? 1 : 0),
+        reason: existing?.reason || reason,
+      });
+    }
+
+    const sortOrder: Record<"red" | "amber" | "green" | "grey", number> = {
+      red: 2,
+      amber: 1,
+      green: 0,
+      grey: 0,
+    };
+
+    return Array.from(clientMap.values())
+      .filter(
+        (c) =>
+          (c.worstRag === "red" || c.worstRag === "amber") &&
+          c.clientName !== "Unknown" &&
+          c.clientName.length > 0,
+      )
+      .sort((a, b) => sortOrder[b.worstRag] - sortOrder[a.worstRag])
+      .slice(0, 6);
+  }, [overviewHealthRows]);
+
+  useEffect(() => {
+    if (mainView !== "overview") return;
+    if (!haloConnected && !cwConnected) return;
+    if (!userEmail) return;
+    if (overviewHealthRows.length > 0) return;
+
+    setOverviewHealthLoading(true);
+    fetch("/api/delivery-health", { credentials: "same-origin" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { rows?: DeliveryHealthRow[] } | null) => {
+        if (data?.rows) setOverviewHealthRows(data.rows);
+      })
+      .catch(() => {})
+      .finally(() => setOverviewHealthLoading(false));
+  }, [mainView, haloConnected, cwConnected, userEmail, overviewHealthRows.length]);
 
   useEffect(() => {
     setMounted(true);
@@ -3583,49 +3763,6 @@ export default function Home() {
       setFirstGenTipDismissed(false);
     }
   }, []);
-
-  useEffect(() => {
-    if (userEmail) {
-      setHeroStat45(4);
-      setHeroStat1300(1400);
-      setHeroStat30(30);
-      return;
-    }
-    if (!mounted || !heroStatsVisible) return;
-    setHeroStat45(0);
-    setHeroStat1300(0);
-    setHeroStat30(0);
-    animateValue(0, 4, 1200, setHeroStat45);
-    animateValue(0, 1400, 1500, setHeroStat1300);
-    animateValue(0, 30, 1000, setHeroStat30);
-  }, [userEmail, mounted, heroStatsVisible]);
-
-  useEffect(() => {
-    if (userEmail || !mounted) return;
-    setHeroStatsVisible(true);
-  }, [userEmail, mounted]);
-
-  useEffect(() => {
-    if (userEmail || !mounted || !heroStatsRef.current) return;
-    const node = heroStatsRef.current;
-    const rect = node.getBoundingClientRect();
-    const inViewNow = rect.top < window.innerHeight && rect.bottom > 0;
-    if (inViewNow) {
-      setHeroStatsVisible(true);
-      return;
-    }
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
-          setHeroStatsVisible(true);
-          observer.disconnect();
-        }
-      },
-      { threshold: 0.2 },
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [userEmail, mounted]);
 
   useEffect(() => {
     if (!mounted || !userEmail) {
@@ -3737,6 +3874,28 @@ export default function Home() {
   }, [isGenerating]);
 
   useEffect(() => {
+    try {
+      setOnboardingPageVisited(sessionStorage.getItem(ONBOARDING_PAGE_SEEN_KEY) === "1");
+    } catch {
+      setOnboardingPageVisited(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!userEmail || !onboardingProfileLoaded || !onboardingRequiredExplicit) return;
+    if (plan === "enterprise") return;
+    if (onboardingPageVisited) return;
+    router.replace("/onboarding");
+  }, [
+    userEmail,
+    onboardingProfileLoaded,
+    onboardingRequiredExplicit,
+    plan,
+    onboardingPageVisited,
+    router,
+  ]);
+
+  useEffect(() => {
     if (!userEmail) {
       setOnboardingOverlayOpen(false);
       return;
@@ -3753,8 +3912,18 @@ export default function Home() {
       setOnboardingOverlayOpen(false);
       return;
     }
+    if (onboardingPageVisited) {
+      setOnboardingOverlayOpen(false);
+      return;
+    }
     setOnboardingOverlayOpen(true);
-  }, [userEmail, onboardingProfileLoaded, onboardingRequiredExplicit, totalGenerationCount]);
+  }, [
+    userEmail,
+    onboardingProfileLoaded,
+    onboardingRequiredExplicit,
+    totalGenerationCount,
+    onboardingPageVisited,
+  ]);
 
   useEffect(() => {
     if (plan !== "enterprise") {
@@ -3914,7 +4083,40 @@ export default function Home() {
   }, [exportSubPanel]);
 
   useEffect(() => {
+    if (onboardingRedirectPending) return;
     const params = new URLSearchParams(window.location.search);
+    const demoInputParam = params.get("demoInput");
+    const reportTypeParam = params.get("reportType");
+
+    if (demoInputParam) {
+      try {
+        const decoded = decodeURIComponent(demoInputParam);
+        if (decoded.trim()) {
+          setInput(decoded);
+          setMainView("generate");
+          setSessionUsesDemoData(true);
+          window.sessionStorage.setItem(SS_DEMO_INPUT, decoded);
+        }
+      } catch {
+        /* ignore */
+      }
+      if (reportTypeParam?.trim()) {
+        try {
+          window.sessionStorage.setItem(
+            "handover_onboarding_report_type",
+            reportTypeParam.trim(),
+          );
+        } catch {
+          /* ignore */
+        }
+      }
+      if (params.get("onboarding") === "complete") {
+        void refreshUsage();
+      }
+      router.replace("/", { scroll: false });
+      return undefined;
+    }
+
     const openSettingsValue = params.get("openSettings");
     if (openSettingsValue) {
       setSettingsOpen(true);
@@ -3953,7 +4155,7 @@ export default function Home() {
       return () => window.clearTimeout(t);
     }
     return undefined;
-  }, [router, refreshUsage]);
+  }, [router, refreshUsage, onboardingRedirectPending]);
 
   useEffect(() => {
     if (!userEmail) return;
@@ -4000,6 +4202,7 @@ export default function Home() {
     setTotalGenerationCount(null);
     setGenerationStreak(0);
     setProjects([]);
+    setOverviewHealthRows([]);
     setProjectsOffset(0);
     setHasMoreProjects(false);
     setResult(null);
@@ -4466,6 +4669,19 @@ export default function Home() {
         }),
         actionSourceColumn: buildActionSourceColumnForExport(safeResult.actions, titlesForExport),
         riskSourceColumn: buildRiskSourceColumnForExport(safeResult.risks, titlesForExport),
+        meetingPrepContent: getCachedMeetingPrepContentFromKeys([
+          safeResult.actions?.[0]?.client_name,
+          safeProjectName,
+          ...new Set(
+            (safeResult.actions ?? [])
+              .map((a) => (typeof a === "object" && a && "client_name" in a ? String((a as { client_name?: string }).client_name ?? "").trim() : ""))
+              .filter(Boolean),
+          ),
+        ]),
+        meetingPrepTicketTitle: getCachedMeetingPrepTicketTitleFromKeys([
+          safeResult.actions?.[0]?.client_name,
+          safeProjectName,
+        ]),
         ...buildActionExportMeta(safeProjectName, safeResult.actions),
       });
       try {
@@ -4815,15 +5031,9 @@ export default function Home() {
         .filter((c) => {
           const baseName = c.name.replace(/\s+\(Demo\)$/i, "");
           const dc = DEMO_CLIENTS.find((x) => x.name === baseName);
-          return (dc?.ticketCount ?? 0) > 0;
+          return dc != null;
         })
-        .sort((a, b) => {
-          const aBase = a.name.replace(/\s+\(Demo\)$/i, "");
-          const bBase = b.name.replace(/\s+\(Demo\)$/i, "");
-          const aCount = DEMO_CLIENTS.find((x) => x.name === aBase)?.ticketCount ?? 0;
-          const bCount = DEMO_CLIENTS.find((x) => x.name === bBase)?.ticketCount ?? 0;
-          return bCount - aCount || a.name.localeCompare(b.name);
-        });
+        .sort((a, b) => a.name.localeCompare(b.name));
     }
     if (scheduleLoading || allClients.length === 0) return [];
     const q = ticketClientSearch.trim().toLowerCase();
@@ -4864,15 +5074,9 @@ export default function Home() {
         .filter((c) => {
           const baseName = c.name.replace(/\s+\(Demo\)$/i, "");
           const dc = DEMO_CLIENTS.find((x) => x.name === baseName);
-          return (dc?.projectCount ?? 0) > 0;
+          return dc != null;
         })
-        .sort((a, b) => {
-          const aBase = a.name.replace(/\s+\(Demo\)$/i, "");
-          const bBase = b.name.replace(/\s+\(Demo\)$/i, "");
-          const aCount = DEMO_CLIENTS.find((x) => x.name === aBase)?.projectCount ?? 0;
-          const bCount = DEMO_CLIENTS.find((x) => x.name === bBase)?.projectCount ?? 0;
-          return bCount - aCount || a.name.localeCompare(b.name);
-        });
+        .sort((a, b) => a.name.localeCompare(b.name));
     }
     if (scheduleLoading || allClients.length === 0) return [];
     const q = projectClientSearch.trim().toLowerCase();
@@ -4920,10 +5124,12 @@ export default function Home() {
 
   const scheduleRecentReportsCard = useMemo(
     () => (
-      <div className="sticky top-4 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
-        <div className="flex items-center justify-between">
-          <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Recent reports</h2>
-          <span className="rounded-full bg-[var(--bg-secondary)] px-2 py-0.5 text-[11px] text-[var(--text-muted)]">
+      <div className="sticky top-4 overflow-visible rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <h2 className="min-w-0 truncate text-[15px] font-semibold text-[var(--text-primary)]">
+            Recent reports
+          </h2>
+          <span className="shrink-0 rounded-full bg-[var(--bg-secondary)] px-2 py-0.5 text-[11px] tabular-nums text-[var(--text-muted)]">
             {reportHistory.length}
           </span>
         </div>
@@ -6256,8 +6462,13 @@ export default function Home() {
   }, [mainView, schReportType, userEmail]);
 
   const saveScheduledReport = async () => {
+    console.log("[saveScheduledReport] demoModeActive:", demoModeActive, "psaStatus:", psaStatus, "demoForceEnabled:", demoForceEnabled, "demoDisabled:", demoDisabled);
     if (!userEmail) return;
-    if (demoModeActive) return;
+    if (demoModeActive) {
+      toast({ message: "Demo mode — connect your PSA to save scheduled reports", variant: "info" });
+      setScheduleEditorOpen(false);
+      return;
+    }
     if (!schIncludeTickets && !schIncludeProjects) {
       toast({
         message: "Enable tickets or projects to continue.",
@@ -6724,7 +6935,7 @@ export default function Home() {
     setLastImportedHaloItems(next);
   }, [selectedProjectId, projects, cachedHaloTickets?.tickets, lastImportedHaloItems.length]);
 
-  const handleNewGeneration = () => {
+  const resetGenerateToEmpty = useCallback(() => {
     setMainView("generate");
     setSelectedProjectId(null);
     setInput("");
@@ -6737,11 +6948,19 @@ export default function Home() {
     setEditingField(null);
     setEditingActionRow(null);
     setEditingRiskRow(null);
+    setEditingDueDateRow(null);
     setLastInput("");
     setLastGeneratedTone(GENERATION_EMAIL_TONE);
     setLastSessionRestoreBannerProject(null);
     setLastImportedHaloItems([]);
     setLastImportSourcePsa(null);
+    setIsInputCollapsed(false);
+    setImportedFileName(null);
+    setImportedFileTypeLabel(null);
+  }, []);
+
+  const handleNewGeneration = () => {
+    resetGenerateToEmpty();
   };
 
   const markOnboardingComplete = useCallback(async () => {
@@ -8113,6 +8332,84 @@ export default function Home() {
     return filtered;
   }, [projects, selectedHistoryCollectionId]);
 
+  const showGenerateEmptyLayout = Boolean(userEmail && !result && !isGenerating);
+  const bothPsasConnected = haloConnected && cwConnected;
+  const generateHasInput = input.trim().length > 0;
+  const generateButtonMuted = !generateHasInput && noPsaConnected;
+
+  const generatePsaLiveTicketCount = useMemo(() => {
+    if (haloConnected && Array.isArray(cachedHaloTickets?.tickets)) {
+      return cachedHaloTickets.tickets.length;
+    }
+    if (cwConnected && Array.isArray(cachedCwTickets?.tickets)) {
+      return cachedCwTickets.tickets.length;
+    }
+    return null;
+  }, [haloConnected, cwConnected, cachedHaloTickets?.tickets, cachedCwTickets?.tickets]);
+
+  const generatePsaLiveClientCount = useMemo(() => {
+    const tickets =
+      haloConnected && Array.isArray(cachedHaloTickets?.tickets)
+        ? (cachedHaloTickets.tickets as Array<Record<string, unknown>>)
+        : cwConnected && Array.isArray(cachedCwTickets?.tickets)
+          ? (cachedCwTickets.tickets as Array<Record<string, unknown>>)
+          : [];
+    const names = new Set<string>();
+    for (const t of tickets) {
+      const client = t.client as { name?: string } | undefined;
+      const raw =
+        (typeof client?.name === "string" && client.name.trim()) ||
+        (typeof t.clientName === "string" && t.clientName.trim()) ||
+        (typeof t.client_name === "string" && t.client_name.trim()) ||
+        "";
+      if (raw) names.add(raw);
+    }
+    return names.size;
+  }, [haloConnected, cwConnected, cachedHaloTickets?.tickets, cachedCwTickets?.tickets]);
+
+  const psaSidebarSyncLabel = useMemo(() => {
+    const synced = haloConnected ? haloLastSynced : cwLastSynced;
+    if (!synced) return "connected";
+    const mins = Math.floor((Date.now() - synced.getTime()) / 60000);
+    if (mins < 1) return "synced just now";
+    if (mins === 1) return "synced 1m ago";
+    if (mins < 60) return `synced ${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    return `synced ${hrs}h ago`;
+  }, [haloConnected, cwConnected, haloLastSynced, cwLastSynced]);
+
+  const generatePsaCardSubLabel = useMemo(() => {
+    const syncLabel = psaSidebarSyncLabel || "connected";
+    if (generatePsaLiveTicketCount === null) {
+      return `Live tickets and projects · ${syncLabel}`;
+    }
+    const clientPart =
+      generatePsaLiveClientCount > 0 ? ` · ${generatePsaLiveClientCount} clients` : "";
+    return `${generatePsaLiveTicketCount} tickets${clientPart} · ${syncLabel}`;
+  }, [generatePsaLiveTicketCount, generatePsaLiveClientCount, psaSidebarSyncLabel]);
+
+  const openPsaImportFromGenerate = useCallback(() => {
+    if (!hasProAccess && !demoModeActive) {
+      setHaloProModalOpen(true);
+      return;
+    }
+    if (psaConnections.primary === "halopsa") {
+      setHaloImportOpen(true);
+    } else if (psaConnections.primary === "connectwise") {
+      setCwImportOpen(true);
+    } else if (haloConnected) {
+      setHaloImportOpen(true);
+    } else if (cwConnected) {
+      setCwImportOpen(true);
+    }
+  }, [
+    cwConnected,
+    demoModeActive,
+    haloConnected,
+    hasProAccess,
+    psaConnections.primary,
+  ]);
+
   const hasEnabledSchedule = useMemo(
     () => campaigns.some((c) => c.enabled === true),
     [campaigns],
@@ -8913,7 +9210,7 @@ export default function Home() {
                               style={{
                                 backgroundColor: HEX_COLOUR_6.test(brandColour.trim())
                                   ? `#${brandColour.trim().replace(/^#/, "")}`
-                                  : "#2563eb",
+                                  : "var(--accent)",
                               }}
                               aria-label="Open primary colour picker"
                               onClick={() => brandPrimaryColorPickerRef.current?.click()}
@@ -9022,7 +9319,7 @@ export default function Home() {
                                 background:
                                   /^#?[0-9a-fA-F]{6}$/.test(brandColour.trim())
                                     ? brandColour.trim().replace(/^#?/, "#")
-                                    : "#2563eb",
+                                    : "var(--accent)",
                               }}
                               title="Primary"
                             />
@@ -9084,13 +9381,13 @@ export default function Home() {
                               background:
                                 /^#?[0-9a-fA-F]{6}$/.test(brandColour.trim())
                                   ? brandColour.trim().replace(/^#?/, "#")
-                                  : "#2563eb",
+                                  : "var(--accent)",
                               borderColor:
                                 /^#?[0-9a-fA-F]{6}$/.test(brandSecondaryColour.trim())
                                   ? brandSecondaryColour.trim().replace(/^#?/, "#")
                                   : /^#?[0-9a-fA-F]{6}$/.test(brandColour.trim())
                                     ? brandColour.trim().replace(/^#?/, "#")
-                                    : "#2563eb",
+                                    : "var(--accent)",
                             }}
                           >
                             {brandLogoUrl ? (
@@ -9140,7 +9437,7 @@ export default function Home() {
 
   return (
     <motion.div
-      className="min-h-full bg-transparent"
+      className={cn("min-h-full bg-transparent", userEmail && "relative app-shell-bg")}
       suppressHydrationWarning
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -9191,7 +9488,7 @@ export default function Home() {
                   Start your 14-day free trial
                 </h2>
                 <p className="mt-1 text-sm leading-relaxed text-[var(--text-secondary)]">
-                  Full Professional or Team features, no credit card. Open pricing and start your trial in one click.
+                  Full Professional or Team features. Open pricing and start your trial in one click.
                 </p>
               </div>
             </div>
@@ -9227,7 +9524,7 @@ export default function Home() {
           </div>
         </div>
       ) : null}
-      {userEmail ? (
+      {userEmail && !onboardingRedirectPending ? (
         <GettingStartedChecklistWidget
           key={gettingStartedChecklistMountKey}
           steps={checklistSteps}
@@ -9568,6 +9865,7 @@ export default function Home() {
         </DialogContent>
       </Dialog>
 
+      {!onboardingRedirectPending ? (
       <HaloImportModal
         open={haloImportOpen}
         onOpenChange={setHaloImportOpen}
@@ -9608,6 +9906,8 @@ export default function Home() {
           });
         }}
       />
+      ) : null}
+      {!onboardingRedirectPending ? (
       <CwImportModal
         open={cwImportOpen}
         connectwiseConnected={cwConnected}
@@ -9644,6 +9944,7 @@ export default function Home() {
           });
         }}
       />
+      ) : null}
 
       <Dialog
         open={scheduleReportPreviewOpen}
@@ -9804,7 +10105,7 @@ export default function Home() {
                 Sign in
               </Link>
               <p className="mt-4 text-[12px] text-[var(--text-muted)]">
-                No credit card required. 14-day free trial.
+                14-day free trial.
               </p>
             </div>
           </div>
@@ -10026,7 +10327,7 @@ export default function Home() {
           <div className="pt-2">
             <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] px-4 py-4">
               <p className="text-sm text-[var(--text-secondary)]">
-                14-day free trial — no credit card required
+                14-day free trial
               </p>
               <Link href="/auth?tab=signup&returnTo=/welcome" className="mt-3 inline-flex w-full">
                 <Button
@@ -10516,6 +10817,18 @@ export default function Home() {
         </DialogContent>
       </Dialog>
 
+      {userEmail && onboardingRedirectPending ? (
+        <div
+          className="flex h-screen w-screen items-center justify-center"
+          style={{ background: "var(--bg-primary, #0f172a)" }}
+        >
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/10 border-t-[var(--accent)]" />
+          </div>
+        </div>
+      ) : null}
+      {(!userEmail || !onboardingRedirectPending) ? (
+        <>
       {showLeftSidebar ? (
         <>
       {sidebarOpenMobile ? (
@@ -10601,163 +10914,166 @@ export default function Home() {
 
         <div className="sidebar-scroll min-h-0 flex-1 overflow-y-auto p-3">
           {userEmail ? (
-            <nav className="mb-4 space-y-0.5" aria-label="Main navigation">
-              <button
-                type="button"
-                onClick={() => {
-                  setMainView("overview");
-                  setSettingsOpen(false);
-                  setSidebarOpenMobile(false);
-                }}
-                className={sidebarNavItemClass(
-                  mainView === "overview" && !settingsOpen,
-                )}
-              >
-                <HomeIcon className="size-[14px] shrink-0" aria-hidden />
-                <span className={sidebarNavLabelClass}>Overview</span>
-              </button>
-              <button
-                id="handover-new-generation-btn"
-                type="button"
-                onClick={() => {
-                  setMainView("generate");
-                  setSettingsOpen(false);
-                  setSidebarOpenMobile(false);
-                }}
-                className={cn(
-                  sidebarNavItemClass(mainView === "generate" && !settingsOpen),
-                  postOnboardingNewGenHighlight &&
-                    "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[#1a2540] animate-pulse",
-                )}
-              >
-                <Zap className="size-[14px] shrink-0" aria-hidden />
-                <span className={sidebarNavLabelClass}>Generate</span>
-              </button>
-              {hasProAccess && deliveryDashboardAccess !== "none" ? (
+            <nav className="mb-4 flex flex-col gap-2" aria-label="Main navigation">
+              <div className="space-y-0.5">
                 <button
                   type="button"
                   onClick={() => {
-                    setMainView("delivery");
+                    setMainView("overview");
                     setSettingsOpen(false);
                     setSidebarOpenMobile(false);
                   }}
                   className={sidebarNavItemClass(
-                    mainView === "delivery" && !settingsOpen,
+                    mainView === "overview" && !settingsOpen,
                   )}
                 >
-                  <BarChart3 className="size-[14px] shrink-0" aria-hidden />
-                  <span className={cn(sidebarNavLabelClass, "min-w-0 truncate")}>
-                    Delivery Health
-                  </span>
+                  <HomeIcon className="size-[14px] shrink-0" aria-hidden />
+                  <span className={sidebarNavLabelClass}>Overview</span>
                 </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => {
-                  setSettingsOpen(false);
-                  setSidebarOpenMobile(false);
-                  if (!hasProAccess) {
-                    setScheduledReportsProPaywallOpen(true);
-                    return;
-                  }
-                  setMainView("scheduled");
-                }}
-                className={sidebarNavItemClass(
-                  mainView === "scheduled" && !settingsOpen,
-                )}
-              >
-                <Calendar className="size-[14px] shrink-0" aria-hidden />
-                <span className={cn(sidebarNavLabelClass, "min-w-0 truncate")}>
-                  Scheduled
-                </span>
-              </button>
-              <button
-                type="button"
-                aria-label="QBR Builder"
-                onClick={() => {
-                  setMainView("reports");
-                  setSettingsOpen(false);
-                  setSidebarOpenMobile(false);
-                }}
-                className={sidebarNavItemClass(
-                  mainView === "reports" && !settingsOpen,
-                )}
-              >
-                <LayoutTemplate className="size-[14px] shrink-0" aria-hidden />
-                <span className={sidebarNavLabelClass}>QBR Builder</span>
-              </button>
-              {userEmail && hasProAccess && isEnterprisePlanUser ? (
                 <button
+                  id="handover-new-generation-btn"
                   type="button"
                   onClick={() => {
-                    setMainView("organisation");
+                    setMainView("generate");
                     setSettingsOpen(false);
                     setSidebarOpenMobile(false);
                   }}
-                  className={sidebarNavItemClass(
-                    mainView === "organisation" && !settingsOpen,
+                  className={cn(
+                    sidebarNavItemClass(mainView === "generate" && !settingsOpen),
+                    postOnboardingNewGenHighlight &&
+                      "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[#1a2540] animate-pulse",
                   )}
                 >
-                  <Building2 className="size-[14px] shrink-0" aria-hidden />
-                  <span className={cn(sidebarNavLabelClass, "min-w-0 truncate")}>
-                    Organisation
-                  </span>
+                  <Zap className="size-[14px] shrink-0" aria-hidden />
+                  <span className={sidebarNavLabelClass}>Generate</span>
                 </button>
-              ) : null}
-              {showTeamDashboardLink ? (
-                <Link
-                  href="/dashboard/team"
-                  onClick={() => setSidebarOpenMobile(false)}
-                  className={cn(
-                    "relative flex h-10 w-full items-center rounded-[var(--radius)] border-l-2 border-transparent text-[12px] text-[var(--text-secondary)] transition-colors duration-[120ms] ease-in-out hover:bg-white/5 hover:text-white",
-                    sidebarExpanded
-                      ? "gap-1.5 px-2.5 max-md:gap-1.5 max-md:px-2.5 md:gap-1.5 md:px-2.5"
-                      : "max-md:gap-1.5 max-md:px-2.5 md:justify-center md:gap-0 md:px-0",
-                  )}
-                >
-                  <Users className="size-[14px] shrink-0" aria-hidden />
-                  <span className={sidebarNavLabelClass}>Team</span>
-                </Link>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => {
-                  setMainView("configuration");
-                  setSettingsOpen(false);
-                  setSidebarOpenMobile(false);
-                }}
-                className={sidebarNavItemClass(
-                  mainView === "configuration" && !settingsOpen,
-                )}
-              >
-                <Settings className="size-[14px] shrink-0" aria-hidden />
-                <span className={cn(sidebarNavLabelClass, "min-w-0 truncate")}>
-                  Configuration
-                </span>
-              </button>
-              <button
-                type="button"
-                aria-label={`History — ${totalGenerationCount ?? 0} generations`}
-                onClick={() => {
-                  setChatsModalOpen(true);
-                  setSidebarOpenMobile(false);
-                }}
-                className={sidebarNavItemClass(chatsModalOpen)}
-              >
-                <History className="size-[14px] shrink-0" aria-hidden />
-                <span className={cn(sidebarNavLabelClass, "min-w-0 truncate")}>
-                  History
-                </span>
-                <span
-                  className={cn(
-                    "shrink-0 rounded-full bg-[rgba(255,255,255,0.12)] px-1.5 py-px text-[10px] font-semibold tabular-nums text-[rgba(255,255,255,0.85)]",
-                    sidebarExpanded ? "ml-auto max-md:ml-auto md:ml-auto" : "max-md:ml-auto md:hidden",
-                  )}
-                  aria-hidden
-                >
-                  {totalGenerationCount ?? 0}
-                </span>
-              </button>
+                {hasProAccess && deliveryDashboardAccess !== "none" ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMainView("delivery");
+                      setSettingsOpen(false);
+                      setSidebarOpenMobile(false);
+                    }}
+                    className={sidebarNavItemClass(
+                      mainView === "delivery" && !settingsOpen,
+                    )}
+                  >
+                    <BarChart3 className="size-[14px] shrink-0" aria-hidden />
+                    <span className={cn(sidebarNavLabelClass, "min-w-0 truncate")}>
+                      Delivery Health
+                    </span>
+                  </button>
+                ) : null}
+              </div>
+              <div>
+                <div className={sidebarSectionLabelClass}>WORKSPACE</div>
+                <div className="space-y-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSettingsOpen(false);
+                      setSidebarOpenMobile(false);
+                      if (!hasProAccess) {
+                        setScheduledReportsProPaywallOpen(true);
+                        return;
+                      }
+                      setMainView("scheduled");
+                    }}
+                    className={sidebarNavItemClass(
+                      mainView === "scheduled" && !settingsOpen,
+                    )}
+                  >
+                    <Calendar className="size-[14px] shrink-0" aria-hidden />
+                    <span className={cn(sidebarNavLabelClass, "min-w-0 truncate")}>
+                      Scheduled
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="QBR Builder"
+                    onClick={() => {
+                      setMainView("reports");
+                      setSettingsOpen(false);
+                      setSidebarOpenMobile(false);
+                    }}
+                    className={sidebarNavItemClass(
+                      mainView === "reports" && !settingsOpen,
+                    )}
+                  >
+                    <LayoutTemplate className="size-[14px] shrink-0" aria-hidden />
+                    <span className={sidebarNavLabelClass}>QBR Builder</span>
+                  </button>
+                  {userEmail && hasProAccess && isEnterprisePlanUser ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMainView("organisation");
+                        setSettingsOpen(false);
+                        setSidebarOpenMobile(false);
+                      }}
+                      className={sidebarNavItemClass(
+                        mainView === "organisation" && !settingsOpen,
+                      )}
+                    >
+                      <Building2 className="size-[14px] shrink-0" aria-hidden />
+                      <span className={cn(sidebarNavLabelClass, "min-w-0 truncate")}>
+                        Organisation
+                      </span>
+                    </button>
+                  ) : null}
+                  {showTeamDashboardLink ? (
+                    <Link
+                      href="/dashboard/team"
+                      onClick={() => setSidebarOpenMobile(false)}
+                      className={cn(
+                        "relative flex h-8 w-full items-center rounded-[var(--radius)] border-l-2 border-transparent text-[12px] text-[var(--text-secondary)] transition-all duration-[120ms] ease-in-out hover:bg-white/5 hover:text-white",
+                        sidebarExpanded
+                          ? "gap-1.5 px-2.5 max-md:gap-1.5 max-md:px-2.5 md:gap-1.5 md:px-2.5"
+                          : "max-md:gap-1.5 max-md:px-2.5 md:justify-center md:gap-0 md:px-0",
+                      )}
+                    >
+                      <Users className="size-[14px] shrink-0" aria-hidden />
+                      <span className={sidebarNavLabelClass}>Team</span>
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
+              <div>
+                <div className={sidebarSectionLabelClass}>SETTINGS</div>
+                <div className="space-y-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMainView("configuration");
+                      setSettingsOpen(false);
+                      setSidebarOpenMobile(false);
+                    }}
+                    className={sidebarNavItemClass(
+                      mainView === "configuration" && !settingsOpen,
+                    )}
+                  >
+                    <Settings className="size-[14px] shrink-0" aria-hidden />
+                    <span className={cn(sidebarNavLabelClass, "min-w-0 truncate")}>
+                      Configuration
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`History — ${totalGenerationCount ?? 0} generations`}
+                    onClick={() => {
+                      setChatsModalOpen(true);
+                      setSidebarOpenMobile(false);
+                    }}
+                    className={sidebarNavItemClass(chatsModalOpen)}
+                  >
+                    <History className="size-[14px] shrink-0" aria-hidden />
+                    <span className={cn(sidebarNavLabelClass, "min-w-0 truncate")}>
+                      History
+                    </span>
+                  </button>
+                </div>
+              </div>
             </nav>
           ) : null}
 
@@ -10829,6 +11145,19 @@ export default function Home() {
           </div>
           {userEmail ? (
             <>
+              {(haloConnected || cwConnected) && sidebarExpanded ? (
+                <div className="mb-2 flex items-center gap-1.5 rounded-md border border-white/[0.06] bg-white/[0.04] px-2.5 py-1.5 text-[11px]">
+                  <span
+                    className={cn(
+                      "size-1.5 shrink-0 rounded-full",
+                      haloConnected ? "bg-[#22c55e]" : "bg-[#f59e0b]",
+                    )}
+                  />
+                  <span className="truncate text-white/60">
+                    {haloConnected ? "HaloPSA" : "ConnectWise"} · {psaSidebarSyncLabel}
+                  </span>
+                </div>
+              ) : null}
               <button
                 type="button"
                 className={cn(
@@ -10886,7 +11215,7 @@ export default function Home() {
                             className="rounded-full px-1.5 py-px text-[9px] font-medium"
                             style={{
                               background: "rgba(56,189,248,0.2)",
-                              color: "#38bdf8",
+                              color: "var(--accent)",
                             }}
                           >
                             Professional Trial
@@ -10912,7 +11241,7 @@ export default function Home() {
                             className="rounded-full px-1.5 py-px text-[9px] font-medium"
                             style={{
                               background: "rgba(56,189,248,0.2)",
-                              color: "#38bdf8",
+                              color: "var(--accent)",
                             }}
                           >
                             Professional
@@ -10946,8 +11275,7 @@ export default function Home() {
                     })()}
                     {generationStreak >= 1 ? (
                       <span
-                        className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-px text-[9px] font-semibold tabular-nums text-white/90 ring-1 ring-white/10"
-                        style={{ background: "rgba(255,255,255,0.08)" }}
+                        className="inline-flex items-center gap-0.5 rounded-full border border-[var(--accent)]/25 bg-[var(--accent)]/15 px-1.5 py-px text-[9px] font-semibold tabular-nums text-[var(--accent)]"
                         title={`You've generated reports ${generationStreak} days in a row. Keep it up!`}
                       >
                         <span
@@ -10955,7 +11283,6 @@ export default function Home() {
                             "inline-block leading-none",
                             streakFlameBurst ? "streak-flame-milestone-celebration" : "",
                           )}
-                          style={{ color: streakFlameColor(generationStreak) }}
                           aria-hidden
                         >
                           🔥
@@ -10997,9 +11324,17 @@ export default function Home() {
               Create free account
             </Link>
           )}
-          <div className="py-2 text-center text-[10px] text-white/20 select-none">
+          <button
+            type="button"
+            onClick={() => {
+              setMainView("changelog");
+              setSidebarOpenMobile(false);
+              setSettingsOpen(false);
+            }}
+            className="pt-1 text-[10px] text-white/15 tabular-nums transition-colors hover:text-white/40 select-none"
+          >
             v{APP_VERSION}
-          </div>
+          </button>
         </div>
       </aside>
       {userEmail && authChecked && showLeftSidebar && (
@@ -12077,16 +12412,39 @@ export default function Home() {
               dashboardViewMode={dashboardViewMode}
               onDashboardViewModeChange={setDashboardViewMode}
               onToggleDemo={(enabled) => {
+                const activeMainView: string = mainView;
                 try {
                   if (enabled) {
                     window.localStorage.removeItem("handover_demo_disabled");
+                    window.localStorage.setItem("handover_demo_force_enabled", "true");
+                    setDemoForceEnabled(true);
                     setDemoDisabled(false);
                   } else {
-                    window.localStorage.setItem("handover_demo_disabled", "true");
-                    setDemoDisabled(true);
+                    window.localStorage.removeItem("handover_demo_force_enabled");
+                    window.localStorage.removeItem("handover_demo_disabled");
+                    setDemoDisabled(false);
+                    setDemoForceEnabled(false);
+                    setSessionUsesDemoData(false);
+                    invalidatePsaConnectionsCache();
+                    invalidatePSAStatusCache();
+                    toast({ message: "Demo mode disabled — reloading your data", durationMs: 2500 });
+                    if (activeMainView === "generate") {
+                      setInput("");
+                      setResult(null);
+                    }
+                    if (activeMainView === "delivery") {
+                      const deliveryHealthKey = buildDeliveryHealthSwrKey(
+                        false,
+                        cwConnected,
+                        psaConnections.primary,
+                      );
+                      if (deliveryHealthKey) void mutate(deliveryHealthKey);
+                    }
+                    void Promise.all([refreshHaloConnection(), refreshCwConnection()]);
                   }
                 } catch {
-                  setDemoDisabled(!enabled);
+                  setDemoDisabled(false);
+                  setDemoForceEnabled(enabled);
                 }
               }}
             />
@@ -12099,7 +12457,7 @@ export default function Home() {
         ) : null}
         {userEmail && mainView === "organisation" ? (
           <div
-            className="animate-in fade-in duration-200 max-md:!left-0 transition-[left] duration-150 ease-out"
+            className="animate-in fade-in duration-200 max-md:!left-0 h-full min-h-0 transition-[left] duration-150 ease-out"
             style={{
               position: "fixed",
               top: "52px",
@@ -12178,7 +12536,7 @@ export default function Home() {
         {userEmail && !isPaidProfileTierForTrialBanner ? <TrialBanner /> : null}
         <div
           className={cn(
-            "flex w-full flex-col",
+            "flex w-full flex-col overflow-x-hidden",
             compactMode
               ? "gap-4 px-3 py-4"
               : !userEmail
@@ -12227,7 +12585,7 @@ export default function Home() {
                   className="absolute -top-40 -right-40 h-[600px] w-[600px] rounded-full opacity-20"
                   style={{
                     background: "radial-gradient(circle, var(--accent) 0%, transparent 70%)",
-                    animation: "homeHeroAmbientPulse 8s ease-in-out infinite",
+                    animation: "homeHeroAmbientPulse 12s ease-in-out infinite",
                   }}
                 />
               </div>
@@ -12243,7 +12601,7 @@ export default function Home() {
                     }}
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, ease: "easeOut" }}
+                    transition={{ duration: 0.7, ease: [0.25, 0.46, 0.45, 0.94] }}
                   >
                     <span
                       className="handover-pulse inline-block size-2 rounded-full bg-[#22c55e]"
@@ -12253,25 +12611,24 @@ export default function Home() {
                   </motion.div>
 
                   <motion.h1
-                    className="home-hero-headline-shimmer mt-5 text-4xl font-bold tracking-tight md:text-[56px] lg:text-[58px]"
-                    style={{ lineHeight: 1.05 }}
+                    className="mt-5 text-5xl font-semibold tracking-tight text-white leading-[0.95] lg:text-7xl"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: 0.1, ease: "easeOut" }}
+                    transition={{ duration: 0.7, delay: 0.15, ease: [0.25, 0.46, 0.45, 0.94] }}
                   >
-                    Your engineers spend hours on reports that should take minutes.
+                    Your engineers spend hours on reports that should take{" "}
+                    <span className="text-cyan-400">minutes.</span>
                   </motion.h1>
 
                   <motion.p
                     className="mt-4 text-[15px] leading-relaxed text-[var(--text-secondary)] md:text-[18px] md:leading-normal"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: 0.2, ease: "easeOut" }}
+                    transition={{ duration: 0.7, delay: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
                   >
-                    The first purpose-built, out-of-the-box client delivery reporting tool for HaloPSA and ConnectWise
-                    MSPs. Connect your PSA and generate your first report in 30 seconds — nothing to configure.
+                    Connect HaloPSA or ConnectWise and generate your first client report in 30 seconds — nothing to configure.
                   </motion.p>
-                  <p className="mt-2 text-[13px] leading-relaxed text-[var(--text-muted)] md:text-[15px] md:leading-normal">
+                  <p className="mt-2 text-[13px] leading-relaxed text-white/60 md:text-[15px] md:leading-normal">
                     14-day free trial — cancel anytime.
                   </p>
 
@@ -12279,7 +12636,7 @@ export default function Home() {
                     className="mt-6 flex w-full max-w-full flex-col gap-3 md:max-w-none md:flex-row md:flex-wrap"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: 0.3, ease: "easeOut" }}
+                    transition={{ duration: 0.7, delay: 0.45, ease: [0.25, 0.46, 0.45, 0.94] }}
                   >
                     <Link
                       href="/auth?tab=signup&returnTo=/welcome"
@@ -12288,38 +12645,22 @@ export default function Home() {
                       Start free trial
                     </Link>
                     <Link
-                      href="/features"
+                      href="/demo"
                       className="bg-white/[0.05] backdrop-blur-sm border border-white/[0.15] hover:bg-white/[0.08] text-white font-medium px-6 py-3 rounded-xl transition-all duration-300 inline-flex w-full items-center justify-center text-sm md:w-auto"
                     >
-                      See how it works
+                      Book a demo →
                     </Link>
                   </motion.div>
-                  <Link
-                    href="/demo"
-                    className="bg-white/[0.05] backdrop-blur-sm border border-white/[0.15] hover:bg-white/[0.08] text-white font-medium px-6 py-3 rounded-xl transition-all duration-300 mt-3 inline-flex w-full items-center justify-center text-sm md:w-auto md:text-center"
-                  >
-                    Book a 15-minute demo →
-                  </Link>
-                  </div>
 
-                  <div
-                    ref={heroStatsRef}
-                    className="mt-5 w-full min-w-0 border-t border-[var(--border)] pt-5"
-                    data-nosnippet
-                  >
+                  <div className="mt-5 w-full min-w-0 overflow-x-hidden border-t border-[var(--border)] pt-5" data-nosnippet>
                     <div className="flex w-full min-w-0 flex-col items-center gap-6 md:flex-row md:flex-nowrap md:items-start md:justify-center md:gap-3">
                       <ScrollRevealItem
                         index={0}
                         className="flex w-full min-w-0 max-w-md flex-1 flex-col items-center border-b border-[var(--border)] px-3 pb-6 text-center md:max-w-none md:border-b-0 md:pb-0 md:items-center"
                       >
-                        <Clock
-                          className="mb-3 size-6 text-[var(--accent)]"
-                          strokeWidth={1.75}
-                          aria-hidden
-                        />
                         <div className="flex min-w-0 flex-wrap items-baseline justify-center gap-1">
-                          <div className="whitespace-nowrap text-[clamp(1.2rem,2.5vw,2rem)] font-bold leading-none tracking-tight text-[var(--accent)]">
-                            <span>2-{heroStat45}</span>
+                          <div className="tabular whitespace-nowrap text-[clamp(1.2rem,2.5vw,2rem)] font-bold leading-none tracking-tight text-[var(--accent)]">
+                            <span>2-4</span>
                             <span className="ml-1">hours</span>
                           </div>
                         </div>
@@ -12335,15 +12676,9 @@ export default function Home() {
                         index={1}
                         className="flex w-full min-w-0 max-w-md flex-1 flex-col items-center border-b border-[var(--border)] px-3 py-6 text-center md:max-w-none md:border-x md:border-y-0 md:border-b-0 md:py-0"
                       >
-                        <Zap
-                          className="mb-4 size-6 text-[var(--accent)]"
-                          strokeWidth={1.75}
-                          aria-hidden
-                        />
                         <div className="flex min-w-0 flex-wrap items-baseline justify-center gap-1">
-                          <div className="whitespace-nowrap text-[clamp(1.2rem,2.5vw,2rem)] font-bold leading-none tracking-tight text-[var(--accent)]">
-                            <span>£{heroStat1300.toLocaleString("en-GB")}</span>
-                            <span className="ml-1">+</span>
+                          <div className="tabular whitespace-nowrap text-[clamp(1.2rem,2.5vw,2rem)] font-bold leading-none tracking-tight text-[var(--accent)]">
+                            <CountUp target={1400} prefix="£" suffix="+" />
                           </div>
                         </div>
                         <div
@@ -12358,15 +12693,9 @@ export default function Home() {
                         index={2}
                         className="flex w-full min-w-0 max-w-md flex-1 flex-col items-center px-3 text-center md:max-w-none"
                       >
-                        <Clock
-                          className="mb-4 size-6 text-[var(--accent)]"
-                          strokeWidth={1.75}
-                          aria-hidden
-                        />
                         <div className="flex min-w-0 flex-wrap items-baseline justify-center gap-1">
-                          <div className="whitespace-nowrap text-[clamp(1.2rem,2.5vw,2rem)] font-bold leading-none tracking-tight text-[var(--accent)]">
-                            <span>{heroStat30}</span>
-                            <span className="ml-1">seconds</span>
+                          <div className="tabular whitespace-nowrap text-[clamp(1.2rem,2.5vw,2rem)] font-bold leading-none tracking-tight text-[var(--accent)]">
+                            <CountUp target={30} suffix="s" />
                           </div>
                         </div>
                         <div
@@ -12379,11 +12708,6 @@ export default function Home() {
                       </ScrollRevealItem>
                     </div>
                   </div>
-
-                  <div className="max-w-full md:max-w-[520px]">
-                  <p className="mt-2 text-xs text-[var(--text-muted)]">
-                    14-day free trial. No credit card required.
-                  </p>
                   </div>
                 </div>
 
@@ -12410,7 +12734,7 @@ export default function Home() {
                       <div
                         className="relative overflow-visible"
                         style={{
-                          animation: "float 6s ease-in-out infinite",
+                          animation: "float 8s ease-in-out infinite",
                         }}
                       >
                         <div
@@ -12466,60 +12790,60 @@ export default function Home() {
               className="bg-transparent px-4 py-3 md:px-6"
               aria-label="Trusted organisations"
             >
-              <div className="flex items-center justify-center gap-6 flex-wrap">
-                <span className="text-slate-400 text-sm tracking-wide uppercase whitespace-nowrap">
-                  Used by delivery teams at
-                </span>
-
-                <img
-                  src="/ibm.png"
-                  alt="IBM"
-                  className="h-8 object-contain opacity-70 grayscale hover:opacity-100 hover:grayscale-0 transition-all duration-200"
-                />
-
-                <img
-                  src="/computacenter.png"
-                  alt="Computacenter"
-                  className="h-10 object-contain opacity-70 grayscale brightness-150 hover:opacity-100 transition-all duration-200"
-                />
-
-                <span className="text-slate-400 text-sm tracking-wide uppercase whitespace-nowrap">
-                  and MSP delivery teams worldwide
-                </span>
-
-                {/* Divider */}
-                <div className="h-10 w-px bg-white/10" />
-
-                {/* HaloPSA Technology Alliance Partner */}
-                <a href="/partners/halopsa" className="flex flex-col items-center gap-1 opacity-60 hover:opacity-100 transition-all duration-200 cursor-pointer">
-                  <div className="flex items-center justify-center">
+              <div className="flex items-center justify-center gap-6 whitespace-nowrap">
+                <span className="flex items-center gap-2 opacity-90">
+                  <span className="text-[11px] text-white/60 uppercase tracking-wide">Listed on</span>
+                  <a
+                    href="/partners/halopsa"
+                    className="inline-flex items-center"
+                    aria-label="Listed on HaloPSA marketplace"
+                  >
                     <img
                       src="/halo.png"
                       alt="HaloPSA"
-                      className="h-5 object-contain grayscale hover:grayscale-0 transition-all duration-200"
+                      className="h-6 object-contain brightness-125 opacity-90 transition-all duration-200"
                     />
-                  </div>
-                  <span className="text-slate-400 text-[9px] uppercase tracking-wider whitespace-nowrap">
-                    Technology Alliance Partner
-                  </span>
-                </a>
+                  </a>
+                </span>
 
-                {/* Divider */}
-                <div className="h-8 w-px bg-white/10 mx-2" />
+                <div className="h-6 w-px bg-white/10" />
 
-                {/* ConnectWise Marketplace */}
-                <a href="/partners/connectwise" className="flex flex-col items-center gap-1 opacity-60 hover:opacity-100 transition-all duration-200 cursor-pointer">
-                  <img
-                    src="/connectwise.png"
-                    alt="ConnectWise"
-                    className="h-8 object-contain grayscale brightness-150 hover:grayscale-0 transition-all duration-200"
-                  />
-                  <span className="text-slate-300 text-[10px] uppercase tracking-wider whitespace-nowrap">
-                    Marketplace Partner
-                  </span>
+                <span className="flex items-center gap-2 opacity-90">
+                  <span className="text-[11px] text-white/60 uppercase tracking-wide">Listed on</span>
+                  <a
+                    href="/partners/connectwise"
+                    className="inline-flex items-center"
+                    aria-label="Listed on ConnectWise marketplace"
+                  >
+                    <img
+                      src="/connectwise.png"
+                      alt="ConnectWise"
+                      className="h-7 object-contain brightness-125 opacity-90 transition-all duration-200"
+                    />
+                  </a>
+                </span>
+
+                <div className="h-6 w-px bg-white/10" />
+
+                <a
+                  href="/blog/pitchit-2026-handover-msp-accelerator"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 opacity-90 transition-opacity hover:opacity-80 cursor-pointer"
+                >
+                  <span className="text-[11px] text-white/60 uppercase tracking-wide">Accepted into</span>
+                  <span className="text-[12px] font-medium text-white/60">PitchIT 2026</span>
                 </a>
               </div>
             </section>
+
+            <HandoverDemoSection
+              onStartTrial={() => {
+                const el = document.getElementById("pricing");
+                if (el) el.scrollIntoView({ behavior: "smooth" });
+                else window.location.href = "/auth?tab=signup";
+              }}
+            />
 
             <motion.section
               initial={{ opacity: 0, y: 40 }}
@@ -12540,27 +12864,22 @@ export default function Home() {
                 {(
                   [
                     {
-                      Icon: Clock,
                       title: "Engineers do engineering.",
                       body: "The average MSP engineer spends 2–4 hours a day writing updates that should be automatic. Handover turns that into 30 seconds. Your team stops translating ticket notes and starts closing tickets.",
-                      italic: "Less admin. More delivery.",
+                      punchline: "Less admin. More delivery.",
                     },
                     {
-                      Icon: Eye,
                       title: "Clients see the value you're already delivering.",
                       body: "Most MSP clients don't know how much work happens on their account. Handover turns your PSA data into professional updates they actually read — action logs, risk registers, status reports — automatically.",
-                      italic: "Invisible work becomes visible.",
+                      punchline: "Invisible work becomes visible.",
                     },
                     {
-                      Icon: TrendingUp,
                       title: "Your delivery scales without your headcount.",
                       body: "Whether you manage 5 clients or 50, Handover generates consistent, professional outputs across your entire portfolio. Same quality. No extra resource.",
-                      italic: "More clients. Same team.",
+                      punchline: "More clients. Same team.",
                     },
                   ] as const
-                ).map((card, i) => {
-                  const CardIcon = card.Icon;
-                  return (
+                ).map((card, i) => (
                     <motion.div
                       key={card.title}
                       initial={{ opacity: 0, y: 20 }}
@@ -12568,15 +12887,21 @@ export default function Home() {
                       viewport={{ once: true }}
                       transition={{ duration: 0.5, delay: i * 0.1 }}
                       whileHover={{ y: -4 }}
-                      className="group rounded-2xl border border-white/[0.08] border-t border-t-[color-mix(in_srgb,var(--accent)_30%,transparent)] bg-white/[0.04] p-8 backdrop-blur-sm transition-all duration-300 hover:border-[color-mix(in_srgb,var(--accent)_20%,transparent)] hover:bg-white/[0.06]"
+                      className={cn(
+                        "group rounded-2xl border border-white/[0.08] border-t border-t-[color-mix(in_srgb,var(--accent)_30%,transparent)] bg-white/[0.04] p-8 backdrop-blur-sm transition-all duration-300 hover:border-[color-mix(in_srgb,var(--accent)_20%,transparent)] hover:bg-white/[0.06]",
+                        i === 1 && "bg-[rgba(56,189,248,0.03)] border-[rgba(56,189,248,0.15)]",
+                      )}
                     >
-                      <CardIcon className="mb-5 h-8 w-8 text-[var(--accent)]" />
+                      <span className="text-[56px] font-bold leading-none text-white/[0.08] tabular-nums select-none">
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
                       <h3 className="mb-3 text-xl font-bold text-white">{card.title}</h3>
                       <p className="mb-5 text-[15px] leading-relaxed text-[#94a3b8]">{card.body}</p>
-                      <p className="text-[14px] italic font-medium text-[var(--accent)]">{card.italic}</p>
+                      <p className="text-cyan-300 text-sm font-semibold not-italic tracking-[-0.01em]">
+                        {card.punchline}
+                      </p>
                     </motion.div>
-                  );
-                })}
+                  ))}
               </div>
             </motion.section>
 
@@ -12614,8 +12939,8 @@ export default function Home() {
               transition={{ duration: 0.5, ease: "easeOut" }}
             >
               <ScrollRevealItem index={0} className="text-center">
-                <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)] md:text-3xl">
-                  How it <span className="text-gradient-brand">works</span>
+                <h2 className="text-xl font-semibold tracking-tight text-white md:text-3xl">
+                  How it <span className="text-cyan-400">works</span>
                 </h2>
               </ScrollRevealItem>
 
@@ -12721,25 +13046,28 @@ export default function Home() {
               <div className="relative mx-auto mt-10 w-full min-w-0 max-w-[960px] overflow-x-hidden rounded-2xl border border-white/[0.06] bg-white/[0.03] p-4 backdrop-blur-md md:overflow-visible md:p-6">
                 <HeroProductMockup variant="full" className="relative z-10 mt-0" />
                 <div
-                  className="home-mockup-float-badge--1 pointer-events-none absolute z-20 hidden rounded-[8px] border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm px-3 py-2 text-[13px] font-medium md:block"
+                  className="home-mockup-float-badge--1 pointer-events-none absolute z-20 hidden items-center gap-2 rounded-[8px] border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm px-3 py-2 text-[13px] font-medium text-white md:flex"
                   style={{ top: 16, right: 16 }}
                   aria-hidden
                 >
-                  ⚡ Generated in 28 seconds
+                  <Zap className="size-4 shrink-0 text-cyan-400" strokeWidth={2} aria-hidden />
+                  Generated in 28 seconds
                 </div>
                 <div
-                  className="home-mockup-float-badge--2 pointer-events-none absolute z-20 hidden rounded-[8px] border border-[#22c55e] bg-white/[0.04] backdrop-blur-sm px-3 py-2 text-[13px] font-medium text-[var(--text-primary)] md:block"
+                  className="home-mockup-float-badge--2 pointer-events-none absolute z-20 hidden items-center gap-2 rounded-[8px] border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm px-3 py-2 text-[13px] font-medium text-[var(--text-primary)] md:flex"
                   style={{ bottom: 16, left: 16 }}
                   aria-hidden
                 >
-                  <span className="text-[#22c55e]">✓</span> Pushed to HaloPSA / ConnectWise
+                  <Check className="size-4 shrink-0 text-emerald-400" strokeWidth={2.5} aria-hidden />
+                  Pushed to HaloPSA / ConnectWise
                 </div>
                 <div
-                  className="home-mockup-float-badge--3 pointer-events-none absolute z-20 hidden rounded-[8px] border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm px-3 py-2 text-[13px] font-medium md:block"
+                  className="home-mockup-float-badge--3 pointer-events-none absolute z-20 hidden items-center gap-2 rounded-[8px] border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm px-3 py-2 text-[13px] font-medium text-white md:flex"
                   style={{ bottom: 56, left: 16 }}
                   aria-hidden
                 >
-                  📧 Sent to client
+                  <Mail className="size-4 shrink-0 text-cyan-400" strokeWidth={2} aria-hidden />
+                  Sent to client
                 </div>
               </div>
 
@@ -12805,42 +13133,25 @@ export default function Home() {
           userEmail && mainView === "scheduled" ? (
             <div className="min-h-full bg-[var(--bg-secondary)] animate-in fade-in duration-300">
               <div className="w-full px-6 py-6">
-                <div
-                  className="flex flex-col gap-6 rounded-[var(--radius-lg)] sm:flex-row sm:items-center sm:justify-between"
-                  style={{
-                    background:
-                      "linear-gradient(135deg, rgba(15,23,42,0.97) 0%, rgba(15,23,42,0.95) 100%)",
-                    padding: "2rem",
-                    marginBottom: "1.5rem",
-                    backgroundImage:
-                      "radial-gradient(circle, rgba(56,189,248,0.06) 1px, transparent 1px), radial-gradient(ellipse 70% 50% at 50% 0%, rgba(56,189,248,0.08) 0%, transparent 60%)",
-                    backgroundSize: "28px 28px, auto",
-                  }}
-                >
-                  <div className="min-w-0 flex-1">
-                    <p
-                      className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--accent)]"
-                    >
-                      Scheduled reports
-                    </p>
-                    <h1 className="mt-1 text-[28px] font-bold text-white">Automated scheduled reports</h1>
-                    <p className="mt-1.5 max-w-xl text-[14px] leading-relaxed text-white/60">
-                      Handover pulls your PSA tickets and emails a generated report automatically.
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
-                    <>
+                <PageHeader
+                  eyebrow="AUTOMATED · REPORTS"
+                  title="Scheduled"
+                  description="Reports that send automatically on your chosen cadence."
+                  actions={
+                    <div className="flex flex-col items-stretch gap-2 sm:items-end">
                       <button
                         type="button"
                         role="switch"
                         aria-checked={scheduledReportsMasterEnabled}
                         aria-label={
-                          scheduledReportsMasterEnabled ? "Scheduled reports enabled" : "Scheduled reports disabled"
+                          scheduledReportsMasterEnabled
+                            ? "Scheduled reports enabled"
+                            : "Scheduled reports disabled"
                         }
                         onClick={() => void toggleAllCampaignsEnabled(!scheduledReportsMasterEnabled)}
                         disabled={campaigns.length === 0 || scheduleSaving}
                         className={cn(
-                          "h-14 min-w-[132px] shrink-0 rounded-full border-2 px-6 text-[13px] font-semibold transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-60",
+                          "min-w-[132px] shrink-0 rounded-full border-2 px-5 py-2 text-[12px] font-semibold transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-60",
                           scheduledReportsMasterEnabled
                             ? "border-emerald-500/60 bg-emerald-600/35 text-emerald-100 shadow-[0_0_20px_rgba(34,197,94,0.2)]"
                             : "border-slate-500/50 bg-slate-600/25 text-slate-300",
@@ -12848,21 +13159,21 @@ export default function Home() {
                       >
                         {scheduledReportsMasterEnabled ? "Enabled" : "Disabled"}
                       </button>
-
                       <button
                         type="button"
                         onClick={() => createNewSchedule()}
-                        className="h-14 shrink-0 rounded-full bg-[var(--accent)] px-5 text-[13px] font-semibold text-white shadow-[0_0_20px_rgba(56,189,248,0.15)] hover:brightness-110"
+                        className="flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] px-4 py-2 text-[13px] font-semibold text-[#0f172a] transition-all hover:scale-[1.02]"
                       >
-                        <span className="inline-flex items-center gap-2">
-                          <Plus className="size-4" />
-                          New schedule +
-                        </span>
+                        + New schedule
                       </button>
-                    </>
-                  </div>
-                </div>
+                    </div>
+                  }
+                />
 
+                {isExpiredTrial || soloGenerationLocked ? (
+                  <UpgradeWall message="Your trial has ended — Scheduled Reports require an active plan." />
+                ) : (
+                <>
                 {showDemoDataBanner ? (
                   <div className="mb-4">
                     <DemoBanner
@@ -12931,14 +13242,14 @@ export default function Home() {
                   ) : (
                     <>
                     <div className="mb-6 flex flex-wrap gap-4">
-                      <span className="rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1 text-[12px] text-[var(--text-secondary)]">
+                      <span className="tabular rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1 text-[12px] text-[var(--text-secondary)]">
                         {scheduledPageStats.active} active schedule
                         {scheduledPageStats.active === 1 ? "" : "s"}
                       </span>
-                      <span className="rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1 text-[12px] text-[var(--text-secondary)]">
+                      <span className="tabular rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1 text-[12px] text-[var(--text-secondary)]">
                         Next send: {scheduledPageStats.nextSend}
                       </span>
-                      <span className="rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1 text-[12px] text-[var(--text-secondary)]">
+                      <span className="tabular rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1 text-[12px] text-[var(--text-secondary)]">
                         {scheduledPageStats.sentThisMonth} report
                         {scheduledPageStats.sentThisMonth === 1 ? "" : "s"} sent this month
                       </span>
@@ -12952,8 +13263,8 @@ export default function Home() {
                               <tr className="border-b border-[var(--border)]">
                                 <th style={{ width: "22%" }} className="sticky top-0 z-10 bg-[var(--bg-secondary)] px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] shadow-[0_1px_0_var(--border)]">Schedule name</th>
                                 <th style={{ width: "12%", minWidth: "100px" }} className="sticky top-0 z-10 bg-[var(--bg-secondary)] px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] shadow-[0_1px_0_var(--border)]">PSA source</th>
-                                <th style={{ width: "8%" }} className="sticky top-0 z-10 bg-[var(--bg-secondary)] px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] shadow-[0_1px_0_var(--border)]">Frequency</th>
-                                <th style={{ width: "12%" }} className="sticky top-0 z-10 bg-[var(--bg-secondary)] px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] shadow-[0_1px_0_var(--border)]">Next send date</th>
+                                <th style={{ width: "9%" }} className="sticky top-0 z-10 bg-[var(--bg-secondary)] px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] shadow-[0_1px_0_var(--border)]">Freq.</th>
+                                <th style={{ width: "13%" }} className="sticky top-0 z-10 bg-[var(--bg-secondary)] px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] shadow-[0_1px_0_var(--border)]">Next send</th>
                                 <th style={{ width: "18%" }} className="sticky top-0 z-10 bg-[var(--bg-secondary)] px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] shadow-[0_1px_0_var(--border)]">Recipients</th>
                                 <th style={{ width: "10%" }} className="sticky top-0 z-10 bg-[var(--bg-secondary)] px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] shadow-[0_1px_0_var(--border)]">Status</th>
                                 <th style={{ width: "18%" }} className="sticky top-0 z-10 bg-[var(--bg-secondary)] px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] shadow-[0_1px_0_var(--border)]">Actions</th>
@@ -12986,7 +13297,7 @@ export default function Home() {
                                       <span className="block">{psaSourceLabel}</span>
                                     </td>
                                     <td className="px-3 py-3 whitespace-nowrap text-[var(--text-secondary)]">{frequency}</td>
-                                    <td className="px-3 py-3 whitespace-nowrap text-[var(--text-secondary)]">
+                                    <td className="tabular px-3 py-3 whitespace-nowrap text-[var(--text-secondary)]">
                                       {c.next_run_at ? formatShortGmtDate(c.next_run_at) : "Not scheduled"}
                                     </td>
                                     <td className="px-3 py-3 text-[var(--text-secondary)]">
@@ -12997,10 +13308,10 @@ export default function Home() {
                                         type="button"
                                         onClick={() => void toggleCampaignEnabled(c, !c.enabled)}
                                         className={cn(
-                                          "inline-flex cursor-pointer items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap transition-colors",
+                                          "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap transition-colors",
                                           c.enabled
-                                            ? "bg-emerald-500 text-white hover:bg-emerald-600"
-                                            : "bg-gray-200 text-gray-700 hover:bg-gray-300",
+                                            ? "border-[#4E9C6F]/30 bg-[#4E9C6F]/15 text-[#4E9C6F] hover:bg-[#4E9C6F]/25"
+                                            : "border-white/[0.08] bg-white/[0.04] text-white/40 hover:border-white/16 hover:text-white/55",
                                         )}
                                         aria-label={c.enabled ? "Pause schedule" : "Resume schedule"}
                                         title={c.enabled ? "Click to pause" : "Click to activate"}
@@ -13105,7 +13416,7 @@ export default function Home() {
                         </div>
                       </div>
                       </div>
-                      <div className="min-w-0">{scheduleRecentReportsCard}</div>
+                      <div className="min-w-0 overflow-visible">{scheduleRecentReportsCard}</div>
                     </div>
                   </>
                   )}
@@ -14241,29 +14552,6 @@ export default function Home() {
                               >
                                 Next →
                               </Button>
-                            ) : demoModeActive ? (
-                              <span
-                                className="inline-flex flex-col items-end gap-1"
-                                title="Connect your PSA to enable scheduled reports"
-                              >
-                                <Button
-                                  type="button"
-                                  className={cn(
-                                    "cursor-not-allowed bg-[var(--accent)] text-white opacity-60",
-                                    primaryModalButtonClass,
-                                  )}
-                                  style={{
-                                    boxShadow: "0 4px 16px rgba(56,189,248,0.15)",
-                                  }}
-                                  disabled
-                                  aria-describedby="demo-schedule-save-tooltip"
-                                >
-                                  {scheduleEditorIsNew ? "Create schedule" : "Save"}
-                                </Button>
-                                <span id="demo-schedule-save-tooltip" className="sr-only">
-                                  Connect your PSA to enable scheduled reports
-                                </span>
-                              </span>
                             ) : (
                               <Button
                                 type="button"
@@ -14287,12 +14575,18 @@ export default function Home() {
                   ) : null}
                   </>
                 )}
+                </>
+                )}
               </div>
             </div>
           ) : userEmail &&
             mainView === "delivery" &&
             deliveryDashboardAccess !== "none" ? (
             <div key="delivery" className="relative animate-in fade-in duration-200">
+              {isExpiredTrial || soloGenerationLocked ? (
+                <UpgradeWall message="Your trial has ended — Delivery Health requires an active plan." />
+              ) : (
+              <>
               <div
                 className={cn(
                   !hasProAccess &&
@@ -14301,9 +14595,11 @@ export default function Home() {
               >
                 <DeliveryHealthDashboard
                   focusRing={focusRing}
+                  portalClients={deliveryPortalClients}
                   dashboardAccess={deliveryDashboardAccess === "read" ? "read" : "full"}
                   viewMode={dashboardViewMode}
                   demoMode={demoModeActive}
+                  initialClientFilter={deliveryHealthPresetClient}
                   onOpenIntegrations={() => {
                     openIntegrationsInConfiguration();
                     setSettingsOpen(false);
@@ -14366,12 +14662,15 @@ export default function Home() {
                   </div>
                 </div>
               ) : null}
+              </>
+              )}
             </div>
           ) : (
           <>
             {userEmail && mainView === "overview" ? (
               <div key="overview" className="animate-in fade-in duration-200">
                 <OverviewHomeView
+                  isTrialExpired={isExpiredTrial || soloGenerationLocked}
                   userFirstName={userFirstName}
                   dashStats={dashStats}
                   projects={projects}
@@ -14379,6 +14678,8 @@ export default function Home() {
                   monthlyStats={monthlyStats}
                   monthlyStatsLoading={monthlyStatsLoading}
                   loading={!projectsBootstrapped}
+                  attentionItems={overviewAttentionItems}
+                  attentionLoading={overviewHealthLoading}
                   formatRelativeTime={relativeTimeLabel}
                   onSelectProject={(p) => {
                     handleSelectProject(p as ProjectItem);
@@ -14401,23 +14702,26 @@ export default function Home() {
                       tryOpenProFeatureGate("Delivery Health Dashboard");
                     }
                   }}
+                  onGoToDeliveryForClient={(clientName) => {
+                    setDeliveryHealthPresetClient(clientName);
+                    if (hasProAccess && deliveryDashboardAccess !== "none") {
+                      setMainView("delivery");
+                    } else {
+                      tryOpenProFeatureGate("Delivery Health Dashboard");
+                    }
+                  }}
                 />
               </div>
             ) : null}
             {userEmail && mainView === "reports" ? (
               <>
-                <div className="mb-6 w-full rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-5 shadow-[0_1px_3px_rgba(0,0,0,0.06)] md:p-8">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">
-                  Quarterly business review
-                </p>
-                <h1 className="mt-2 text-2xl font-bold tracking-tight text-[var(--text-primary)] md:text-3xl">
-                  QBR Pack
-                </h1>
-                <p className="mt-2 max-w-3xl text-[14px] leading-relaxed text-[var(--text-secondary)]">
-                  Connect your PSA, pick clients and date range, then generate branded PDF, Excel, and PowerPoint in one
-                  pass.
-                </p>
-                <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-3">
+                <div className="mb-6 w-full rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-4 shadow-[0_1px_3px_rgba(0,0,0,0.06)] md:p-6">
+                <PageHeader
+                  eyebrow="QUARTERLY · BUSINESS REVIEW"
+                  title="QBR Builder"
+                  description="Generate a client-ready quarterly business review pack from your PSA data."
+                />
+                <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
                   <div className="min-w-0 lg:col-span-2">
                   {noPsaConnected && !demoModeActive ? (
                     <PSAEmptyState
@@ -14437,6 +14741,8 @@ export default function Home() {
                       <div className="h-48 rounded-[var(--radius-lg)] border border-[var(--border)] bg-white/5 animate-pulse" />
                       <div className="h-12 w-40 rounded-[var(--radius)] bg-white/5 animate-pulse" />
                     </div>
+                  ) : isExpiredTrial || soloGenerationLocked ? (
+                    <UpgradeWall message="Your trial has ended — QBR Builder requires an active plan." />
                   ) : (
                     <div className="mx-auto w-full max-w-3xl">
                       <QbrPackBuilder
@@ -14478,7 +14784,7 @@ export default function Home() {
               </>
             ) : null}
             {(!userEmail || mainView === "generate") ? (
-            userEmail && soloGenerationLocked ? (
+            userEmail && (soloGenerationLocked || isExpiredTrial) ? (
               <div className="mb-6 flex min-h-[320px] w-full flex-col items-center justify-center gap-4 rounded-[var(--radius-lg)] border border-red-500/35 bg-red-600 px-6 py-10 text-center text-white shadow-lg">
                 <p className="max-w-md text-lg font-semibold leading-snug">
                   Your workspace is read-only until you upgrade. You can still view reports you already generated.
@@ -14514,15 +14820,7 @@ export default function Home() {
                 </div>
               </div>
             ) : null}
-            <div
-              className={cn(
-                "relative w-full",
-                userEmail &&
-                  !result &&
-                  !isGenerating &&
-                  "flex min-h-[calc(100vh-8rem)] flex-col justify-start pt-16 before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(ellipse_at_center,rgba(14,165,233,0.04)_0%,transparent_70%)]",
-              )}
-            >
+            <div className="relative w-full">
             <section
               ref={inputSectionRef}
               className={cn(
@@ -14547,7 +14845,7 @@ export default function Home() {
                       e.currentTarget.value = "";
                     }}
                   />
-                  {userEmail && hasProAccess && psaConnections.multiple ? (
+                  {noPsaConnected && userEmail && hasProAccess && psaConnections.multiple ? (
                     <details className="relative">
                       <summary
                         className={cn(
@@ -14585,7 +14883,7 @@ export default function Home() {
                         </button>
                       </div>
                     </details>
-                  ) : userEmail && hasProAccess && psaConnections.primary ? (
+                  ) : noPsaConnected && userEmail && hasProAccess && psaConnections.primary ? (
                     <Button
                       type="button"
                       variant="outline"
@@ -14617,21 +14915,37 @@ export default function Home() {
                       {`Import from ${importPsaLabel}`}
                       <span className="ml-0.5 inline-block size-1.5 rounded-full bg-emerald-500" aria-hidden />
                     </Button>
-                  ) : userEmail && hasProAccess && !psaConnections.primary ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className={cn(
-                        "h-9 gap-1.5 border-[var(--border)] bg-[var(--bg-primary)] px-3 text-[12px] font-medium text-[var(--text-muted)] transition-all duration-[120ms] ease-in-out",
-                        focusRing,
-                      )}
-                      disabled
-                      title="Connect a PSA in Integrations to import tickets"
-                    >
-                      <Database className="size-4 shrink-0" aria-hidden />
-                      Import from PSA
-                    </Button>
-                  ) : userEmail && !hasProAccess ? (
+                  ) : noPsaConnected && userEmail && hasProAccess && !psaConnections.primary ? (
+                    demoModeActive ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={cn(
+                          "h-9 gap-1.5 border-[var(--border)] bg-[var(--bg-primary)] px-3 text-[12px] font-medium text-[var(--text-secondary)] transition-all duration-[120ms] ease-in-out hover:bg-[color-mix(in_srgb,var(--bg-secondary)_65%,var(--bg-primary))]",
+                          focusRing,
+                        )}
+                        onClick={() => setHaloImportOpen(true)}
+                        title="Using demo data"
+                      >
+                        <Database className="size-4 shrink-0" aria-hidden />
+                        Import demo data
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={cn(
+                          "h-9 gap-1.5 border-[var(--border)] bg-[var(--bg-primary)] px-3 text-[12px] font-medium text-[var(--text-muted)] transition-all duration-[120ms] ease-in-out",
+                          focusRing,
+                        )}
+                        disabled
+                        title="Connect a PSA in Integrations to import tickets"
+                      >
+                        <Database className="size-4 shrink-0" aria-hidden />
+                        Import from PSA
+                      </Button>
+                    )
+                  ) : noPsaConnected && userEmail && !hasProAccess ? (
                     <Button
                       type="button"
                       variant="outline"
@@ -14665,6 +14979,70 @@ export default function Home() {
               </div>
 
               <div className="space-y-3 p-[14px]">
+                {showGenerateEmptyLayout && !noPsaConnected ? (
+                  <div className="mb-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface-1)] p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="mb-1 text-[13px] font-medium text-white/90">
+                          {importPsaLabel} connected
+                        </div>
+                        <div className="text-[12px] text-white/50">{generatePsaCardSubLabel}</div>
+                      </div>
+                      {bothPsasConnected ? (
+                        <div className="flex shrink-0 gap-2">
+                          <button
+                            type="button"
+                            className="flex items-center gap-1.5 rounded-lg border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-3 py-1.5 text-[12px] font-medium text-[var(--accent)] transition-all hover:bg-[var(--accent)]/20"
+                            onClick={() => {
+                              if (!hasProAccess && !demoModeActive) {
+                                setHaloProModalOpen(true);
+                                return;
+                              }
+                              setHaloImportOpen(true);
+                            }}
+                          >
+                            HaloPSA →
+                          </button>
+                          <button
+                            type="button"
+                            className="flex items-center gap-1.5 rounded-lg border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-3 py-1.5 text-[12px] font-medium text-[var(--accent)] transition-all hover:bg-[var(--accent)]/20"
+                            onClick={() => {
+                              if (!hasProAccess && !demoModeActive) {
+                                setHaloProModalOpen(true);
+                                return;
+                              }
+                              setCwImportOpen(true);
+                            }}
+                          >
+                            ConnectWise →
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="shrink-0 rounded-lg bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-white transition-all duration-150 hover:bg-[var(--accent-hover)]"
+                          onClick={openPsaImportFromGenerate}
+                        >
+                          Import →
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+                {showGenerateEmptyLayout ? (
+                  <div className="mb-3 flex flex-wrap gap-1.5">
+                    {["Actions", "Risks", "Summary", "Status Report", "Client Email"].map(
+                      (label) => (
+                        <span
+                          key={label}
+                          className="rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[11px] text-white/40"
+                        >
+                          {label}
+                        </span>
+                      ),
+                    )}
+                  </div>
+                ) : null}
                 {templates.length > 0 ? (
                   <div className="grid gap-2">
                     <label className="text-xs text-muted-foreground">My templates</label>
@@ -14906,10 +15284,11 @@ export default function Home() {
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
                       placeholder="What are you reporting on today? Paste notes or import from your PSA..."
-                      rows={6}
+                      rows={showGenerateEmptyLayout ? 5 : 6}
                       maxLength={GENERATION_INPUT_CHAR_LIMIT}
                       className={cn(
-                        "min-h-[200px] resize-y border-0 bg-transparent px-0 py-1 pr-14 pb-7 text-[14px] placeholder:text-[var(--text-muted)] focus-visible:ring-0",
+                        "resize-y border-0 bg-transparent px-0 py-1 pr-14 pb-7 text-[14px] placeholder:text-[var(--text-muted)] focus-visible:ring-0",
+                        showGenerateEmptyLayout ? "min-h-[140px]" : "min-h-[200px]",
                         focusRing,
                       )}
                       disabled={isGenerating}
@@ -14930,12 +15309,7 @@ export default function Home() {
                           : "pointer-events-none opacity-0",
                       )}
                       aria-label="Clear input"
-                      onClick={() => {
-                        setInput("");
-                        setProjectName("");
-                        setLastImportedHaloItems([]);
-                        setLastImportSourcePsa(null);
-                      }}
+                      onClick={() => resetGenerateToEmpty()}
                     >
                       <X className="size-3.5" aria-hidden />
                     </button>
@@ -14944,11 +15318,6 @@ export default function Home() {
                     </span>
                   </div>
                 )}
-                {input.trim() === "" ? (
-                  <p className="text-[12px] text-[var(--text-secondary)]">
-                    Tip: Import from your PSA for the best results
-                  </p>
-                ) : null}
                 {charCount > GENERATION_INPUT_WARN_CHARS && charCount < GENERATION_INPUT_CHAR_LIMIT ? (
                   <p className="text-[12px] text-[#BA7517]">
                     Large inputs may reduce output quality. Consider selecting fewer tickets.
@@ -14989,10 +15358,17 @@ export default function Home() {
                     type="button"
                     size="lg"
                     className={cn(
-                      "w-full gap-2 rounded-[var(--radius)] bg-[var(--accent)] px-5 py-2.5 text-[13px] font-medium text-white transition-all duration-[120ms] ease-in-out hover:bg-[var(--accent-hover)] disabled:opacity-80",
+                      "w-full gap-2 rounded-[var(--radius)] bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] px-5 py-2.5 text-[13px] font-semibold text-[#0f172a] transition-all duration-[120ms] ease-in-out",
+                      generateButtonMuted &&
+                        !(isGenerating || isCheckingAuthForGenerate) &&
+                        "cursor-not-allowed opacity-50",
+                      (isGenerating || isCheckingAuthForGenerate) && "opacity-80",
+                      !generateButtonMuted &&
+                        !(isGenerating || isCheckingAuthForGenerate) &&
+                        "hover:brightness-110",
                       focusRing,
                     )}
-                    disabled={isGenerating || isCheckingAuthForGenerate || !input.trim()}
+                    disabled={isGenerating || isCheckingAuthForGenerate}
                     onClick={() => void requestFullGeneration()}
                   >
                     {isCheckingAuthForGenerate ? (
@@ -15031,7 +15407,7 @@ export default function Home() {
                 </div>
                 {Boolean(userEmail) && !hasProAccess && trialInfo?.active ? (
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--text-muted)]">
-                    <span>
+                    <span className="tabular">
                       Trial ends{" "}
                       {new Date(trialInfo.endsAt).toLocaleDateString("en-GB", {
                         day: "2-digit",
@@ -15053,7 +15429,7 @@ export default function Home() {
                 !hasProAccess &&
                 trialInfo?.active &&
                 trialInfo.remaining <= 2 ? (
-                  <p className="text-[12px] font-medium text-[#D85A30]">
+                  <p className="tabular text-[12px] font-medium text-[#D85A30]">
                     Only {trialInfo.remaining} trial generation
                     {trialInfo.remaining === 1 ? "" : "s"} left
                   </p>
@@ -15181,10 +15557,10 @@ export default function Home() {
               userEmail &&
                 result &&
                 mainView === "generate" &&
-                "max-h-[calc(100vh-5.5rem)] min-h-0 overflow-hidden",
+                "max-h-[calc(100vh-5.5rem)] min-h-0 overflow-visible",
               signedOutCompactMode &&
                 result &&
-                "max-h-[calc(100vh-5.5rem)] min-h-0 overflow-hidden",
+                "max-h-[calc(100vh-5.5rem)] min-h-0 overflow-visible",
               "shadow-[0_0_0_1px_color-mix(in_srgb,var(--border)_40%,transparent),6px_0_42px_-22px_color-mix(in_srgb,var(--accent)_16%,transparent)]",
               "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:z-[1] before:h-px before:bg-gradient-to-r before:from-transparent before:via-[color-mix(in_srgb,var(--accent)_48%,transparent)] before:to-transparent before:opacity-[0.85]",
             )}
@@ -15300,7 +15676,7 @@ export default function Home() {
                       type="button"
                       disabled={followUpLoading || isGenerating}
                       className={cn(
-                        "inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-primary)] px-4 py-1.5 text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[color-mix(in_srgb,var(--bg-secondary)_70%,var(--bg-primary))] disabled:cursor-not-allowed disabled:opacity-50",
+                        "flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-[12px] font-semibold text-[#0f172a] transition-all hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50",
                         focusRing,
                       )}
                       onClick={onQuickEmailClient}
@@ -15452,7 +15828,7 @@ export default function Home() {
                   )}
                   onClick={() => setSmartActionsOpen(true)}
                 >
-                  <span aria-hidden>⚡</span> Smart Actions
+                  <CyanBoltIcon /> Smart Actions
                 </Button>
               </div>
             ) : null}
@@ -15564,13 +15940,13 @@ export default function Home() {
                     )}
                     onClick={() => setSmartActionsOpen(true)}
                   >
-                    <span aria-hidden>⚡</span> Smart Actions
+                    <CyanBoltIcon /> Smart Actions
                   </Button>
                 </div>
               ) : null}
             </div>
 
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
             {visibleCoreTabsList.includes("actions") ? (
             <TabsContent value="actions" className={OUTPUT_TAB_PANEL_CLASS}>
               <div className={OUTPUT_TAB_CONTENT_SHELL}>
@@ -16076,7 +16452,10 @@ export default function Home() {
             ) : null}
 
             {visibleCoreTabsList.includes("client_email") ? (
-            <TabsContent value="client_email" className={OUTPUT_TAB_PANEL_CLASS}>
+            <TabsContent
+              value="client_email"
+              className={OUTPUT_TAB_PANEL_CLASS}
+            >
               <div className={OUTPUT_TAB_CONTENT_SHELL}>
               <Card className={OUTPUT_TAB_CARD_CLASS}>
                 <CardHeader className="flex-row items-center justify-between gap-4 border-b border-[var(--border)] px-4 pb-3 pt-4">
@@ -16230,7 +16609,9 @@ export default function Home() {
                       message="No client email returned."
                     />
                   ) : (
-                    <div className="rounded-[calc(var(--radius)-2px)] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-secondary)_55%,var(--bg-primary))] px-4 py-3 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--border)_50%,transparent)] text-[13px] leading-[1.55] text-[var(--text-primary)]">
+                    <div
+                      className="min-h-0 w-full rounded-[calc(var(--radius)-2px)] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-secondary)_55%,var(--bg-primary))] px-4 py-3 text-[13px] leading-[1.55] text-[var(--text-primary)] shadow-[inset_0_1px_0_color-mix(in_srgb,var(--border)_50%,transparent)]"
+                    >
                       <button
                         type="button"
                         className="w-full text-left"
@@ -16358,6 +16739,37 @@ export default function Home() {
                       "flex flex-col gap-4 px-4 pb-4 pt-4",
                     )}
                   >
+                  {statusReportSections.length > 1 ? (
+                    <div className="mb-3 flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        className={cn(
+                          "rounded-full px-3 py-1 text-[11px] font-medium transition-colors",
+                          activeStatusReportIndex === -1
+                            ? "bg-[var(--accent)] text-white"
+                            : "bg-white/5 text-[var(--text-secondary)] hover:text-white",
+                        )}
+                        onClick={() => setActiveStatusReportIndex(-1)}
+                      >
+                        All
+                      </button>
+                      {statusReportSections.map((section, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          className={cn(
+                            "rounded-full px-3 py-1 text-[11px] font-medium transition-colors",
+                            activeStatusReportIndex === i
+                              ? "bg-[var(--accent)] text-white"
+                              : "bg-white/5 text-[var(--text-secondary)] hover:text-white",
+                          )}
+                          onClick={() => setActiveStatusReportIndex(i)}
+                        >
+                          {section.title}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                   {editingField === "status_report" ? (
                     <div className="rounded-[calc(var(--radius)-2px)] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-secondary)_55%,var(--bg-primary))] px-4 py-3 whitespace-pre-wrap text-[13px] leading-[1.55] text-[var(--text-primary)] shadow-[inset_0_1px_0_color-mix(in_srgb,var(--border)_50%,transparent)]">
                       <Textarea
@@ -16381,17 +16793,60 @@ export default function Home() {
                       message="No status report returned."
                     />
                   ) : (
-                    <div className="rounded-[calc(var(--radius)-2px)] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-secondary)_55%,var(--bg-primary))] px-4 py-3 whitespace-pre-wrap text-[13px] leading-[1.55] text-[var(--text-primary)] shadow-[inset_0_1px_0_color-mix(in_srgb,var(--border)_50%,transparent)]">
-                      <button
-                        type="button"
-                        className="w-full rounded-[calc(var(--radius)-4px)] text-left ring-offset-[var(--bg-primary)] transition-colors hover:bg-[color-mix(in_srgb,var(--accent)_6%,transparent)]"
-                        onClick={() => setEditingField("status_report")}
-                      >
-                        <span className="mb-2 block text-[11px] text-[var(--text-muted)]">
-                          Click to edit
-                        </span>
-                        {renderStatusReportDisplay(coerceStringOutput(result.status_report))}
-                      </button>
+                    <div
+                      className="min-h-0 w-full rounded-[calc(var(--radius)-2px)] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-secondary)_55%,var(--bg-primary))] px-4 py-3 text-[13px] leading-[1.55] text-[var(--text-primary)] shadow-[inset_0_1px_0_color-mix(in_srgb,var(--border)_50%,transparent)]"
+                    >
+                      {statusReportSections.length > 1 && activeStatusReportIndex >= 0 ? (
+                        <button
+                          type="button"
+                          className="w-full rounded-[calc(var(--radius)-4px)] text-left ring-offset-[var(--bg-primary)] transition-colors hover:bg-[color-mix(in_srgb,var(--accent)_6%,transparent)]"
+                          onClick={() => setEditingField("status_report")}
+                        >
+                          <span className="mb-2 block text-[11px] text-[var(--text-muted)]">
+                            Click to edit
+                          </span>
+                          {renderStatusReportDisplay(
+                            statusReportSections[activeStatusReportIndex]?.content ?? "",
+                          )}
+                        </button>
+                      ) : statusReportSections.length > 1 && activeStatusReportIndex === -1 ? (
+                        <div className="flex flex-col gap-4">
+                          {statusReportSections.map((section, i) => (
+                            <div
+                              key={`${section.title}-${i}`}
+                              className={cn(
+                                i > 0 &&
+                                  "border-t border-[var(--border)] pt-4",
+                              )}
+                            >
+                              <p className="mb-2 text-[12px] font-medium text-[var(--accent)]">
+                                {section.title}
+                                {section.client ? ` — ${section.client}` : ""}
+                              </p>
+                              <button
+                                type="button"
+                                className="w-full rounded-[calc(var(--radius)-4px)] text-left ring-offset-[var(--bg-primary)] transition-colors hover:bg-[color-mix(in_srgb,var(--accent)_6%,transparent)]"
+                                onClick={() => setEditingField("status_report")}
+                              >
+                                {renderStatusReportDisplay(section.content)}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="w-full rounded-[calc(var(--radius)-4px)] text-left ring-offset-[var(--bg-primary)] transition-colors hover:bg-[color-mix(in_srgb,var(--accent)_6%,transparent)]"
+                          onClick={() => setEditingField("status_report")}
+                        >
+                          <span className="mb-2 block text-[11px] text-[var(--text-muted)]">
+                            Click to edit
+                          </span>
+                          {renderStatusReportDisplay(
+                            coerceStringOutput(result.status_report),
+                          )}
+                        </button>
+                      )}
                     </div>
                   )}
                   </div>
@@ -16653,7 +17108,7 @@ export default function Home() {
                 aria-label="Sign up to save results"
               >
                 <p className="text-[13px] text-[var(--text-secondary)]">
-                  Sign up free to save your results — no credit card required
+                  Sign up free to save your results
                 </p>
                 <Link href="/auth?tab=signup&returnTo=/welcome" className="inline-flex shrink-0">
                   <Button
@@ -16670,17 +17125,27 @@ export default function Home() {
 
       </div>
       </div>
+        </>
+      ) : null}
       {!showLeftSidebar ? <MarketingFooter /> : null}
       {plan === "enterprise" ? (
         <EnterprisePortalOnboarding
-          open={onboardingOverlayOpen}
+          open={
+            onboardingOverlayOpen &&
+            !onboardingPageVisited &&
+            !onboardingRedirectPending
+          }
           companyName={profileCompanyName.trim() || profileDisplayName.trim()}
           onConfirm={completeEnterpriseOnboardingWithSlug}
           onSkip={markOnboardingComplete}
         />
       ) : (
         <FirstRunOnboardingOverlay
-          open={onboardingOverlayOpen}
+          open={
+            onboardingOverlayOpen &&
+            !onboardingPageVisited &&
+            !onboardingRedirectPending
+          }
           isTrial={!!trialEndsAt}
           welcomeFirstName={onboardingWelcomeFirst}
           haloUrl={haloUrl}
@@ -16715,6 +17180,11 @@ export default function Home() {
           }}
           onSkipEntirely={async () => {
             await markOnboardingComplete();
+            try {
+              sessionStorage.setItem(ONBOARDING_PAGE_SEEN_KEY, "1");
+            } catch {
+              /* ignore */
+            }
             setPostOnboardingNewGenHighlight(true);
           }}
         />

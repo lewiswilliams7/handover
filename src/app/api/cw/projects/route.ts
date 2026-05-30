@@ -15,6 +15,8 @@ type CwProject = {
   closedDate?: string | null;
   description?: string | null;
   actualHours?: number | null;
+  budgetHours?: number | null;
+  percentComplete?: number | null;
 };
 const CW_OPEN_ONLY_CONDITIONS = [
   'status/name!="Closed"',
@@ -268,6 +270,24 @@ export async function GET(request: Request) {
               : typeof row.actualHours === "number" && Number.isFinite(row.actualHours)
                 ? row.actualHours
                 : null,
+          completionpercent:
+            typeof detail.percentComplete === "number" && Number.isFinite(detail.percentComplete)
+              ? Math.max(0, Math.min(100, detail.percentComplete))
+              : typeof detail.budgetHours === "number" &&
+                  Number.isFinite(detail.budgetHours) &&
+                  detail.budgetHours > 0 &&
+                  typeof detail.actualHours === "number" &&
+                  Number.isFinite(detail.actualHours)
+                ? Math.max(0, Math.min(100, Math.round((detail.actualHours / detail.budgetHours) * 100)))
+                : typeof row.percentComplete === "number" && Number.isFinite(row.percentComplete)
+                  ? Math.max(0, Math.min(100, row.percentComplete))
+                  : typeof row.budgetHours === "number" &&
+                      Number.isFinite(row.budgetHours) &&
+                      row.budgetHours > 0 &&
+                      typeof row.actualHours === "number" &&
+                      Number.isFinite(row.actualHours)
+                    ? Math.max(0, Math.min(100, Math.round((row.actualHours / row.budgetHours) * 100)))
+                    : undefined,
           description: detail.description ?? row.description ?? null,
           notes: noteRows.map((n) => ({
             id: String(n.id ?? ""),

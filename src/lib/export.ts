@@ -25,6 +25,7 @@ export type ActionExportRow = {
   due_date?: string | null;
   client_name?: string | null;
   project_name?: string | null;
+  kind?: string | null;
   /** Optional per-row ticket title when model supplies it (multi-ticket UI / export). */
   source_ticket?: string | null;
 };
@@ -76,6 +77,9 @@ export type FullReportExportConfig = {
   actionSourceColumn?: string[] | null;
   /** Last column on Risk Log sheet when multi-ticket. */
   riskSourceColumn?: string[] | null;
+  /** Pre-generated meeting brief from delivery health — pre-fills Meeting Notes sheet when set. */
+  meetingPrepContent?: string | null;
+  meetingPrepTicketTitle?: string | null;
 };
 
 const ACTION_COLUMN_KEYS = [
@@ -161,6 +165,18 @@ type ParsedStatusReport = {
   progress: string;
   actions: string[];
   risks: string[];
+  nextSteps: string[];
+};
+
+type ParsedTicketStatus = {
+  title: string;
+  client: string;
+  status: string;
+  owner: string;
+  rag: string;
+  progress: string;
+  actions: Array<{ task: string; owner: string; priority: string }>;
+  risks: Array<{ description: string; impact: string; mitigation: string }>;
   nextSteps: string[];
 };
 
@@ -961,7 +977,7 @@ function actionCellValue(
     case "client_name":
       return safeText(a.client_name) || safeText(meta?.clientName);
     case "ticket_project":
-      return safeText(a.project_name) || safeText(a.task);
+      return safeText((a as any).kind) === "project" ? "Project" : "Ticket";
     case "date_generated":
       return genDate;
     default:
@@ -987,15 +1003,15 @@ function riskCellValue(
     case "status":
       return inferRiskStatus(r);
     case "owner":
-      return safeText(r.owner);
+      return safeText(r.owner) || safeText((r as any).suggested_owner) || "TBC";
     case "priority":
-      return safeText(r.priority);
+      return safeText(r.priority) || safeText((r as any).impact_level) || "Medium";
     case "rag":
-      return inferRagFromRiskText(r);
+      return safeText(r.rag) || inferRagFromRiskText(r);
     case "project_name":
-      return safeText(r.project_name) || pn;
+      return safeText(r.project_name) || safeText(r.source_ticket) || pn;
     case "client_name":
-      return safeText(r.client_name) || safeText(meta?.clientName);
+      return safeText(r.client_name) || safeText(meta?.clientName) || "";
     case "date_generated":
       return genDate;
     case "review_date":
@@ -1199,6 +1215,152 @@ function parseStatusReportSections(text: string): ParsedStatusReport {
   };
 }
 
+function parseStatusReportMultiTicket(text: string): ParsedTicketStatus[] {
+  const tickets: ParsedTicketStatus[] = [];
+  const blocks = text.split(/\n\s*---\s*\n/).filter((s) => s.trim());
+
+  for (const block of blocks) {
+    const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (!lines.length) continue;
+
+    const titleLine = lines[0].replace(/\*\*/g, "").trim();
+    const titleMatch = titleLine.match(/^(.*?)\s*[—–]\s*(.*)$/);
+    const title = titleMatch ? titleMatch[1].trim() : titleLine;
+    const client = titleMatch ? titleMatch[2].trim() : "";
+
+    const metaLine = lines.find((l) => l.includes("Status:") && l.includes("RAG:")) || "";
+    const statusMatch = metaLine.match(/Status:\s*([^|]+)/i);
+    const ownerMatch = metaLine.match(/Owner:\s*([^|]+)/i);
+    const ragMatch = metaLine.match(/RAG:\s*([^|]+)/i);
+
+    const progressMatch = block.match(/Progress:\s*([\s\S]*?)(?=\nActions:|$)/i);
+    const actionsMatch = block.match(/Actions:\s*([\s\S]*?)(?=\nRisks:|$)/i);
+    const risksMatch = block.match(/Risks:\s*([\s\S]*?)(?=\nNext Steps:|$)/i);
+    const nextStepsMatch = block.match(/Next Steps:\s*([\s\S]*?)(?=$)/i);
+    let progress = progressMatch?.[1]?.trim() || "";
+
+    const actionLines = (actionsMatch?.[1] || "")
+      .split("\n")
+      .filter((l) => /^\d+\./.test(l.trim()));
+    let parsedActions = actionLines.map((line) => {
+      const clean = line.replace(/^\d+\.\s*/, "").trim();
+      const m = clean.match(/^(.*?)\s*[—–-]\s*(.*?)\s*[—–-]\s*(.*)$/);
+      return {
+        task: m?.[1]?.trim() || clean,
+        owner: m?.[2]?.trim() || "TBC",
+        priority: m?.[3]?.trim() || "",
+      };
+    });
+    if (!progress) {
+      const progressFallback = block.match(/Progress:\s*([\s\S]*?)(?=\nActions:|$)/i);
+      progress = progressFallback?.[1]?.trim() || "";
+    }
+    if (!parsedActions.length) {
+      const actionsFallback = block.match(/Actions:\s*([\s\S]*?)(?=\nRisks:|$)/i);
+      const actionText = actionsFallback?.[1] || "";
+      const actionLines = actionText.split("\n").filter((l) => /^\d+\./.test(l.trim()));
+      parsedActions = actionLines.map((line) => {
+        const clean = line.replace(/^\d+\.\s*/, "").trim();
+        const m = clean.match(/^(.*?)\s*[—–-]\s*(.*?)\s*[—–-]\s*(.*)$/);
+        return {
+          task: m?.[1]?.trim() || clean,
+          owner: m?.[2]?.trim() || "TBC",
+          priority: m?.[3]?.trim() || "",
+        };
+      });
+    }
+
+    const riskBody = risksMatch?.[1] || "";
+    const riskBlocks = riskBody
+      .split(/(?=^\s*\d+\.\s)/m)
+      .map((r) => r.trim())
+      .filter(Boolean);
+    const parsedRisks = riskBlocks.map((riskBlock) => {
+      const firstLine = riskBlock.split("\n")[0] || "";
+      const description = firstLine.replace(/^\d+\.\s*/, "").trim();
+      const impactMatch = riskBlock.match(/Impact:\s*([^\n]+)/i);
+      const mitigationMatch = riskBlock.match(/Mitigation:\s*([^\n]+)/i);
+      return {
+        description,
+        impact: impactMatch?.[1]?.trim() || "",
+        mitigation: mitigationMatch?.[1]?.trim() || "",
+      };
+    });
+
+    const nextStepLines = (nextStepsMatch?.[1] || "")
+      .split("\n")
+      .filter((l) => /^\d+\./.test(l.trim()))
+      .map((l) => l.replace(/^\d+\.\s*/, "").trim());
+
+    tickets.push({
+      title,
+      client,
+      status: statusMatch?.[1]?.trim() || "",
+      owner: ownerMatch?.[1]?.trim() || "TBC",
+      rag: ragMatch?.[1]?.trim() || "",
+      progress,
+      actions: parsedActions,
+      risks: parsedRisks,
+      nextSteps: nextStepLines,
+    });
+  }
+
+  if (!tickets.length) {
+    tickets.push({
+      title: "Status Report",
+      client: "",
+      status: "",
+      owner: "TBC",
+      rag: "",
+      progress: text,
+      actions: [],
+      risks: [],
+      nextSteps: [],
+    });
+  }
+
+  return tickets;
+}
+
+/** Split status report text into per-ticket blocks (UI / PSA push). */
+export function splitStatusReportDisplayBlocks(
+  text: string,
+): Array<{ title: string; client: string | null; content: string }> {
+  const trimmed = safeText(text).trim();
+  if (!trimmed) return [];
+
+  const blocks = trimmed.split(/\n\s*---\s*\n/).map((b) => b.trim()).filter(Boolean);
+  const mapBlock = (block: string) => {
+    const firstLine = (block.split("\n")[0] ?? "").replace(/\*\*/g, "").trim();
+    const titleMatch = firstLine.match(/^(.*?)\s*[—–]\s*(.*)$/);
+    return {
+      title: titleMatch?.[1]?.trim() || firstLine || "Status report",
+      client: titleMatch?.[2]?.trim() || null,
+      content: block,
+    };
+  };
+
+  if (blocks.length <= 1) {
+    return [mapBlock(blocks[0] ?? trimmed)];
+  }
+  return blocks.map(mapBlock);
+}
+
+export function extractStatusReportSectionForTicket(
+  fullText: string,
+  ticketTitleHint: string,
+): string {
+  const hint = ticketTitleHint.trim().toLowerCase();
+  if (!hint) return fullText;
+  const blocks = splitStatusReportDisplayBlocks(fullText);
+  if (blocks.length <= 1) return fullText;
+  const match =
+    blocks.find((b) => b.title.toLowerCase() === hint) ||
+    blocks.find((b) => b.title.toLowerCase().includes(hint)) ||
+    blocks.find((b) => hint.includes(b.title.toLowerCase()));
+  return match?.content ?? fullText;
+}
+
 function buildMeetingNotesTemplateSheet(): XLSX.WorkSheet {
   const template = [
     ["Date", ""],
@@ -1231,6 +1393,211 @@ function buildProseDeliverableSheet(sheetTitle: string, body: string, genDate: s
   return ws;
 }
 
+function stripMarkdownForExcel(content: string): string {
+  return content
+    .replace(/#{1,6}\s/g, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/^---$/gm, "")
+    .replace(/^- /gm, "• ")
+    .trim();
+}
+
+function parseMeetingPrepSectionBuckets(body: string): Record<string, string> {
+  const buckets: Record<string, string> = {};
+  const headingRe = /(?:^|\n)#{1,4}\s+(?:\d+\.\s+)?(.+?)(?:\s+to\s+\w+|\s+and\s+\w+)?\s*\n([\s\S]*?)(?=\n#{1,4}\s|\s*$)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = headingRe.exec(body)) !== null) {
+    const heading = (match[1] ?? "").trim().toLowerCase()
+      .replace(/^(quick|key|suggested|recommended)\s+/, "")
+      .replace(/\s+to\s+\w+.*$/, "")
+      .replace(/\s+and\s+blockers.*$/, "")
+      .replace(/\s+to\s+mention.*$/, "")
+      .trim();
+    const content = (match[2] ?? "").trim()
+      .replace(/^[-•*]\s+/gm, "")
+      .replace(/\*\*/g, "")
+      .replace(/\n[-•*]\s+/g, "\n")
+      .trim();
+    buckets[heading] = content;
+  }
+  return buckets;
+}
+
+function meetingPrepSectionBody(buckets: Record<string, string>, section: string): string {
+  const target = section.toLowerCase();
+  if (buckets[target]) return buckets[target];
+  const found = Object.keys(buckets).find((k) =>
+    k.includes(target) || target.includes(k.split(" ")[0] ?? ""),
+  );
+  if (found) return buckets[found];
+  const aliases: Record<string, string[]> = {
+    "quick summary": ["summary"],
+    "key wins": ["wins"],
+    "risks": ["risks", "blockers", "risk"],
+    "talking points": ["talking", "points"],
+    "actions": ["actions", "recommended", "agree"],
+  };
+  const variants = aliases[target] || [];
+  for (const v of variants) {
+    const match = Object.keys(buckets).find((k) => k.includes(v));
+    if (match) return buckets[match];
+  }
+  return "";
+}
+
+function parseMeetingPrepTicketBlocks(
+  body: string,
+  defaultTitle: string,
+  defaultClient: string,
+): Array<{ title: string; client: string; body: string }> {
+  const blocks = body.split(/\n\s*---\s*\n/).map((b) => b.trim()).filter(Boolean);
+
+  return blocks.map((block) => {
+    const clientMatch = block.match(/\*?\*?Client:\*?\*?\s*(.+)/i);
+    const client = clientMatch?.[1]?.trim() || "";
+
+    const ticketMatch = block.match(/\*?\*?Ticket\s*\/\s*Project:\*?\*?\s*(.+)/i);
+    const title = ticketMatch?.[1]?.trim() || defaultTitle;
+
+    return { title, client, body: block };
+  });
+}
+
+function findActionForRiskRow(
+  risk: RiskExportRow,
+  actionItems: ActionExportRow[],
+): ActionExportRow | undefined {
+  const projectKey =
+    safeText(risk.project_name) || safeText(risk.source_ticket);
+  const clientKey = safeText(risk.client_name);
+  if (projectKey) {
+    const byProject = actionItems.find(
+      (a) =>
+        safeText(a.project_name) === projectKey ||
+        safeText(a.source_ticket) === projectKey,
+    );
+    if (byProject) return byProject;
+  }
+  if (clientKey) {
+    return actionItems.find((a) => safeText(a.client_name) === clientKey);
+  }
+  return undefined;
+}
+
+function buildMeetingPrepNotesSheet(
+  body: string,
+  genDate: string,
+  clientName: string,
+  projectName: string,
+  ticketTitle: string,
+  actionItems: ActionExportRow[] = [],
+  riskItems: RiskExportRow[] = [],
+): XLSX.WorkSheet {
+  const defaultTitle = safeText(ticketTitle) || safeText(projectName) || "Ticket / Project";
+  const tickets = parseMeetingPrepTicketBlocks(body, defaultTitle, clientName);
+  const colCount = 7;
+
+  const aoa: string[][] = [
+    ["Meeting Notes", ...Array(colCount - 1).fill("")],
+    Array(colCount).fill(""),
+    [
+      "Ticket / Project",
+      "Client",
+      "Quick Summary",
+      "Key Wins",
+      "Risks",
+      "Talking Points",
+      "Actions",
+    ],
+  ];
+
+  for (const ticket of tickets) {
+    const buckets = parseMeetingPrepSectionBuckets(ticket.body);
+    aoa.push([
+      ticket.title,
+      ticket.client,
+      meetingPrepSectionBody(buckets, "Quick Summary"),
+      meetingPrepSectionBody(buckets, "Key Wins"),
+      meetingPrepSectionBody(buckets, "Risks"),
+      meetingPrepSectionBody(buckets, "Talking Points"),
+      meetingPrepSectionBody(buckets, "Actions"),
+    ]);
+  }
+
+  if (aoa.length === 3 && actionItems && actionItems.length > 0) {
+    const clientGroups = new Map<string, { actions: typeof actionItems; risks: typeof riskItems }>();
+    for (const a of actionItems) {
+      const cn = safeText(a.client_name) || clientName;
+      const existing = clientGroups.get(cn) ?? { actions: [], risks: [] };
+      existing.actions.push(a);
+      clientGroups.set(cn, existing);
+    }
+    for (const r of riskItems) {
+      const cn = safeText(r.client_name) || clientName;
+      const existing = clientGroups.get(cn) ?? { actions: [], risks: [] };
+      existing.risks.push(r);
+      clientGroups.set(cn, existing);
+    }
+    for (const [cn, { actions, risks }] of clientGroups) {
+      const ticketTitle = safeText(actions[0]?.project_name) || cn;
+      const openActions = actions.filter((a) => safeText(a.status) !== "completed");
+      const quickSummary = `${openActions.length} open action(s) for ${cn}. ${risks.length > 0 ? `${risks.length} risk(s) identified.` : "No risks identified."} Review progress and agree next steps.`;
+      const keyWins = actions.filter((a) => safeText(a.status) === "completed").map((a) => `• ${safeText(a.task)}`).join("\n") || "No completed actions this period — review progress on open items.";
+      const risksText = risks.length > 0
+        ? risks.map((r) => `• ${safeText(r.risk)}\n  Impact: ${safeText(r.impact)}\n  Mitigation: ${safeText(r.mitigation)}`).join("\n\n")
+        : "No risks identified for this client.";
+      const talkingPoints = [
+        ...openActions.slice(0, 3).map((a) => `• Review status of: ${safeText(a.task)}`),
+        risks.length > 0 ? `• Discuss risk mitigation for ${risks.length} open risk(s)` : "",
+        "• Confirm next steps and ownership for outstanding items",
+        "• Agree timeline for resolution",
+      ].filter(Boolean).join("\n");
+      const actionsText = openActions.map((a) => `• ${safeText(a.task)} — Owner: ${safeText(a.suggested_owner) || "TBC"} — ${safeText(a.priority) || "Medium"} priority`).join("\n") || "No open actions.";
+      aoa.push([
+        ticketTitle,
+        cn,
+        quickSummary,
+        keyWins,
+        risksText,
+        talkingPoints,
+        actionsText,
+      ]);
+    }
+  }
+
+  if (aoa.length === 3) {
+    const buckets = parseMeetingPrepSectionBuckets(body);
+    aoa.push([
+      defaultTitle,
+      clientName,
+      meetingPrepSectionBody(buckets, "Quick Summary"),
+      meetingPrepSectionBody(buckets, "Key Wins"),
+      meetingPrepSectionBody(buckets, "Risks"),
+      meetingPrepSectionBody(buckets, "Talking Points"),
+      meetingPrepSectionBody(buckets, "Actions"),
+    ]);
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const lastRow = Math.max(aoa.length - 1, 0);
+  ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: lastRow, c: colCount - 1 } });
+  ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } }];
+  ws["!cols"] = [
+    { wch: 35 },
+    { wch: 20 },
+    { wch: 40 },
+    { wch: 40 },
+    { wch: 40 },
+    { wch: 40 },
+    { wch: 40 },
+  ];
+  styleTitleMergedRow(ws, 0, colCount);
+  styleSubheaderRow(ws, 2, colCount);
+  applyWrapToAllCells(ws);
+  return ws;
+}
+
 function sectionBody(text: string, heading: string): string {
   const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const all = ["PROJECT STATUS", "PROGRESS", "ACTIONS", "RISKS AND ISSUES", "NEXT STEPS"];
@@ -1249,61 +1616,62 @@ function splitNumberedItems(text: string): string[] {
 }
 
 function buildStatusReportSheet(body: string, genDate: string): XLSX.WorkSheet {
-  const parsed = parseStatusReportSections(body);
-  const status = parsed.projectStatus;
-  const progress = parsed.progress;
-  const actions = parsed.actions;
-  const risks = parsed.risks;
-  const nextSteps = parsed.nextSteps;
+  const parsedTickets = parseStatusReportMultiTicket(body);
+  const colCount = 8;
+  const pad = (row: string[]): string[] => {
+    const out = [...row];
+    while (out.length < colCount) out.push("");
+    return out.slice(0, colCount);
+  };
 
-  const [projectName = "", projectStatus = "", rag = ""] = status
-    .replace(/^:\s*/, "")
-    .split(" - ")
-    .map((s) => s.trim());
+  const aoa: string[][] = [
+    pad([`Status Report - ${genDate}`]),
+    Array(colCount).fill(""),
+    pad(["Ticket / Project", "Client", "Status", "Owner", "RAG", "Progress", "Actions", "Next Steps"]),
+  ];
 
-  const aoa: string[][] = [];
-  aoa.push([`Status Report - ${genDate}`, "", ""]);
-  aoa.push(["", "", ""]);
-  aoa.push(["PROJECT STATUS", "", ""]);
-  aoa.push([projectName, projectStatus, rag]);
-  aoa.push(["", "", ""]);
-  aoa.push(["PROGRESS", "", ""]);
-  aoa.push([progress || "", "", ""]);
-  aoa.push(["", "", ""]);
-  aoa.push(["ACTIONS", "", ""]);
-  aoa.push(["Task", "Owner", "Priority"]);
-  for (const item of actions) {
-    const m = item.match(/^(.*?)\s*\((.*?)\)\s*-\s*(.*)$/);
-    aoa.push([m?.[1]?.trim() ?? item, m?.[2]?.trim() ?? "Unassigned", m?.[3]?.trim() ?? ""]);
+  for (const ticket of parsedTickets) {
+    const actionsText = ticket.actions.length
+      ? ticket.actions.map((a) => `• ${a.task} (${a.owner || "TBC"}, ${a.priority})`).join("\n")
+      : "";
+    const nextStepsText = ticket.nextSteps.length
+      ? ticket.nextSteps.map((s) => `• ${s}`).join("\n")
+      : "";
+    const cleanClient =
+      (ticket.client || "").split("|")[0].trim() ||
+      (ticket.title.includes(" - ") ? ticket.title.split(" - ").pop()?.trim() : "") ||
+      "";
+    aoa.push(pad([
+      ticket.title.replace(/ - [^-]+$/, "").trim() || ticket.title,
+      cleanClient,
+      ticket.status || "",
+      ticket.owner || "TBC",
+      ticket.rag || "",
+      ticket.progress || "",
+      actionsText,
+      nextStepsText,
+    ]));
   }
-  aoa.push(["", "", ""]);
-  aoa.push(["RISKS AND ISSUES", "", ""]);
-  aoa.push(["Risk", "Impact", "Mitigation"]);
-  for (const item of risks) {
-    const [risk = "", impact = "", mitigation = ""] = item.split(" - ").map((x) => x.trim());
-    aoa.push([risk, impact, mitigation]);
-  }
-  aoa.push(["", "", ""]);
-  aoa.push(["NEXT STEPS", "", ""]);
-  aoa.push(["Step", "Owner", ""]);
-  for (const item of nextSteps) {
-    const m = item.match(/^(.*?)\s*\((.*?)\)\s*$/);
-    aoa.push([m?.[1]?.trim() ?? item, m?.[2]?.trim() ?? "Unassigned", ""]);
+
+  if (aoa.length === 3) {
+    aoa.push(pad(["No status report data", "", "", "", "", "", "", ""]));
   }
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws["!cols"] = [{ wch: 60 }, { wch: 28 }, { wch: 22 }];
-  styleTitleMergedRow(ws, 0, 3);
-  for (const hdrRow of [2, 5, 8]) {
-    styleSubheaderRow(ws, hdrRow, 3);
-  }
-  // Column headers for ACTIONS/RISKS/NEXT STEPS
-  const actionHdr = 9;
-  const riskHdr = 14 + Math.max(actions.length - 1, 0);
-  const nextHdr = 17 + Math.max(actions.length - 1, 0) + Math.max(risks.length - 1, 0);
-  styleNavyHeaderRow(ws, actionHdr, 3);
-  styleNavyHeaderRow(ws, riskHdr, 3);
-  styleNavyHeaderRow(ws, nextHdr, 3);
+  ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aoa.length - 1, c: colCount - 1 } });
+  ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } }];
+  ws["!cols"] = [
+    { wch: 35 },
+    { wch: 20 },
+    { wch: 14 },
+    { wch: 18 },
+    { wch: 10 },
+    { wch: 45 },
+    { wch: 45 },
+    { wch: 35 },
+  ];
+  styleTitleMergedRow(ws, 0, colCount);
+  styleNavyHeaderRow(ws, 2, colCount);
   applyWrapToAllCells(ws);
   return ws;
 }
@@ -1319,14 +1687,28 @@ function buildExecutiveSummarySheet(
   const riskItems = normalized.risks ?? [];
   const actionItems = normalized.actions ?? [];
   const rag = inferRagFromRiskText(riskItems[0] ?? { risk: "", impact: "", mitigation: "" });
+  const distinctProjects = [
+    ...new Set(actionItems.map((a) => safeText(a.project_name)).filter(Boolean)),
+  ];
+  const distinctClients = [
+    ...new Set(actionItems.map((a) => safeText(a.client_name)).filter(Boolean)),
+  ];
+  const projectDisplay =
+    distinctProjects.length > 1
+      ? distinctProjects.join(", ")
+      : distinctProjects[0] || safeText(meta.projectName) || safeText(projectName);
+  const clientDisplay =
+    distinctClients.length > 1
+      ? distinctClients.join(", ")
+      : distinctClients[0] || safeText(meta.clientName);
   const rows: string[][] = [];
   if (reserveLogoRow) {
     rows.push(["", "", ""]);
   }
   rows.push([`Executive Summary - ${genDate}`, "", ""]);
   rows.push(["", "", ""]);
-  rows.push(["Project:", safeText(meta.projectName) || safeText(projectName), ""]);
-  rows.push(["Client:", safeText(meta.clientName), ""]);
+  rows.push(["Project:", projectDisplay, ""]);
+  rows.push(["Client:", clientDisplay, ""]);
   rows.push(["Date:", genDate, ""]);
   rows.push(["Status:", rag || "Amber", ""]);
   rows.push(["", "", ""]);
@@ -1334,8 +1716,8 @@ function buildExecutiveSummarySheet(
   rows.push([safeText(normalized.summary), "", ""]);
   rows.push(["", "", ""]);
   rows.push(["Key Actions", "", ""]);
-  const actions = actionItems.length > 0 ? actionItems : [{ task: "No actions identified", suggested_owner: "Unassigned", priority: null }];
-  for (const a of actions) rows.push([`• ${safeText(a.task)} - ${safeText(a.suggested_owner) || "Unassigned"}`, "", ""]);
+  const actions = actionItems.length > 0 ? actionItems : [{ task: "No actions identified", suggested_owner: "TBC", priority: null }];
+  for (const a of actions) rows.push([`• ${safeText(a.task)} - ${safeText(a.suggested_owner) || "TBC"}`, "", ""]);
   rows.push(["", "", ""]);
   rows.push(["Key Risks", "", ""]);
   const risks = riskItems.length > 0 ? riskItems : [{ risk: "No major risks identified", impact: "Low", mitigation: "Continue monitoring" }];
@@ -1448,6 +1830,7 @@ function rowFromUnknownAction(row: unknown): ActionExportRow {
     due_date: typeof o.due_date === "string" ? o.due_date : null,
     client_name: typeof o.client_name === "string" ? o.client_name : null,
     project_name: typeof o.project_name === "string" ? o.project_name : null,
+    kind: typeof o.kind === "string" ? o.kind : null,
     source_ticket,
   };
 }
@@ -1596,6 +1979,8 @@ export async function exportFullReport(
     whiteLabelMode: config?.whiteLabelMode === true,
     actionSourceColumn: config?.actionSourceColumn ?? null,
     riskSourceColumn: config?.riskSourceColumn ?? null,
+    meetingPrepContent: config?.meetingPrepContent ?? null,
+    meetingPrepTicketTitle: config?.meetingPrepTicketTitle ?? null,
   };
   try {
     if (!isProOrTeam(plan)) {
@@ -1633,6 +2018,21 @@ export async function exportFullReport(
       safeText(safeConfig.projectName) ||
       safeText(firstAction?.client_name) ||
       "Client";
+    // Enrich risk rows with client/project from matching actions when missing
+    const enrichedRiskItems = riskItems.map((r) => {
+      if (safeText(r.client_name) && safeText(r.project_name)) return r;
+      const match = actionItems.find((a) =>
+        (safeText(r.source_ticket) && safeText(a.project_name) &&
+          safeText(a.project_name).toLowerCase().includes(safeText(r.source_ticket).toLowerCase().substring(0, 15))) ||
+        (safeText(r.client_name) === "" && safeText(a.client_name) &&
+          safeText(r.risk).toLowerCase().includes(safeText(a.client_name).toLowerCase().substring(0, 8))),
+      );
+      return {
+        ...r,
+        client_name: safeText(r.client_name) || safeText(match?.client_name) || safeText(meta?.clientName) || clientName,
+        project_name: safeText(r.project_name) || safeText(match?.project_name) || safeText(r.source_ticket) || projName,
+      };
+    });
     const parsedStatus = parseStatusReportSections(safeText(normalized.status_report));
     const owners =
       ((actionItems
@@ -1665,7 +2065,7 @@ export async function exportFullReport(
       append(
         "Risk Log",
         buildRiskSheet(
-          riskItems,
+          enrichedRiskItems,
           safeConfig.riskColumns,
           projectName,
           meta,
@@ -1679,7 +2079,7 @@ export async function exportFullReport(
       const execReserveLogoRow = Boolean(safeText(safeConfig.brandLogoUrl).trim());
       append(
         "Executive Summary",
-        buildExecutiveSummarySheet(normalized, projectName, meta, genDate, execReserveLogoRow),
+        buildExecutiveSummarySheet({ ...normalized, risks: enrichedRiskItems }, projectName, meta, genDate, execReserveLogoRow),
         {
           skipTrim: true,
         },
@@ -1708,8 +2108,39 @@ export async function exportFullReport(
     if (shouldInclude("raid_log")) {
       // 6 RAID Log
       const raidRows: string[][] = [];
-      riskItems.forEach((r, i) => {
-        raidRows.push([`RSK-${String(i + 1).padStart(3, "0")}`, "Risk", safeText(r.risk), safeText(r.owner) || (owners[0] ?? "Unassigned"), safeText(r.impact), "Medium", "Open", safeText(r.mitigation), genDate, safeText(r.client_name) || clientName, genDate]);
+      enrichedRiskItems.forEach((r, i) => {
+        const matchedAction = actionItems.find(
+          (a) =>
+            (safeText(r.source_ticket) &&
+              safeText(a.project_name) &&
+              safeText(a.project_name) === safeText(r.project_name)) ||
+            (safeText(r.client_name) &&
+              safeText(a.client_name) &&
+              safeText(a.client_name) === safeText(r.client_name)),
+        );
+        const raidOwner =
+          safeText(r.owner) ||
+          safeText((r as any).suggested_owner) ||
+          safeText(matchedAction?.suggested_owner) ||
+          safeText((matchedAction as any)?.owner) ||
+          (actionItems.find((a) => safeText(a.client_name) === safeText(r.client_name))?.suggested_owner ??
+            owners[0] ??
+            "TBC");
+        const raidClient =
+          safeText(r.client_name) || safeText(meta?.clientName) || "See PSA";
+        raidRows.push([
+          `RSK-${String(i + 1).padStart(3, "0")}`,
+          "Risk",
+          safeText(r.risk),
+          raidOwner,
+          safeText(r.impact),
+          "Medium",
+          "Open",
+          safeText(r.mitigation),
+          genDate,
+          raidClient,
+          genDate,
+        ]);
       });
       if (raidRows.length === 0) raidRows.push(["RSK-001", "Risk", "No major risks identified", owners[0] ?? "Unassigned", "Low", "Low", "Open", "Monitor", genDate, clientName, genDate]);
       {
@@ -1740,7 +2171,7 @@ export async function exportFullReport(
         `CHG-${String(i + 1).padStart(3, "0")}`,
         genDate,
         safeText(a.task),
-        clientName,
+        safeText(a.client_name) || clientName,
         safeText(a.priority) || "Medium",
         "Proposed",
         safeText(a.suggested_owner) || "Unassigned",
@@ -1775,10 +2206,20 @@ export async function exportFullReport(
       .filter(Boolean)
       .map((s: string) => `• ${s.trim()}`);
     if (shouldInclude("stakeholder_update")) {
+    const stakeholderProjects = [
+      ...new Set(actionItems.map((a) => safeText(a.project_name)).filter(Boolean)),
+    ];
+    const stakeholderClients = [
+      ...new Set(actionItems.map((a) => safeText(a.client_name)).filter(Boolean)),
+    ];
+    const stakeholderProjectDisplay =
+      stakeholderProjects.length > 0 ? stakeholderProjects.join(", ") : projName;
+    const stakeholderClientDisplay =
+      stakeholderClients.length > 0 ? stakeholderClients.join(", ") : clientName;
     const stakeholderRows: string[][] = [
       ["Overall Status:", inferRagFromRiskText(riskItems[0] ?? { risk: "", impact: "", mitigation: "" }) || "Amber", "", ""],
-      ["Project:", projName, "", ""],
-      ["Client:", clientName, "", ""],
+      ["Project:", stakeholderProjectDisplay, "", ""],
+      ["Client:", stakeholderClientDisplay, "", ""],
       ["Period:", genDate, "", ""],
       ["", "", "", ""],
       ["Highlights This Period", "", "", ""],
@@ -1807,41 +2248,24 @@ export async function exportFullReport(
 
     // 9 Meeting Notes
     if (shouldInclude("meeting_notes")) {
-    const attendeeRows = (owners.length ? owners : ["Unassigned"]).map((o) => [`• ${o}`, ""]);
-    const actionRows = actionItems.map((a) => [safeText(a.task), safeText(a.suggested_owner) || "Unassigned", safeText(a.due_date) || "TBC"]);
-    const wsMeeting = XLSX.utils.aoa_to_sheet([
-      [`Meeting Notes - ${genDate}`, "", ""],
-      ["", "", ""],
-      ["Project:", projName, ""],
-      ["Client:", clientName, ""],
-      ["Date:", genDate, ""],
-      ["Prepared by:", "", ""],
-      ["", "", ""],
-      ["Attendees", "", ""],
-      ...attendeeRows,
-      ["", "", ""],
-      ["Agenda / Discussion Points", "", ""],
-      ...actionItems.slice(0, 12).map((a, i) => [`${i + 1}. ${safeText(a.task)}`, "", ""]),
-      ["", "", ""],
-      ["Actions Arising", "", ""],
-      ["Action", "Owner", "Due"],
-      ...(actionRows.length ? actionRows : [["No actions captured", "Unassigned", "TBC"]]),
-      ["", "", ""],
-      ["Decisions Made", "", ""],
-      [safeText(normalized.decisions_log).trim() || "No formal decisions recorded in this period.", "", ""],
-      ["", "", ""],
-      ["Next Meeting", "", ""],
-      [`TBC - to be scheduled by ${owners[0] ?? "owner"}`, "", ""],
-    ]);
-    wsMeeting["!cols"] = [{ wch: 56 }, { wch: 24 }, { wch: 18 }];
-    styleTitleMergedRow(wsMeeting, 0, 3);
-    [7, 10 + attendeeRows.length, 13 + attendeeRows.length + Math.min(actionItems.length, 12), 16 + attendeeRows.length + Math.min(actionItems.length, 12) + Math.max(actionRows.length, 1), 19 + attendeeRows.length + Math.min(actionItems.length, 12) + Math.max(actionRows.length, 1), 22 + attendeeRows.length + Math.min(actionItems.length, 12) + Math.max(actionRows.length, 1)].forEach((r) => styleSubheaderRow(wsMeeting, r, 3));
-    applyWrapToAllCells(wsMeeting);
-    try {
-      append("Meeting Notes", wsMeeting);
-    } catch (err) {
-      console.error("[excel] Meeting Notes sheet failed:", err);
-    }
+      const meetingPrepBody = safeText(safeConfig.meetingPrepContent).trim();
+      console.log("[export-debug] meetingPrepBody:", meetingPrepBody?.substring(0, 100));
+      try {
+        append(
+          "Meeting Notes",
+          buildMeetingPrepNotesSheet(
+            meetingPrepBody,
+            genDate,
+            clientName,
+            projName,
+            safeText(safeConfig.meetingPrepTicketTitle),
+            actionItems,
+            enrichedRiskItems,
+          ),
+        );
+      } catch (err) {
+        console.error("[excel] Meeting Notes sheet failed:", err);
+      }
     }
 
     // 10 Invoice / Time Summary
@@ -1965,17 +2389,17 @@ export async function exportFullReport(
     }
 
     // 15 Issue Log
-    const issueRows = (riskItems.length ? riskItems : [{ risk: "Follow-up required", impact: "Medium", mitigation: "Review next cycle", priority: "Medium" }]).map((r, i) => [
+    const issueRows = (enrichedRiskItems.length ? enrichedRiskItems : [{ risk: "Follow-up required", impact: "Medium", mitigation: "Review next cycle", priority: "Medium" }]).map((r, i) => [
       `ISS-${String(i + 1).padStart(3, "0")}`,
       genDate,
       safeText(r.risk),
-      clientName || "Client",
+      safeText(r.client_name) || safeText(meta?.clientName) || "See PSA",
       safeText(r.priority) || "Medium",
       "Open",
       safeText(r.owner) || (owners[0] ?? "Unassigned"),
       "",
       "",
-      safeText(r.client_name) || clientName,
+      safeText(r.client_name) || safeText(meta?.clientName) || "See PSA",
     ]);
     if (shouldInclude("issue_log")) {
       const wsIssue = buildSimpleStructuredSheet("Issue Log", genDate, ["Issue ID", "Date Raised", "Description", "Raised By", "Priority", "Status", "Owner", "Resolution", "Date Resolved", "Client"], issueRows, [12, 12, 40, 18, 10, 10, 18, 20, 14, 20]);
@@ -2003,8 +2427,26 @@ export async function exportFullReport(
     if (shouldInclude("decisions_log")) {
       const decisionText = safeText(normalized.decisions_log).trim();
       const decisionRows = decisionText
-        ? decisionText.split(/\r?\n/).filter(Boolean).map((d, i) => [`DEC-${String(i + 1).padStart(3, "0")}`, genDate, d, owners[0] ?? "Team", "As documented", "Medium", "N/A", "Approved"])
-        : [[`DEC-001`, genDate, `Proceed with ${projName || "project"} delivery`, owners[0] ?? "Team", "As per client requirements", "Medium", "N/A", "Approved"]];
+        ? decisionText
+          .split(/\r?\n/)
+          .filter((line) => !line.startsWith("Decision ID") && !line.startsWith("ID") && line.trim())
+          .map((line) => {
+            const parts = line.split(/\s*\|\s*/).map((p) => p.trim());
+            if (parts.length >= 6) {
+              return [
+                parts[0] || "",
+                parts[1] || genDate,
+                parts[2] || "",
+                parts[3] || owners[0] || "Team",
+                parts[4] || "",
+                parts[5] || "",
+                parts[6] || "N/A",
+                parts[7] || "Open",
+              ];
+            }
+            return ["", genDate, line, owners[0] || "Team", "", "", "N/A", "Open"];
+          })
+        : [[`DEC-001`, genDate, `Proceed with ${projName || "project"} delivery`, owners[0] ?? "Team", "As per client requirements", "Medium", "N/A", "Open"]];
       try {
         append("Decisions Log", buildSimpleStructuredSheet("Decisions Log", genDate, ["Decision ID", "Date", "Decision", "Decision Maker", "Rationale", "Impact", "Alternatives Considered", "Status"], decisionRows, [12, 12, 40, 22, 30, 12, 28, 12]));
       } catch (err) {

@@ -270,7 +270,7 @@ export default function ConnectWiseManageIntegrationBlogPage() {
               <li>Generate your first report</li>
             </ol>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
-              Your first report is free. No credit card required to get started.
+              Your first report is free.
             </p>
 
             <h2 className="mt-12 mb-4 text-[20px] font-semibold text-[var(--text-primary)] sm:text-[24px]">

@@ -1,4 +1,4 @@
-import { exportFullReportToBuffer } from "@/lib/export";
+import { exportFullReportToBuffer, extractStatusReportSectionForTicket } from "@/lib/export";
 import { partnerReportFileSlug } from "@/lib/white-label";
 
 export type HaloPushNoteTicketResult = {
@@ -7,7 +7,15 @@ export type HaloPushNoteTicketResult = {
   error?: string;
 };
 
-type PushRowWithSourceTicket = { source_ticket?: string | null };
+type PushRowWithSourceTicket = {
+  source_ticket?: string | null;
+  project_name?: string | null;
+};
+
+function safeText(v: unknown): string {
+  if (v == null) return "";
+  return String(v).trim();
+}
 
 export type PushNarrativeScope = "per_ticket" | "combined_all";
 
@@ -55,7 +63,13 @@ export function filterOutputsForTicket(
     }
 
     if (statusScope === "per_ticket") {
-      out.status_report = "";
+      const base = typeof out.status_report === "string" ? out.status_report : "";
+      const actions = Array.isArray(out.actions) ? (out.actions as PushRowWithSourceTicket[]) : [];
+      const hint =
+        actions.map((a) => safeText(a.source_ticket)).find(Boolean) ||
+        actions.map((a) => safeText(a.project_name)).find(Boolean) ||
+        "";
+      out.status_report = hint ? extractStatusReportSectionForTicket(base, hint) : "";
     } else {
       out.status_report = typeof out.status_report === "string" ? out.status_report : "";
     }

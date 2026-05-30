@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import JSZip from "jszip";
 import PptxGenJS from "pptxgenjs";
 import * as XLSX from "xlsx-js-style";
 import {
@@ -86,6 +87,14 @@ type ProjectRow = {
   source?: "halopsa" | "connectwise";
 };
 
+function sanitiseProjectName(name: string | null | undefined, id: string | number): string {
+  const raw = String(name ?? "").trim();
+  if (/^child ticket of id/i.test(raw)) {
+    return `Untitled Project — Ref ${id}`;
+  }
+  return raw || `Project ${id}`;
+}
+
 /** Stable PSA client identity for filtering and prompts — never match on display name alone. */
 function qbrPsaClientKey(row: {
   source?: unknown;
@@ -139,6 +148,8 @@ type QbrSections = {
 type GeneratedQbr = {
   generatedAt: string;
   dateRangeLabel: string;
+  /** End of the reporting period (YYYY-MM-DD), aligned with PSA fetch `toIso`. */
+  periodEndDate?: string;
   brandName: string;
   brandColor: string;
   brandLogoUrl?: string | null;
@@ -150,12 +161,19 @@ type GeneratedQbr = {
   ticketBreakdownMode: "type_category" | "status";
   ticketBreakdownNote: string | null;
   openVsClosed: { raised: number; resolved: number; open: number; resolvedPct: number };
-  projectRows: Array<{ name: string; percent: number; rag: "Red" | "Amber" | "Green" }>;
+  projectRows: Array<{ name: string; percent: number; rag: "Red" | "Amber" | "Green"; owner?: string; nextAction?: string }>;
   slaCompliancePct: number | null;
   executiveSummary: string;
   risks: Array<{ risk: string; impact: string; mitigation: string }>;
   actions: Array<{ task: string; suggested_owner?: string | null; priority?: string | null }>;
   recommendations: string;
+  recommendationItems: Array<{
+    action: string;
+    owner: string;
+    target: string;
+    riskAddressed: string;
+  }>;
+  execPullQuote: string;
   recurringIssues: {
     rows: Array<{ name: string; count: number; pct: number }>;
     topInsight: string;
@@ -192,13 +210,12 @@ const DEFAULT_SECTIONS: QbrSections = {
 };
 
 const QBR_CHART_PALETTE = [
+  "#5BA8FF",
   "#0F1C3F",
-  "#0EA5E9",
-  "#F59E0B",
-  "#22C55E",
-  "#8B5CF6",
-  "#F43F5E",
-  "#F97316",
+  "#B79268",
+  "#4E9C6F",
+  "#C8553D",
+  "#D9A441",
 ] as const;
 
 function chartColor(i: number): string {
@@ -533,7 +550,7 @@ export function QbrPackBuilder({
   const [clientSearch, setClientSearch] = useState("");
   const [dateRange, setDateRange] = useState<
     "all_time" | "last_30_days" | "last_90_days" | "last_6_months" | "last_12_months" | "custom"
-  >("all_time");
+  >("last_90_days");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [sections, setSections] = useState<QbrSections>(DEFAULT_SECTIONS);
@@ -551,12 +568,15 @@ export function QbrPackBuilder({
   const [clientsWithData, setClientsWithData] = useState<Record<string, { tickets: number; projects: number }>>({});
   const [clientsWithDataLoading, setClientsWithDataLoading] = useState(false);
   useEffect(() => {
-    if (demoMode) return;
+    if (demoMode) {
+      setSources({ halopsa: true, connectwise: false });
+      return;
+    }
     if (psaStatus.loading) return;
-    setSources((prev) => ({
-      halopsa: psaStatus.halo ? prev.halopsa || true : false,
-      connectwise: psaStatus.connectwise ? prev.connectwise || true : false,
-    }));
+    setSources({
+      halopsa: psaStatus.halo ?? false,
+      connectwise: psaStatus.connectwise ?? false,
+    });
   }, [demoMode, psaStatus.halo, psaStatus.connectwise, psaStatus.loading]);
 
   const noPsaConnected =
@@ -679,11 +699,19 @@ export function QbrPackBuilder({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "same-origin",
-          body: JSON.stringify({ type: "tickets", clientId, count: 200 }),
+          body: JSON.stringify({ type: "tickets", clientId, count: 200, includeDetails: false }),
         })
         if (res.ok) {
           const data = await res.json() as { tickets?: Array<{ id: number; summary?: string }> }
           tickets = (data.tickets ?? []).map(t => ({ id: t.id, title: t.summary || String(t.id) }))
+        } else {
+          let errMsg = `Failed to load tickets (${res.status})`
+          try {
+            const errData = await res.json() as { error?: string }
+            if (errData.error) errMsg = errData.error
+          } catch {}
+          console.error("[loadTickets] API error:", errMsg)
+          throw new Error(errMsg)
         }
       } else {
         const res = await fetch(`/api/cw/tickets?companyId=${clientId}&count=200`, {
@@ -699,6 +727,7 @@ export function QbrPackBuilder({
       return tickets
     } catch (e) {
       console.error("[loadTickets]", e)
+      toast({ message: e instanceof Error ? e.message : "Failed to load tickets", variant: "error" })
       return []
     } finally {
       setLoadingTickets(prev => ({ ...prev, [key]: false }))
@@ -785,6 +814,40 @@ export function QbrPackBuilder({
       }),
     [qbrAvailableClients, clientsWithData],
   );
+
+  useEffect(() => {
+    if (step !== 3 || !sources.halopsa || demoMode) return;
+    let cancelled = false;
+    const loadAllProjects = async () => {
+      try {
+        const res = await fetch("/api/halo/projects", { credentials: "same-origin" });
+        if (!res.ok || cancelled) return;
+        const data = await res.json() as {
+          projects?: Array<{ id: number; summary?: string; name?: string; clientId?: number | null }>;
+        };
+        const projects = data.projects ?? [];
+        const byClient: Record<number, Array<{ id: number; title: string }>> = {};
+        for (const p of projects) {
+          if (!p.clientId) continue;
+          if (!byClient[p.clientId]) byClient[p.clientId] = [];
+          byClient[p.clientId].push({ id: p.id, title: p.summary || p.name || String(p.id) });
+        }
+        if (cancelled) return;
+        setClientProjects((prev) => {
+          const next = { ...prev };
+          for (const [clientId, projectList] of Object.entries(byClient)) {
+            const key = `halopsa:${clientId}`;
+            if (!next[key]) next[key] = projectList;
+          }
+          return next;
+        });
+      } catch (e) {
+        console.error("[bulkLoadProjects]", e);
+      }
+    };
+    loadAllProjects();
+    return () => { cancelled = true; };
+  }, [step, sources.halopsa, demoMode]);
 
   useEffect(() => {
     const allowed = new Set(qbrAvailableClientsFiltered.map((c) => `${c.source}:${String(c.id)}`));
@@ -1204,20 +1267,21 @@ export function QbrPackBuilder({
 
     const promptLines: string[] = [
       "QBR CONTEXT: Write for MSP business reviews, client-facing and business language. Avoid deep technical jargon.",
-      "This is a quarterly business review, not a status update. Do not describe individual open tickets. Focus on trends, performance, patterns and outcomes across the period.",
-      "Executive summary guidance: cover overall service performance, total volume delivered, key themes/patterns, notable wins, and areas for improvement for a director/decision-maker audience.",
-      "Do NOT produce an operational backlog update, ticket-by-ticket narrative, or pending-action list in the executive summary.",
-      "Top issues guidance: describe repeated categories/patterns and business impact, not individual ticket descriptions.",
-      "Tone guidance: strategic and reflective, not day-to-day operational status reporting.",
+      "This is a quarterly business review. Focus on trends, performance, patterns and outcomes across the period.",
+      "EXECUTIVE SUMMARY: Write a single punchy pull-quote sentence (max 25 words) that captures the defining theme of this quarter — the most important single thing a director needs to know. Put this in a field called exec_pull_quote. Then write a full executive summary paragraph (3-5 sentences) for the summary field.",
+      "RECOMMENDATIONS: You must output exactly 3-5 structured commitments as a JSON array in a field called recommendation_items. Each must be an object with these exact keys:",
+      '  action: specific verb-led action (e.g. "Complete Azure migration cutover", "Audit backup reliability at [client]")',
+      '  owner: job title of the responsible person (e.g. "Service Delivery Manager", "Project Lead") — infer from ticket assignee if available, otherwise use role title',
+      '  target: target date as relative string (e.g. "30 Jun 2026", "14 Jun 2026") — use ticket due dates if available, otherwise set +14 days from today',
+      "  riskAddressed: one sentence explaining what risk or issue this addresses",
+      "Do NOT produce generic advice. Each commitment must be specific to the data provided. No more than 5 items.",
+      "NEXT STEPS (status_report field): Also output a plain string array of 5-8 bullet points as the status_report field for fallback use.",
+      "TOP ISSUES: describe repeated categories/patterns and business impact.",
+      "Tone: strategic and reflective, not operational status reporting.",
       `Period: ${fromIso && toIso ? `${fromIso} to ${toIso}` : "All time"}`,
       `Tickets in scope: ${tickets.length}`,
       `Projects in scope: ${projects.length}`,
-      "CLIENT ATTRIBUTION:",
-      "Only attribute tickets and projects to the exact client they belong to. Never combine tickets from different clients in the same client section.",
-      "- Each line lists psa_client_key and client_display_name — treat psa_client_key as authoritative identity.",
-      "- Keep each client's narrative strictly inside its CLIENT BLOCK.",
-      "CRITICAL — status_report field: Use this key ONLY for a concise bullet list of next-quarter recommendations and next steps for the client relationship.",
-      "Do NOT put ticket lists, weekly operational narrative, project status dumps, or full status-report prose in status_report. No more than 8 bullets.",
+      "CLIENT ATTRIBUTION: Only attribute tickets/projects to the exact client they belong to.",
     ];
 
     for (const clientKey of orderedKeys) {
@@ -1251,31 +1315,64 @@ export function QbrPackBuilder({
       promptLines.push(`--- END CLIENT BLOCK psa_client_key=${clientKey} ---`);
     }
 
-    promptLines.push(
-      "Include forward-looking recommendations for next quarter (these belong in status_report only, as bullets).",
-    );
+    // Surface named project references explicitly for the AI
+    const namedProjects = projects.slice(0, 10).map((p) => p.name ?? `Project #${p.id}`).filter(Boolean);
+    const namedTicketPatterns = tickets.slice(0, 5).map((t) => `#${t.id}: ${t.summary ?? "Untitled"}`).filter(Boolean);
+    if (namedProjects.length > 0) {
+      promptLines.push(`KEY PROJECTS IN SCOPE: ${namedProjects.join(", ")}`);
+    }
+    if (namedTicketPatterns.length > 0) {
+      promptLines.push(`SAMPLE TICKETS: ${namedTicketPatterns.join(" | ")}`);
+    }
+    promptLines.push(`TODAY'S DATE: ${new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}`);
+    promptLines.push("CRITICAL: recommendation_items actions must reference the specific project names and ticket patterns above. Do not produce generic advice.");
 
     const input = promptLines.join("\n");
 
-    const res = await fetch("/api/generate", {
+    const res = await fetch("/api/qbr-generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        input,
-        tone: "professional",
-        reportType: "qbr",
-        selectedOutputs: ["summary", "actions", "risks", "status_report"],
-        outputPreferences: { enabledTabs: ["summary", "actions", "risks", "status_report"] },
-      }),
+      body: JSON.stringify({ input, tone: "professional" }),
     });
     const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (!res.ok) throw new Error(generateApiErrorMessage(data, "QBR AI generation failed"));
     const recRaw = typeof data.status_report === "string" ? data.status_report.trim() : "";
+    const execPullQuote = typeof data.exec_pull_quote === "string"
+      ? data.exec_pull_quote.trim()
+      : "";
+    let recommendationItems: GeneratedQbr["recommendationItems"] = [];
+    try {
+      const raw = data.recommendation_items;
+      if (Array.isArray(raw)) {
+        recommendationItems = raw
+          .filter((r): r is Record<string, unknown> => typeof r === "object" && r !== null)
+          .map((r) => ({
+            action: typeof r.action === "string" ? r.action : "",
+            owner: typeof r.owner === "string" ? r.owner : "",
+            target: typeof r.target === "string" ? r.target : "",
+            riskAddressed: typeof r.riskAddressed === "string" ? r.riskAddressed : "",
+          }))
+          .filter((r) => r.action.length > 0);
+      }
+    } catch {}
+    if (recommendationItems.length === 0) {
+      recommendationItems = normalizeRecommendationsText(recRaw)
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => ({
+          action: line.replace(/^[\d\.\-\•\*]+\s*/, "").trim(),
+          owner: "",
+          target: "",
+          riskAddressed: "",
+        }));
+    }
     return {
       executiveSummary: typeof data.summary === "string" ? data.summary : "",
       actions: coerceQbrActionsArray(data.actions),
       risks: coerceQbrRisksArray(data.risks),
       recommendations: normalizeRecommendationsText(recRaw),
+      recommendationItems,
+      execPullQuote,
     };
   }
 
@@ -1284,6 +1381,10 @@ export function QbrPackBuilder({
     setLoading(true);
     try {
       const { fromIso, toIso } = getRangeBoundsIso;
+      if (!fromIso && !toIso && sections.projectStatus) {
+        // Allow generation but warn — do not block
+        console.warn("[generateQbr] No date range set — generating with all-time data");
+      }
 
       const { tickets, projects } = await fetchTicketsAndProjects(fromIso, toIso);
 
@@ -1370,9 +1471,49 @@ export function QbrPackBuilder({
         .filter((x): x is NonNullable<typeof x> => x != null);
       const projectsWithTasks = projects.filter((p) => Array.isArray(p.tasks) && p.tasks.length > 0);
       const projectRows = projectsWithTasks.map((p) => {
-        const percent = Number.isFinite(Number(p.completionpercent)) ? Math.max(0, Math.min(100, Number(p.completionpercent))) : 0;
-        const rag: "Red" | "Amber" | "Green" = percent >= 80 ? "Green" : percent >= 45 ? "Amber" : "Red";
-        return { name: p.name ?? `Project ${p.id}`, percent, rag };
+        const percent = Number.isFinite(Number(p.completionpercent))
+          ? Math.max(0, Math.min(100, Number(p.completionpercent)))
+          : null;
+
+        const taskTotal = Array.isArray(p.tasks) ? p.tasks.length : 0;
+        const tasksDone =
+          Array.isArray(p.tasks)
+            ? p.tasks.filter((t) => {
+                const v = String(
+                  (t as { status?: unknown; statusName?: unknown }).status ??
+                    (t as { status?: unknown; statusName?: unknown }).statusName ??
+                    "",
+                ).toLowerCase();
+                return /complet|done|closed|resolved/.test(v);
+              }).length
+            : 0;
+
+        const derivedPercent =
+          percent !== null
+            ? percent
+            : taskTotal > 0
+              ? Math.round((tasksDone / taskTotal) * 100)
+              : null;
+
+        const displayPercent = derivedPercent ?? 0;
+        const rag: "Red" | "Amber" | "Green" =
+          derivedPercent === null || derivedPercent === 0
+            ? "Amber"
+            : derivedPercent >= 80
+              ? "Green"
+              : derivedPercent >= 45
+                ? "Amber"
+                : "Red";
+
+        return {
+          name: sanitiseProjectName(p.name, p.id),
+          percent: displayPercent,
+          rag,
+          owner: undefined,
+          nextAction: Array.isArray(p.tasks) && p.tasks.length > 0
+            ? (p.tasks[0] as { summary?: string | null })?.summary ?? undefined
+            : undefined,
+        };
       });
 
       const catMap = new Map<string, number>();
@@ -1467,6 +1608,8 @@ export function QbrPackBuilder({
             actions: [] as Array<{ task: string; suggested_owner?: string; priority?: string }>,
             risks: [] as Array<{ risk: string; impact: string; mitigation: string }>,
             recommendations: "",
+            recommendationItems: [] as GeneratedQbr["recommendationItems"],
+            execPullQuote: "",
           };
 
       /** Post-generation: AI-only sections — never add to autoExcludedLabels (data-insufficient banner). */
@@ -1507,6 +1650,7 @@ export function QbrPackBuilder({
           fromIso && toIso
             ? `${new Date(fromIso).toLocaleDateString("en-GB")} - ${new Date(toIso).toLocaleDateString("en-GB")}`
             : "All time",
+        periodEndDate: toIso ? new Date(toIso).toISOString().slice(0, 10) : undefined,
         brandName: brandName.trim() || "Handover",
         brandColor: brandColor.trim() || "#38bdf8",
         brandLogoUrl: brandLogoUrl.trim() || null,
@@ -1524,11 +1668,13 @@ export function QbrPackBuilder({
           resolvedPct: raised > 0 ? Math.round((resolved / raised) * 100) : 0,
         },
         projectRows,
-        slaCompliancePct: raised > 0 ? Math.max(0, Math.min(100, Math.round((resolved / raised) * 100))) : null,
+        slaCompliancePct: raised > 0 ? Math.max(0, Math.min(100, Math.round((resolved / raised) * 100))) : 100,
         executiveSummary: effective.executiveSummary ? ai.executiveSummary : "",
         risks: effective.risksActions ? ai.risks : [],
         actions: effective.risksActions ? ai.actions : [],
         recommendations: effective.nextSteps ? ai.recommendations : "",
+        recommendationItems: effective.nextSteps ? ai.recommendationItems : [],
+        execPullQuote: effective.executiveSummary ? ai.execPullQuote : "",
         recurringIssues: {
           rows: recurringRows,
           topInsight: recurringInsight,
@@ -1550,6 +1696,8 @@ export function QbrPackBuilder({
         includedSections: effective,
         autoExcludedSectionLabels: autoExcludedLabels.length > 0 ? [...new Set(autoExcludedLabels)] : undefined,
       };
+      const result = generated;
+      console.log("QBR_FIXTURE:", JSON.stringify(result, null, 2));
 
       setQbr(generated);
       void fetch("/api/qbr/history", {
@@ -1724,17 +1872,39 @@ export function QbrPackBuilder({
     }
 
     XLSX.utils.book_append_sheet(wb, ws, "QBR Pack");
-    XLSX.writeFile(wb, `QBR-Pack-${(qbr.brandName || "Client").replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    const _xlsxDate = new Date();
+    const _xlsxQuarter = `Q${Math.ceil((_xlsxDate.getMonth() + 1) / 3)}-${_xlsxDate.getFullYear()}`;
+    const _xlsxSafeName = (qbr.brandName || "Client")
+      .replace(/[^a-zA-Z0-9]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+    XLSX.writeFile(wb, `${_xlsxSafeName}_QBR_${_xlsxQuarter}.xlsx`);
   }
 
   async function exportPptx() {
     if (!qbr) return;
+    if (!qbr.dateRangeLabel || qbr.dateRangeLabel.toLowerCase() === "all time") {
+      // Show warning but allow export to proceed
+      console.warn("[exportPptx] Exporting with 'All time' period — consider setting a date range");
+    }
     const pptx = new PptxGenJS();
+    pptx.theme = { headFontFace: "Inter", bodyFontFace: "Inter" };
     pptx.layout = "LAYOUT_WIDE";
     const accent = safeColorHex(qbr.brandColor);
-    const brandNoHash = colorNoHash(accent);
     const NAVY = "0F1C3F";
-    const BODY = "1F2937";
+    const SLIDE_BG = "0A0E1F";
+    const SLIDE_TEXT = "F0F2F8";
+    const SLIDE_DIM = "8B8FA8";
+    const SLIDE_BORDER = "1E2235";
+    const BODY = SLIDE_TEXT;
+    const CHART_COLORS = {
+      primary: colorNoHash(accent) || "5BA8FF",
+      navy: "0F1C3F",
+      ragRed: "C8553D",
+      ragAmber: "D9A441",
+      ragGreen: "4E9C6F",
+      neutral: "B79268",
+    } as const;
     const SLIDE_W = 13.333;
     const SLIDE_H = 7.5;
     const PT_TO_IN = 1 / 72;
@@ -1749,80 +1919,100 @@ export function QbrPackBuilder({
     const HARD_BOTTOM_PT = 420;
     const recMaxBottom = HARD_BOTTOM_PT * PT_TO_IN;
     const recBoxH = Math.max(0.35, recMaxBottom - bodyTop);
+    if (!qbr.periodEndDate && qbr.dateRangeLabel?.toLowerCase() === "all time") {
+      console.warn("[exportPptx] Generating QBR with All time period — consider setting a date range for production use");
+    }
 
     let headerLogoData: string | null = null;
+    let logoNaturalW = 0;
+    let logoNaturalH = 0;
     const logoUrl = (qbr.brandLogoUrl ?? "").trim();
     if (logoUrl) {
       try {
-        const lr = await fetch(logoUrl, { mode: "cors" });
-        if (lr.ok) {
-          const blob = await lr.blob();
+        const logoRes = await fetch(logoUrl, { mode: "cors" });
+        if (logoRes.ok) {
+          const logoBlob = await logoRes.blob();
           headerLogoData = await new Promise<string>((resolve, reject) => {
-            const r = new FileReader();
-            r.onload = () => resolve(String(r.result));
-            r.onerror = () => reject(new Error("read"));
-            r.readAsDataURL(blob);
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(logoBlob);
           });
+          const dims = await new Promise<{ w: number; h: number }>((resolve) => {
+            const img = new Image();
+            img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+            img.onerror = () => resolve({ w: 1, h: 1 });
+            img.src = headerLogoData!;
+          });
+          logoNaturalW = dims.w;
+          logoNaturalH = dims.h;
+        } else {
+          console.error("[exportPptx] Logo fetch failed:", logoRes.status);
         }
-      } catch {
-        headerLogoData = null;
+      } catch (e) {
+        console.error("[exportPptx] Logo fetch error:", e);
       }
     }
 
     const addChrome = (slide: PptxGenJS.Slide, title: string, pageNumber: number) => {
-      slide.background = { color: "FFFFFF" };
-      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: SLIDE_W, h: HEADER_H, fill: { color: NAVY }, line: { color: NAVY } });
+      slide.background = { color: SLIDE_BG };
+      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: SLIDE_W, h: HEADER_H, fill: { color: SLIDE_BG }, line: { color: SLIDE_BG } });
       slide.addText(title, {
         x: 0.35,
         y: 0,
         w: headerLogoData ? 8.6 : 9.8,
         h: HEADER_H,
-        fontFace: "Calibri",
+        fontFace: "Inter",
         bold: true,
         fontSize: TITLE_FS,
-        color: "FFFFFF",
+        color: SLIDE_TEXT,
         valign: "middle",
         margin: BOX_PAD,
       });
       if (headerLogoData) {
+        const maxW = 1.3;
+        const maxH = 0.32;
+        const aspect = logoNaturalW / Math.max(logoNaturalH, 1);
+        const logoW = Math.min(maxW, maxH * aspect);
+        const logoH = logoW / aspect;
         slide.addImage({
           data: headerLogoData,
-          x: SLIDE_W - 1.45,
-          y: 0.06,
-          w: 1.2,
-          h: 0.42,
-          sizing: { type: "contain", w: 1.2, h: 0.42 },
+          x: 13.33 - logoW - 0.25,
+          y: (0.5 - logoH) / 2,
+          w: logoW,
+          h: logoH,
+        });
+      } else {
+        slide.addText(qbr.brandName, {
+          x: 10.2,
+          y: 0,
+          w: 2.9,
+          h: HEADER_H,
+          fontFace: "Inter",
+          bold: true,
+          fontSize: BODY_FS,
+          color: SLIDE_TEXT,
+          align: "right",
+          valign: "middle",
+          margin: BOX_PAD,
         });
       }
-      slide.addText(qbr.brandName, {
-        x: headerLogoData ? 9.05 : 10.2,
-        y: 0,
-        w: headerLogoData ? 3.05 : 2.9,
-        h: HEADER_H,
-        fontFace: "Calibri",
-        bold: true,
-        fontSize: BODY_FS,
-        color: "FFFFFF",
-        align: "right",
-        valign: "middle",
-        margin: BOX_PAD,
-      });
       slide.addShape(pptx.ShapeType.rect, {
         x: 0,
         y: SLIDE_H - FOOTER_H,
         w: SLIDE_W,
         h: FOOTER_H,
-        fill: { color: "F3F4F6" },
-        line: { color: "F3F4F6" },
+        fill: { color: SLIDE_BORDER },
+        line: { color: SLIDE_BORDER },
       });
       slide.addText(qbr.brandName, {
         x: 0.35,
         y: SLIDE_H - FOOTER_H,
         w: 8,
         h: FOOTER_H,
-        fontFace: "Calibri",
+        fontFace: "Inter",
         fontSize: 10,
-        color: BODY,
+        color: SLIDE_DIM,
         valign: "middle",
         margin: BOX_PAD,
       });
@@ -1831,47 +2021,278 @@ export function QbrPackBuilder({
         y: SLIDE_H - FOOTER_H,
         w: 1,
         h: FOOTER_H,
-        fontFace: "Calibri",
+        fontFace: "Courier New",
         fontSize: 10,
-        color: BODY,
+        color: SLIDE_DIM,
         align: "right",
         valign: "middle",
         margin: BOX_PAD,
       });
     };
 
-    let page = 1;
-    const cover = pptx.addSlide();
-    addChrome(cover, "Quarterly Business Review", page++);
-    const pptPeriodLine = qbrPptPeriodLine(qbr.dateRangeLabel);
-    const coverExecY = pptPeriodLine ? bodyTop + 0.45 : bodyTop;
-    if (pptPeriodLine) {
-      cover.addText(pptPeriodLine, {
-        x: leftX,
-        y: bodyTop,
-        w: 12.3,
-        h: 0.35,
-        fontFace: "Calibri",
+    const addSectionDivider = (title: string, number: string) => {
+      const slide = pptx.addSlide();
+      slide.addShape(pptx.ShapeType.rect, {
+        x: 0,
+        y: 0,
+        w: SLIDE_W,
+        h: SLIDE_H,
+        fill: { color: NAVY },
+        line: { color: NAVY },
+      });
+      slide.addShape(pptx.ShapeType.rect, {
+        x: 0,
+        y: 0,
+        w: SLIDE_W,
+        h: 0.08,
+        fill: { color: CHART_COLORS.primary },
+        line: { color: CHART_COLORS.primary },
+      });
+      slide.addText(number, {
+        x: 0.8,
+        y: 2.0,
+        w: 2,
+        h: 1.5,
+        fontFace: "Courier New",
+        fontSize: 72,
+        color: CHART_COLORS.primary,
+        transparency: 70,
         bold: true,
-        fontSize: BODY_FS,
-        color: NAVY,
+      });
+      slide.addText(title, {
+        x: 0.8,
+        y: 3.2,
+        w: 11.5,
+        h: 1.2,
+        fontFace: "Inter",
+        fontSize: 48,
+        color: "FFFFFF",
+        bold: true,
+      });
+    };
+    const smartTitle = (s: string): string => {
+      const PRESERVE = /^(HaloPSA|ConnectWise|3CX|Microsoft|Azure|Google|AWS|VMware|Veeam|Cisco|Barracuda|SQL|CRM|ERP|VPN|MFA|SLA|SOW|IT|MSP|PSA|AI|API|UI|UX|ID|P1|P2|P3|P4|SO|PRJ|INC|RFC)$/i;
+      return s.split(/\s+/).map((w) => {
+        if (PRESERVE.test(w)) return w; // known product/acronym — leave exactly as-is
+        if (/[A-Z].*[A-Z]/.test(w)) return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(); // mixed case like UPgrades → Upgrades
+        if (/[A-Z]/.test(w)) return w; // single uppercase start — leave alone
+        return w.charAt(0).toUpperCase() + w.slice(1); // all lowercase — title-case
+      }).join(" ");
+    };
+
+    let page = 1;
+    const qbrClientName =
+      ((qbr as GeneratedQbr & { clientName?: string }).clientName ?? qbr.brandName ?? "Client").trim() || "Client";
+    const qbrCover = qbr as GeneratedQbr & {
+      clientName?: string;
+      client?: { name?: string };
+    };
+    const coverHeroName =
+      qbrCover.clientName || qbrCover.client?.name || qbr.brandName || "Client";
+    const heroFontSize =
+      coverHeroName.length <= 10
+        ? 116
+        : coverHeroName.length <= 16
+          ? 90
+          : coverHeroName.length <= 22
+            ? 72
+            : 56;
+    const coverIssueDate = new Date().toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+
+    const cover = pptx.addSlide();
+    cover.addShape(pptx.ShapeType.rect, {
+      x: 0,
+      y: 0,
+      w: SLIDE_W,
+      h: SLIDE_H,
+      fill: { color: NAVY },
+      line: { color: NAVY },
+    });
+    cover.addShape(pptx.ShapeType.rect, {
+      x: 0,
+      y: 0,
+      w: SLIDE_W,
+      h: 0.08,
+      fill: { color: CHART_COLORS.primary },
+      line: { color: CHART_COLORS.primary },
+    });
+    if (headerLogoData) {
+      const maxW = 1.8;
+      const maxH = 0.55;
+      const aspect = logoNaturalW / Math.max(logoNaturalH, 1);
+      const logoW = Math.min(maxW, maxH * aspect);
+      const logoH = logoW / aspect;
+      cover.addImage({
+        data: headerLogoData,
+        x: 0.5,
+        y: 0.18,
+        w: logoW,
+        h: logoH,
+      });
+    } else if (qbr.brandName?.trim()) {
+      cover.addText(qbr.brandName.trim(), {
+        x: 0.8,
+        y: 0.24,
+        w: 3.5,
+        h: 0.5,
+        fontFace: "Inter",
+        fontSize: 18,
+        color: "FFFFFF",
+        bold: true,
       });
     }
-    cover.addText(
-      qbr.includedSections.executiveSummary ? qbr.executiveSummary || "Executive summary not available." : " ",
-      {
-        x: leftX,
-        y: coverExecY,
-        w: 12.3,
-        h: SLIDE_H - coverExecY - FOOTER_H - 0.1,
-        fontFace: "Calibri",
-        fontSize: BODY_FS,
-        color: BODY,
-        valign: "top",
+    cover.addText("QUARTERLY BUSINESS REVIEW", {
+      x: 0.8,
+      y: 1.2,
+      w: 11.5,
+      h: 0.4,
+      fontFace: "Courier New",
+      fontSize: 11,
+      color: CHART_COLORS.primary,
+      bold: false,
+    });
+    cover.addText(coverHeroName, {
+      x: 0.8,
+      y: 1.8,
+      w: 11.5,
+      h: 3.55,
+      fontFace: "Inter",
+      fontSize: heroFontSize,
+      color: "FFFFFF",
+      bold: true,
+    });
+    cover.addText(`${qbr.dateRangeLabel} · Issued ${coverIssueDate}`, {
+      x: 0.8,
+      y: 5.1,
+      w: 8,
+      h: 0.4,
+      fontFace: "Courier New",
+      fontSize: 12,
+      color: "FFFFFF",
+      transparency: 40,
+    });
+    if (!headerLogoData && qbr.brandName?.trim()) {
+      cover.addText(qbr.brandName.trim(), {
+        x: 0.8,
+        y: 6.6,
+        w: 4,
+        h: 0.4,
+        fontFace: "Inter",
+        fontSize: 14,
+        color: "FFFFFF",
+        bold: true,
+      });
+    }
+    cover.addText(`Prepared for ${qbrClientName}`, {
+      x: 8,
+      y: 6.6,
+      w: 4.5,
+      h: 0.4,
+      fontFace: "Courier New",
+      fontSize: 11,
+      color: "FFFFFF",
+      transparency: 40,
+      align: "right",
+    });
+
+    let _sectionNum = 0;
+    const _nextSection = () => String(++_sectionNum).padStart(2, "0");
+
+    addSectionDivider("Executive Summary", _nextSection());
+    const executive = pptx.addSlide();
+    addChrome(executive, "Executive Summary", page++);
+    executive.addText("SECTION 01 · OVERVIEW", {
+      x: 0.4,
+      y: 0.85,
+      w: 6.5,
+      h: 0.2,
+      fontSize: 9,
+      fontFace: "Courier New",
+      color: CHART_COLORS.primary,
+      charSpacing: 3,
+    });
+    executive.addText("Executive summary.", {
+      x: 0.4,
+      y: 1.1,
+      w: 6.5,
+      h: 0.7,
+      fontSize: 40,
+      fontFace: "Inter",
+      bold: true,
+      color: SLIDE_TEXT,
+    });
+    if (qbr.execPullQuote?.trim()) {
+      executive.addText(`\u201C${qbr.execPullQuote.trim()}\u201D`, {
+        x: 0.4,
+        y: 1.95,
+        w: 8.5,
+        h: 1.4,
+        fontSize: 22,
+        fontFace: "Inter",
+        bold: true,
+        color: SLIDE_TEXT,
+        italic: false,
         wrap: true,
-        margin: BOX_PAD,
-      },
-    );
+      });
+    }
+    const slaDisplay = (qbr.slaCompliancePct === null || qbr.slaCompliancePct === 0)
+      ? "—"
+      : `${qbr.slaCompliancePct}%`;
+    const slaSub = (qbr.slaCompliancePct === null || qbr.slaCompliancePct === 0)
+      ? "Insufficient data"
+      : "Resolution quality";
+    const kpiRows = [
+      { label: "TOTAL TICKETS", value: String(qbr.openVsClosed.raised), sub: "Raised in period" },
+      { label: "OPEN TICKETS", value: String(qbr.openVsClosed.open), sub: "Still open now" },
+      { label: "SLA COMPLIANCE", value: slaDisplay, sub: slaSub },
+      { label: "PROJECTS", value: String(qbr.projects.length), sub: "In reporting scope" },
+    ];
+    kpiRows.forEach((kpi, idx) => {
+      const cardY = 0.85 + idx * 1.45;
+      executive.addShape(pptx.ShapeType.rect, {
+        x: 9.2,
+        y: cardY,
+        w: 3.9,
+        h: 1.35,
+        fill: { color: SLIDE_BORDER },
+        line: { color: SLIDE_BORDER },
+      });
+      executive.addText(kpi.label, {
+        x: 9.38,
+        y: cardY + 0.1,
+        w: 3.5,
+        h: 0.2,
+        fontSize: 8,
+        fontFace: "Courier New",
+        color: SLIDE_DIM,
+        charSpacing: 2,
+      });
+      executive.addText(kpi.value, {
+        x: 9.38,
+        y: cardY + 0.35,
+        w: 3.5,
+        h: 0.6,
+        fontSize: 36,
+        fontFace: "Courier New",
+        bold: true,
+        color: SLIDE_TEXT,
+      });
+      executive.addText(kpi.sub, {
+        x: 9.38,
+        y: cardY + 0.95,
+        w: 3.5,
+        h: 0.2,
+        fontSize: 10,
+        fontFace: "Inter",
+        color: SLIDE_DIM,
+      });
+    });
+
+    addSectionDivider("Ticket Overview", _nextSection());
 
     const metrics = pptx.addSlide();
     addChrome(metrics, "Ticket Metrics", page++);
@@ -1880,7 +2301,7 @@ export function QbrPackBuilder({
       y: bodyTop,
       w: 5.8,
       h: 0.35,
-      fontFace: "Calibri",
+      fontFace: "Inter",
       bold: true,
       fontSize: BODY_FS,
       color: NAVY,
@@ -1889,17 +2310,17 @@ export function QbrPackBuilder({
     qbr.weeklyCounts.slice(0, 8).forEach((w, idx) => {
       const y = bodyTop + 0.45 + idx * 0.58;
       const barW = Math.max(0.2, (w.count / maxWeekly) * 3.5);
-      const c = colorNoHash(chartColor(idx));
-      metrics.addText(w.week, { x: leftX, y, w: 1.4, h: 0.24, fontFace: "Calibri", fontSize: BODY_FS, color: BODY });
+      const c = idx === 0 ? CHART_COLORS.primary : CHART_COLORS.neutral;
+      metrics.addText(w.week, { x: leftX, y, w: 1.4, h: 0.24, fontFace: "Inter", fontSize: BODY_FS, color: BODY });
       metrics.addShape(pptx.ShapeType.rect, { x: 2.15, y: y + 0.02, w: barW, h: 0.22, fill: { color: c }, line: { color: c } });
-      metrics.addText(w.count.toLocaleString(), { x: 5.75, y, w: 0.8, h: 0.24, fontFace: "Calibri", fontSize: BODY_FS, color: BODY, align: "right" });
+      metrics.addText(w.count.toLocaleString(), { x: 5.75, y, w: 0.8, h: 0.24, fontFace: "Courier New", fontSize: BODY_FS, color: BODY, align: "right" });
     });
     metrics.addText("Resolution Performance", {
       x: 7.0,
       y: bodyTop,
       w: 5.9,
       h: 0.35,
-      fontFace: "Calibri",
+      fontFace: "Inter",
       bold: true,
       fontSize: BODY_FS,
       color: NAVY,
@@ -1911,9 +2332,9 @@ export function QbrPackBuilder({
         y: bodyTop + 0.38,
         w: 5.9,
         h: 0.55,
-        fontFace: "Calibri",
+        fontFace: "Inter",
         fontSize: BODY_FS,
-        color: BODY,
+        color: SLIDE_TEXT,
         wrap: true,
       },
     );
@@ -1926,27 +2347,45 @@ export function QbrPackBuilder({
     qbr.resolutionByPriority.forEach((r, idx) => {
       const y = bodyTop + 1.05 + idx * 0.78;
       const barW = Math.max(0.2, (r.avgHours / maxRes) * 3.2);
-      const c = colorNoHash(chartColor(idx));
-      const line = `${r.priority}: ${r.avgHours.toFixed(1)} hours average resolution time`;
+      const c = idx === 0 ? CHART_COLORS.primary : CHART_COLORS.neutral;
+      const existingBenchmarkText =
+        r.key === "P3" && r.avgHours <= 48
+          ? "Industry benchmark for P3 resolution is typically 24-48 hours."
+          : "";
+      const displayHours = r.ticketCount < 3 ? "—" : `${r.avgHours.toFixed(1)}h`;
+      const displaySub = r.ticketCount < 3 ? "Too few tickets" : existingBenchmarkText;
+      const line = `${r.priority}: ${displayHours} average resolution time`;
       metrics.addText(line, {
         x: 7.0,
-        y,
+        y: y + 0.15,
         w: 6.1,
         h: 0.28,
-        fontFace: "Calibri",
+        fontFace: "Inter",
         fontSize: BODY_FS,
         color: BODY,
         wrap: true,
       });
+      if (displaySub) {
+        metrics.addText(displaySub, {
+          x: 7.0,
+          y: y + 0.76,
+          w: 6.1,
+          h: 0.2,
+          fontFace: "Inter",
+          fontSize: 10,
+          color: BODY,
+          wrap: true,
+        });
+      }
       metrics.addShape(pptx.ShapeType.rect, { x: 7.0, y: y + 0.32, w: barW, h: 0.22, fill: { color: c }, line: { color: c } });
     });
-    if (bench) {
+    if (bench && !qbr.resolutionByPriority.some((r) => r.ticketCount < 3)) {
       metrics.addText(bench, {
         x: 7.0,
         y: bodyTop + 1.05 + qbr.resolutionByPriority.length * 0.78 + 0.1,
         w: 6.1,
         h: 0.55,
-        fontFace: "Calibri",
+        fontFace: "Inter",
         italic: true,
         fontSize: BODY_FS,
         color: BODY,
@@ -1962,7 +2401,7 @@ export function QbrPackBuilder({
         y: bodyTop,
         w: 12.3,
         h: 0.45,
-        fontFace: "Calibri",
+        fontFace: "Inter",
         fontSize: BODY_FS,
         color: BODY,
         wrap: true,
@@ -1978,7 +2417,7 @@ export function QbrPackBuilder({
         y: bodyTop + 0.55,
         w: 12.3,
         h: 2.5,
-        fontFace: "Calibri",
+        fontFace: "Inter",
         fontSize: BODY_FS,
         color: BODY,
         valign: "top",
@@ -1990,16 +2429,25 @@ export function QbrPackBuilder({
     if (qbr.includedSections.recurringIssues) {
       const ri = pptx.addSlide();
       addChrome(ri, "Top Recurring Issues This Quarter", page++);
+      const recurringSorted = [...qbr.recurringIssues.rows].sort((a, b) => b.count - a.count);
+      const recurringTop = recurringSorted.slice(0, 5);
+      if (recurringSorted.length > 5) {
+        const remainderCount = recurringSorted.slice(5).reduce((sum, r) => sum + r.count, 0);
+        const remainderPct = Number(
+          recurringSorted.slice(5).reduce((sum, r) => sum + r.pct, 0).toFixed(1),
+        );
+        recurringTop.push({ name: "Other", count: remainderCount, pct: remainderPct });
+      }
       const lines =
-        qbr.recurringIssues.rows.length === 0
+        recurringTop.length === 0
           ? "No category reached three or more occurrences."
-          : qbr.recurringIssues.rows.map((r) => `${r.name}: ${r.count} (${r.pct}%)`).join("\n");
+          : recurringTop.map((r) => `${r.name}: ${r.count} (${r.pct}%)`).join("\n");
       ri.addText(lines, {
         x: leftX,
         y: bodyTop,
         w: 12.3,
         h: 2.2,
-        fontFace: "Calibri",
+        fontFace: "Inter",
         fontSize: BODY_FS,
         color: BODY,
         valign: "top",
@@ -2011,7 +2459,7 @@ export function QbrPackBuilder({
         y: bodyTop + 2.35,
         w: 12.3,
         h: 1.2,
-        fontFace: "Calibri",
+        fontFace: "Inter",
         italic: true,
         fontSize: BODY_FS,
         color: BODY,
@@ -2032,7 +2480,7 @@ export function QbrPackBuilder({
         y: bodyTop,
         w: 12.3,
         h: recBoxH,
-        fontFace: "Calibri",
+        fontFace: "Inter",
         fontSize: BODY_FS,
         color: BODY,
         valign: "top",
@@ -2043,65 +2491,117 @@ export function QbrPackBuilder({
 
     const projectChunks: GeneratedQbr["projectRows"][] = [];
     if (qbr.includedSections.projectStatus) {
-      for (let i = 0; i < qbr.projectRows.length; i += 5) projectChunks.push(qbr.projectRows.slice(i, i + 5));
+      for (let i = 0; i < qbr.projectRows.length; i += 10) projectChunks.push(qbr.projectRows.slice(i, i + 10));
+      if (projectChunks.length > 1 && projectChunks[projectChunks.length - 1]?.length === 1) {
+        const last = projectChunks.pop();
+        if (last && projectChunks[projectChunks.length - 1]) {
+          projectChunks[projectChunks.length - 1].push(...last);
+        }
+      }
       if (projectChunks.length === 0) projectChunks.push([]);
+      addSectionDivider("Project Status", _nextSection());
     }
     projectChunks.forEach((chunk, idx) => {
       const slide = pptx.addSlide();
-      addChrome(slide, idx === 0 ? "Project Status Overview" : "Project Status Overview (continued)", page++);
+      addChrome(
+        slide,
+        idx === 0 ? "Project Status Overview" : `Project Status · ${idx + 1} of ${projectChunks.length}`,
+        page++,
+      );
       const hdrY = bodyTop;
-      const rowH = 0.52;
+      const rowH = 0.42;
       chunk.forEach((p, i) => {
         const y = hdrY + i * rowH;
-        const ragColor = p.rag === "Green" ? "22C55E" : p.rag === "Amber" ? "F59E0B" : "EF4444";
-        slide.addText(p.name, {
+        const ragColor =
+          p.rag === "Green"
+            ? CHART_COLORS.ragGreen
+            : p.rag === "Amber"
+              ? CHART_COLORS.ragAmber
+              : CHART_COLORS.ragRed;
+        slide.addText(smartTitle(p.name), {
           x: leftX,
           y,
           w: 5.4,
           h: rowH,
-          fontFace: "Calibri",
-          fontSize: 12,
+          fontFace: "Inter",
+          fontSize: 11,
           color: BODY,
           valign: "middle",
           wrap: true,
         });
-        slide.addShape(pptx.ShapeType.rect, { x: 5.85, y: y + 0.14, w: 3.5, h: 0.18, fill: { color: "E5E7EB" }, line: { color: "E5E7EB" } });
-        slide.addShape(pptx.ShapeType.rect, {
-          x: 5.85,
-          y: y + 0.14,
-          w: Math.max(0.04, (p.percent / 100) * 3.5),
-          h: 0.18,
-          fill: { color: brandNoHash },
-          line: { color: brandNoHash },
-        });
-        slide.addText(`${p.percent}%`, { x: 9.45, y, w: 0.75, h: rowH, fontFace: "Calibri", fontSize: 12, color: BODY, align: "right", valign: "middle" });
-        slide.addShape(pptx.ShapeType.roundRect, {
-          x: 10.35,
-          y: y + 0.1,
-          w: 1.15,
-          h: 0.28,
-          fill: { color: ragColor },
-          line: { color: ragColor },
-          rectRadius: 0.04,
-        });
-        slide.addText(p.rag, {
-          x: 10.35,
-          y: y + 0.1,
-          w: 1.15,
-          h: 0.28,
-          fontFace: "Calibri",
-          bold: true,
-          fontSize: 11,
-          color: "FFFFFF",
-          align: "center",
+        if (p.percent > 0) {
+          slide.addShape(pptx.ShapeType.rect, {
+            x: 5.85,
+            y: y + 0.14,
+            w: 3.5,
+            h: 0.18,
+            fill: { color: "E5E7EB" },
+            line: { color: "E5E7EB" },
+          });
+          slide.addShape(pptx.ShapeType.rect, {
+            x: 5.85,
+            y: y + 0.14,
+            w: (p.percent / 100) * 3.5,
+            h: 0.18,
+            fill: { color: CHART_COLORS.primary },
+            line: { color: CHART_COLORS.primary },
+          });
+        }
+        slide.addText(p.percent > 0 ? `${p.percent}%` : "—", {
+          x: 9.45,
+          y,
+          w: 0.75,
+          h: rowH,
+          fontFace: "Courier New",
+          fontSize: 12,
+          color: BODY,
+          align: "right",
           valign: "middle",
         });
+        if (p.percent === 0) {
+          slide.addText("—", {
+            x: 10.35,
+            y: y + 0.1,
+            w: 1.15,
+            h: 0.28,
+            fontFace: "Courier New",
+            fontSize: 12,
+            color: BODY,
+            align: "center",
+            valign: "middle",
+          });
+        } else {
+          slide.addShape(pptx.ShapeType.roundRect, {
+            x: 10.35,
+            y: y + 0.1,
+            w: 1.15,
+            h: 0.28,
+            fill: { color: ragColor },
+            line: { color: ragColor },
+            rectRadius: 0.04,
+          });
+          slide.addText(p.rag, {
+            x: 10.35,
+            y: y + 0.1,
+            w: 1.15,
+            h: 0.28,
+            fontFace: "Courier New",
+            bold: true,
+            fontSize: 11,
+            color: "FFFFFF",
+            align: "center",
+            valign: "middle",
+          });
+        }
       });
     });
 
     const riskChunks = chunkList(qbr.risks, 8);
     const actionChunks = chunkList(qbr.actions, 8);
     const raSlides = qbr.includedSections.risksActions ? Math.max(riskChunks.length, actionChunks.length, 1) : 0;
+    if (qbr.includedSections.risksActions) {
+      addSectionDivider("Risks & Actions", _nextSection());
+    }
     for (let s = 0; s < raSlides; s += 1) {
       const slide = pptx.addSlide();
       const title =
@@ -2116,7 +2616,7 @@ export function QbrPackBuilder({
         y: bodyTop,
         w: 5.9,
         h: 0.35,
-        fontFace: "Calibri",
+        fontFace: "Inter",
         bold: true,
         fontSize: BODY_FS,
         color: NAVY,
@@ -2126,7 +2626,7 @@ export function QbrPackBuilder({
         y: bodyTop + 0.42,
         w: 5.9,
         h: 3.9,
-        fontFace: "Calibri",
+        fontFace: "Inter",
         fontSize: BODY_FS,
         color: BODY,
         valign: "top",
@@ -2138,7 +2638,7 @@ export function QbrPackBuilder({
         y: bodyTop,
         w: 5.9,
         h: 0.35,
-        fontFace: "Calibri",
+        fontFace: "Inter",
         bold: true,
         fontSize: BODY_FS,
         color: NAVY,
@@ -2148,7 +2648,7 @@ export function QbrPackBuilder({
         y: bodyTop + 0.42,
         w: 5.9,
         h: 3.9,
-        fontFace: "Calibri",
+        fontFace: "Inter",
         fontSize: BODY_FS,
         color: BODY,
         valign: "top",
@@ -2157,33 +2657,268 @@ export function QbrPackBuilder({
       });
     }
 
-    if (qbr.includedSections.nextSteps) {
-      const recText = (qbr.recommendations || "-").trim() || "-";
-      const splitRec = (() => {
-        if (recText.length <= 2200) return [recText];
-        const mid = recText.indexOf("\n\n", Math.floor(recText.length / 2));
-        const cut = mid > 0 ? mid : Math.floor(recText.length / 2);
-        return [recText.slice(0, cut).trim(), recText.slice(cut).trim()];
-      })();
-      splitRec.forEach((block, ri) => {
+    const lookAheadSection = _nextSection();
+    const hasStructuredItems = Array.isArray(qbr.recommendationItems) && qbr.recommendationItems.length > 0;
+    const hasFallbackText = typeof qbr.recommendations === "string" && qbr.recommendations.trim().length > 0;
+    const fallbackItems = [
+      { action: "Review open project status and confirm next milestones with client stakeholders", owner: "Service Delivery Manager", target: "End of Q3", riskAddressed: "Prevents project stall and maintains client confidence in delivery." },
+      { action: "Schedule quarterly service review meeting to align on priorities and upcoming work", owner: "Account Manager", target: "End of Q3", riskAddressed: "Ensures ongoing alignment and surfaces any emerging concerns early." },
+      { action: "Audit and close any tickets with no activity in the last 30 days", owner: "Service Desk Lead", target: "End of Q3", riskAddressed: "Reduces backlog noise and keeps the active queue focused on live issues." },
+    ];
+    const recText = (qbr.recommendations || "").trim();
+    const recItems = (() => {
+      if (!recText || recText === "-") return [] as string[];
+      const lines = recText.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+      const items: string[] = [];
+      for (const line of lines) {
+        const cleaned = line.replace(/^[\s•\-*]+|^\d+[.)]\s*/, "").trim();
+        if (cleaned) items.push(cleaned);
+      }
+      return items.length > 0 ? items : [recText];
+    })();
+    const structuredRecItemsRaw = (qbr.recommendationItems ?? []).filter((item) => item.action?.trim().length > 0).slice(0, 5);
+    const structuredRecItems = hasStructuredItems
+      ? structuredRecItemsRaw
+      : !hasFallbackText
+        ? fallbackItems
+        : [];
+    const hasStructuredMetadata = structuredRecItems.some((item) => item.owner?.trim() || item.target?.trim());
+    if (structuredRecItems.length > 0 && hasStructuredMetadata) {
         const rec = pptx.addSlide();
-        addChrome(rec, ri === 0 ? "Recommendations and Next Steps" : "Recommendations (continued)", page++);
-        rec.addText(block, {
-          x: leftX,
-          y: bodyTop,
-          w: 12.3,
-          h: recBoxH,
-          fontFace: "Calibri",
-          fontSize: BODY_FS,
-          color: BODY,
-          valign: "top",
-          wrap: true,
-          margin: BOX_PAD,
+        addChrome(rec, "Next quarter priorities.", page++);
+        rec.addText(`${lookAheadSection} · LOOKING AHEAD`, {
+          x: 0.4,
+          y: 0.85,
+          w: 6.5,
+          h: 0.22,
+          fontFace: "Courier New",
+          fontSize: 9,
+          color: CHART_COLORS.primary,
+          charSpacing: 3,
         });
-      });
+        structuredRecItems.forEach((item, i) => {
+          const rowY = 1.1 + i * 1.18;
+          const cleanAction = item.action.replace(/['"]/g, "");
+          const cleanRisk = item.riskAddressed.replace(/['"]/g, "");
+          rec.addText(String(i + 1).padStart(2, "0"), {
+            x: 0.35,
+            y: rowY,
+            w: 0.9,
+            h: 0.9,
+            fontSize: 52,
+            fontFace: "Courier New",
+            bold: true,
+            color: CHART_COLORS.primary,
+            wrap: false,
+          });
+          rec.addText(cleanAction, {
+            x: 1.4,
+            y: rowY + 0.05,
+            w: 7.8,
+            h: 0.55,
+            fontSize: 12,
+            fontFace: "Inter",
+            bold: true,
+            color: SLIDE_TEXT,
+            wrap: true,
+          });
+          rec.addText(cleanRisk, {
+            x: 1.4,
+            y: rowY + 0.62,
+            w: 7.5,
+            h: 0.42,
+            fontSize: 10,
+            fontFace: "Inter",
+            color: SLIDE_DIM,
+            wrap: true,
+          });
+          rec.addText(`OWNER  ${item.owner || "TBC"}`, {
+            x: 9.4,
+            y: rowY + 0.08,
+            w: 3.7,
+            h: 0.25,
+            fontSize: 8,
+            fontFace: "Courier New",
+            color: SLIDE_DIM,
+          });
+          rec.addText(`TARGET  ${item.target || "TBC"}`, {
+            x: 9.4,
+            y: rowY + 0.50,
+            w: 3.7,
+            h: 0.25,
+            fontSize: 9,
+            fontFace: "Courier New",
+            color: CHART_COLORS.primary,
+          });
+          rec.addShape(pptx.ShapeType.line, {
+            x: 0.35,
+            y: rowY + 1.15,
+            w: 12.8,
+            h: 0,
+            line: { color: SLIDE_BORDER, width: 0.5 },
+          });
+        });
+    } else {
+        const REC_CARDS_PER_SLIDE = 8;
+        const recChunks: string[][] = [];
+        const fallbackTextItems =
+          recItems.length > 0
+            ? recItems
+            : fallbackItems.map((item) => item.action);
+        for (let i = 0; i < fallbackTextItems.length; i += REC_CARDS_PER_SLIDE) {
+          recChunks.push(fallbackTextItems.slice(i, i + REC_CARDS_PER_SLIDE));
+        }
+        if (recChunks.length === 0) recChunks.push([]);
+        recChunks.forEach((chunk, ri) => {
+          const rec = pptx.addSlide();
+          addChrome(
+            rec,
+            ri === 0 ? "Next quarter priorities." : "Next quarter priorities.",
+            page++,
+          );
+          if (ri === 0) {
+            rec.addText(`${lookAheadSection} · LOOKING AHEAD`, {
+              x: 0.4,
+              y: 0.85,
+              w: 6.5,
+              h: 0.22,
+              fontFace: "Courier New",
+              fontSize: 9,
+              color: CHART_COLORS.primary,
+              charSpacing: 3,
+            });
+          }
+          const baseGlobalIndex = ri * REC_CARDS_PER_SLIDE;
+          const leftCount = Math.ceil(chunk.length / 2);
+          let leftCardY = 1.1;
+          let rightCardY = 1.1;
+          chunk.forEach((text, i) => {
+            const isLeft = i < leftCount;
+            const colX = isLeft ? 0.4 : 6.55;
+            const cardY = isLeft ? leftCardY : rightCardY;
+            const badgeY = cardY + 0.26;
+            rec.addShape(pptx.ShapeType.rect, {
+              x: colX,
+              y: badgeY,
+              w: 0.32,
+              h: 0.32,
+              fill: { color: CHART_COLORS.primary },
+              line: { color: CHART_COLORS.primary },
+            });
+            rec.addText(String(baseGlobalIndex + i + 1), {
+              x: colX,
+              y: badgeY,
+              w: 0.32,
+              h: 0.32,
+              fontFace: "Courier New",
+              fontSize: 11,
+              bold: true,
+              color: "FFFFFF",
+              align: "center",
+              valign: "middle",
+              margin: 0,
+            });
+            rec.addText(text, {
+              x: colX + 0.42,
+              y: cardY + 0.08,
+              w: 5.18,
+              h: 1.1,
+              fontFace: "Inter",
+              fontSize: 11,
+              color: SLIDE_TEXT,
+              valign: "middle",
+              wrap: true,
+            });
+            if (isLeft) leftCardY += 1.3;
+            else rightCardY += 1.3;
+          });
+          if (chunk.length === 0) {
+            rec.addText("—", {
+              x: 0.4,
+              y: 1.1,
+              w: 11.5,
+              h: 0.5,
+              fontFace: "Inter",
+              fontSize: 11,
+              color: SLIDE_TEXT,
+            });
+          }
+        });
     }
 
-    await pptx.writeFile({ fileName: `QBR-Pack-${(qbr.brandName || "Client").replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.pptx` });
+    const _qbrFallbackDate = new Date();
+    const qbrExportMeta = qbr as GeneratedQbr & {
+      periodEndDate?: string;
+      periodEnd?: string;
+      clientName?: string;
+      client?: { name?: string };
+    };
+    let _periodEnd: Date | null = null;
+    if (qbrExportMeta.periodEndDate) {
+      const d = new Date(qbrExportMeta.periodEndDate);
+      if (!Number.isNaN(d.getTime())) _periodEnd = d;
+    } else if (qbrExportMeta.periodEnd) {
+      const d = new Date(qbrExportMeta.periodEnd);
+      if (!Number.isNaN(d.getTime())) _periodEnd = d;
+    } else {
+      const label = qbr.dateRangeLabel.trim();
+      if (label && label.toLowerCase() !== "all time") {
+        const endPart = label.includes(" - ") ? label.split(" - ").pop()?.trim() ?? "" : "";
+        const m = endPart.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (m) {
+          const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+          if (!Number.isNaN(d.getTime())) _periodEnd = d;
+        }
+      }
+    }
+    if (!_periodEnd) {
+      console.warn("[exportPptx] No period end date on QBR; using export date for quarter in filename");
+      _periodEnd = _qbrFallbackDate;
+    }
+    const _qbrQuarter = `Q${Math.ceil((_periodEnd.getMonth() + 1) / 3)}-${_periodEnd.getFullYear()}`;
+    const _clientName =
+      qbrExportMeta.clientName || qbrExportMeta.client?.name || qbr.brandName || "Client";
+    const _qbrSafeName = _clientName
+      .replace(/[^a-zA-Z0-9]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+    const fileName = `${_qbrSafeName}_QBR_${_qbrQuarter}.pptx`;
+    const buf = await pptx.write({ outputType: "arraybuffer" });
+    const zip = await JSZip.loadAsync(buf);
+    const themePath = "ppt/theme/theme1.xml";
+    const themeFile = zip.file(themePath);
+    if (themeFile) {
+      let theme = await themeFile.async("string");
+      const brandHex = colorNoHash(accent) || "2563EB";
+      const palette: Record<string, string> = {
+        accent1: brandHex,
+        accent2: "B79268",
+        accent3: "0F1C3F",
+        accent4: "C8553D",
+        accent5: "D9A441",
+        accent6: "4E9C6F",
+      };
+      for (const [name, hex] of Object.entries(palette)) {
+        theme = theme.replace(
+          new RegExp(`(<a:${name}>\\s*<a:srgbClr val=")[0-9A-Fa-f]{6}(")`, "i"),
+          `$1${hex}$2`,
+        );
+      }
+      zip.file(themePath, theme);
+    }
+    const themedBuf = await zip.generateAsync({ type: "uint8array" });
+    const blob = new Blob(
+      [themedBuf.buffer as ArrayBuffer],
+      { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" },
+    );
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   function exportPdf() {
@@ -2209,7 +2944,7 @@ export function QbrPackBuilder({
           description="Connect your PSA to build QBR packs from live ticket and project data."
         />
       ) : (
-      <div className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-5 md:p-8">
+      <div className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-4 md:p-6">
         {usageHint ? <p className="mb-4 text-xs text-[var(--text-muted)]">{usageHint}</p> : null}
         <div className="mb-5 flex flex-wrap gap-2">
           {([
@@ -2270,7 +3005,7 @@ export function QbrPackBuilder({
                 <span className="text-sm font-medium">HaloPSA</span>
                 <Switch
                   checked={sources.halopsa}
-                  disabled={!psaStatus.halo}
+                  disabled={!psaStatus.halo && !demoMode}
                   onCheckedChange={(v) => setSources((s) => ({ ...s, halopsa: Boolean(v) }))}
                 />
               </label>
@@ -2278,7 +3013,7 @@ export function QbrPackBuilder({
                 <span className="text-sm font-medium">ConnectWise</span>
                 <Switch
                   checked={sources.connectwise}
-                  disabled={!psaStatus.connectwise}
+                  disabled={!psaStatus.connectwise && !demoMode}
                   onCheckedChange={(v) => setSources((s) => ({ ...s, connectwise: Boolean(v) }))}
                 />
               </label>
@@ -2661,7 +3396,7 @@ export function QbrPackBuilder({
           </div>
         ) : null}
 
-        <div className="mt-6 flex flex-col gap-3 border-t border-[var(--border)] pt-4">
+        <div className="mt-4 flex flex-col gap-3 border-t border-[var(--border)] pt-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-h-9 min-w-0 flex-1 items-center">
               {step > 1 ? (

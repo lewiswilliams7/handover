@@ -3,7 +3,10 @@ import OpenAI from "openai";
 import { GLOBAL_GENERATION_VOICE_AND_PUNCTUATION } from "@/lib/generation-global-style-rules";
 import { NextResponse } from "next/server";
 
-import { fitHandoverInputToMaxLength } from "@/lib/fit-handover-input";
+import {
+  cleanPsaInputForGeneration,
+  fitHandoverInputToMaxLength,
+} from "@/lib/fit-handover-input";
 // Halo/cron/preview build `input` with this; kept so the generate bundle tracks the canonical formatter.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- structural anchor; callers format before POST
 import { formatTicketsForPrompt } from "@/lib/psa/format";
@@ -455,6 +458,20 @@ function parseModelResponseContent(rawContent: string): Record<string, unknown> 
 
 const ALL_JSON_KEYS_LINE = ALL_RESPONSE_JSON_KEYS.join(", ");
 
+function nextBusinessDay(date: Date, daysToAdd: number): Date {
+  const result = new Date(date);
+  let added = 0;
+  while (added < daysToAdd) {
+    result.setDate(result.getDate() + 1);
+    const day = result.getDay();
+    if (day !== 0 && day !== 6) added++;
+  }
+  while (result.getDay() === 0 || result.getDay() === 6) {
+    result.setDate(result.getDate() + 1);
+  }
+  return result;
+}
+
 const buildSystemPrompt = (
   displayName?: string | null,
   jobTitle?: string | null,
@@ -481,6 +498,9 @@ const buildSystemPrompt = (
     month: "short",
     year: "numeric",
   });
+  const dateFormatOpts = { day: "2-digit", month: "short", year: "numeric" } as const;
+  const highDueDate = nextBusinessDay(new Date(), 3).toLocaleDateString("en-GB", dateFormatOpts);
+  const mediumDueDate = nextBusinessDay(new Date(), 10).toLocaleDateString("en-GB", dateFormatOpts);
   const signOff = buildClientEmailSignOffBlock(
     signatureOverride,
     displayName,
@@ -611,6 +631,8 @@ CRITICAL OPERATING RULES (read before anything else):
 5. The most recent notes ALWAYS override older notes. Read chronologically, weight recent notes most heavily.
 6. Email notes prefixed [Email Sent] and [Email Received] are real correspondence — treat them as the most important context available.
 7. For client_email: never include horizontal-rule style lines or any line that is only repeated dashes (-), underscores (_), or equals signs (=). The sign-off must run directly from the closing paragraph to "Kind regards," with no decorative separators.
+
+When generating from multiple tickets, each action and risk MUST preserve its source ticket title in project_name and source client in client_name. This is mandatory for correct multi-client reporting.
 
 ${GLOBAL_GENERATION_VOICE_AND_PUNCTUATION}
 Applies to every JSON string you output: summary, client_email, actions (task text), risks, status_report, email_subject, email_note, and all extended PM fields.
@@ -866,13 +888,15 @@ For each action, include a due_date field. Rules:
 NEVER use a date from the past — if the PSA target date has already passed, ignore it completely and calculate a new date based on priority instead
 NEVER use ticket creation dates, dateEntered, or dateOccurred as due dates
 Only use PSA target/fix-by dates if they are in the future (after today's date)
-If no valid future date exists in PSA data, calculate based on priority using business days only (Monday-Friday, no weekends):
+If no valid future date exists in PSA data, use these pre-calculated due dates (already adjusted for weekends):
 
-High/P1: 3 business days from today
-Medium/P2: 10 business days from today
+High/P1: ${highDueDate}
+Medium/P2: ${mediumDueDate}
 Low/P3: leave as empty string
 
-If the ticket description or notes mention a specific upcoming real-world deadline ('starting Monday', 'before end of week', 'client event Thursday'), use that as the anchor
+High priority due date should be ${highDueDate}. Medium priority due date should be ${mediumDueDate}. Never suggest a date in the past. Never suggest a Saturday or Sunday.
+
+If the ticket description or notes mention a specific upcoming real-world deadline ('starting Monday', 'before end of week', 'client event Thursday'), use that as the anchor — but if that date falls on a weekend, use the following Monday instead
 Format all dates as DD MMM YYYY
 Today's date is ${todayFormatted}.
 
@@ -885,6 +909,33 @@ ACTION OBJECT SCHEMA:
   - "due_date": string — per DUE DATES rules above
   - "client_name": string — client organisation name from Customer/Company field
   - "project_name": string — project or contract name
+  - "kind": "project" | "ticket" — set to "project" if the action came from a project record, "ticket" if it came from a ticket
+
+MANDATORY FIELD RULES FOR ACTIONS — every action object must have:
+
+client_name: copy exactly from the ticket's Client field. Mandatory.
+project_name: copy exactly from the ticket's Title field. Mandatory.
+kind: set to "project" if the action came from a project record, "ticket" if it came from a ticket. Copy from the Source field in the input (HaloPSA tickets have Source: HaloPSA, projects have is_project indicator).
+
+CRITICAL: Every action object MUST include project_name (the exact ticket title it came from) and client_name (the exact client name). These are REQUIRED fields. Never omit them. Copy verbatim from the input ticket data.
+
+Each action MUST include project_name and client_name fields matching the ticket or project it came from. Never leave these empty. Copy them from the ticket title and client name in the input data.
+
+CRITICAL RISK FIELD REQUIREMENTS:
+Every risk object in the risks array MUST include these exact fields with non-empty values:
+{
+  "risk": "description",
+  "impact": "what happens if this materialises",
+  "mitigation": "how to prevent or reduce it",
+  "owner": "name from ticket owner field or related action owner - never empty",
+  "priority": "High or Medium or Low",
+  "rag": "Red or Amber or Green",
+  "client_name": "COPY EXACTLY from the Client field of the ticket this risk came from",
+  "project_name": "COPY EXACTLY from the Title field of the ticket this risk came from",
+  "source_ticket": "COPY EXACTLY from the Title field of the ticket this risk came from"
+}
+
+client_name and project_name are MANDATORY. Omitting them is an error. Copy verbatim from input.
 
 ##########  RISK DETECTION  ##########
 ${NOTES_RISK_DETECTION_RULES}
@@ -896,11 +947,6 @@ Risk indicators — extract at least one risk if any of these appear:
   - Deadline within 7 days with outstanding dependencies
   - Technical risk: hardware failure, data loss, connectivity, compatibility
   - Phrases: "need to figure out", "still need to", "not yet done", "TBD", "to be confirmed"
-
-Every risk must have:
-  - "risk": specific, named risk — not vague
-  - "impact": what happens if unaddressed — quantified where possible
-  - "mitigation": concrete named next step to reduce the risk
 
 RISK/ACTION PAIRING RULE:
 Every risk in the risks array must have a corresponding action that directly mitigates it. If a risk has no action, either add the action or remove the risk.
@@ -915,7 +961,7 @@ When writing the opening summary paragraph for a report covering multiple client
 `
     : ""
 }
-2-3 sentences. Must be specific to THIS input only.
+Write ONE combined executive summary paragraph covering ALL tickets and projects in this import. 3-4 sentences maximum. Lead with the overall status across all items, then highlight the 2-3 most important actions or risks. Do not write separate paragraphs per ticket. Do not label by ticket name. Write as a senior PM would brief a stakeholder on the whole portfolio.
 
 MANDATORY SUMMARY RULES:
   - Name specific projects and their current status
@@ -926,10 +972,11 @@ MANDATORY SUMMARY RULES:
 BAD summary (reject):
   ✗ "The project is in progress with several tasks underway."
   ✗ "Work is progressing on multiple workstreams."
+  ✗ "Project A: Status is amber. Project B: Status is green."
 
 GOOD summary (this is the standard):
-  ✓ "The 3CX out-of-hours update for Yardleys School is confirmed for 4:30pm today — Ravi Poye has installed Splashtop Streamer and confirmed availability. Jack Cole is assisting. Remote access is confirmed and the update can proceed as planned."
-  ✓ "Internal - Intune Refresh is near completion. Conditional access is in report-only mode pending stakeholder sign-off from Darren on personal phone impact. UAC policy is tested on VM and ready to deploy to active users once approved."
+  ✓ "Overall delivery is mixed but progressing, with Yardleys School ready for the confirmed 3CX update and Internal - Intune Refresh close to completion. The main items requiring attention are stakeholder sign-off on conditional access and confirming ownership for the remaining rollout tasks. No critical client-facing blockers are present, but the team should keep focus on access readiness and next-step ownership across the portfolio."
+  ✓ "The current portfolio is broadly on track, with confirmed remote access for the Yardleys School update and meaningful progress across the Intune workstreams. The highest priority is closing out Darren's sign-off on personal phone impact before enabling conditional access. Next steps are to complete the scheduled update, finalise policy deployment, and keep stakeholders informed on any access or rollout risks."
 
 ##########  CLIENT EMAIL  ##########
 
@@ -967,6 +1014,7 @@ Every client email must read as if a senior PM personally wrote it. It must:
   - Reflect the most recent confirmed status — not an outdated one
   - Include a concrete next contact commitment
   - Sound human — not templated
+The first paragraph of the client email body must NOT mention the company or organisation name. Do not open with 'We are progressing your requests for [Company Name]' or any variation. The email should feel personal and direct — address the work being done, not the company. Company name may appear later in the email only if necessary for context (e.g. referencing a specific system or contract). Never in the opening line or paragraph.
 
 BAD client email (reject):
   ✗ Opening with the sender's own name as the recipient
@@ -1045,6 +1093,17 @@ List formatting rules:
 - Avoid raw data-dump phrasing.
 
 Never write "null" as a value. If owner unknown: ${clientContactName || "the delivery lead"}.
+
+MULTI-TICKET / MULTI-PROJECT STATUS REPORT (mandatory when import has more than one ticket or project):
+The status_report must have a separate section for each ticket/project. Format each section as:
+
+[Ticket Title] — [Client]
+Status: [status] | Owner: [owner] | RAG: [colour]
+Progress: [what has been done]
+Actions: [numbered list with owner and priority]
+Next Steps: [what happens next]
+
+Separate each ticket section with a horizontal rule. Never combine multiple tickets into one section. Each ticket must be independently reported.
 
 ##########  TICKET STATUS HANDLING  ##########
 
@@ -1161,7 +1220,17 @@ ${outputScope}
 The JSON object must contain exactly these keys: ${ALL_JSON_KEYS_LINE}.
 
 - actions: array of action objects (schema above)
-- risks: array of { risk, impact, mitigation }
+- risks: array of {
+  "risk": "Brief description of the risk",
+  "impact": "What happens if this materialises",
+  "mitigation": "How to prevent or reduce it",
+  "owner": "First Last (copy from ticket owner or related action owner)",
+  "priority": "High",
+  "rag": "Amber",
+  "client_name": "Exact client name from input",
+  "project_name": "Exact ticket title from input",
+  "source_ticket": "Exact ticket title from input"
+}
 - summary: string
 - client_email: string (empty string if no client-facing tickets)
 - email_note: string (empty unless multi-client)
@@ -1356,20 +1425,32 @@ export async function POST(req: Request) {
 
     // `input` is client-provided text. HaloPSA ticket shaping lives in `formatTicketsForPrompt` (@/lib/psa/format), used by halo/tickets, preview, and cron before POSTing here.
     let modelInput = input;
-    if (!rewriteEmailOnly && !input.startsWith("MOCK:") && input.length > maxLength) {
-      modelInput = fitHandoverInputToMaxLength(input, maxLength);
-      if (modelInput.length > maxLength) {
-        return NextResponse.json(
-          {
-            error: `Input still exceeds maximum length of ${maxLength} characters after condensing older notes. Reduce tickets or paste a shorter export.`,
-          },
-          { status: 400 },
-        );
+    if (!rewriteEmailOnly && !input.startsWith("MOCK:")) {
+      const cleanedInput = cleanPsaInputForGeneration(input);
+      if (cleanedInput.length > maxLength) {
+        modelInput = fitHandoverInputToMaxLength(cleanedInput, maxLength);
+        if (modelInput.length > maxLength) {
+          return NextResponse.json(
+            {
+              error: `Input still exceeds maximum length of ${maxLength} characters after condensing older notes. Reduce tickets or paste a shorter export.`,
+            },
+            { status: 400 },
+          );
+        }
+        console.log("[generate] Input fitted to max length:", {
+          before: input.length,
+          cleaned: cleanedInput.length,
+          after: modelInput.length,
+        });
+      } else {
+        modelInput = cleanedInput;
+        if (cleanedInput.length < input.length) {
+          console.log("[generate] Input cleaned for generation:", {
+            before: input.length,
+            after: cleanedInput.length,
+          });
+        }
       }
-      console.log("[generate] Input fitted to max length:", {
-        before: input.length,
-        after: modelInput.length,
-      });
     }
 
     let supabase = await createServerClient();

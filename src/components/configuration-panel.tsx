@@ -82,8 +82,6 @@ export function ConfigurationPanel({
   onDashboardViewModeChange,
 }: Props) {
   const isEnterprise = plan === "enterprise"
-  const psa = usePSAStatus()
-  const noPsaConnected = !psa.halo && !psa.connectwise
   const navItems = useMemo(
     () => {
       const base = BASE_NAV_ITEMS.filter((item) => {
@@ -92,17 +90,15 @@ export function ConfigurationPanel({
         if (item.id === "integrations") return integrationsSection != null
         return true
       })
-      if (demoModeActive || noPsaConnected) {
-        base.push({
-          id: "demo-mode",
-          label: "Demo Mode",
-          icon: FlaskConical,
-          description: "Control sample demo data visibility",
-        })
-      }
+      base.push({
+        id: "demo-mode",
+        label: "Demo Mode",
+        icon: FlaskConical,
+        description: "Control sample demo data visibility",
+      })
       return base
     },
-    [isEnterprise, hasProAccess, brandingSection, integrationsSection, demoModeActive, noPsaConnected],
+    [isEnterprise, hasProAccess, brandingSection, integrationsSection],
   )
   const [activeSection, setActiveSection] = useState<ConfigSection>("custom-fields")
   const active = navItems.find(n => n.id === activeSection) ?? navItems[0]
@@ -346,12 +342,14 @@ function ClientPortalSection() {
   const [loading, setLoading] = useState(true)
   const [savedSlug, setSavedSlug] = useState("")
   const [savedDomain, setSavedDomain] = useState("")
+  const [selfServiceUrl, setSelfServiceUrl] = useState("")
   const [slug, setSlug] = useState("")
   const [domainInput, setDomainInput] = useState("")
   const [checking, setChecking] = useState(false)
   const [available, setAvailable] = useState<boolean | null>(null)
   const [saving, setSaving] = useState(false)
   const [savingDomain, setSavingDomain] = useState(false)
+  const [savingSelfServiceUrl, setSavingSelfServiceUrl] = useState(false)
   const [editing, setEditing] = useState(true)
   const fullUrl = savedSlug ? `gethandover.uk/portal/${savedSlug}` : ""
 
@@ -361,16 +359,19 @@ function ClientPortalSection() {
       try {
         const res = await fetch("/api/portal/account", { credentials: "same-origin", cache: "no-store" })
         const data = (await res.json().catch(() => ({}))) as {
-          portal?: { slug?: string | null; allowed_domain?: string | null } | null
+          portal?: { slug?: string | null; allowed_domain?: string | null; self_service_url?: string | null } | null
         }
         if (!cancelled) {
           const existing = typeof data.portal?.slug === "string" ? data.portal.slug : ""
           const existingDomain =
             typeof data.portal?.allowed_domain === "string" ? data.portal.allowed_domain.trim().toLowerCase() : ""
+          const existingSelfServiceUrl =
+            typeof data.portal?.self_service_url === "string" ? data.portal.self_service_url : ""
           setSavedSlug(existing)
           setSlug(existing)
           setSavedDomain(existingDomain)
           setDomainInput(existingDomain)
+          setSelfServiceUrl(existingSelfServiceUrl)
           setEditing(!existing)
           setAvailable(existing ? null : null)
         }
@@ -468,6 +469,27 @@ function ClientPortalSection() {
       toast({ message: "Allowed domain saved", variant: "success" })
     } finally {
       setSavingDomain(false)
+    }
+  }
+
+  const saveSelfServiceUrl = async () => {
+    setSavingSelfServiceUrl(true)
+    try {
+      const res = await fetch("/api/portal/account", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ self_service_url: selfServiceUrl }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { portal?: { self_service_url?: string | null }; error?: string }
+      if (!res.ok) {
+        toast({ message: data.error ?? "Could not save self-service portal URL.", variant: "error" })
+        return
+      }
+      setSelfServiceUrl(typeof data.portal?.self_service_url === "string" ? data.portal.self_service_url : "")
+      toast({ message: "Self-service portal URL saved", variant: "success" })
+    } finally {
+      setSavingSelfServiceUrl(false)
     }
   }
 
@@ -577,6 +599,27 @@ function ClientPortalSection() {
         >
           {savingDomain ? "Saving..." : "Save domain"}
         </button>
+        <div className="space-y-1.5 border-t border-[var(--border)] pt-4">
+          <label className="text-[13px] font-medium text-[var(--text-primary)]">Self-service portal URL</label>
+          <p className="text-[12px] text-[var(--text-secondary)]">
+            Optional. If set, clients can click &quot;View in portal&quot; on any ticket to open it in your self-service portal. Format: https://support.yourcompany.com
+          </p>
+          <input
+            type="url"
+            placeholder="https://support.yourcompany.com"
+            value={selfServiceUrl}
+            onChange={(e) => setSelfServiceUrl(e.target.value)}
+            className="w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+          />
+          <button
+            type="button"
+            onClick={() => void saveSelfServiceUrl()}
+            disabled={savingSelfServiceUrl}
+            className="text-[12px] text-[var(--accent)] hover:underline disabled:opacity-50"
+          >
+            {savingSelfServiceUrl ? "Saving..." : "Save"}
+          </button>
+        </div>
       </div>
     </div>
   )

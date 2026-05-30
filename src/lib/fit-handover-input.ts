@@ -1,5 +1,33 @@
 import { TICKET_SECTION_RULE } from "@/lib/halo";
 
+/** Strip PSA noise (banners, disclaimers, signatures) before length fitting. */
+export function cleanPsaInputForGeneration(input: string): string {
+  return input
+    // Remove CAUTION banner lines entirely
+    .replace(/^CAUTION:.*$/gm, "")
+    .replace(/^.*This message was sent from outside.*$/gm, "")
+    .replace(/^.*Do not click links or open attachments.*$/gm, "")
+    .replace(/^.*Contact technical@.*$/gm, "")
+    // Remove legal disclaimer blocks (repeated dashes + legal text)
+    .replace(/[-]{30,}[\s\S]*?legal privilege[\s\S]*?[-]{30,}/gi, "")
+    .replace(/[-]{30,}[\s\S]*?virus free[\s\S]*?[-]{30,}/gi, "")
+    // Remove email signature blocks
+    .replace(/^DD\.\s+\d+.*$/gm, "")
+    .replace(/^Tel:.*$/gm, "")
+    .replace(/^DDI:.*$/gm, "")
+    .replace(/^Panacea Group.*$/gm, "")
+    .replace(/^Kind Regards\s*\n.*\n.*Team.*$/gm, "")
+    // Remove repeated quoted email threads (From: ... Sent: ... To: ... Subject: ...)
+    .replace(/^From:.*\nSent:.*\nTo:.*\nSubject:.*$/gm, "[Previous email thread omitted]")
+    // Remove Hogans/similar legal footers
+    .replace(/This email and any attachments are confidential[\s\S]*?virus free\./gi, "")
+    // Remove registration boilerplate
+    .replace(/registered in England and Wales[\s\S]*?Regulation Authority[^.]*\./gi, "")
+    // Clean up excessive blank lines
+    .replace(/\n{4,}/g, "\n\n")
+    .trim();
+}
+
 /** Halo export / formatTicketsForHandover note lines: `  - [date] Author: body` */
 const NOTE_LINE_RE = /^  - (\[[^\]]+\])\s+(.+?): (.*)$/gm;
 

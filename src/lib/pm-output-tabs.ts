@@ -88,7 +88,7 @@ export function buildExtendedPmOutputsPromptBlock(keys: ExtendedPmTabKey[]): str
         break;
       case "executive_summary_pm":
         lines.push(
-          `- executive_summary_pm: One short board-level paragraph: done, outstanding, decisions needed. No technical jargon.`,
+          `- executive_summary_pm: When multiple tickets or projects are in the import, write one short board-level paragraph per ticket/project (label each with the ticket or project title). Never combine multiple tickets into one paragraph. Each paragraph covers: done, outstanding, decisions needed. No technical jargon.`,
         );
         break;
       case "invoice_time_summary":

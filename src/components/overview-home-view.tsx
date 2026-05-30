@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { TrendingDown, TrendingUp } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -41,6 +40,14 @@ export type OverviewDashStats = {
   lastTitle: string;
 };
 
+export type OverviewAttentionItem = {
+  clientName: string;
+  worstRag: "red" | "amber" | "green" | "grey";
+  openCount: number;
+  overdueCount: number;
+  reason: string;
+};
+
 type Props = {
   userFirstName: string | null;
   dashStats: OverviewDashStats | null;
@@ -49,10 +56,14 @@ type Props = {
   monthlyStats?: OverviewMonthlyStats | null;
   monthlyStatsLoading?: boolean;
   loading?: boolean;
+  attentionItems?: OverviewAttentionItem[];
+  attentionLoading?: boolean;
   formatRelativeTime: (iso: string) => string;
   onSelectProject: (project: OverviewProject) => void;
   onGoToGenerate: () => void;
   onGoToDelivery: () => void;
+  onGoToDeliveryForClient?: (clientName: string) => void;
+  isTrialExpired?: boolean;
 };
 
 export function normaliseClientName(name: string): string {
@@ -199,29 +210,29 @@ function outputTypePills(o: Record<string, unknown> | null): string[] {
   const pills: string[] = [];
   if (Array.isArray(o.actions) && o.actions.length > 0) pills.push("Actions");
   if (Array.isArray(o.risks) && o.risks.length > 0) pills.push("Risks");
-  if (typeof o.summary === "string" && o.summary.trim()) pills.push("Status");
   if (typeof o.client_email === "string" && o.client_email.trim()) pills.push("Email");
   return pills;
 }
 
-function timeGreeting(): string {
-  const h = new Date().getHours();
-  if (h < 12) return "Good morning,";
-  if (h < 17) return "Good afternoon,";
-  return "Good evening,";
+function getGenerationStatus(project: OverviewProject): string {
+  const json = project.output_json as Record<string, unknown> | null;
+  if (!json) return "Complete";
+  if (json.status && typeof json.status === "string" && json.status !== "Status") {
+    return json.status;
+  }
+  if (json.summary || json.actions || json.risks) return "Complete";
+  return "Complete";
 }
 
-function formatTodayDate(): string {
-  return new Date().toLocaleDateString("en-GB", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+function overviewTimeOfDay(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "morning";
+  if (h < 17) return "afternoon";
+  return "evening";
 }
 
 const statCardBase =
-  "rounded-[var(--radius-lg)] border border-[var(--border)] border-t-2 border-t-[var(--accent)] bg-[var(--bg-secondary)] p-5";
+  "bg-[var(--surface-1)] border border-white/[0.06] rounded-[10px] p-[18px_22px] shadow-[var(--shadow-sm)] [box-shadow:var(--shadow-sm),var(--shadow-inset)] transition-all duration-150 hover:border-white/[0.12] hover:-translate-y-px";
 
 function StatCardSkeleton() {
   return (
@@ -233,32 +244,29 @@ function StatCardSkeleton() {
   );
 }
 
-function WeekCardSkeleton() {
-  return (
-    <div className={cn(statCardBase, "animate-pulse")}>
-      <div className="h-3 w-32 rounded bg-white/5" />
-      <div className="mt-4 h-9 w-10 rounded bg-white/5" />
-      <div className="mt-3 space-y-1.5">
-        <div className="h-3 w-full rounded bg-white/5" />
-        <div className="h-3 w-[80%] rounded bg-white/5" />
-      </div>
-    </div>
-  );
-}
-
 export function OverviewHomeView({
   userFirstName,
   dashStats,
   projects,
   campaigns,
-  monthlyStats = null,
-  monthlyStatsLoading = false,
   loading = false,
+  attentionItems = [],
+  attentionLoading = false,
   formatRelativeTime,
   onSelectProject,
   onGoToGenerate,
   onGoToDelivery,
+  onGoToDeliveryForClient,
+  isTrialExpired = false,
 }: Props) {
+  const overviewNow = new Date();
+  const dayOfWeek = overviewNow.toLocaleDateString("en-GB", { weekday: "long" });
+  const dateString = overviewNow.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+  const timeOfDay = overviewTimeOfDay();
   const weekMetrics = useMemo(() => {
     const now = new Date();
     const activeSchedules = campaigns.filter((c) => c.enabled !== false);
@@ -319,19 +327,6 @@ export function OverviewHomeView({
         .slice(0, 5),
     [projects],
   );
-
-  const monthMom = useMemo(() => {
-    if (!monthlyStats) return null;
-    const { this_month: thisMonth, last_month: lastMonth } = monthlyStats;
-    if (lastMonth > 0) {
-      const pct = Math.round(((thisMonth - lastMonth) / lastMonth) * 100);
-      if (pct > 0) return { direction: "up" as const, pct };
-      if (pct < 0) return { direction: "down" as const, pct: Math.abs(pct) };
-      return null;
-    }
-    if (thisMonth > 0) return { direction: "new" as const };
-    return null;
-  }, [monthlyStats]);
 
   const [activityDates, setActivityDates] = useState<string[]>([]);
   const [activityPeriod, setActivityPeriod] = useState<ActivityPeriod>("30d");
@@ -440,38 +435,45 @@ export function OverviewHomeView({
           ? "Activity — last 6 months"
           : "Activity — last 12 months";
 
+  const attentionCount = attentionItems.length;
+  const hasRedItems = attentionItems?.some((i) => i.worstRag === "red") ?? false;
+  const needsAttentionKpiValue =
+    attentionCount > 0 ? attentionCount : weekMetrics.staleCount > 0 ? weekMetrics.staleCount : 0;
+  const needsAttentionKpiSub =
+    attentionCount > 0
+      ? `${attentionCount} client${attentionCount === 1 ? "" : "s"} flagged`
+      : weekMetrics.staleCount > 0
+        ? "No report in 14+ days"
+        : "All clients healthy";
+
   return (
     <div className="w-full bg-transparent px-6 py-8">
       <div className="mx-auto max-w-6xl">
-        <header className="border-b border-white/5 pb-8 mb-8">
-          <h1 className="text-[36px] font-bold tracking-tight text-white">
-            {timeGreeting()}{" "}
-            {userFirstName ? (
-              <span className="bg-gradient-to-r from-white to-[var(--accent)] bg-clip-text text-transparent">
-                {userFirstName}
-              </span>
-            ) : (
-              <span className="text-[var(--text-secondary)]">there</span>
-            )}
-          </h1>
-          <p className="mt-2 text-[13px] text-[var(--text-secondary)]">
-            {formatTodayDate()}
-          </p>
-        </header>
-
+        {isTrialExpired ? (
+          <div className="mb-5 flex items-center justify-between gap-4 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] px-4 py-3">
+            <div>
+              <p className="text-[14px] font-semibold text-amber-200">Your trial has ended</p>
+              <p className="mt-0.5 text-[13px] text-amber-200/60">
+                Upgrade to restore full access including scheduled reports and delivery health.
+              </p>
+            </div>
+            <a
+              href="/pricing"
+              className="shrink-0 rounded-lg bg-amber-500 px-4 py-2 text-[13px] font-semibold text-[#1a0f00] transition-colors hover:bg-amber-400"
+            >
+              Upgrade →
+            </a>
+          </div>
+        ) : null}
         {loading ? (
           <>
+            <div className="mb-6 h-24 animate-pulse rounded-xl bg-white/5" />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <StatCardSkeleton />
               <StatCardSkeleton />
               <StatCardSkeleton />
             </div>
             <div className="mt-4 h-32 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] animate-pulse" />
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <WeekCardSkeleton />
-              <WeekCardSkeleton />
-              <WeekCardSkeleton />
-            </div>
             <div className="mt-8">
               <div className="mb-3 h-3 w-28 rounded bg-white/5 animate-pulse" />
               <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)]">
@@ -493,72 +495,178 @@ export function OverviewHomeView({
           </>
         ) : (
           <>
-            {dashStats ? (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <div
-                  className={cn(
-                    statCardBase,
-                    "shadow-[0_0_30px_rgba(14,165,233,0.08)]",
-                  )}
+            <div className="mb-6">
+              <div className="mono-label mb-1 text-[var(--accent)]">
+                OVERVIEW · {dayOfWeek} {dateString}
+              </div>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h1 className="mb-1 text-[28px] font-semibold tracking-tight text-white/96">
+                    Good {timeOfDay},{" "}
+                    <span className="text-white/96">{userFirstName || "there"}</span>
+                  </h1>
+                  <p className="text-[14px] text-white/65">
+                    {attentionItems.length > 0
+                      ? `${attentionItems.length} client${attentionItems.length === 1 ? "" : "s"} need${attentionItems.length === 1 ? "s" : ""} your attention.`
+                      : "All clients up to date."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onGoToGenerate}
+                  className="flex shrink-0 items-center gap-2 rounded-lg bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] px-4 py-2 text-[13px] font-semibold text-[#0f172a] shadow-lg transition-all hover:scale-[1.02]"
                 >
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-secondary)]">
-                    Total generations
-                  </p>
-                  <p className="mt-2 text-[40px] font-bold leading-none text-white">
-                    {dashStats.total}
-                  </p>
-                  <p className="mt-1 text-[11px] text-[var(--text-secondary)]">
-                    Since launch
-                  </p>
-                </div>
-                <div className={statCardBase}>
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-secondary)]">
-                    This month
-                  </p>
-                  {monthlyStatsLoading ? (
-                    <div className="mt-2 h-10 w-16 animate-pulse rounded bg-white/5" />
-                  ) : (
-                    <p className="mt-2 text-[40px] font-bold leading-none text-white">
-                      {monthlyStats?.this_month ?? 0}
-                    </p>
-                  )}
-                  {monthlyStatsLoading ? (
-                    <div className="mt-1 h-3 w-36 animate-pulse rounded bg-white/5" />
-                  ) : monthMom?.direction === "up" ? (
-                    <p className="mt-1 flex items-center gap-1 text-[11px] text-green-400">
-                      <TrendingUp className="size-3 shrink-0" aria-hidden />
-                      {monthMom.pct}% vs last month
-                    </p>
-                  ) : monthMom?.direction === "down" ? (
-                    <p className="mt-1 flex items-center gap-1 text-[11px] text-red-400">
-                      <TrendingDown className="size-3 shrink-0" aria-hidden />
-                      {monthMom.pct}% vs last month
-                    </p>
-                  ) : monthMom?.direction === "new" ? (
-                    <p className="mt-1 flex items-center gap-1 text-[11px] text-green-400">
-                      <TrendingUp className="size-3 shrink-0" aria-hidden />
-                      New activity this month
-                    </p>
-                  ) : null}
-                </div>
-                <div className={statCardBase}>
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-secondary)]">
-                    Last generated
-                  </p>
-                  <p className="mt-2 text-[40px] font-bold leading-none text-white">
-                    {dashStats.lastAgo}
-                  </p>
-                  <p
-                    className="mt-1 truncate text-[11px] text-[var(--text-muted)]"
-                    title={dashStats.lastTitle}
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="var(--accent)"
+                    className="shrink-0"
+                    aria-hidden
                   >
-                    {cleanGenerationTitle(dashStats.lastTitle)}
-                  </p>
+                    <path d="M13 2L4.5 13.5H11L10 22L19.5 10.5H13L13 2Z" />
+                  </svg>
+                  Generate report
+                </button>
+              </div>
+            </div>
+
+            {attentionLoading ? (
+              <div
+                className="mb-6 h-32 animate-pulse rounded-xl border border-white/[0.06] bg-[var(--surface-1)]"
+                aria-hidden
+              />
+            ) : null}
+
+            {!attentionLoading && attentionItems.length > 0 ? (
+              <div className="mb-6">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[15px] font-semibold text-white/90">
+                      Needs your attention
+                    </span>
+                    <span
+                      className={cn(
+                        "flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white",
+                        hasRedItems ? "bg-[#C8553D]" : "bg-[#D9A441]",
+                      )}
+                    >
+                      {attentionItems.length}
+                    </span>
+                  </div>
+                </div>
+                <div className="overflow-hidden rounded-xl border border-white/[0.06]">
+                  <div className="grid grid-cols-[auto_1fr_auto] gap-3 border-b border-white/[0.04] bg-[var(--surface-1)] px-4 py-1.5">
+                    <div className="mono-label w-16">STATUS</div>
+                    <div className="mono-label">CLIENT</div>
+                    <div className="mono-label text-right">TICKETS</div>
+                  </div>
+                  {attentionItems.map((item) => {
+                    const ragColor =
+                      item.worstRag === "red"
+                        ? "#C8553D"
+                        : item.worstRag === "amber"
+                          ? "#D9A441"
+                          : "#4E9C6F";
+                    const ragBg =
+                      item.worstRag === "red"
+                        ? "rgba(200,85,61,0.12)"
+                        : "rgba(217,164,65,0.12)";
+                    return (
+                      <div
+                        key={item.clientName}
+                        role="button"
+                        tabIndex={0}
+                        className="grid cursor-pointer grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-white/[0.04] bg-[var(--surface-1)] px-4 py-2.5 transition-colors last:border-b-0 hover:bg-[var(--surface-2)]"
+                        onClick={() =>
+                          onGoToDeliveryForClient?.(item.clientName) ?? onGoToDelivery()
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            onGoToDeliveryForClient?.(item.clientName) ?? onGoToDelivery();
+                          }
+                        }}
+                      >
+                        <div
+                          style={{
+                            background: ragBg,
+                            border: `1px solid ${ragColor}40`,
+                            borderRadius: 6,
+                            padding: "2px 10px",
+                          }}
+                        >
+                          <span
+                            style={{
+                              color: ragColor,
+                              fontSize: 10,
+                              fontWeight: 600,
+                              letterSpacing: "0.08em",
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            {item.worstRag}
+                          </span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[14px] font-medium text-white/90">
+                            {item.clientName}
+                          </div>
+                          {item.reason ? (
+                            <div className="mt-0.5 text-[12px] text-white/50">{item.reason}</div>
+                          ) : null}
+                        </div>
+                        <div className="flex shrink-0 items-center justify-end gap-3">
+                          <div className="tabular text-right text-[20px] font-semibold text-white/90">
+                            {item.openCount}
+                          </div>
+                          <div className="text-[13px] text-white/40 transition-colors hover:text-white/70">
+                            View →
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ) : null}
 
-            <div className="mt-4 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-4">
+            <div className="mb-6 grid grid-cols-3 gap-3">
+              {[
+                {
+                  label: "Needs attention",
+                  value: String(needsAttentionKpiValue),
+                  sub: needsAttentionKpiSub,
+                },
+                {
+                  label: "Active schedules",
+                  value: String(weekMetrics.activeScheduleCount),
+                  sub: "Automated reports",
+                },
+                {
+                  label: "Last report",
+                  value: dashStats?.lastAgo || "—",
+                  sub: dashStats?.lastTitle
+                    ? dashStats.lastTitle.length > 28
+                      ? `${dashStats.lastTitle.slice(0, 28)}…`
+                      : dashStats.lastTitle
+                    : "No reports yet",
+                },
+              ].map((k) => (
+                <div
+                  key={k.label}
+                  className="rounded-xl border border-white/[0.06] bg-[var(--surface-1)] p-4 [box-shadow:var(--shadow-sm),var(--shadow-inset)]"
+                >
+                  <div className="mb-2 text-[13px] font-medium text-white/60">{k.label}</div>
+                  <div className="tabular mb-1 text-[28px] font-semibold leading-none text-white/96">
+                    {k.value}
+                  </div>
+                  <div className="text-[12px] font-normal text-white/40">{k.sub}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-[11px] font-semibold uppercase tracking-widest text-[var(--text-secondary)]">
                   {activityChartTitle}
@@ -627,80 +735,6 @@ export function OverviewHomeView({
               </div>
             </div>
 
-            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div
-                className={cn(
-                  "rounded-[var(--radius-lg)] border p-5",
-                  weekMetrics.activeScheduleCount > 0
-                    ? "border-green-500/20 bg-green-500/5"
-                    : "border-[var(--border)] bg-[var(--bg-secondary)]",
-                )}
-              >
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-secondary)]">
-                  ACTIVE SCHEDULES
-                </p>
-                <p className="mt-2 text-[32px] font-bold text-white">
-                  {weekMetrics.activeScheduleCount}
-                </p>
-                {weekMetrics.activeScheduleCount === 0 ? (
-                  <p className="mt-2 text-[12px] text-[var(--text-secondary)]">
-                    No active schedules — create one to automate your reporting.
-                  </p>
-                ) : (
-                  <ul className="mt-2 space-y-0.5 text-[12px] text-[var(--text-secondary)]">
-                    {weekMetrics.activeScheduleNames.map((name, i) => (
-                      <li key={i} className="truncate">
-                        {name}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <div
-                className={cn(
-                  "rounded-[var(--radius-lg)] border p-5",
-                  weekMetrics.staleCount > 0
-                    ? "border-amber-500/20 bg-amber-500/5"
-                    : "border-[var(--border)] bg-[var(--bg-secondary)]",
-                )}
-              >
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-secondary)]">
-                  Clients without a recent report
-                </p>
-                <p className="mt-2 text-[32px] font-bold text-white">
-                  {weekMetrics.staleCount}
-                </p>
-                {weekMetrics.staleCount === 0 ? (
-                  <p className="mt-2 inline-flex items-center gap-1.5 text-[12px] text-[var(--text-secondary)]">
-                    <span
-                      className="size-1.5 shrink-0 rounded-full bg-[var(--success)]"
-                      aria-hidden
-                    />
-                    All clients up to date
-                  </p>
-                ) : (
-                  <ul className="mt-2 space-y-0.5 text-[12px] text-[var(--text-secondary)]">
-                    {weekMetrics.staleNames.map((name, i) => (
-                      <li key={i} className="truncate">
-                        {name}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <div className="rounded-[var(--radius-lg)] border border-[var(--accent)]/20 bg-[var(--accent)]/5 p-5">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-secondary)]">
-                  Active clients this month
-                </p>
-                <p className="mt-2 text-[32px] font-bold text-white">
-                  {weekMetrics.activeClientsThisMonth}
-                </p>
-                <p className="mt-2 text-[12px] text-[var(--text-secondary)]">
-                  Unique clients with a generation
-                </p>
-              </div>
-            </div>
-
             <div className="mt-8">
               <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-[var(--text-secondary)]">
                 Recent activity
@@ -732,6 +766,7 @@ export function OverviewHomeView({
                     const pills = outputTypePills(
                       p.output_json as Record<string, unknown> | null,
                     );
+                    const statusLabel = getGenerationStatus(p);
                     return (
                       <button
                         key={p.id}
@@ -752,20 +787,21 @@ export function OverviewHomeView({
                               {clientSecondary}
                             </p>
                           ) : null}
-                          {pills.length > 0 ? (
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              {pills.map((pill) => (
-                                <span
-                                  key={pill}
-                                  className="rounded-full border border-[var(--accent)]/20 bg-[var(--accent)]/10 px-2 py-0.5 text-[11px] text-[var(--accent)]"
-                                >
-                                  {pill}
-                                </span>
-                              ))}
-                            </div>
-                          ) : null}
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            <span className="rounded-full border border-[var(--accent)]/20 bg-[var(--accent)]/10 px-2 py-0.5 text-[11px] text-[var(--accent)]">
+                              {statusLabel}
+                            </span>
+                            {pills.map((pill) => (
+                              <span
+                                key={pill}
+                                className="rounded-full border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)]"
+                              >
+                                {pill}
+                              </span>
+                            ))}
+                          </div>
                         </div>
-                        <span className="shrink-0 text-[11px] text-[var(--text-secondary)]">
+                        <span className="tabular shrink-0 text-[11px] text-[var(--text-secondary)]">
                           {formatRelativeTime(p.created_at)}
                         </span>
                       </button>

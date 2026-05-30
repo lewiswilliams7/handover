@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -26,12 +25,19 @@ const TAB_LABELS: { id: DemoTab; label: string }[] = [
   { id: "qbr", label: "QBR" },
 ];
 
-function PriorityBadge({ level }: { level: "high" | "medium" }) {
+function PriorityBadge({ level }: { level: "high" | "medium" | "low" }) {
   const cls =
     level === "high"
-      ? "border-transparent bg-red-100 text-red-900 hover:bg-red-100 dark:bg-red-950/80 dark:text-red-100"
-      : "border-transparent bg-amber-100 text-amber-950 hover:bg-amber-100 dark:bg-amber-950/80 dark:text-amber-50";
-  return <Badge className={cls}>{level === "high" ? "High" : "Medium"}</Badge>;
+      ? "bg-red-500/15 text-red-300 border border-red-500/25"
+      : level === "medium"
+        ? "bg-amber-500/15 text-amber-300 border border-amber-500/25"
+        : "bg-white/[0.05] text-white/60 border border-white/10";
+  const label = level === "high" ? "High" : level === "medium" ? "Medium" : "Low";
+  return (
+    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium", cls)}>
+      {label}
+    </span>
+  );
 }
 
 const MOCK_ROWS: { task: string; owner: string; pri: "high" | "medium"; status: "In Progress" | "Planned" }[] =
@@ -123,12 +129,12 @@ export function HeroProductMockup({
 
         <div className="border-b border-[var(--border)] bg-[var(--bg-primary)] p-2">
           <div
-            className="flex h-auto w-full flex-nowrap items-center gap-x-0.5 gap-y-1 overflow-x-auto overflow-y-hidden rounded-t-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] px-1.5 py-1.5 sm:flex-wrap sm:px-2"
+            className="flex h-auto w-full flex-nowrap items-center gap-1 overflow-x-auto overflow-y-hidden rounded-t-[var(--radius-lg)] border border-[var(--border)] border-b-white/10 bg-[var(--bg-primary)] px-1.5 py-1.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:overflow-x-visible sm:px-2"
             role="tablist"
             aria-label="Output preview tabs"
           >
             {TAB_LABELS.map(({ id, label }, i) => (
-              <span key={id} className="flex items-center gap-0.5">
+              <span key={id} className="flex shrink-0 items-center gap-0.5">
                 {i > 0 ? (
                   <span className="select-none px-0.5 text-[var(--text-muted)]" aria-hidden>
                     |
@@ -140,7 +146,7 @@ export function HeroProductMockup({
                   aria-selected={tab === id}
                   onClick={() => setTab(id)}
                   className={cn(
-                    "shrink-0 rounded-md px-2 py-1 text-left text-sm transition-colors",
+                    "flex-shrink-0 rounded-md px-2 py-1 text-left text-sm transition-colors",
                     tab === id
                       ? "border-b-2 border-[var(--accent)] font-medium text-[var(--text-primary)]"
                       : "font-normal text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
@@ -177,7 +183,7 @@ export function HeroProductMockup({
                     </TableCell>
                     <TableCell
                       className={cn(
-                        "whitespace-normal text-[var(--text-primary)]",
+                        "max-w-[80px] truncate text-[var(--text-primary)] sm:max-w-none sm:whitespace-normal",
                         isCompact ? "text-sm" : "",
                       )}
                     >

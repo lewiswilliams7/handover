@@ -71,7 +71,7 @@ export async function GET(request: Request) {
 
     // Use the same backend `getHaloProjects` logic as the import modal.
     const result = await getHaloProjects(connection.halo_url, token, {
-      count: 100,
+      count: 500,
     });
 
     console.log("[projects route] fetched:", result.length, "projects");

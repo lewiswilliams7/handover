@@ -2,6 +2,8 @@ export type BlogFilterId = "all" | "HaloPSA" | "Reporting" | "Automation" | "Pro
 
 export type BlogPostTag =
   | "HaloPSA"
+  | "ConnectWise"
+  | "QBR"
   | "Reporting"
   | "Automation"
   | "Product"
@@ -44,6 +46,32 @@ export const BLOG_FILTER_OPTIONS: { id: BlogFilterId; label: string }[] = [
 ];
 
 export const BLOG_POSTS: BlogPostMeta[] = [
+  {
+    slug: "connectwise-vs-halopsa-msp-client-reporting",
+    routePath: "/blog/connectwise-vs-halopsa-msp-client-reporting",
+    title: "ConnectWise vs HaloPSA for MSP Client Reporting: Which Gives You Better Data?",
+    dateISO: "2026-05-30T12:00:00.000Z",
+    dateDisplay: "30 May 2026",
+    author: "Lewis Williams",
+    tags: ["HaloPSA", "ConnectWise", "Reporting", "Comparison"],
+    description:
+      "Comparing ConnectWise Manage and HaloPSA for MSP client reporting. Which PSA gives you better ticket data, project visibility, and automated report generation?",
+    kind: "legacy",
+    readMinutesOverride: 8,
+  },
+  {
+    slug: "automate-msp-qbr-preparation",
+    routePath: "/blog/automate-msp-qbr-preparation",
+    title: "How MSPs Can Automate QBR Preparation (Without Losing Quality)",
+    dateISO: "2026-05-30T12:00:00.000Z",
+    dateDisplay: "30 May 2026",
+    author: "Lewis Williams",
+    tags: ["QBR", "Reporting", "Automation", "HaloPSA", "ConnectWise"],
+    description:
+      "QBR preparation takes MSP account managers 3-5 hours per client. Here's how to automate the data gathering, structuring, and first-draft writing — without losing the quality clients expect.",
+    kind: "legacy",
+    readMinutesOverride: 8,
+  },
   {
     slug: "pitchit-2026-handover-msp-accelerator",
     routePath: "/blog/pitchit-2026-handover-msp-accelerator",

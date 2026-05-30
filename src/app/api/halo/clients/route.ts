@@ -66,18 +66,20 @@ async function fetchHaloListPage(
   pageNo: number,
   pageSize: number,
   count: number,
-): Promise<{ ok: boolean; status: number; data: unknown }> {
+): Promise<{ ok: boolean; status: number; data: unknown; bodyPreview: string }> {
   const url = buildListUrl(haloUrl, mode, pageNo, pageSize, count);
   const res = await fetch(url, { headers, cache: "no-store" });
+  const rawText = await res.text().catch(() => "");
+  const bodyPreview = rawText.slice(0, 200);
   let data: unknown = null;
-  if (res.ok) {
+  if (res.ok && rawText.trim()) {
     try {
-      data = await res.json();
+      data = JSON.parse(rawText) as unknown;
     } catch {
       data = null;
     }
   }
-  return { ok: res.ok, status: res.status, data };
+  return { ok: res.ok, status: res.status, data, bodyPreview };
 }
 
 async function discoverListMode(
@@ -86,10 +88,23 @@ async function discoverListMode(
   pageSize: number,
   count: number,
 ): Promise<{ mode: ListMode; data: unknown } | null> {
+  const singularUrl = buildListUrl(haloUrl, "singular", 1, pageSize, count);
   const s = await fetchHaloListPage(haloUrl, headers, "singular", 1, pageSize, count);
   if (s.ok && s.data) return { mode: "singular", data: s.data };
+  console.error("[halo/clients] discover /api/Client failed:", {
+    url: singularUrl,
+    status: s.status,
+    bodyPreview: s.bodyPreview,
+  });
+
+  const pluralUrl = buildListUrl(haloUrl, "plural", 1, pageSize, count);
   const p = await fetchHaloListPage(haloUrl, headers, "plural", 1, pageSize, count);
   if (p.ok && p.data) return { mode: "plural", data: p.data };
+  console.error("[halo/clients] discover /api/Clients failed:", {
+    url: pluralUrl,
+    status: p.status,
+    bodyPreview: p.bodyPreview,
+  });
   return null;
 }
 

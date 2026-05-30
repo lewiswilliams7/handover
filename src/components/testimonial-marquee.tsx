@@ -91,7 +91,7 @@ function renderQuoteWithHighlights(quote: string, highlights: string[]) {
 
   return parts.map((part, idx) =>
     part.highlighted ? (
-      <span key={idx} className="text-[#C9A84C]">
+      <span key={idx} className="font-semibold text-white">
         {part.text}
       </span>
     ) : (
@@ -212,31 +212,20 @@ function TestimonialMarqueeDesktop() {
         <ChevronRight className="size-4" aria-hidden />
       </button>
 
-      <div
-        className="pointer-events-none absolute inset-y-0 left-0 z-20 hidden md:block"
-        style={{
-          width: "120px",
-          background: "linear-gradient(to right, #080D14 0%, transparent 100%)",
-        }}
-      />
-      <div
-        className="pointer-events-none absolute inset-y-0 right-0 z-20 hidden md:block"
-        style={{
-          width: "120px",
-          background: "linear-gradient(to left, #080D14 0%, transparent 100%)",
-        }}
-      />
-
-      <div
-        ref={viewportRef}
-        onMouseEnter={() => setPaused(true)}
-        onMouseLeave={() => setPaused(false)}
-        className="overflow-x-scroll scrollbar-hide"
-      >
-        <div className="flex w-max gap-5">
-          {repeated.map((item, idx) => (
-            <TestimonialCard key={`${item.name}-${idx}`} item={item} layout="desktop" />
-          ))}
+      <div className="relative">
+        <div className="pointer-events-none absolute left-0 top-0 z-10 hidden h-full w-20 bg-gradient-to-r from-[var(--bg-primary)] to-transparent md:block" />
+        <div className="pointer-events-none absolute right-0 top-0 z-10 hidden h-full w-20 bg-gradient-to-l from-[var(--bg-primary)] to-transparent md:block" />
+        <div
+          ref={viewportRef}
+          onMouseEnter={() => setPaused(true)}
+          onMouseLeave={() => setPaused(false)}
+          className="overflow-x-scroll scrollbar-hide"
+        >
+          <div className="flex w-max gap-5">
+            {repeated.map((item, idx) => (
+              <TestimonialCard key={`${item.name}-${idx}`} item={item} layout="desktop" />
+            ))}
+          </div>
         </div>
       </div>
     </section>

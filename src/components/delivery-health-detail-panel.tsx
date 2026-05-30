@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { ArrowLeft, ChevronRight, ExternalLink, Sparkles, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, ExternalLink, FileText, Loader2, RotateCw, Sparkles, X } from "lucide-react";
 
 import type { DeliveryHealthRag, DeliveryHealthRow } from "@/lib/delivery-health";
 import {
@@ -24,9 +24,11 @@ import { formatLoggedHours } from "@/lib/format-logged-hours";
 import { stripHtmlToPlainText } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/toasts";
 import { usePSAConnections } from "@/hooks/use-psa-connections";
 import { usePSAStatus } from "@/hooks/usePSAStatus";
 import { DEMO_TICKETS } from "@/lib/demo-data";
+import { setCachedMeetingPrep } from "@/lib/meeting-prep-cache";
 
 const DETAIL_CACHE_MS = 2 * 60 * 1000;
 const detailCache = new Map<string, { fetchedAt: number; ticket: HaloTicket }>();
@@ -255,6 +257,61 @@ function StatusPipelineBar({
   );
 }
 
+function renderMeetingPrep(content: string): ReactNode {
+  return content.split("\n").map((line, i) => {
+    if (line.startsWith("#### "))
+      return (
+        <h4 key={i} className="mb-1 mt-4 text-[13px] font-semibold text-white">
+          {line.replace("#### ", "")}
+        </h4>
+      );
+    if (line.startsWith("### "))
+      return (
+        <h3 key={i} className="mb-2 mt-4 text-[14px] font-semibold text-white">
+          {line.replace("### ", "")}
+        </h3>
+      );
+    if (line.startsWith("**") && line.endsWith("**"))
+      return (
+        <p key={i} className="text-[12px] font-medium text-[var(--text-secondary)]">
+          {line.replace(/\*\*/g, "")}
+        </p>
+      );
+    if (line.startsWith("- "))
+      return (
+        <li key={i} className="ml-3 list-disc text-[12px] text-[var(--text-secondary)]">
+          {line.replace("- ", "")}
+        </li>
+      );
+    if (line.startsWith("---")) return <hr key={i} className="my-3 border-[var(--border)]" />;
+    if (line.trim() === "") return <div key={i} className="h-2" />;
+    const boldParts = line.split(/\*\*([^*]+)\*\*/g);
+    if (boldParts.length > 1) {
+      return (
+        <p key={i} className="text-[12px] text-[var(--text-secondary)]">
+          {boldParts.map((part, j) =>
+            j % 2 === 1 ? (
+              <strong key={j} className="font-medium text-white">
+                {part}
+              </strong>
+            ) : (
+              part
+            ),
+          )}
+        </p>
+      );
+    }
+    return (
+      <p key={i} className="text-[12px] text-[var(--text-secondary)]">
+        {line}
+      </p>
+    );
+  });
+}
+
+const MEETING_PREP_ACTION_CLASS =
+  "inline-flex items-center text-[12px] border border-[var(--border)] px-3 py-1.5 rounded-[var(--radius)] text-[var(--text-secondary)] transition-colors hover:bg-white/5 disabled:opacity-50";
+
 type Props = {
   open: boolean;
   row: DeliveryHealthRow | null;
@@ -281,8 +338,17 @@ export function DeliveryHealthDetailPanel({
   const [ticket, setTicket] = useState<HaloTicket | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [meetingPrepModalOpen, setMeetingPrepModalOpen] = useState(false);
+  const [meetingPrepContent, setMeetingPrepContent] = useState<string | null>(null);
+  const [meetingPrepLoading, setMeetingPrepLoading] = useState(false);
+  const [meetingPrepPushing, setMeetingPrepPushing] = useState(false);
+  const toast = useToast();
 
-  const loadTicket = useCallback(async (id: number, source: "halopsa" | "connectwise") => {
+  const loadTicket = useCallback(async (
+    id: number,
+    source: "halopsa" | "connectwise",
+    kind: "ticket" | "project" = "ticket",
+  ) => {
     if (demoMode) {
       const idx = id >= 10000 ? id - 10000 : -1;
       const demoTicket = idx >= 0 ? DEMO_TICKETS[idx] : undefined;
@@ -339,7 +405,7 @@ export function DeliveryHealthDetailPanel({
       setLoading(false);
       return;
     }
-    const cacheKey = `${source}-${id}`;
+    const cacheKey = `${source}-${kind}-${id}`;
     const hit = detailCache.get(cacheKey);
     if (hit && Date.now() - hit.fetchedAt < DETAIL_CACHE_MS) {
       setTicket(hit.ticket);
@@ -352,22 +418,18 @@ export function DeliveryHealthDetailPanel({
     try {
       const endpoint =
         source === "connectwise" && cwEnabled
-          ? `/api/cw/ticket-detail?id=${id}`
+          ? `/api/delivery-health/ticket-detail?id=${id}&kind=${kind}&source=connectwise`
           : `/api/delivery-health/ticket-detail?id=${id}`;
       const res = await fetch(endpoint, { credentials: "same-origin", cache: "no-store" });
       const json = (await res.json()) as {
-        ticket?: HaloTicket | CwDetailTicket;
-        notes?: CwDetailNote[];
+        ticket?: HaloTicket;
         error?: string;
       };
       if (!res.ok) {
         throw new Error(json.error ?? "Could not load ticket.");
       }
       if (!json.ticket) throw new Error("Invalid response");
-      const normalisedTicket =
-        source === "connectwise" && cwEnabled
-          ? mapCwDetailToHaloShape(id, json.ticket as CwDetailTicket, json.notes ?? [])
-          : (json.ticket as HaloTicket);
+      const normalisedTicket = json.ticket as HaloTicket;
       detailCache.set(cacheKey, { fetchedAt: Date.now(), ticket: normalisedTicket });
       console.log("[panel-ticket-raw]", {
         hasTicket: !!normalisedTicket,
@@ -394,10 +456,16 @@ export function DeliveryHealthDetailPanel({
       setTicket(null);
       setError(null);
       setLoading(false);
+      setMeetingPrepModalOpen(false);
+      setMeetingPrepContent(null);
+      setMeetingPrepLoading(false);
       return;
     }
+    setMeetingPrepModalOpen(false);
+    setMeetingPrepContent(null);
+    setMeetingPrepLoading(false);
     const detailSource = row.source === "connectwise" && cwEnabled ? "connectwise" : "halopsa";
-    void loadTicket(row.id, detailSource);
+    void loadTicket(row.id, detailSource, row.kind);
   }, [open, row, loadTicket, cwEnabled]);
 
   useEffect(() => {
@@ -408,6 +476,142 @@ export function DeliveryHealthDetailPanel({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, row, onClose]);
+
+  const haloNotes = ticket ? notesOldestFirst(ticket) : [];
+
+  const generateMeetingPrep = useCallback(async () => {
+    if (!row) return;
+    setMeetingPrepLoading(true);
+    setMeetingPrepContent(null);
+    try {
+      const notes = ticket ? notesOldestFirst(ticket) : [];
+      const recentNotesSummary = notes
+        .slice(-3)
+        .map((n) => {
+          const norm = mapHaloNoteToNormalised(n);
+          return panelNoteContent(haloNoteRawText(n), norm.type);
+        })
+        .filter(Boolean)
+        .join("\n\n");
+
+      const openActionsText =
+        (row.latestOpenActions ?? [])
+          .map((a) => `- ${a.task} (${a.owner || "Unassigned"})`)
+          .join("\n") || "None recorded";
+
+      const openRisksText =
+        (row.latestOpenRisks ?? [])
+          .map((r) => `- ${r.risk}${r.impact && r.impact !== " - " ? ` (${r.impact})` : ""}`)
+          .join("\n") || "None recorded";
+
+      const prompt = `Generate a meeting preparation brief for a client service review.
+
+Client: ${row.clientName}
+Ticket/Project: ${row.name}
+RAG Status: ${row.rag}
+Open Actions: ${row.openActions || 0}
+Open Risks: ${row.openRisks || 0}
+Days to target: ${row.daysToTarget ?? "Not set"}
+Time logged: ${formatLoggedHours(row.timeLogged) || "Unknown"}
+SLA status: ${row.slaRisk || "No risk"}
+
+Recent notes summary:
+${recentNotesSummary || "No recent notes available."}
+
+Open actions from last report:
+${openActionsText}
+
+Open risks from last report:
+${openRisksText}
+
+Generate a structured meeting brief with these sections:
+1. Quick summary (2 sentences on current status)
+2. Key wins to mention (what's going well)
+3. Risks and blockers to discuss (be specific)
+4. Suggested talking points (3-4 bullet points)
+5. Recommended actions to agree on the call
+
+Keep it concise and professional. This is for the engineer or account manager to read before the call.`;
+
+      const res = await fetch("/api/meeting-prep", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { content?: string; error?: string };
+      if (!res.ok) {
+        throw new Error(data.error ?? "Could not generate meeting brief.");
+      }
+      const content = (data.content ?? "").trim();
+      if (!content) {
+        throw new Error("No meeting brief returned.");
+      }
+      setMeetingPrepContent(content);
+      setCachedMeetingPrep(row.clientName, content, row.name);
+      setMeetingPrepModalOpen(true);
+    } catch (e) {
+      setMeetingPrepContent(
+        e instanceof Error ? e.message : "Could not generate meeting brief.",
+      );
+      setMeetingPrepModalOpen(true);
+    } finally {
+      setMeetingPrepLoading(false);
+    }
+  }, [row, ticket]);
+
+  const handleMeetingPrepClick = useCallback(() => {
+    if (meetingPrepLoading) return;
+    if (meetingPrepContent?.trim()) {
+      setMeetingPrepModalOpen(true);
+      return;
+    }
+    void generateMeetingPrep();
+  }, [meetingPrepLoading, meetingPrepContent, generateMeetingPrep]);
+
+  const pushMeetingPrepToPsa = useCallback(async () => {
+    if (!row || !meetingPrepContent?.trim() || demoMode) return;
+    const source = row.source === "connectwise" ? "connectwise" : "halopsa";
+    setMeetingPrepPushing(true);
+    try {
+      const res = await fetch("/api/psa/chase-ticket", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          ticketId: row.id,
+          note: meetingPrepContent.trim(),
+          source,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to push meeting brief");
+      toast({
+        message: "Meeting brief pushed to PSA",
+        variant: "success",
+        durationMs: 4000,
+      });
+    } catch {
+      toast({
+        message: "Failed to push meeting brief",
+        variant: "error",
+        durationMs: 3000,
+      });
+    } finally {
+      setMeetingPrepPushing(false);
+    }
+  }, [row, meetingPrepContent, demoMode, toast]);
+
+  const downloadMeetingPrep = useCallback(() => {
+    if (!meetingPrepContent?.trim()) return;
+    const safeName = (row?.clientName ?? "client").replace(/[^\w\s-]/g, "").trim() || "client";
+    const blob = new Blob([meetingPrepContent], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `meeting-brief-${safeName.replace(/\s+/g, "-").toLowerCase()}.txt`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }, [meetingPrepContent, row?.clientName]);
 
   const ragBorderClass = (rag: DeliveryHealthRag) => {
     switch (rag) {
@@ -436,7 +640,7 @@ export function DeliveryHealthDetailPanel({
           : psaConnections.primary === "halopsa"
             ? "View in HaloPSA"
             : "View in PSA";
-  const haloNotes = ticket ? notesOldestFirst(ticket) : [];
+
   console.log("[panel-notes-raw]", {
     totalNotes: haloNotes.length,
     notes: haloNotes.map((n) => ({
@@ -472,9 +676,10 @@ export function DeliveryHealthDetailPanel({
     (row.source === "connectwise" && psaStatus.connectwise);
 
   return (
+    <>
     <div
       className={cn(
-        "fixed inset-0 z-[100] flex items-center justify-center max-md:p-0 md:p-[5vh]",
+        "fixed inset-0 isolate z-[100] flex items-center justify-center max-md:p-0 md:p-[5vh]",
         open ? "pointer-events-auto" : "pointer-events-none",
       )}
       aria-hidden={!open}
@@ -496,7 +701,7 @@ export function DeliveryHealthDetailPanel({
         className={cn(
           "relative z-10 flex max-h-full w-full flex-col overflow-hidden bg-[var(--bg-primary)] shadow-[0_0_80px_rgba(0,0,0,0.5)] transition-opacity duration-200 ease-out",
           "max-md:h-full max-md:max-h-full max-md:rounded-none",
-          "md:h-[90vh] md:w-[min(92vw,1000px)] md:max-h-[90vh] md:max-w-[1000px] md:rounded-[var(--radius-lg)] md:border md:border-[var(--border)]",
+          "md:h-[95vh] md:w-[min(96vw,1200px)] md:max-h-[95vh] md:max-w-[1200px] md:rounded-[var(--radius-lg)] md:border md:border-[var(--border)]",
           open ? "opacity-100" : "opacity-0",
         )}
         onClick={(e) => e.stopPropagation()}
@@ -816,6 +1021,40 @@ export function DeliveryHealthDetailPanel({
                   Generate report
                 </Button>
               ) : null}
+              <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className={cn("h-10 min-w-0 flex-1", focusRing)}
+                onClick={() => handleMeetingPrepClick()}
+                disabled={meetingPrepLoading}
+              >
+                {meetingPrepLoading ? (
+                  <>
+                    <Loader2 className="mr-2 size-4 animate-spin" aria-hidden />
+                    Preparing...
+                  </>
+                ) : (
+                  <>
+                    <FileText className="mr-2 size-4" aria-hidden />
+                    Meeting Prep
+                  </>
+                )}
+              </Button>
+              {meetingPrepContent?.trim() && !meetingPrepLoading ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className={cn("h-10 w-10 shrink-0", focusRing)}
+                  title="Refresh meeting brief"
+                  aria-label="Refresh meeting brief"
+                  onClick={() => void generateMeetingPrep()}
+                >
+                  <RotateCw className="size-4" aria-hidden />
+                </Button>
+              ) : null}
+              </div>
               {canShowViewInPsa ? (
                 <a
                   href={row.haloTicketUrl}
@@ -835,6 +1074,79 @@ export function DeliveryHealthDetailPanel({
         </div>
       </div>
     </div>
+
+    {meetingPrepModalOpen && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setMeetingPrepModalOpen(false);
+          }}
+        >
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div
+            className="relative z-10 flex flex-col rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] shadow-2xl"
+            style={{ width: "900px", maxWidth: "90vw", maxHeight: "85vh", overflow: "hidden" }}
+          >
+            <div className="flex shrink-0 items-start justify-between border-b border-[var(--border)] px-6 py-4">
+              <div>
+                <h2 className="flex items-center gap-2 text-[15px] font-semibold text-white">
+                  <FileText className="size-4 text-[var(--accent)]" aria-hidden />
+                  Meeting Brief — {row.clientName}
+                </h2>
+                <p className="mt-1 text-[12px] text-[var(--text-secondary)]">{row.name}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMeetingPrepModalOpen(false)}
+                className="ml-4 shrink-0 text-[var(--text-secondary)] transition-colors hover:text-white"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+              <div className="space-y-1">
+                {meetingPrepContent ? renderMeetingPrep(meetingPrepContent) : null}
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-2 border-t border-[var(--border)] px-6 py-4">
+              <button
+                type="button"
+                className={cn(MEETING_PREP_ACTION_CLASS, focusRing)}
+                disabled={!meetingPrepContent?.trim()}
+                onClick={() => {
+                  if (meetingPrepContent) void navigator.clipboard.writeText(meetingPrepContent);
+                }}
+              >
+                Copy brief
+              </button>
+              <button
+                type="button"
+                className={cn(MEETING_PREP_ACTION_CLASS, focusRing)}
+                disabled={meetingPrepPushing || demoMode || !meetingPrepContent?.trim()}
+                onClick={() => void pushMeetingPrepToPsa()}
+              >
+                {meetingPrepPushing ? "Pushing..." : "Push to PSA"}
+              </button>
+              <button
+                type="button"
+                className={cn(MEETING_PREP_ACTION_CLASS, focusRing)}
+                disabled={!meetingPrepContent?.trim()}
+                onClick={downloadMeetingPrep}
+              >
+                Download
+              </button>
+              <button
+                type="button"
+                className={cn(MEETING_PREP_ACTION_CLASS, focusRing)}
+                onClick={() => setMeetingPrepModalOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

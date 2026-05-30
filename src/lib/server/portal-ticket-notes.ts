@@ -128,6 +128,65 @@ export async function portalTicketBelongsToClient(opts: {
   }
 }
 
+export async function portalProjectBelongsToClient(opts: {
+  mspUserId: string;
+  psaSource: string;
+  projectId: number;
+  portalClientIdStr: string;
+}): Promise<boolean> {
+  if (!Number.isFinite(opts.projectId) || opts.projectId <= 0) return false;
+  const want = Number.parseInt(String(opts.portalClientIdStr).replace(/\D/g, ""), 10);
+  if (!Number.isFinite(want) || want <= 0) return false;
+
+  if (opts.psaSource === "connectwise") {
+    try {
+      const cwConn = await getCWConnectionForUser(opts.mspUserId);
+      const headers = await getCWAuthHeaders(opts.mspUserId);
+      const base = cwConn.siteUrl.replace(/\/+$/, "");
+      const url = `${base}/v4_6_release/apis/3.0/project/projects/${opts.projectId}`;
+      const res = await fetch(url, { headers, cache: "no-store" });
+      if (!res.ok) return false;
+      const row = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+      if (!row || typeof row !== "object") return false;
+      const company = row.company as { id?: unknown } | null | undefined;
+      const cid =
+        company && (typeof company.id === "number" || typeof company.id === "string")
+          ? Number(company.id)
+          : NaN;
+      return Number.isFinite(cid) && cid === want;
+    } catch {
+      return false;
+    }
+  }
+
+  const admin = createServiceRoleClient();
+  const { data: conn, error: cErr } = await admin
+    .from("halo_connections")
+    .select("halo_url, tenant, client_id, client_secret_encrypted")
+    .eq("user_id", opts.mspUserId)
+    .maybeSingle();
+  if (cErr || !conn) return false;
+  let clientSecret: string;
+  try {
+    clientSecret = decrypt(conn.client_secret_encrypted);
+  } catch {
+    return false;
+  }
+  const token = await getHaloToken({
+    haloUrl: conn.halo_url,
+    tenant: conn.tenant,
+    clientId: conn.client_id,
+    clientSecret,
+  });
+  try {
+    const project = await getTicketDetails(conn.halo_url, token, opts.projectId);
+    const pid = typeof project.clientId === "number" && Number.isFinite(project.clientId) ? project.clientId : null;
+    return pid != null && pid === want;
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchPortalTicketNotes(opts: {
   mspUserId: string;
   psaSource: string;
@@ -141,6 +200,111 @@ export async function fetchPortalTicketNotes(opts: {
       const headers = await getCWAuthHeaders(opts.mspUserId);
       const base = cwConn.siteUrl.replace(/\/+$/, "");
       const url = `${base}/v4_6_release/apis/3.0/service/tickets/${opts.ticketId}/notes?pageSize=200&fields=id,text,createdBy,dateCreated,member`;
+      const res = await fetch(url, { headers, cache: "no-store" });
+      const raw = (await res.json().catch(() => [])) as unknown;
+      const rows = parseCwNotesPayload(raw);
+      const lines: PortalTicketNoteLine[] = [];
+      for (const row of rows) {
+        const text = typeof row.text === "string" ? stripHtmlTags(row.text) : "";
+        if (!text || text.length < 2) continue;
+        const memberName =
+          row.member && typeof row.member === "object" && typeof (row.member as { name?: string }).name === "string"
+            ? String((row.member as { name: string }).name).trim()
+            : null;
+        const createdBy =
+          typeof row.createdBy === "string" && row.createdBy.trim() ? row.createdBy.trim() : null;
+        lines.push({
+          date: typeof row.dateCreated === "string" ? row.dateCreated : null,
+          author: memberName ?? createdBy ?? "Unknown",
+          content: text,
+        });
+      }
+      lines.sort((a, b) => {
+        const ta = a.date ? Date.parse(a.date) : 0;
+        const tb = b.date ? Date.parse(b.date) : 0;
+        return ta - tb;
+      });
+      const ticketUrl = `${base}/v4_6_release/apis/3.0/service/tickets/${opts.ticketId}?fields=id,summary,initialDescription,dateEntered,contactName`;
+      const ticketRes = await fetch(ticketUrl, { headers, cache: "no-store" });
+      if (ticketRes.ok) {
+        const ticketData = (await ticketRes.json()) as Record<string, unknown>;
+        const desc = String(ticketData.initialDescription || ticketData.summary || "").trim();
+        if (desc.length > 5) {
+          lines.unshift({
+            date: String(ticketData.dateEntered || ""),
+            author: String(ticketData.contactName || "Client"),
+            content: stripHtmlTags(desc),
+          });
+        }
+      }
+      return lines;
+    } catch {
+      return [];
+    }
+  }
+
+  const admin = createServiceRoleClient();
+  const { data: conn, error: cErr } = await admin
+    .from("halo_connections")
+    .select("halo_url, tenant, client_id, client_secret_encrypted")
+    .eq("user_id", opts.mspUserId)
+    .maybeSingle();
+  if (cErr || !conn) return [];
+
+  let clientSecret: string;
+  try {
+    clientSecret = decrypt(conn.client_secret_encrypted);
+  } catch {
+    return [];
+  }
+
+  const token = await getHaloToken({
+    haloUrl: conn.halo_url,
+    tenant: conn.tenant,
+    clientId: conn.client_id,
+    clientSecret,
+  });
+
+  try {
+    const ticket = await getTicketDetails(conn.halo_url, token, opts.ticketId);
+    const description =
+      (ticket as any).details || (ticket as any).description || (ticket as any).summary_long || "";
+    const raw = Array.isArray(ticket.notes) ? (ticket.notes as HaloNote[]) : [];
+    const sorted = sortHaloNotesOldestFirst(raw);
+    const lines: PortalTicketNoteLine[] = [];
+    if (description && description.trim().length > 10) {
+      lines.push({
+        date: (ticket as any).dateoccurred || null,
+        author: "Original request",
+        content: stripHtmlTags(description.trim()),
+      });
+    }
+    lines.push(
+      ...sorted.map((note) => ({
+        date: haloNoteDate(note),
+        author: haloNoteAuthor(note),
+        content: haloNotePlainText(note),
+      })),
+    );
+    return lines.filter((l) => l.content.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchPortalProjectNotes(opts: {
+  mspUserId: string;
+  psaSource: string;
+  projectId: number;
+}): Promise<PortalTicketNoteLine[]> {
+  if (!Number.isFinite(opts.projectId) || opts.projectId <= 0) return [];
+
+  if (opts.psaSource === "connectwise") {
+    try {
+      const cwConn = await getCWConnectionForUser(opts.mspUserId);
+      const headers = await getCWAuthHeaders(opts.mspUserId);
+      const base = cwConn.siteUrl.replace(/\/+$/, "");
+      const url = `${base}/v4_6_release/apis/3.0/project/projects/${opts.projectId}/notes?pageSize=200`;
       const res = await fetch(url, { headers, cache: "no-store" });
       const raw = (await res.json().catch(() => [])) as unknown;
       const rows = parseCwNotesPayload(raw);
@@ -194,8 +358,8 @@ export async function fetchPortalTicketNotes(opts: {
   });
 
   try {
-    const ticket = await getTicketDetails(conn.halo_url, token, opts.ticketId);
-    const raw = Array.isArray(ticket.notes) ? (ticket.notes as HaloNote[]) : [];
+    const project = await getTicketDetails(conn.halo_url, token, opts.projectId);
+    const raw = Array.isArray(project.notes) ? (project.notes as HaloNote[]) : [];
     const sorted = sortHaloNotesOldestFirst(raw);
     return sorted
       .map((note) => ({

@@ -95,7 +95,7 @@ function WelcomePageInner() {
       credentials: 'same-origin',
       body: JSON.stringify({ plan }),
     })
-    router.push('/')
+    router.push('/onboarding')
   }
 
   const startTrialCheckout = async (plan: 'professional' | 'team') => {

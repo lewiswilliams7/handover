@@ -5,6 +5,7 @@ import {
   buildHistoryIndex,
   haloTicketsToHealthRows,
   isHaloTicketActive,
+  resolveDashboardOwnerFromHaloTicketWithAgents,
   type DeliveryHealthRag,
 } from "@/lib/delivery-health";
 import { getHaloAgents, getHaloProjects, getHaloToken, getHaloTickets, type HaloTicket } from "@/lib/halo";
@@ -25,6 +26,7 @@ export type PortalPsaPayloadStats = {
   highPriority?: number;
   mediumPriority?: number;
   lowPriority?: number;
+  monthlyVolume?: Record<string, number>;
   activeProjects: number;
   avgProjectProgress: number;
   rag: DeliveryHealthRag;
@@ -42,17 +44,14 @@ function worstRagFromRows(rows: { rag: DeliveryHealthRag }[]): DeliveryHealthRag
 }
 
 function mapHaloTicketToPortalRow(t: HaloTicket) {
-  const owner =
-    (t.agent?.name && t.agent.name.trim()) ||
-    (t.manager?.name && t.manager.name.trim()) ||
-    "—";
+  const owner = resolveDashboardOwnerFromHaloTicketWithAgents(t);
   return {
     id: t.id,
     summary: t.summary ?? "",
     status: t.status?.name ?? "",
     priority: t.priority?.name ?? "",
-    engineer: owner,
-    lastUpdated: (t as unknown as { last_update?: string }).last_update ?? t.dateoccurred ?? null,
+    engineer: owner === "Unassigned" ? "—" : owner,
+    lastUpdated: (t as any).last_update ?? t.dateoccurred ?? null,
   };
 }
 
@@ -427,6 +426,17 @@ export async function fetchPortalPsaPayload(opts: {
         stats.mediumPriority = pri.medium;
         stats.lowPriority = pri.low;
       }
+      const monthlyVolume: Record<string, number> = {};
+      const twelveMonthsAgo = new Date();
+      twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+      scopedHalo.forEach((t) => {
+        const date = t.dateoccurred ? new Date(t.dateoccurred) : null;
+        if (date && date >= twelveMonthsAgo) {
+          const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+          monthlyVolume[key] = (monthlyVolume[key] || 0) + 1;
+        }
+      });
+      stats.monthlyVolume = monthlyVolume;
       if (opts.visibilityResolvedCount && typeof resolvedThisMonth === "number") {
         stats.resolvedThisMonth = resolvedThisMonth;
       }

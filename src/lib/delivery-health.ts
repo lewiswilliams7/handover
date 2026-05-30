@@ -903,12 +903,14 @@ export function haloTicketsToHealthRows(
   historyIndex: Map<string, DeliveryHistoryBucket>,
   haloBaseUrl: string,
   agentsById?: Map<number, string>,
+  sourceOverride?: "halopsa" | "connectwise",
+  includeClosed = false,
 ): DeliveryHealthRow[] {
   const rows: DeliveryHealthRow[] = [];
 
   for (const t of tickets) {
     const statusName = t.status?.name ?? "Open";
-    if (!isHaloTicketActive(statusName)) continue;
+    if (!includeClosed && !isHaloTicketActive(statusName)) continue;
 
     const name = t.summary?.trim() || `Ticket ${t.id}`;
     const clientName = t.client?.name ?? "Unknown";
@@ -989,7 +991,12 @@ export function haloTicketsToHealthRows(
       lastNotePreview,
       targetDateIso: targetIso,
       targetHours: extractTargetHours(t),
-      timeLogged: t.timetaken != null ? Number(t.timetaken) : 0,
+      timeLogged:
+        t.timetaken != null
+          ? sourceOverride === "connectwise"
+            ? Number(t.timetaken)
+            : Number(t.timetaken) / 60
+          : 0,
       description: t.details ?? null,
       notes,
       latestOpenActions,

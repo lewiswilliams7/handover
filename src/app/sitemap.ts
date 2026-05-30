@@ -1,7 +1,7 @@
 import { MetadataRoute } from "next";
 import { BLOG_POSTS } from "@/lib/blog-data";
 
-const today = new Date("2026-04-05");
+const today = new Date();
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const staticRoutes: MetadataRoute.Sitemap = [
@@ -37,6 +37,24 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
     {
       url: "https://gethandover.uk/compare",
+      lastModified: today,
+      changeFrequency: "monthly",
+      priority: 0.85,
+    },
+    {
+      url: "https://gethandover.uk/compare/handover-vs-manual-reporting",
+      lastModified: today,
+      changeFrequency: "monthly",
+      priority: 0.85,
+    },
+    {
+      url: "https://gethandover.uk/compare/handover-vs-brightgauge",
+      lastModified: today,
+      changeFrequency: "monthly",
+      priority: 0.85,
+    },
+    {
+      url: "https://gethandover.uk/compare/handover-vs-rewst",
       lastModified: today,
       changeFrequency: "monthly",
       priority: 0.85,
@@ -120,6 +138,24 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.8,
     },
     {
+      url: "https://gethandover.uk/features/halopsa-reporting",
+      lastModified: today,
+      changeFrequency: "monthly",
+      priority: 0.85,
+    },
+    {
+      url: "https://gethandover.uk/features/connectwise-reporting",
+      lastModified: today,
+      changeFrequency: "monthly",
+      priority: 0.85,
+    },
+    {
+      url: "https://gethandover.uk/features/msp-client-reporting",
+      lastModified: today,
+      changeFrequency: "monthly",
+      priority: 0.95,
+    },
+    {
       url: "https://gethandover.uk/integrations",
       lastModified: today,
       changeFrequency: "monthly",
@@ -138,6 +174,18 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.8,
     },
     {
+      url: "https://gethandover.uk/integrations/slack",
+      lastModified: today,
+      changeFrequency: "monthly",
+      priority: 0.6,
+    },
+    {
+      url: "https://gethandover.uk/integrations/teams",
+      lastModified: today,
+      changeFrequency: "monthly",
+      priority: 0.6,
+    },
+    {
       url: "https://gethandover.uk/join",
       lastModified: today,
       changeFrequency: "monthly",
@@ -151,6 +199,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
     {
       url: "https://gethandover.uk/roadmap",
+      lastModified: today,
+      changeFrequency: "monthly",
+      priority: 0.8,
+    },
+    {
+      url: "https://gethandover.uk/solutions",
       lastModified: today,
       changeFrequency: "monthly",
       priority: 0.8,
@@ -214,6 +268,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: today,
       changeFrequency: "monthly",
       priority: 0.8,
+    },
+    {
+      url: "https://gethandover.uk/partners",
+      lastModified: today,
+      changeFrequency: "monthly",
+      priority: 0.7,
     },
     {
       url: "https://gethandover.uk/partners/halopsa",

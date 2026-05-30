@@ -1,17 +1,20 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Check, Clock, X } from "lucide-react";
+import { Clock } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-const PLAN_COL = {
-  professional: "text-[#2563EB]",
-  team: "text-[#7C3AED]",
-  enterprise: "text-[#C9A84C]",
-} as const;
+type PlanKey = "professional" | "team" | "enterprise";
 
-type PlanKey = keyof typeof PLAN_COL;
+const PLAN_HEADER_CLASS: Record<PlanKey, string> = {
+  professional: "text-[11px] font-medium uppercase tracking-[0.12em] text-white/55",
+  team: "text-[11px] font-medium uppercase tracking-[0.12em] text-cyan-300",
+  enterprise: "text-[11px] font-medium uppercase tracking-[0.12em] text-white/55",
+};
+
+const TEAM_CELL_CLASS =
+  "border-b border-[var(--border-subtle)] bg-white/[0.025] px-3 py-3.5 text-center align-middle border-l border-r border-white/[0.06]";
 
 type Cell =
   | { kind: "tick" }
@@ -186,10 +189,7 @@ const ROWS: RowDef[] = [
     label: (
       <span className="inline-flex flex-wrap items-center gap-2">
         <span>Custom Writing Style Per Member</span>
-        <span
-          className="rounded-full border border-[#7C3AED]/45 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#5b21b6] dark:border-violet-400/40 dark:text-violet-200"
-          style={{ background: "rgba(124, 58, 237, 0.14)" }}
-        >
+        <span className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-300">
           Team+
         </span>
       </span>
@@ -263,40 +263,53 @@ const ROWS: RowDef[] = [
   },
 ];
 
-function PlanCell({ plan, cell }: { plan: PlanKey; cell: Cell }) {
-  const colour = PLAN_COL[plan];
+function CyanCheck({ label }: { label?: string }) {
+  return (
+    <svg
+      className="mx-auto size-[18px] shrink-0 text-cyan-400"
+      viewBox="0 0 20 20"
+      fill="none"
+      aria-hidden={!label}
+      aria-label={label}
+    >
+      <path
+        d="M5 10l3.5 3.5L15 7"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function PlanCell({ cell }: { plan: PlanKey; cell: Cell }) {
   if (cell.kind === "tick") {
-    return (
-      <span className={cn("mx-auto flex size-5 items-center justify-center", colour)}>
-        <Check className="size-4" strokeWidth={2.5} aria-label="Yes" />
-      </span>
-    );
+    return <CyanCheck label="Yes" />;
   }
   if (cell.kind === "tickSub") {
     return (
-      <span className={cn("mx-auto flex flex-col items-center justify-center gap-0.5 text-center", colour)}>
-        <Check className="size-4 shrink-0" strokeWidth={2.5} aria-label="Included" />
-        <span className="max-w-[5.5rem] text-[11px] font-semibold leading-tight">{cell.sub}</span>
+      <span className="mx-auto flex flex-col items-center justify-center gap-0.5 text-center">
+        <CyanCheck label="Included" />
+        <span className="max-w-[5.5rem] text-[14px] leading-tight text-white/85 tabular-nums">
+          {cell.sub}
+        </span>
       </span>
     );
   }
   if (cell.kind === "cross") {
-    return (
-      <span className="mx-auto flex size-5 items-center justify-center text-[var(--text-muted)]">
-        <X className="size-4" strokeWidth={2.25} aria-label="No" />
-      </span>
-    );
+    return <span className="text-white/25">—</span>;
   }
   if (cell.kind === "comingSoon") {
     return (
-      <span className="mx-auto inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-950 dark:bg-amber-950/45 dark:text-amber-50">
+      <span className="mx-auto inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/[0.06] px-2 py-0.5 text-[10px] font-medium text-white/60">
         <Clock className="size-3 shrink-0" strokeWidth={2.5} aria-hidden />
         Coming Soon
       </span>
     );
   }
   return (
-    <span className={cn("block text-center text-[13px] font-semibold", colour)}>{cell.value}</span>
+    <span className="block text-center text-[14px] text-white/85 tabular-nums">{cell.value}</span>
   );
 }
 
@@ -318,8 +331,10 @@ export function PricingWhatsIncludedComparison({
       <p className="mt-2 text-sm text-[var(--text-secondary)]">
         Compare plans at a glance. Limits apply per billing workspace unless noted.
       </p>
-      <div className="mt-6 space-y-3 overflow-x-clip rounded-[var(--radius)] border border-[var(--border)] shadow-sm">
-        <table className="w-full min-w-[640px] border-separate border-spacing-0 text-sm">
+      <p className="mb-2 text-[12px] text-white/40 sm:hidden">← Scroll to see all plans</p>
+      <div className="mt-6 w-full overflow-x-auto -mx-4 px-4 sm:mx-0 sm:overflow-x-clip sm:px-0">
+        <div className="rounded-[var(--radius)] border border-[var(--border)] shadow-sm">
+        <table className="w-full min-w-[600px] border-separate border-spacing-0 text-sm">
           <colgroup>
             <col style={{ width: "40%" }} />
             <col style={{ width: "20%" }} />
@@ -332,20 +347,26 @@ export function PricingWhatsIncludedComparison({
                 Feature
               </th>
               <th
-                className="sticky top-16 z-30 min-h-[3.25rem] border-b border-[var(--border)] px-3 pt-4 pb-4 text-center align-middle text-xs font-bold uppercase tracking-wide text-white shadow-[inset_0_-1px_0_0_rgba(0,0,0,0.08)]"
-                style={{ background: "#2563EB" }}
+                className={cn(
+                  "sticky top-16 z-30 min-h-[3.25rem] border-b border-[var(--border)] bg-[var(--bg-secondary)] px-3 pt-4 pb-4 text-center align-middle shadow-[inset_0_-1px_0_0_var(--border)]",
+                  PLAN_HEADER_CLASS.professional,
+                )}
               >
                 Professional
               </th>
               <th
-                className="sticky top-16 z-30 min-h-[3.25rem] border-b border-[var(--border)] px-3 pt-4 pb-4 text-center align-middle text-xs font-bold uppercase tracking-wide text-white shadow-[inset_0_-1px_0_0_rgba(0,0,0,0.08)]"
-                style={{ background: "#7C3AED" }}
+                className={cn(
+                  "sticky top-16 z-30 min-h-[3.25rem] border-b border-[var(--border)] bg-white/[0.025] px-3 pt-4 pb-4 text-center align-middle shadow-[inset_0_-1px_0_0_var(--border)] border-l border-r border-white/[0.06]",
+                  PLAN_HEADER_CLASS.team,
+                )}
               >
                 Team
               </th>
               <th
-                className="sticky top-16 z-30 min-h-[3.25rem] border-b border-[var(--border)] px-3 pt-4 pb-4 text-center align-middle text-xs font-bold uppercase tracking-wide text-[#1a1508] shadow-[inset_0_-1px_0_0_rgba(0,0,0,0.06)]"
-                style={{ background: "#C9A84C" }}
+                className={cn(
+                  "sticky top-16 z-30 min-h-[3.25rem] border-b border-[var(--border)] bg-[var(--bg-secondary)] px-3 pt-4 pb-4 text-center align-middle shadow-[inset_0_-1px_0_0_var(--border)]",
+                  PLAN_HEADER_CLASS.enterprise,
+                )}
               >
                 Enterprise
               </th>
@@ -370,28 +391,20 @@ export function PricingWhatsIncludedComparison({
                 >
                   {row.label}
                 </td>
-                <td
-                  className="border-b border-[var(--border-subtle)] px-3 py-3.5 text-center align-middle"
-                  style={{ background: "rgba(37, 99, 235, 0.07)" }}
-                >
+                <td className="border-b border-[var(--border-subtle)] px-3 py-3.5 text-center align-middle">
                   <PlanCell plan="professional" cell={row.professional} />
                 </td>
-                <td
-                  className="border-b border-[var(--border-subtle)] px-3 py-3.5 text-center align-middle"
-                  style={{ background: "rgba(124, 58, 237, 0.08)" }}
-                >
+                <td className={TEAM_CELL_CLASS}>
                   <PlanCell plan="team" cell={row.team} />
                 </td>
-                <td
-                  className="border-b border-[var(--border-subtle)] px-3 py-3.5 text-center align-middle"
-                  style={{ background: "rgba(201, 168, 76, 0.12)" }}
-                >
+                <td className="border-b border-[var(--border-subtle)] px-3 py-3.5 text-center align-middle">
                   <PlanCell plan="enterprise" cell={row.enterprise} />
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

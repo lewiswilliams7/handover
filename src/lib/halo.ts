@@ -16,6 +16,8 @@ function applyHaloTicketsListEnrichment(
 ): void {
   if (opts.minimalTicketPayload) return;
   url.searchParams.set("includedetails", "true");
+  url.searchParams.set("includeagent", "true");
+  url.searchParams.set("includeassignedagent", "true");
   url.searchParams.set("fields", HALO_TICKETS_LIST_FIELDS);
 }
 import {
@@ -1721,6 +1723,7 @@ function buildPaginatedTicketsSearchUrl(
     dateFrom?: string;
     dateTo?: string;
     minimalTicketPayload?: boolean;
+    includeClosed?: boolean;
   },
   clientStyle: HaloTicketsClientUrlStyle | "none",
 ): string {
@@ -1728,7 +1731,9 @@ function buildPaginatedTicketsSearchUrl(
   url.searchParams.set("pageinate", "true");
   url.searchParams.set("page_size", String(pageSize));
   url.searchParams.set("page_no", String(page));
-  url.searchParams.set("open_only", "true");
+  if (!filters.includeClosed) {
+    url.searchParams.set("open_only", "true");
+  }
 
   if (typeof filters.projectId === "number") {
     url.searchParams.set("project_id", String(filters.projectId));
@@ -1784,6 +1789,7 @@ async function discoverHaloTicketsClientFilterStyle(
     dateFrom?: string;
     dateTo?: string;
     minimalTicketPayload?: boolean;
+    includeClosed?: boolean;
   },
   headers: HeadersInit,
 ): Promise<
@@ -1828,6 +1834,7 @@ export async function getHaloTickets(
     keyword?: string;
     /** Request only id + client fields from Halo (smaller payloads for counts). */
     minimalTicketPayload?: boolean;
+    includeClosed?: boolean;
   } & { includeDetails?: boolean },
 ): Promise<HaloTicket[]> {
   const baseUrl = normalizeHaloUrl(haloUrl);
@@ -2014,6 +2021,7 @@ export async function getHaloTickets(
           dateFrom: filters.dateFrom,
           dateTo: filters.dateTo,
           minimalTicketPayload: filters.minimalTicketPayload,
+          includeClosed: filters.includeClosed,
         },
         headers,
       );
@@ -2113,6 +2121,48 @@ type ProjectsCache = {
 
 let projectsCache: ProjectsCache = null;
 
+type TicketsCache = {
+  tickets: HaloTicket[];
+  fetchedAt: number;
+};
+const ticketsCacheByClient = new Map<string, TicketsCache>();
+const TICKETS_CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes
+
+export function clearHaloTicketsCache(key?: string): void {
+  if (key) {
+    ticketsCacheByClient.delete(key);
+  } else {
+    ticketsCacheByClient.clear();
+  }
+}
+
+export async function getHaloTicketsCached(
+  token: string,
+  haloUrl: string,
+  filters: {
+    clientId?: number;
+    count?: number;
+    dateFrom?: string;
+    dateTo?: string;
+    statusId?: number;
+  },
+): Promise<HaloTicket[]> {
+  const cacheKey = `${haloUrl}:${filters.clientId ?? "all"}:${filters.count ?? 50}:${filters.dateFrom ?? ""}:${filters.dateTo ?? ""}`;
+  const now = Date.now();
+  const cached = ticketsCacheByClient.get(cacheKey);
+  if (cached && now - cached.fetchedAt < TICKETS_CACHE_TTL_MS) {
+    console.log("[tickets-cache] hit:", cacheKey, "age:", Math.round((now - cached.fetchedAt) / 1000) + "s");
+    return cached.tickets;
+  }
+  console.log("[tickets-cache] miss:", cacheKey);
+  const tickets = await getHaloTickets(token, haloUrl, {
+    ...filters,
+    includeDetails: false,
+  });
+  ticketsCacheByClient.set(cacheKey, { tickets, fetchedAt: now });
+  return tickets;
+}
+
 /** Clears in-memory Halo project list cache (e.g. import modal refresh). */
 export function clearHaloProjectsCache(): void {
   projectsCache = null;
@@ -2172,6 +2222,13 @@ export async function getHaloProjects(
         return parentId === t.id;
       });
       const managerName = resolveProjectOwnerLikeDashboard(t, agentsById);
+      const completionRaw = (t as unknown as Record<string, unknown>).completionpercent
+        ?? (t as unknown as Record<string, unknown>).completion_percent
+        ?? (t as unknown as Record<string, unknown>).percentcomplete;
+      const completionNum = Number(completionRaw);
+      const completionpercent = Number.isFinite(completionNum)
+        ? Math.max(0, Math.min(100, completionNum))
+        : undefined;
 
       return {
         id: t.id,
@@ -2184,7 +2241,7 @@ export async function getHaloProjects(
           managerName && managerName !== "Unassigned" ? { name: managerName } : null,
         startdate: t.dateoccurred ?? null,
         targetdate: t.targetdate ?? null,
-        completionpercent: undefined,
+        completionpercent,
         tasks: childTasks.map((task) => ({
           name: task.summary ?? null,
           summary:

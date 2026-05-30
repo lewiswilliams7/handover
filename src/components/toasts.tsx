@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 
-export type ToastVariant = "success" | "error" | "achievement";
+export type ToastVariant = "success" | "error" | "achievement" | "info";
 
 export type ToastInput = {
   message: string;
@@ -67,7 +67,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 ? "border border-zinc-600/80 border-l-[4px] border-l-amber-400/95 bg-zinc-900 text-zinc-50 shadow-xl"
                 : t.variant === "success"
                   ? "border-emerald-700/30 bg-emerald-600 text-white dark:border-emerald-500/40"
-                  : "border-red-800/40 bg-red-600 text-white dark:border-red-500/40",
+                  : t.variant === "info"
+                    ? "border-sky-700/30 bg-sky-600 text-white dark:border-sky-500/40"
+                    : "border-red-800/40 bg-red-600 text-white dark:border-red-500/40",
             ].join(" ")}
           >
             <p

@@ -31,7 +31,7 @@ export default function PartnersPage() {
               href="/partners/halopsa"
               className="group block rounded-xl border border-white/10 bg-white/5 p-6 text-left transition duration-300 hover:border-[#0EA5E9]"
             >
-              <img src="/halopsa.png" alt="HaloPSA" className="h-10 object-contain" />
+              <img src="/halopsa.png" alt="HaloPSA" width={120} height={40} className="h-10 object-contain" />
               <h2 className="mt-4 text-lg font-semibold text-white">HaloPSA Technology Alliance Partner</h2>
               <p className="mt-2 text-sm leading-relaxed text-slate-400">
                 Official marketplace listing, native API integration, and two-way PSA sync.
@@ -46,7 +46,7 @@ export default function PartnersPage() {
               href="/partners/connectwise"
               className="group block rounded-xl border border-white/10 bg-white/5 p-6 text-left transition duration-300 hover:border-[#0EA5E9]"
             >
-              <img src="/connectwise.jpeg" alt="ConnectWise" className="h-10 object-contain" />
+              <img src="/connectwise.jpeg" alt="ConnectWise" width={120} height={40} className="h-10 object-contain" />
               <h2 className="mt-4 text-lg font-semibold text-white">ConnectWise Marketplace Partner</h2>
               <p className="mt-2 text-sm leading-relaxed text-slate-400">
                 Native ConnectWise Manage integration with full marketplace listing. Connect and generate

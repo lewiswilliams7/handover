@@ -11,7 +11,6 @@ import {
   CalendarClock,
   ClipboardList,
   FolderKanban,
-  LayoutDashboard,
   ListChecks,
   Loader2,
   RefreshCw,
@@ -29,6 +28,7 @@ import type {
   DeliveryHealthSlaRisk,
 } from "@/lib/delivery-health";
 import { formatDeliveryHealthRowForGeneration } from "@/lib/delivery-health";
+import { PageHeader } from "@/components/page-header";
 import {
   buildDeliveryHealthSwrKey,
   DELIVERY_HEALTH_SWR_OPTIONS,
@@ -111,6 +111,21 @@ function rowMatchesStatusPortfolioFilter(
   return true;
 }
 
+function displayDeliveryHealthClientName(clientName: string | null | undefined): string {
+  const raw = String(clientName ?? "").trim();
+  if (!raw || raw === "Unknown") return "Unnamed account";
+  return raw;
+}
+
+function isClosedStatusName(statusName: string): boolean {
+  const t = statusTokensForFilter(statusName);
+  return (
+    /^(resolved|closed|completed|cancelled|canceled|duplicate|merged)\b/.test(t) ||
+    /\bresolved\b/.test(t) ||
+    /\bclosed\b/.test(t)
+  );
+}
+
 function rowMatchesPriorityPortfolioFilter(
   priorityName: string | null | undefined,
   f: PriorityPortfolioFilter,
@@ -157,14 +172,9 @@ function rowMatchesSlaPortfolioFilter(
 type SortKey =
   | "clientName"
   | "rag"
-  | "openTickets"
-  | "overdueTickets"
+  | "statusName"
   | "timeLogged"
-  | "ticketsThisWeek"
-  | "activeProjects"
-  | "projectHealth"
-  | "lastReportSent"
-  | "nextScheduledReport";
+  | "lastReportSent";
 
 export type DeliveryHealthClientListViewMode = "paginated" | "continuous";
 
@@ -172,6 +182,7 @@ const CLIENTS_PER_PAGE = 25;
 
 type Props = {
   focusRing: string;
+  portalClients?: Array<{ clientName: string; slug: string; mspSlug: string }>;
   /** read: table only - no row detail or generate-from-dashboard (team permission). */
   dashboardAccess?: "full" | "read";
   /** Display-only pagination for the client portfolio table (all data still fetched). */
@@ -183,6 +194,8 @@ type Props = {
     text: string;
     clientName: string | null;
   }) => void;
+  /** Applied when navigating from overview attention queue (or similar). */
+  initialClientFilter?: string;
 };
 
 function formatShortDate(iso: string | null): string {
@@ -391,6 +404,7 @@ export function DeliveryHealthDashboard({
   onOpenIntegrations,
   onOpenHaloImport,
   onStartGenerationFromDelivery,
+  initialClientFilter = "",
 }: Props) {
   const psaConnections = usePSAConnections();
   const psaStatus = usePSAStatus();
@@ -407,14 +421,50 @@ export function DeliveryHealthDashboard({
   const [detailRow, setDetailRow] = useState<DeliveryHealthRow | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const detailCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [clientFilter, setClientFilter] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("");
+
+  useEffect(() => {
+    const preset = initialClientFilter.trim();
+    if (preset) setClientFilter(preset);
+  }, [initialClientFilter]);
+  const [statusFilter, setStatusFilter] = useState("");
   const [ragFilter, setRagFilter] = useState<"all" | DeliveryHealthRag | "sla_at_risk">("all");
   const [statusPortfolioFilter, setStatusPortfolioFilter] =
     useState<StatusPortfolioFilter>("all");
   const [priorityPortfolioFilter, setPriorityPortfolioFilter] =
     useState<PriorityPortfolioFilter>("all");
   const [slaPortfolioFilter, setSlaPortfolioFilter] = useState<SlaPortfolioFilter>("all");
+
+  const hasActiveFilters = Boolean(
+    clientFilter.trim() ||
+      ownerFilter.trim() ||
+      statusFilter ||
+      ragFilter !== "all" ||
+      statusPortfolioFilter !== "all" ||
+      priorityPortfolioFilter !== "all" ||
+      slaPortfolioFilter !== "all",
+  );
+
+  const activeFilterCount = [
+    clientFilter.trim(),
+    ownerFilter.trim(),
+    statusFilter,
+    ragFilter !== "all" ? ragFilter : "",
+    statusPortfolioFilter !== "all" ? statusPortfolioFilter : "",
+    priorityPortfolioFilter !== "all" ? priorityPortfolioFilter : "",
+    slaPortfolioFilter !== "all" ? slaPortfolioFilter : "",
+  ].filter(Boolean).length;
+
+  const filterFieldClass = cn(
+    "w-full rounded-md border border-white/[0.08] bg-[var(--surface-2)] px-3 py-1.5 text-[13px] text-white/80 placeholder:text-white/30 focus:border-[var(--accent)]/50 focus:outline-none",
+    focusRing,
+  );
+
+  useEffect(() => {
+    if (hasActiveFilters) setFiltersOpen(true);
+  }, []);
   const [selectedForChase, setSelectedForChase] = useState<Set<number>>(new Set());
   const [chaseModalOpen, setChaseModalOpen] = useState(false);
   const [chaseNoteTemplate, setChaseNoteTemplate] = useState(
@@ -449,10 +499,10 @@ export function DeliveryHealthDashboard({
           kind: "ticket" as const,
           source: "halopsa" as const,
           name: t.summary,
-          clientName: t.client.name,
-          owner: t.agent.name,
-          statusName: t.status.name,
-          priorityName: t.priority.name,
+          clientName: t.client?.name ?? "",
+          owner: t.agent?.name ?? null,
+          statusName: t.status?.name ?? "",
+          priorityName: t.priority?.name ?? null,
           rag,
           openActions: t.priorityLevel === 1 ? 3 : 1,
           openRisks: t.overdue ? 1 : 0,
@@ -484,7 +534,7 @@ export function DeliveryHealthDashboard({
           (new Date(p.targetdate).getTime() - Date.now()) / 86400000,
         );
         const rag: DeliveryHealthRag =
-          p.status.name.toLowerCase() === "on hold"
+          p.status?.name.toLowerCase() === "on hold"
             ? "amber"
             : p.percentcomplete >= 70
               ? "green"
@@ -494,20 +544,22 @@ export function DeliveryHealthDashboard({
           kind: "project" as const,
           source: "halopsa" as const,
           name: p.name,
-          clientName: p.client.name,
-          owner: p.agent.name,
-          statusName: p.status.name,
+          clientName: p.client?.name ?? "",
+          owner: p.agent?.name ?? null,
+          statusName: p.status?.name ?? "",
           priorityName: null,
           rag,
           openActions: p.percentcomplete < 50 ? 3 : 1,
-          openRisks: p.status.name.toLowerCase() === "on hold" ? 1 : 0,
+          openRisks: p.status?.name.toLowerCase() === "on hold" ? 1 : 0,
           daysToTarget,
           lastGeneratedAt: null,
-          ticketAgeDays: Math.max(
-            0,
-            Math.floor((now - new Date(p.dateoccurred).getTime()) / 86400000),
-          ),
-          lastNoteAt: p.dateoccurred,
+          ticketAgeDays: p.dateoccurred
+            ? Math.max(
+                0,
+                Math.floor((now - new Date(p.dateoccurred).getTime()) / 86400000),
+              )
+            : null,
+          lastNoteAt: p.dateoccurred ?? null,
           lastNotePreview: cleanTicketNoteContent(p.description ?? ""),
           targetDateIso: new Date(p.targetdate).toISOString(),
           targetHours: null,
@@ -518,7 +570,7 @@ export function DeliveryHealthDashboard({
           latestOpenRisks: [],
           haloTicketUrl: "#",
           slaRisk: null,
-          createdAtIso: p.dateoccurred,
+          createdAtIso: p.dateoccurred ?? null,
           firstResponseHours: null,
           projectTaskTotal: 10,
           projectTaskCompleted: Math.round((p.percentcomplete / 100) * 10),
@@ -665,6 +717,7 @@ export function DeliveryHealthDashboard({
     return scopedRows.filter((r) => {
       if (c && !r.clientName.toLowerCase().includes(c)) return false;
       if (o && !(r.owner ?? "").toLowerCase().includes(o)) return false;
+      if (statusFilter && r.statusName !== statusFilter) return false;
       if (ragFilter === "sla_at_risk") {
         if (r.slaRisk !== "at_risk" && r.slaRisk !== "overdue") return false;
       } else if (ragFilter !== "all" && r.rag !== ragFilter) return false;
@@ -678,6 +731,7 @@ export function DeliveryHealthDashboard({
     scopedRows,
     clientFilter,
     ownerFilter,
+    statusFilter,
     ragFilter,
     statusPortfolioFilter,
     priorityPortfolioFilter,
@@ -688,7 +742,11 @@ export function DeliveryHealthDashboard({
     () =>
       filteredRows
         .filter((r) => r.kind === "ticket")
-        .reduce((sum, r) => sum + (Number.isFinite(r.timeLogged) ? r.timeLogged : 0), 0),
+        .reduce((sum, r) => {
+          if (!Number.isFinite(r.timeLogged)) return sum;
+          const hours = r.timeLogged > 100 ? r.timeLogged / 60 : r.timeLogged;
+          return sum + hours;
+        }, 0),
     [filteredRows],
   );
 
@@ -750,6 +808,11 @@ export function DeliveryHealthDashboard({
     return [...statuses].sort((a, b) => a.localeCompare(b));
   }, [scopedRows]);
 
+  const statusFilterOptions = useMemo(
+    () => [...new Set(scopedRows.map((r) => r.statusName).filter(Boolean))].sort(),
+    [scopedRows],
+  );
+
   const statStrip = useMemo(() => {
     if (!data) return null;
     if (viewMode === "projects") return data.stats.projects;
@@ -757,7 +820,10 @@ export function DeliveryHealthDashboard({
     return {
       activeCount: data.stats.projects.activeCount + data.stats.tickets.activeCount,
       totalOpenActions: data.stats.projects.totalOpenActions + data.stats.tickets.totalOpenActions,
-      totalOpenRisks: data.stats.projects.totalOpenRisks + data.stats.tickets.totalOpenRisks,
+      totalOpenRisks: Math.max(
+        data.stats.projects.totalOpenRisks,
+        data.stats.tickets.totalOpenRisks,
+      ),
       overdueTargets: data.stats.projects.overdueTargets + data.stats.tickets.overdueTargets,
       avgHoursPerDayToTarget: data.stats.projects.avgHoursPerDayToTarget ?? data.stats.tickets.avgHoursPerDayToTarget ?? null,
     };
@@ -782,33 +848,24 @@ export function DeliveryHealthDashboard({
       let cmp = 0;
       switch (sortKey) {
         case "clientName":
-          cmp = a.clientName.localeCompare(b.clientName, undefined, {
+          cmp = a.clientName.localeCompare(b.clientName, undefined, { sensitivity: "base" });
+          break;
+        case "rag": {
+          cmp = ragOrder[a.rag] - ragOrder[b.rag];
+          break;
+        }
+        case "statusName":
+          cmp = (a.statusName ?? "").localeCompare(b.statusName ?? "", undefined, {
             sensitivity: "base",
           });
           break;
-        case "rag":
-          cmp = ragOrder[a.rag] - ragOrder[b.rag];
-          break;
-        case "openTickets":
-          cmp = (a as unknown as { openTickets?: number }).openTickets ?? 0 - ((b as unknown as { openTickets?: number }).openTickets ?? 0);
-          break;
-        case "overdueTickets":
-          cmp = ((a as unknown as { overdueTickets?: number }).overdueTickets ?? 0) - ((b as unknown as { overdueTickets?: number }).overdueTickets ?? 0);
-          break;
         case "timeLogged":
-          cmp =
-            ((a as unknown as { timeLoggedHours?: number }).timeLoggedHours ?? 0) -
-            ((b as unknown as { timeLoggedHours?: number }).timeLoggedHours ?? 0);
-          break;
-        case "ticketsThisWeek":
-          cmp = ((a as unknown as { ticketsThisWeek?: number }).ticketsThisWeek ?? 0) - ((b as unknown as { ticketsThisWeek?: number }).ticketsThisWeek ?? 0);
-          break;
-        case "activeProjects":
-          cmp = ((a as unknown as { activeProjects?: number }).activeProjects ?? 0) - ((b as unknown as { activeProjects?: number }).activeProjects ?? 0);
+          // DeliveryHealthRow.timeLogged is the per-ticket field (hours as number)
+          cmp = (a.timeLogged ?? 0) - (b.timeLogged ?? 0);
           break;
         case "lastReportSent": {
-          const at = (a as unknown as { lastReportSent?: string | null }).lastReportSent ? new Date((a as unknown as { lastReportSent?: string | null }).lastReportSent as string).getTime() : 0;
-          const bt = (b as unknown as { lastReportSent?: string | null }).lastReportSent ? new Date((b as unknown as { lastReportSent?: string | null }).lastReportSent as string).getTime() : 0;
+          const at = a.lastGeneratedAt ? new Date(a.lastGeneratedAt).getTime() : 0;
+          const bt = b.lastGeneratedAt ? new Date(b.lastGeneratedAt).getTime() : 0;
           cmp = at - bt;
           break;
         }
@@ -922,7 +979,7 @@ export function DeliveryHealthDashboard({
     <th
       scope="col"
       className={cn(
-        "sticky top-0 z-10 bg-[var(--bg-secondary)] px-3 py-2.5 text-left shadow-[0_1px_0_var(--border)]",
+        "sticky top-0 z-10 bg-[var(--surface-1)]/85 px-3 py-2.5 text-left shadow-[0_1px_0_var(--border)] backdrop-blur-sm",
         className,
       )}
     >
@@ -958,33 +1015,19 @@ export function DeliveryHealthDashboard({
         case "rag":
           cmp = ragOrder[a.overallRag] - ragOrder[b.overallRag];
           break;
-        case "openTickets":
-          cmp = a.openTickets - b.openTickets;
-          break;
-        case "overdueTickets":
-          cmp = a.overdueTickets - b.overdueTickets;
+        case "statusName":
+          cmp = (a.representative?.statusName ?? "").localeCompare(
+            b.representative?.statusName ?? "",
+            undefined,
+            { sensitivity: "base" },
+          );
           break;
         case "timeLogged":
           cmp = (a.timeLoggedHours ?? 0) - (b.timeLoggedHours ?? 0);
           break;
-        case "ticketsThisWeek":
-          cmp = a.ticketsThisWeek - b.ticketsThisWeek;
-          break;
-        case "activeProjects":
-          cmp = a.activeProjects - b.activeProjects;
-          break;
-        case "projectHealth":
-          cmp = (a.projectHealthPercent ?? -1) - (b.projectHealthPercent ?? -1);
-          break;
         case "lastReportSent": {
           const at = a.lastReportSent ? new Date(a.lastReportSent).getTime() : 0;
           const bt = b.lastReportSent ? new Date(b.lastReportSent).getTime() : 0;
-          cmp = at - bt;
-          break;
-        }
-        case "nextScheduledReport": {
-          const at = a.nextScheduledReport ? new Date(a.nextScheduledReport).getTime() : 0;
-          const bt = b.nextScheduledReport ? new Date(b.nextScheduledReport).getTime() : 0;
           cmp = at - bt;
           break;
         }
@@ -1006,6 +1049,7 @@ export function DeliveryHealthDashboard({
     clientFilter,
     ownerFilter,
     ragFilter,
+    statusFilter,
     statusPortfolioFilter,
     priorityPortfolioFilter,
     slaPortfolioFilter,
@@ -1027,9 +1071,21 @@ export function DeliveryHealthDashboard({
     return sortedRows.filter((r) => names.has(r.clientName));
   }, [sortedRows, visibleClientRows, clientListViewMode]);
 
+  const totalDesktopRowCount = sortedRows.length;
+  const totalDesktopPages = Math.max(1, Math.ceil(totalDesktopRowCount / CLIENTS_PER_PAGE));
+  const safeDesktopPage = Math.min(Math.max(1, clientPage), totalDesktopPages);
+  const visibleDesktopRows = useMemo(() => {
+    if (clientListViewMode === "continuous") return sortedRows;
+    const start = (safeDesktopPage - 1) * CLIENTS_PER_PAGE;
+    return sortedRows.slice(start, start + CLIENTS_PER_PAGE);
+  }, [sortedRows, clientListViewMode, safeDesktopPage]);
+
   const clientPageRangeStart =
     totalClientCount === 0 ? 0 : (safeClientPage - 1) * CLIENTS_PER_PAGE + 1;
   const clientPageRangeEnd = Math.min(safeClientPage * CLIENTS_PER_PAGE, totalClientCount);
+  const desktopPageRangeStart =
+    totalDesktopRowCount === 0 ? 0 : (safeDesktopPage - 1) * CLIENTS_PER_PAGE + 1;
+  const desktopPageRangeEnd = Math.min(safeDesktopPage * CLIENTS_PER_PAGE, totalDesktopRowCount);
 
   const openRowDetail = useCallback(
     (row: DeliveryHealthRow) => {
@@ -1196,84 +1252,60 @@ export function DeliveryHealthDashboard({
     );
   };
 
+  const lastRefreshedLabel = data ? formatRelativeRefreshed(data.refreshedAt) : "—";
+
+  const handleHealthRefresh = useCallback(async () => {
+    if (demoMode) return;
+    setRefreshing(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("refresh", "1");
+      if (cwEnabled && psaConnections.primary === "connectwise") {
+        params.set("source", "connectwise");
+      }
+      const res = await fetch(`/api/delivery-health?${params.toString()}`, {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      const json = (await res.json()) as DeliveryHealthApiResponse & { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Could not load dashboard.");
+      await mutateHealth(json, { revalidate: false });
+    } catch (e) {
+      setFetchError(e instanceof Error ? e.message : "Could not load dashboard.");
+    } finally {
+      setRefreshing(false);
+    }
+  }, [cwEnabled, demoMode, mutateHealth, psaConnections.primary]);
+
   return (
     <div className="min-h-full bg-[var(--bg-secondary)] animate-in fade-in duration-300">
       <div className="w-full max-w-none px-6 py-6">
-        <div
-          className="relative mb-6 flex flex-col gap-4 rounded-[var(--radius-lg)] sm:flex-row sm:items-center sm:justify-between"
-          style={{
-            background:
-              "linear-gradient(135deg, rgba(15,23,42,0.97) 0%, rgba(15,23,42,0.95) 100%)",
-            padding: "1.5rem 1.75rem",
-            backgroundImage:
-              "radial-gradient(circle, rgba(56,189,248,0.06) 1px, transparent 1px), radial-gradient(ellipse 70% 50% at 50% 0%, rgba(56,189,248,0.08) 0%, transparent 60%)",
-            backgroundSize: "28px 28px, auto",
-          }}
-        >
-          <div className="flex min-w-0 items-start gap-3">
-            <div className="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-[var(--radius)] bg-[color-mix(in_srgb,var(--accent)_18%,transparent)] text-[var(--accent)]">
-              <LayoutDashboard className="size-5" aria-hidden />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--accent)]">
-                Delivery health
-              </p>
-              <h1 className="mt-0.5 text-[22px] font-bold text-white sm:text-[26px]">
-                Dashboard
-              </h1>
-              <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-white/60">
-                Live PSA projects and tickets with actions and risks from your generation history.
-              </p>
-            </div>
-          </div>
-          <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
-            <p className="text-[12px] text-white/45">
-              Last refreshed:{" "}
-              <span className="text-white/75">
-                {data ? formatRelativeRefreshed(data.refreshedAt) : " - "}
+        <PageHeader
+          eyebrow="DELIVERY · REAL-TIME"
+          title="Delivery Health"
+          description="Live PSA projects and tickets with actions and risks from your history."
+          actions={
+            <div className="flex items-center gap-3">
+              <span className="text-[12px] text-white/40">
+                Refreshed{" "}
+                <span className="text-white/60">{lastRefreshedLabel}</span>
               </span>
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={loading || refreshing}
-              className={cn(
-                "border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white",
-                focusRing,
-              )}
-              onClick={async () => {
-                if (demoMode) return;
-                setRefreshing(true);
-                try {
-                  const params = new URLSearchParams();
-                  params.set("refresh", "1");
-                  if (cwEnabled && psaConnections.primary === "connectwise") {
-                    params.set("source", "connectwise");
-                  }
-                  const res = await fetch(`/api/delivery-health?${params.toString()}`, {
-                    credentials: "same-origin",
-                    cache: "no-store",
-                  });
-                  const json = (await res.json()) as DeliveryHealthApiResponse & { error?: string };
-                  if (!res.ok) throw new Error(json.error ?? "Could not load dashboard.");
-                  await mutateHealth(json, { revalidate: false });
-                } catch (e) {
-                  setFetchError(e instanceof Error ? e.message : "Could not load dashboard.");
-                } finally {
-                  setRefreshing(false);
-                }
-              }}
-            >
-              {refreshing ? (
-                <Loader2 className="mr-2 size-4 animate-spin" aria-hidden />
-              ) : (
-                <RefreshCw className="mr-2 size-4" aria-hidden />
-              )}
-              Refresh
-            </Button>
-          </div>
-        </div>
+              <button
+                type="button"
+                disabled={loading || refreshing}
+                onClick={() => void handleHealthRefresh()}
+                className="flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-[12px] text-white/60 transition-all duration-150 hover:border-white/20 hover:text-white/80 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {refreshing ? (
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <RefreshCw className="size-3.5" aria-hidden />
+                )}
+                Refresh
+              </button>
+            </div>
+          }
+        />
 
         {demoMode ? (
           <div className="mb-4">
@@ -1321,70 +1353,73 @@ export function DeliveryHealthDashboard({
                 </>
               ) : statStrip ? (
                 <>
-                  {(
-                    [
-                      {
-                        label:
-                          viewMode === "projects"
-                            ? "Active projects"
-                            : viewMode === "tickets"
-                              ? "Active tickets"
-                              : "Active items",
-                        value: String(statStrip.activeCount),
-                        delay: "0ms",
-                        icon: viewMode === "projects" ? FolderKanban : Ticket,
-                        gradient: "from-sky-500/15 to-transparent",
-                      },
-                      {
-                        label: "SLA At Risk",
-                        value: String(data?.statDetails?.slaAtRisk.length ?? 0),
-                        delay: "75ms",
-                        icon: AlertTriangle,
-                        gradient: "from-violet-500/12 to-transparent",
-                      },
-                      {
-                        label: "Open risks",
-                        value: String(statStrip.totalOpenRisks),
-                        delay: "150ms",
-                        icon: AlertTriangle,
-                        gradient: "from-amber-500/12 to-transparent",
-                      },
-                      {
-                        label: "Overdue (target)",
-                        value: String(statStrip.overdueTargets),
-                        delay: "225ms",
-                        icon: CalendarClock,
-                        gradient: "from-red-500/10 to-transparent",
-                      },
-                      {
-                        label: "Time Logged",
-                        value: formatTimeLogged(visibleTicketTimeLoggedHours),
-                        sub: "Total across visible tickets",
-                        delay: "300ms",
-                        icon: Timer,
-                        gradient: "from-emerald-500/12 to-transparent",
-                      },
-                    ] as const
-                  ).map((card) => {
+                  {(() => {
+                    const slaAtRiskCount = data?.statDetails?.slaAtRisk.length ?? 0;
+                    return (
+                      [
+                        {
+                          label:
+                            viewMode === "projects"
+                              ? "Active projects"
+                              : viewMode === "tickets"
+                                ? "Active tickets"
+                                : "Active items",
+                          value: String(statStrip.activeCount),
+                          delay: "0ms",
+                          icon: viewMode === "projects" ? FolderKanban : Ticket,
+                          valueClassName: "text-white/96",
+                        },
+                        {
+                          label: "SLA At Risk",
+                          value: String(slaAtRiskCount),
+                          delay: "75ms",
+                          icon: AlertTriangle,
+                          valueClassName:
+                            slaAtRiskCount > 0 ? "text-[#f59e0b]" : "text-white/96",
+                        },
+                        {
+                          label: "Open risks",
+                          value: String(statStrip.totalOpenRisks),
+                          delay: "150ms",
+                          icon: AlertTriangle,
+                          valueClassName: "text-white/96",
+                        },
+                        {
+                          label: "Overdue (target)",
+                          value: String(statStrip.overdueTargets),
+                          delay: "225ms",
+                          icon: CalendarClock,
+                          valueClassName:
+                            statStrip.overdueTargets > 0 ? "text-[#ef4444]" : "text-white/96",
+                        },
+                        {
+                          label: "Time Logged",
+                          value: formatTimeLogged(visibleTicketTimeLoggedHours),
+                          sub: "Total across visible tickets",
+                          delay: "300ms",
+                          icon: Timer,
+                          valueClassName: "text-white/96",
+                        },
+                      ] as const
+                    ).map((card) => {
                     const Icon = card.icon;
                     return (
                       <div
                         key={card.label}
-                        className="animate-in fade-in slide-in-from-bottom-2 fill-mode-both relative rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-4 duration-500"
+                        className="animate-in fade-in slide-in-from-bottom-2 fill-mode-both relative rounded-[var(--radius-lg)] border border-white/[0.06] bg-[var(--surface-1)] p-4 duration-500"
                         style={{ animationDelay: card.delay }}
                       >
-                        <div
-                          className={cn(
-                            "pointer-events-none absolute inset-0 opacity-90 bg-gradient-to-br",
-                            card.gradient,
-                          )}
-                        />
                         <div className="relative flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
                               {card.label}
                             </p>
-                            <p className="mt-1.5 text-2xl font-bold tabular-nums text-[var(--text-primary)]">
+                            <p
+                              className={cn(
+                                "tabular mt-1.5 text-2xl font-bold",
+                                card.valueClassName,
+                              )}
+                            >
                               {card.value}
                             </p>
                             {"sub" in card && card.sub ? (
@@ -1399,7 +1434,8 @@ export function DeliveryHealthDashboard({
                         </div>
                       </div>
                     );
-                  })}
+                  });
+                  })()}
                 </>
               ) : null}
             </div>
@@ -1502,144 +1538,283 @@ export function DeliveryHealthDashboard({
               </div>
 
               {!loading && liveAccess ? (
-                <div className="border-b border-[var(--border)]/80 bg-[var(--bg-secondary)]/80 px-4 py-3">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-                    <div className="relative min-w-[200px] flex-1">
-                      <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-[var(--text-muted)]" />
-                      <input
-                        type="search"
-                        placeholder="Filter by client"
-                        value={clientFilter}
-                        onChange={(e) => setClientFilter(e.target.value)}
-                        list="delivery-health-client-options"
-                        className={cn(
-                          "h-9 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] py-1 pl-9 pr-3 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]",
-                          focusRing,
-                        )}
-                      />
-                      <datalist id="delivery-health-client-options">
-                        {clientFilterOptions.map((name) => (
-                          <option key={name} value={name} />
-                        ))}
-                      </datalist>
-                    </div>
-                    <div className="relative min-w-[160px] flex-1">
-                      <User className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-[var(--text-muted)]" />
-                      <input
-                        type="search"
-                        placeholder="Filter by owner"
-                        value={ownerFilter}
-                        onChange={(e) => setOwnerFilter(e.target.value)}
-                        list="delivery-health-owner-options"
-                        className={cn(
-                          "h-9 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] py-1 pl-9 pr-3 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]",
-                          focusRing,
-                        )}
-                      />
-                      <datalist id="delivery-health-owner-options">
-                        {ownerFilterOptions.map((name) => (
-                          <option key={name} value={name} />
-                        ))}
-                      </datalist>
-                    </div>
-                    <div className="min-w-[140px]">
-                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
-                        RAG
-                      </label>
-                      <select
-                        value={ragFilter}
-                        onChange={(e) =>
-                          setRagFilter(e.target.value as "all" | DeliveryHealthRag | "sla_at_risk")
-                        }
-                        className={cn(
-                          "h-9 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-2 text-[13px] text-[var(--text-primary)]",
-                          focusRing,
-                        )}
+                <>
+                  <div className="flex items-center gap-2 border-b border-white/[0.04] px-4 py-2">
+                    <button
+                      type="button"
+                      onClick={() => setFiltersOpen((prev) => !prev)}
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[12px] font-medium transition-all duration-150",
+                        filtersOpen || hasActiveFilters
+                          ? "border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)]"
+                          : "border-white/[0.08] bg-white/[0.03] text-white/60 hover:border-white/20 hover:text-white/80",
+                        focusRing,
+                      )}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
+                        <path
+                          d="M1 3h10M3 6h6M5 9h2"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      Filters
+                      {hasActiveFilters ? (
+                        <span className="ml-0.5 rounded-full bg-[var(--accent)] px-1.5 py-px text-[9px] font-bold text-[#0f172a]">
+                          {activeFilterCount}
+                        </span>
+                      ) : null}
+                    </button>
+
+                    {clientFilter.trim() ? (
+                      <span className="flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/70">
+                        Client: {clientFilter.trim()}
+                        <button
+                          type="button"
+                          onClick={() => setClientFilter("")}
+                          className="ml-1 text-white/40 hover:text-white/80"
+                          aria-label="Clear client filter"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ) : null}
+                    {ownerFilter.trim() ? (
+                      <span className="flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/70">
+                        Owner: {ownerFilter.trim()}
+                        <button
+                          type="button"
+                          onClick={() => setOwnerFilter("")}
+                          className="ml-1 text-white/40 hover:text-white/80"
+                          aria-label="Clear owner filter"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ) : null}
+                    {statusFilter ? (
+                      <span className="flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/70">
+                        Status: {statusFilter}
+                        <button
+                          type="button"
+                          onClick={() => setStatusFilter("")}
+                          className="ml-1 text-white/40 hover:text-white/80"
+                          aria-label="Clear status filter"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ) : null}
+                    {ragFilter !== "all" ? (
+                      <span className="flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/70">
+                        RAG: {ragFilter === "sla_at_risk" ? "SLA at risk" : ragFilter}
+                        <button
+                          type="button"
+                          onClick={() => setRagFilter("all")}
+                          className="ml-1 text-white/40 hover:text-white/80"
+                          aria-label="Clear RAG filter"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ) : null}
+                    {statusPortfolioFilter !== "all" ? (
+                      <span className="flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/70">
+                        Portfolio status: {statusPortfolioFilter}
+                        <button
+                          type="button"
+                          onClick={() => setStatusPortfolioFilter("all")}
+                          className="ml-1 text-white/40 hover:text-white/80"
+                          aria-label="Clear portfolio status filter"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ) : null}
+                    {priorityPortfolioFilter !== "all" ? (
+                      <span className="flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/70">
+                        Priority: {priorityPortfolioFilter}
+                        <button
+                          type="button"
+                          onClick={() => setPriorityPortfolioFilter("all")}
+                          className="ml-1 text-white/40 hover:text-white/80"
+                          aria-label="Clear priority filter"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ) : null}
+                    {slaPortfolioFilter !== "all" ? (
+                      <span className="flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/70">
+                        SLA: {slaPortfolioFilter.replace("_", " ")}
+                        <button
+                          type="button"
+                          onClick={() => setSlaPortfolioFilter("all")}
+                          className="ml-1 text-white/40 hover:text-white/80"
+                          aria-label="Clear SLA filter"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ) : null}
+
+                    {hasActiveFilters ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setClientFilter("");
+                          setOwnerFilter("");
+                          setStatusFilter("");
+                          setRagFilter("all");
+                          setStatusPortfolioFilter("all");
+                          setPriorityPortfolioFilter("all");
+                          setSlaPortfolioFilter("all");
+                        }}
+                        className="ml-auto text-[11px] text-white/40 transition-colors hover:text-white/70"
                       >
-                        <option value="all">All</option>
-                        <option value="red">Red</option>
-                        <option value="amber">Amber</option>
-                        <option value="green">Green</option>
-                        <option value="grey">No data</option>
-                        {fullMode ? (
-                          <option value="sla_at_risk">SLA at risk or overdue</option>
-                        ) : null}
-                      </select>
+                        Clear all
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <div
+                    className={cn(
+                      "overflow-hidden border-b border-white/[0.04] transition-all duration-200 ease-in-out",
+                      filtersOpen ? "max-h-[280px] opacity-100" : "max-h-0 opacity-0",
+                    )}
+                  >
+                    <div className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4">
+                      <div>
+                        <div className="mono-label mb-1.5">Client</div>
+                        <div className="relative">
+                          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-white/30" />
+                          <input
+                            type="search"
+                            placeholder="Filter by client"
+                            value={clientFilter}
+                            onChange={(e) => setClientFilter(e.target.value)}
+                            list="delivery-health-client-options"
+                            className={cn(filterFieldClass, "pl-9")}
+                          />
+                          <datalist id="delivery-health-client-options">
+                            {clientFilterOptions.map((name) => (
+                              <option key={name} value={name} />
+                            ))}
+                          </datalist>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="mono-label mb-1.5">Owner</div>
+                        <div className="relative">
+                          <User className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-white/30" />
+                          <input
+                            type="search"
+                            placeholder="Filter by owner"
+                            value={ownerFilter}
+                            onChange={(e) => setOwnerFilter(e.target.value)}
+                            list="delivery-health-owner-options"
+                            className={cn(filterFieldClass, "pl-9")}
+                          />
+                          <datalist id="delivery-health-owner-options">
+                            {ownerFilterOptions.map((name) => (
+                              <option key={name} value={name} />
+                            ))}
+                          </datalist>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="mono-label mb-1.5">Exact status</div>
+                        <select
+                          value={statusFilter}
+                          onChange={(e) => setStatusFilter(e.target.value)}
+                          className={filterFieldClass}
+                        >
+                          <option value="">All statuses</option>
+                          {statusFilterOptions.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <div className="mono-label mb-1.5">RAG</div>
+                        <select
+                          value={ragFilter}
+                          onChange={(e) =>
+                            setRagFilter(e.target.value as "all" | DeliveryHealthRag | "sla_at_risk")
+                          }
+                          className={filterFieldClass}
+                        >
+                          <option value="all">All</option>
+                          <option value="red">Red</option>
+                          <option value="amber">Amber</option>
+                          <option value="green">Green</option>
+                          <option value="grey">No data</option>
+                          {fullMode ? (
+                            <option value="sla_at_risk">SLA at risk or overdue</option>
+                          ) : null}
+                        </select>
+                      </div>
+                      <div>
+                        <div className="mono-label mb-1.5">Status</div>
+                        <select
+                          value={statusPortfolioFilter}
+                          onChange={(e) =>
+                            setStatusPortfolioFilter(e.target.value as StatusPortfolioFilter)
+                          }
+                          className={filterFieldClass}
+                        >
+                          <option value="all">All</option>
+                          <option value="in_progress">In Progress</option>
+                          <option value="on_hold">On Hold</option>
+                          <option value="new">New</option>
+                          <option value="resolved">Resolved</option>
+                          <option value="closed">Closed</option>
+                          {dynamicStatusOptions.map((status) => (
+                            <option key={status} value={`status:${status}`}>
+                              {status
+                                .split(" ")
+                                .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+                                .join(" ")}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <div className="mono-label mb-1.5">Priority</div>
+                        <select
+                          value={priorityPortfolioFilter}
+                          onChange={(e) =>
+                            setPriorityPortfolioFilter(e.target.value as PriorityPortfolioFilter)
+                          }
+                          className={filterFieldClass}
+                        >
+                          <option value="all">All</option>
+                          <option value="high">High</option>
+                          <option value="medium">Medium</option>
+                          <option value="low">Low</option>
+                        </select>
+                      </div>
+                      <div>
+                        <div className="mono-label mb-1.5">SLA</div>
+                        <select
+                          value={slaPortfolioFilter}
+                          onChange={(e) =>
+                            setSlaPortfolioFilter(e.target.value as SlaPortfolioFilter)
+                          }
+                          className={filterFieldClass}
+                        >
+                          <option value="all">All</option>
+                          <option value="overdue">SLA Overdue</option>
+                          <option value="at_risk">SLA At Risk</option>
+                          <option value="on_track">On Track</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
-                  <div className="mt-3 flex flex-col gap-3 border-t border-[var(--border)]/60 pt-3 lg:flex-row lg:items-end">
-                    <div className="min-w-[140px] flex-1">
-                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
-                        Status
-                      </label>
-                      <select
-                        value={statusPortfolioFilter}
-                        onChange={(e) =>
-                          setStatusPortfolioFilter(e.target.value as StatusPortfolioFilter)
-                        }
-                        className={cn(
-                          "h-9 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-2 text-[13px] text-[var(--text-primary)]",
-                          focusRing,
-                        )}
-                      >
-                        <option value="all">All</option>
-                        <option value="in_progress">In Progress</option>
-                        <option value="on_hold">On Hold</option>
-                        <option value="new">New</option>
-                        <option value="resolved">Resolved</option>
-                        <option value="closed">Closed</option>
-                        {dynamicStatusOptions.map((status) => (
-                          <option key={status} value={`status:${status}`}>
-                            {status
-                              .split(" ")
-                              .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-                              .join(" ")}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="min-w-[140px] flex-1">
-                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
-                        Priority
-                      </label>
-                      <select
-                        value={priorityPortfolioFilter}
-                        onChange={(e) =>
-                          setPriorityPortfolioFilter(e.target.value as PriorityPortfolioFilter)
-                        }
-                        className={cn(
-                          "h-9 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-2 text-[13px] text-[var(--text-primary)]",
-                          focusRing,
-                        )}
-                      >
-                        <option value="all">All</option>
-                        <option value="high">High</option>
-                        <option value="medium">Medium</option>
-                        <option value="low">Low</option>
-                      </select>
-                    </div>
-                    <div className="min-w-[160px] flex-1">
-                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
-                        SLA
-                      </label>
-                      <select
-                        value={slaPortfolioFilter}
-                        onChange={(e) =>
-                          setSlaPortfolioFilter(e.target.value as SlaPortfolioFilter)
-                        }
-                        className={cn(
-                          "h-9 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-2 text-[13px] text-[var(--text-primary)]",
-                          focusRing,
-                        )}
-                      >
-                        <option value="all">All</option>
-                        <option value="overdue">SLA Overdue</option>
-                        <option value="at_risk">SLA At Risk</option>
-                        <option value="on_track">On Track</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
+                </>
               ) : null}
 
               {viewMode === "overdue" ? (
@@ -1819,7 +1994,7 @@ export function DeliveryHealthDashboard({
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-[13px] font-medium text-[var(--text-primary)]">{row.name}</p>
                             <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-muted)]">
-                              <span>{row.clientName}</span>
+                              <span>{displayDeliveryHealthClientName(row.clientName)}</span>
                               {row.owner && (
                                 <>
                                   <span>·</span>
@@ -1915,7 +2090,8 @@ export function DeliveryHealthDashboard({
                                       {r.name}
                                     </p>
                                     <p className="text-[11px] text-[var(--text-muted)]">
-                                      @{r.owner ?? "unassigned"} · {r.clientName} ·{" "}
+                                      @{r.owner ?? "unassigned"} ·{" "}
+                                      {displayDeliveryHealthClientName(r.clientName)} ·{" "}
                                       <span className="text-red-400">
                                         {Math.abs(r.daysToTarget ?? 0)}d overdue
                                       </span>
@@ -2017,139 +2193,99 @@ export function DeliveryHealthDashboard({
                 </div>
               ) : (
                 <>
-                  {/* Desktop table: full width account-style layout */}
+                  {/* Desktop table: per-ticket layout */}
                   <div className="hidden w-full md:block md:max-h-[min(70vh,720px)] md:overflow-auto">
                     <table className="w-full table-fixed border-collapse text-left text-[13px]">
                       <colgroup>
-                        <col style={{ width: "22%", minWidth: "240px" }} />
-                        <col style={{ width: "10%" }} />
+                        <col style={{ width: "14%" }} />
+                        <col style={{ width: "24%" }} />
                         <col style={{ width: "8%" }} />
-                        <col style={{ width: "8%" }} />
+                        <col style={{ width: "11%" }} />
+                        <col style={{ width: "12%" }} />
                         <col style={{ width: "9%" }} />
-                        <col style={{ width: "9%" }} />
+                        <col style={{ width: "10%" }} />
                         <col style={{ width: "8%" }} />
-                        <col style={{ width: "10%" }} />
-                        <col style={{ width: "10%" }} />
-                        <col style={{ width: "10%" }} />
-                        <col style={{ width: "120px" }} />
+                        <col style={{ width: "86px" }} />
                       </colgroup>
-                      <thead>
-                        <tr className="border-b border-[var(--border)]">
+                      <thead className="sticky top-0 z-10 backdrop-blur-sm bg-[var(--surface-1)]/85">
+                        <tr className="border-b border-white/[0.04]">
                           {headerCell("clientName", "Client/Account")}
-                          {headerCell("rag", "Overall RAG")}
-                          {headerCell("openTickets", "Open Tickets")}
-                          {headerCell("overdueTickets", "Overdue Tickets")}
+                          <th className="sticky top-0 z-10 bg-[var(--surface-1)]/85 px-3 py-2.5 text-left shadow-[0_1px_0_var(--border)] text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] backdrop-blur-sm">Ticket/Project</th>
+                          {headerCell("rag", "RAG")}
+                          {headerCell("statusName", "Status")}
+                          <th className="sticky top-0 z-10 bg-[var(--surface-1)]/85 px-3 py-2.5 text-left shadow-[0_1px_0_var(--border)] text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] backdrop-blur-sm">Owner</th>
+                          <th className="sticky top-0 z-10 bg-[var(--surface-1)]/85 px-3 py-2.5 text-left shadow-[0_1px_0_var(--border)] text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] backdrop-blur-sm">Priority</th>
+                          <th className="sticky top-0 z-10 bg-[var(--surface-1)]/85 px-3 py-2.5 text-left shadow-[0_1px_0_var(--border)] text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] backdrop-blur-sm">SLA</th>
                           {headerCell("timeLogged", "Time Logged")}
-                          {headerCell("ticketsThisWeek", "Tickets This Week")}
-                          {headerCell("activeProjects", "Active Projects")}
-                          {headerCell("projectHealth", "Health")}
-                          {headerCell("lastReportSent", "Last Report Sent")}
-                          {headerCell("nextScheduledReport", "Next Scheduled Report")}
-                          <th className="sticky top-0 z-10 bg-[var(--bg-secondary)] px-3 py-2.5 text-center shadow-[0_1px_0_var(--border)] text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Actions</th>
+                          <th className="sticky top-0 z-10 bg-[var(--surface-1)]/85 px-3 py-2.5 text-center shadow-[0_1px_0_var(--border)] text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] backdrop-blur-sm">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {visibleClientRows.map((row) => {
-                          const representativeTicket = row.rows.find((r) => r.kind === "ticket");
-                          const canChase =
-                            representativeTicket != null &&
-                            representativeTicket.owner != null &&
-                            (
-                              (representativeTicket.daysToTarget != null && representativeTicket.daysToTarget < 0) ||
-                              (representativeTicket.daysToTarget == null && representativeTicket.rag === "red")
-                            );
+                        {visibleDesktopRows.map((row) => {
+                          const closed = isClosedStatusName(row.statusName);
+                          const displayName = row.name.length > 40 ? `${row.name.slice(0, 37)}...` : row.name;
                           return (
                             <tr
-                              key={row.clientName}
+                              key={`${row.source}-${row.kind}-${row.id}`}
                               className={cn(
-                                "border-b border-[var(--border)]/80 transition-colors duration-200 ease-out",
-                                "hover:bg-[var(--bg-secondary)]/70",
+                                "group border-b border-white/[0.04] transition-colors duration-200 ease-out",
+                                "hover:bg-white/[0.025]",
+                                closed && "opacity-60",
                               )}
                             >
+                              <td className="min-w-0 px-3 py-2.5 align-top text-[var(--text-secondary)]">
+                                <p className="truncate">
+                                  {displayDeliveryHealthClientName(row.clientName)}
+                                </p>
+                              </td>
                               <td className="min-w-0 px-3 py-2.5 align-top">
-                                <div className="min-w-0">
-                                  <p className="truncate font-medium text-[var(--text-primary)]">{row.clientName}</p>
-                                  <div className="mt-1 flex items-center gap-2">
-                                    <p
-                                      className="truncate text-xs text-[var(--text-muted)]"
-                                      title={row.representative?.name ?? " - "}
-                                    >
-                                      {row.representative?.name ?? " - "}
-                                    </p>
-                                    <span
-                                      className={cn(
-                                        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
-                                        (row.representative?.kind ?? "ticket") === "ticket"
-                                          ? "bg-blue-500/15 text-blue-300"
-                                          : "bg-violet-500/15 text-violet-300",
-                                      )}
-                                    >
-                                      {(row.representative?.kind ?? "ticket") === "ticket" ? "Ticket" : "Project"}
-                                    </span>
-                                  </div>
+                                <p className="truncate font-medium text-white" title={row.name}>
+                                  {displayName}
+                                </p>
+                                <div className="mt-1 flex items-center gap-2">
+                                  <SourcePill source={row.source} />
+                                  <span
+                                    className={cn(
+                                      "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
+                                      row.kind === "ticket"
+                                        ? "bg-blue-500/15 text-blue-300"
+                                        : "bg-violet-500/15 text-violet-300",
+                                    )}
+                                  >
+                                    {row.kind === "ticket" ? "Ticket" : "Project"}
+                                  </span>
                                 </div>
                               </td>
                               <td className="px-3 py-2.5 align-top">
-                                <div className="inline-flex items-center gap-1">
-                                  <RagBadge rag={row.overallRag} slaRisk={null} />
-                                  {row.slaAtRiskCount > 0 ? (
-                                    <span title={`${row.slaAtRiskCount} SLA at risk`} className="inline-flex size-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">!</span>
+                                <RagBadge rag={row.rag} />
+                              </td>
+                              <td className="px-3 py-2.5 align-top text-[12px] text-[var(--text-secondary)]">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span>{row.statusName || "—"}</span>
+                                  {closed ? (
+                                    <span className="rounded-full bg-slate-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-300">
+                                      Closed
+                                    </span>
                                   ) : null}
                                 </div>
                               </td>
-                              <td className="px-3 py-2.5 align-top tabular-nums text-[var(--text-primary)]">
-                                {row.openTickets}
+                              <td className="px-3 py-2.5 align-top text-[12px] text-[var(--text-secondary)]">
+                                {row.owner || "—"}
                               </td>
-                              <td
-                                className={cn(
-                                  "px-3 py-2.5 align-top tabular-nums",
-                                  row.overdueTickets > 3 ? "font-semibold text-red-400" : row.overdueTickets > 0 ? "font-semibold text-amber-300" : "text-[var(--text-secondary)]",
-                                )}
-                              >
-                                {row.overdueTickets}
-                              </td>
-                              <td className="px-3 py-2.5 align-top tabular-nums text-[var(--text-primary)]">
-                                {formatTimeLogged(row.timeLoggedHours ?? 0)}
-                              </td>
-                              <td className="px-3 py-2.5 align-top tabular-nums text-[var(--text-primary)]">
-                                {row.ticketsThisWeek}
-                              </td>
-                              <td className="px-3 py-2.5 align-top tabular-nums text-[var(--text-primary)]">
-                                {row.activeProjects}
+                              <td className="px-3 py-2.5 align-top text-[12px] text-[var(--text-secondary)]">
+                                {row.priorityName || "—"}
                               </td>
                               <td className="px-3 py-2.5 align-top">
-                                {row.projectHealthPercent == null || (viewMode === "tickets" && row.activeProjects === 0) ? (
-                                  <span className="text-[12px] text-[var(--text-muted)]">—</span>
+                                {row.slaRisk ? (
+                                  <SlaRiskBadge level={row.slaRisk} />
                                 ) : (
-                                  <div className="min-w-0">
-                                    <p className="text-[12px] font-semibold tabular-nums text-[var(--text-primary)]">
-                                      {row.projectHealthPercent}%
-                                    </p>
-                                    <div className="mt-1 h-1.5 w-full rounded-full bg-[var(--bg-secondary)]">
-                                      <div
-                                        className={cn(
-                                          "h-1.5 rounded-full",
-                                          row.projectHealthPercent >= 75
-                                            ? "bg-emerald-500"
-                                            : row.projectHealthPercent >= 50
-                                              ? "bg-amber-500"
-                                              : "bg-red-500",
-                                        )}
-                                        style={{ width: `${row.projectHealthPercent}%` }}
-                                      />
-                                    </div>
-                                  </div>
+                                  <span className="text-[12px] text-[var(--text-secondary)]">On track</span>
                                 )}
                               </td>
-                              <td className="px-3 py-2.5 align-top text-[12px] text-[var(--text-secondary)]">
-                                <span className={cn(row.lastReportSent && nowMs - new Date(row.lastReportSent).getTime() > 14 * 24 * 3600 * 1000 ? "text-slate-400" : "")}>
-                                  {formatShortDate(row.lastReportSent)}
-                                </span>
+                              <td className="tabular px-3 py-2.5 align-top text-[var(--text-primary)]">
+                                {formatTimeLogged(row.timeLogged)}
                               </td>
-                              <td className="px-3 py-2.5 align-top text-[12px] text-[var(--text-secondary)]">
-                                <span className="text-slate-400">Not scheduled</span>
-                              </td>
-                              <td className="px-3 py-2.5 align-top">
+                              <td className="px-3 py-2.5 align-top opacity-0 transition-opacity duration-100 group-hover:opacity-100">
                                 <div className="flex flex-col items-center gap-1">
                                   <button
                                     type="button"
@@ -2159,9 +2295,7 @@ export function DeliveryHealthDashboard({
                                       focusRing,
                                     )}
                                     onClick={() => {
-                                      const first = row.representative ?? row.rows[0];
-                                      if (!first) return;
-                                      openRowDetail(first);
+                                      openRowDetail(row);
                                     }}
                                   >
                                     <Eye className="size-3.5" aria-hidden />
@@ -2175,13 +2309,45 @@ export function DeliveryHealthDashboard({
                       </tbody>
                     </table>
                   </div>
-                  {clientListViewMode === "paginated" && totalClientCount > 0 ? (
-                    <div className="flex flex-col gap-3 border-t border-[var(--border)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  {clientListViewMode === "paginated" && totalDesktopRowCount > 0 ? (
+                    <div className="hidden flex-col gap-3 border-t border-[var(--border)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:flex">
                       <p className="text-[12px] text-[var(--text-secondary)]">
-                        {`Showing ${clientPageRangeStart}-${clientPageRangeEnd} of ${totalClientCount} clients`}
+                        {`Showing ${desktopPageRangeStart}-${desktopPageRangeEnd} of ${totalDesktopRowCount} tickets/projects`}
                       </p>
                       <div className="flex flex-wrap items-center gap-3">
                         <p className="text-[12px] text-[var(--text-secondary)]">
+                          {`Page ${safeDesktopPage} of ${totalDesktopPages}`}
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className={focusRing}
+                          disabled={safeDesktopPage <= 1}
+                          onClick={() => setClientPage((p) => Math.max(1, p - 1))}
+                        >
+                          Previous
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className={focusRing}
+                          disabled={safeDesktopPage >= totalDesktopPages}
+                          onClick={() => setClientPage((p) => Math.min(totalDesktopPages, p + 1))}
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+                  {clientListViewMode === "paginated" && totalClientCount > 0 ? (
+                    <div className="flex flex-col gap-3 border-t border-[var(--border)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:hidden">
+                      <p className="tabular text-[12px] text-[var(--text-secondary)]">
+                        {`Showing ${clientPageRangeStart}-${clientPageRangeEnd} of ${totalClientCount} clients`}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <p className="tabular text-[12px] text-[var(--text-secondary)]">
                           {`Page ${safeClientPage} of ${totalClientPages}`}
                         </p>
                         <Button
@@ -2226,9 +2392,9 @@ export function DeliveryHealthDashboard({
                             <p className="font-medium text-[var(--text-primary)]">{row.name}</p>
                             <p
                               className="text-[11px] text-[var(--text-muted)]"
-                              title={`${row.clientName} · ${ownerCellLabel(row.owner)}`}
+                              title={`${displayDeliveryHealthClientName(row.clientName)} · ${ownerCellLabel(row.owner)}`}
                             >
-                              {row.clientName} ·{" "}
+                              {displayDeliveryHealthClientName(row.clientName)} ·{" "}
                               <span
                                 className={
                                   isUnassignedOwnerCell(row.owner) ? "italic text-[var(--text-muted)]" : ""
@@ -2245,7 +2411,7 @@ export function DeliveryHealthDashboard({
                               <span className="text-[11px] text-[var(--text-muted)]">
                                 {row.statusName}
                               </span>
-                              <span className="text-[12px] text-[var(--text-secondary)]">
+                              <span className="tabular text-[12px] text-[var(--text-secondary)]">
                                 {row.openActions} actions · {row.openRisks} risks
                               </span>
                             </div>
@@ -2263,9 +2429,9 @@ export function DeliveryHealthDashboard({
                             <p className="font-medium text-[var(--text-primary)]">{row.name}</p>
                             <p
                               className="text-[11px] text-[var(--text-muted)]"
-                              title={`${row.clientName} · ${ownerCellLabel(row.owner)}`}
+                              title={`${displayDeliveryHealthClientName(row.clientName)} · ${ownerCellLabel(row.owner)}`}
                             >
-                              {row.clientName} ·{" "}
+                              {displayDeliveryHealthClientName(row.clientName)} ·{" "}
                               <span
                                 className={
                                   isUnassignedOwnerCell(row.owner) ? "italic text-[var(--text-muted)]" : ""
@@ -2282,7 +2448,7 @@ export function DeliveryHealthDashboard({
                               <span className="text-[11px] text-[var(--text-muted)]">
                                 {row.statusName}
                               </span>
-                              <span className="text-[12px] text-[var(--text-secondary)]">
+                              <span className="tabular text-[12px] text-[var(--text-secondary)]">
                                 {row.openActions} actions · {row.openRisks} risks
                               </span>
                             </div>
@@ -2300,9 +2466,9 @@ export function DeliveryHealthDashboard({
                             <p className="font-medium text-[var(--text-primary)]">{row.name}</p>
                             <p
                               className="text-[11px] text-[var(--text-muted)]"
-                              title={`${row.clientName} · ${ownerCellLabel(row.owner)}`}
+                              title={`${displayDeliveryHealthClientName(row.clientName)} · ${ownerCellLabel(row.owner)}`}
                             >
-                              {row.clientName} ·{" "}
+                              {displayDeliveryHealthClientName(row.clientName)} ·{" "}
                               <span
                                 className={
                                   isUnassignedOwnerCell(row.owner) ? "italic text-[var(--text-muted)]" : ""
@@ -2316,7 +2482,7 @@ export function DeliveryHealthDashboard({
                             <div className="mt-2 flex flex-wrap items-center gap-2">
                               <SourcePill source={row.source} />
                               <RagLabelPlain rag={row.rag} />
-                              <span className="text-[12px] text-[var(--text-secondary)]">
+                              <span className="tabular text-[12px] text-[var(--text-secondary)]">
                                 {row.openActions} actions · {row.openRisks} risks
                               </span>
                             </div>

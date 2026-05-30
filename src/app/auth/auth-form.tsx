@@ -660,7 +660,7 @@ export function AuthForm({
             </p>
           </div>
         ) : authPanel === "forgot-password" ? (
-          <div className="w-full space-y-6">
+          <div className="w-full space-y-6" style={{ background: "transparent" }}>
             {forgotSuccess ? (
               <div
                 className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] p-6 text-[var(--text-primary)] shadow-sm"

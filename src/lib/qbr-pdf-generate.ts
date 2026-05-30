@@ -377,7 +377,7 @@ export function generateQbrPdf(qbr: QbrPdfPackData, sections: QbrSectionsLike): 
     if (qbr.slaCompliancePct == null) {
       addBodyText("SLA data unavailable for this period.", 10);
     } else {
-      addMetricRow([{ label: "SLA compliance (resolved vs raised proxy)", value: `${qbr.slaCompliancePct}%` }]);
+      addMetricRow([{ label: "SLA compliance (resolved as % of total raised)", value: `${qbr.slaCompliancePct}%` }]);
     }
   }
 
@@ -462,7 +462,11 @@ export function generateQbrPdf(qbr: QbrPdfPackData, sections: QbrSectionsLike): 
   doc.setFont("helvetica", "normal");
   doc.text(`Generated — ${new Date().toLocaleDateString("en-GB")}`, pageWidth / 2, pageHeight - 4, { align: "center" });
 
-  const safeName = company.replace(/\s+/g, "-");
-  const dateStr = new Date().toISOString().split("T")[0];
-  doc.save(`QBR-${safeName}-${dateStr}.pdf`);
+  const _pdfDate = new Date();
+  const _pdfQuarter = `Q${Math.ceil((_pdfDate.getMonth() + 1) / 3)}-${_pdfDate.getFullYear()}`;
+  const _pdfSafeName = company
+    .replace(/[^a-zA-Z0-9]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  doc.save(`${_pdfSafeName}_QBR_${_pdfQuarter}.pdf`);
 }

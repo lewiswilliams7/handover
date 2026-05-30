@@ -14,7 +14,7 @@ export async function GET() {
 
     const { data } = await supabase
       .from("portal_accounts")
-      .select("id, slug, display_name, enabled, created_at, allowed_domain")
+      .select("id, slug, display_name, enabled, created_at, allowed_domain, self_service_url")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
         });
 
     const { data, error } = await query
-      .select("id, slug, display_name, enabled, created_at")
+      .select("id, slug, display_name, enabled, created_at, self_service_url")
       .single();
 
     if (error) {
@@ -80,6 +80,36 @@ export async function POST(request: Request) {
     return NextResponse.json({ portal: data });
   } catch (e) {
     console.error("[portal/account POST]", e);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const body = (await request.json().catch(() => ({}))) as {
+      self_service_url?: string | null;
+    };
+    const selfServiceUrl = (body.self_service_url ?? "").trim() || null;
+
+    const { data, error } = await supabase
+      .from("portal_accounts")
+      .update({ self_service_url: selfServiceUrl })
+      .eq("user_id", user.id)
+      .select("id, slug, display_name, enabled, created_at, allowed_domain, self_service_url")
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) return NextResponse.json({ error: "Portal account not found" }, { status: 404 });
+
+    return NextResponse.json({ portal: data });
+  } catch (e) {
+    console.error("[portal/account PATCH]", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

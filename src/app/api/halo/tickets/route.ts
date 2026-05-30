@@ -3,10 +3,12 @@ import { NextResponse } from "next/server";
 import { decrypt } from "@/lib/encryption";
 import {
   clearHaloProjectsCache,
+  clearHaloTicketsCache,
   formatProjectsForHandover,
   formatTicketsForHandover,
   getHaloProjects,
   getHaloTickets,
+  getHaloTicketsCached,
   getHaloToken,
 } from "@/lib/halo";
 import { getPlanTierServer, verifyUserPlan } from "@/lib/server/verifyUserPlan";
@@ -23,6 +25,8 @@ type TicketsBody = {
   dateTo?: string;
   count?: number;
   keyword?: string;
+  /** When false, skips per-ticket detail fetches (faster, for list/QBR use cases). Defaults to true for backwards compatibility. */
+  includeDetails?: boolean;
 };
 
 function logTicketsRoute(...args: unknown[]) {
@@ -39,7 +43,8 @@ export async function POST(req: Request) {
       new URL(req.url).searchParams.get("refresh") === "1";
     if (refreshRequested) {
       clearHaloProjectsCache();
-      logTicketsRoute("refresh=1 — cleared Halo projects cache");
+      clearHaloTicketsCache();
+      logTicketsRoute("refresh=1 — cleared Halo projects and tickets cache");
     }
 
     const supabase = await createServerClient();
@@ -138,6 +143,7 @@ export async function POST(req: Request) {
     }
 
     const type = body.type === "projects" ? "projects" : "tickets";
+    const includeDetails = body.includeDetails !== false;
     try {
       if (type === "projects") {
         const selectedClientIds =
@@ -197,7 +203,7 @@ export async function POST(req: Request) {
           projectId: body.projectId,
           statusId: body.statusId,
           keyword: body.keyword,
-          includeDetails: true,
+          includeDetails,
         });
         const idSet = new Set(clientIds);
         const merged = allTickets.filter(
@@ -242,16 +248,27 @@ export async function POST(req: Request) {
         dateTo: body.dateTo,
         count: body.count,
       });
-      const tickets = await getHaloTickets(token, conn.halo_url, {
-        clientId: singleClientId,
-        projectId: body.projectId,
-        statusId: body.statusId,
-        dateFrom: body.dateFrom,
-        dateTo: body.dateTo,
-        count: body.count,
-        keyword: body.keyword,
-        includeDetails: true,
-      });
+      let tickets: Awaited<ReturnType<typeof getHaloTickets>>;
+      if (!includeDetails) {
+        tickets = await getHaloTicketsCached(token, conn.halo_url, {
+          clientId: singleClientId,
+          count: body.count,
+          dateFrom: body.dateFrom,
+          dateTo: body.dateTo,
+          statusId: body.statusId,
+        });
+      } else {
+        tickets = await getHaloTickets(token, conn.halo_url, {
+          clientId: singleClientId,
+          projectId: body.projectId,
+          statusId: body.statusId,
+          dateFrom: body.dateFrom,
+          dateTo: body.dateTo,
+          count: body.count,
+          keyword: body.keyword,
+          includeDetails: true,
+        });
+      }
       logTicketsRoute("single batch tickets count:", tickets.length);
       const rawNotes0 = tickets[0]?.notes;
       if (Array.isArray(rawNotes0) && rawNotes0.length > 0) {

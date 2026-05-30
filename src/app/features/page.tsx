@@ -677,7 +677,7 @@ export default function FeaturesPage() {
             </Button>
           </Link>
           <p className="mt-4 text-sm text-[var(--sidebar-text)]">
-            No credit card required. 14-day free trial.
+            14-day free trial.
           </p>
           <Link
             href="/case-studies"

@@ -31,13 +31,13 @@ import {
   PhoneCall,
   Presentation,
   Plug,
+  Plus,
   Send,
   Shield,
   Star,
   Gauge,
   Users,
   Webhook,
-  Plus,
   Zap,
   Globe,
 } from "lucide-react";
@@ -60,7 +60,6 @@ import {
 import { createClient } from "@/lib/supabase";
 import { STRIPE_ONBOARDING_CALL_PRICE_ID, STRIPE_PRICE_IDS } from "@/lib/stripe-price-ids";
 import {
-  clampTeamSeatCount,
   isSoloSubscriptionLive,
   isTrialExpired,
   normalizePlanLabel,
@@ -102,10 +101,6 @@ function FeatureTooltip({ children, tip }: { children: React.ReactNode; tip: str
     </>
   );
 }
-
-const PRICING_PRO_FEATURE_ICON_CLASS = "size-[14px] shrink-0 text-[#0EA5E9]";
-const PRICING_TEAM_FEATURE_ICON_CLASS = "size-[14px] shrink-0 text-[#7C3AED]";
-const PRICING_ENT_FEATURE_ICON_CLASS = "size-[14px] shrink-0 text-[#C9A84C]";
 
 const FEATURE_TIPS: Record<string, string> = {
   "One PSA connection (HaloPSA or ConnectWise)":
@@ -275,59 +270,49 @@ const PRO_ANNUAL_TOTAL_GBP = 290;
 const TEAM_SEAT_INCLUDED = 5;
 const TEAM_BASE_MONTHLY_GBP = 79;
 const TEAM_EXTRA_PER_SEAT_MONTHLY_GBP = 20;
-const TEAM_BASE_ANNUAL_GBP = 632;
-const TEAM_EXTRA_PER_SEAT_ANNUAL_GBP = 192;
+/** 17% off annual billing — display-only monthly equivalent. */
+const TEAM_ANNUAL_DISCOUNT = 0.83;
+/** Team annual base shown on pricing page. */
+const TEAM_ANNUAL_TOTAL_GBP = 632;
 
-function teamPricingTotalMonthly(seatsRaw: number): number {
-  const seats = clampTeamSeatCount(seatsRaw);
-  return (
-    TEAM_BASE_MONTHLY_GBP +
-    Math.max(0, seats - TEAM_SEAT_INCLUDED) * TEAM_EXTRA_PER_SEAT_MONTHLY_GBP
-  );
-}
+const clampTeamSeatCount = (n: number) => Math.min(50, Math.max(5, n));
 
-function teamPricingTotalAnnual(seatsRaw: number): number {
-  const seats = clampTeamSeatCount(seatsRaw);
-  return (
-    TEAM_BASE_ANNUAL_GBP +
-    Math.max(0, seats - TEAM_SEAT_INCLUDED) * TEAM_EXTRA_PER_SEAT_ANNUAL_GBP
-  );
+function clampAnimatedPrice(n: number) {
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(999, Math.max(0, Math.round(n)));
 }
 
 function useAnimatedNumber(target: number, duration: number = 400) {
-  const [display, setDisplay] = useState(target);
+  const safeTarget = clampAnimatedPrice(target);
+  const cappedDuration = Math.min(duration, 400);
+  const [display, setDisplay] = useState(safeTarget);
   const rafRef = useRef<number | null>(null);
-  const startRef = useRef<{ from: number; to: number; startTime: number } | null>(null);
+  const fromRef = useRef(safeTarget);
 
   useEffect(() => {
-    if (display === target) return;
-
-    const from = display;
-    const startTime = performance.now();
-    startRef.current = { from, to: target, startTime };
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    fromRef.current = display;
+    const from = fromRef.current;
+    const to = safeTarget;
+    if (from === to) return;
+    const start = performance.now();
 
     const animate = (now: number) => {
-      if (!startRef.current) return;
-      const elapsed = now - startRef.current.startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      // Ease out cubic
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / cappedDuration, 1);
       const eased = 1 - Math.pow(1 - progress, 3);
-      const current = Math.round(
-        startRef.current.from + (startRef.current.to - startRef.current.from) * eased,
-      );
+      const current = Math.round(from + (to - from) * eased);
       setDisplay(current);
       if (progress < 1) {
         rafRef.current = requestAnimationFrame(animate);
       }
     };
 
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(animate);
-
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [target, duration, display]);
+  }, [safeTarget, cappedDuration]);
 
   return display;
 }
@@ -342,8 +327,7 @@ export function PricingPageClient() {
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   /** Referral welcome coupon eligible (DB); only true when signed in with pending reward. */
   const [welcomeRewardEligible, setWelcomeRewardEligible] = useState(false);
-  const enterpriseSheenRef = useRef<HTMLDivElement>(null);
-  const [teamSeats, setTeamSeats] = useState(3);
+  const [teamSeats, setTeamSeats] = useState(5);
   const [billingPeriod, setBillingPeriod] = useState<"monthly" | "annual">("monthly");
   const [proOnboardingChecked, setProOnboardingChecked] = useState(false);
   const [teamOnboardingChecked, setTeamOnboardingChecked] = useState(false);
@@ -603,17 +587,26 @@ export function PricingPageClient() {
   const proAnnualSavePerYearGbp = PRO_MONTHLY_LIST_GBP * 12 - PRO_ANNUAL_TOTAL_GBP;
 
   const teamSeatCountClamped = clampTeamSeatCount(teamSeats);
-  const teamTotalMonthly = teamPricingTotalMonthly(teamSeatCountClamped);
-  const teamTotalAnnual = teamPricingTotalAnnual(teamSeatCountClamped);
-  /** Rounded down (never up) for displayed £/mo on annual. */
-  const teamAnnualMonthlyEquiv = Math.floor(teamTotalAnnual / 12);
+  const extraSeats = Math.max(0, teamSeatCountClamped - TEAM_SEAT_INCLUDED);
+  const teamMonthlyTotal = TEAM_BASE_MONTHLY_GBP + extraSeats * TEAM_EXTRA_PER_SEAT_MONTHLY_GBP;
+  const teamAnnualMonthlyEquiv = Math.round(
+    TEAM_ANNUAL_TOTAL_GBP / 12 + extraSeats * TEAM_EXTRA_PER_SEAT_MONTHLY_GBP * TEAM_ANNUAL_DISCOUNT,
+  );
+  const teamAnnualTotal = Math.round(
+    TEAM_ANNUAL_TOTAL_GBP + extraSeats * TEAM_EXTRA_PER_SEAT_MONTHLY_GBP * 10,
+  );
   const proAnnualMonthlyEquiv = Math.floor(PRO_ANNUAL_TOTAL_GBP / 12);
+  const safeProAnnual = Number.isFinite(Number(proAnnualMonthlyEquiv))
+    ? Number(proAnnualMonthlyEquiv)
+    : 29;
+  const safeTeamAnnual = Number.isFinite(Number(teamAnnualMonthlyEquiv))
+    ? Number(teamAnnualMonthlyEquiv)
+    : 52;
   const calculatedTeamPrice =
-    billingPeriod === "annual" ? teamAnnualMonthlyEquiv : teamTotalMonthly;
-  const animatedTeamPrice = useAnimatedNumber(calculatedTeamPrice, 350);
+    billingPeriod === "annual" ? safeTeamAnnual : teamMonthlyTotal;
+  const animatedTeamPrice = useAnimatedNumber(calculatedTeamPrice, 400);
   /** Annual vs paying monthly list for same seat count for a full year. */
-  const teamAnnualSavePerYearGbp =
-    teamTotalMonthly * 12 - teamTotalAnnual;
+  const teamAnnualSavePerYearGbp = teamMonthlyTotal * 12 - teamAnnualTotal;
 
   const scrollToTeamIncludes = () => {
     const prefersReduced =
@@ -712,7 +705,7 @@ export function PricingPageClient() {
               height: "500px",
               borderRadius: "50%",
               background:
-                "radial-gradient(circle, rgba(168,85,247,0.12) 0%, transparent 70%)",
+                "radial-gradient(circle, rgba(34,211,238,0.12) 0%, transparent 70%)",
               animation: "pricingOrbB 10s ease-in-out infinite alternate",
             }}
           />
@@ -735,14 +728,11 @@ export function PricingPageClient() {
           <span className="mb-4 inline-block text-xs font-semibold uppercase tracking-widest text-[var(--accent)]">
             Simple, honest pricing
           </span>
-          <h1 className="text-4xl font-bold tracking-tight md:text-6xl">
-            <span className="text-gradient-brand">Plans for every</span>
-            <br />
-            <span className="text-[var(--text-primary)]">MSP delivery team</span>
+          <h1 className="text-5xl font-semibold tracking-tight text-white lg:text-6xl">
+            Plans for every <span className="text-cyan-400">MSP</span> delivery team
           </h1>
-          <p className="mx-auto mt-4 max-w-2xl text-lg text-[var(--text-secondary)]">
-            Generate your first report free. Upgrade when you need unlimited push-back,
-            scheduling, and Excel packs. Start a 14-day free trial on Professional or Team — 14-day free trial - cancel anytime.
+          <p className="mx-auto mt-4 max-w-2xl text-lg leading-relaxed text-white/70">
+            Generate your first report free. 14-day trial on Professional or Team — cancel anytime.
           </p>
           </div>
         </div>
@@ -787,9 +777,6 @@ export function PricingPageClient() {
 
           <ScrollRevealItem index={1} className="mx-auto w-full max-w-[1200px]">
             <div className="flex flex-col items-center justify-center gap-3 px-2 py-4">
-              <p className="text-center text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
-                Billing period
-              </p>
               <div
                 className="inline-flex flex-wrap items-center justify-center gap-1 rounded-full border-2 border-[var(--border)] bg-[var(--bg-primary)] p-1.5 shadow-md"
                 role="tablist"
@@ -822,7 +809,7 @@ export function PricingPageClient() {
                   onClick={() => setBillingPeriod("annual")}
                 >
                   <span>Annual</span>
-                  <span className="rounded-full bg-[#0EA5E9] px-2.5 py-0.5 text-[10px] font-semibold tracking-wide text-white">
+                  <span className="rounded-full bg-emerald-400/15 border border-emerald-400/25 px-2.5 py-0.5 text-[10px] font-semibold tracking-wide text-emerald-300">
                     Save 17%
                   </span>
                 </button>
@@ -835,27 +822,25 @@ export function PricingPageClient() {
               <div className="pricing-card-wrapper pricing-card-pro relative z-0 flex h-full min-h-0 flex-col">
                 <div className="pricing-card-inner flex min-h-0 flex-1 flex-col">
                   <div className="pricing-pro-premium-dots" aria-hidden />
-                  <div className="pricing-card-glass bg-white/[0.04] backdrop-blur-xl border border-white/[0.10] rounded-2xl p-8 hover:border-white/[0.20] transition-all duration-300 hover:bg-white/[0.06] relative flex h-full min-h-0 flex-1 flex-col gap-5 shadow-none ring-0">
+                  <div className="pricing-card-glass bg-white/[0.04] backdrop-blur-xl border border-[var(--border)] rounded-2xl p-8 transition-all duration-300 hover:bg-white/[0.06] relative flex h-full min-h-0 flex-1 flex-col gap-5 shadow-none ring-0">
                   <CardHeader className="!px-8 pt-2 text-center">
-                    <CardTitle className="text-xl text-[#0EA5E9]">Professional</CardTitle>
-                    <p className="flex flex-wrap items-baseline justify-center gap-2 leading-none">
+                    <CardTitle className="text-xl text-[var(--text-primary)]">Professional</CardTitle>
+                    <p className="flex flex-wrap items-baseline justify-center gap-2 leading-none tabular-nums">
                       <span className="pricing-pro-premium-price">
-                        £{billingPeriod === "annual" ? proAnnualMonthlyEquiv : "29"}
+                        £{billingPeriod === "annual" ? safeProAnnual : PRO_MONTHLY_LIST_GBP}
                       </span>
                       <span className="text-base font-normal text-[var(--text-secondary)]">/mo</span>
                     </p>
+                    <p className="mt-2 text-center text-sm text-white/70">
+                      {billingPeriod === "annual"
+                        ? "1 user · Billed annually"
+                        : "1 user · Billed monthly"}
+                    </p>
                     {billingPeriod === "annual" ? (
-                      <>
-                        <p className="mt-1 text-center text-[12px] leading-snug text-teal-600 dark:text-teal-400">
-                          You&apos;re saving £{proAnnualSavePerYearGbp} compared to monthly billing
-                        </p>
-                        <p className="mt-1 text-center text-sm font-medium text-[var(--text-secondary)]">
-                          £{PRO_ANNUAL_TOTAL_GBP} billed annually
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-sm text-[var(--text-secondary)]">Billed monthly</p>
-                    )}
+                      <p className="mt-1 text-center text-[12px] leading-snug text-teal-600 dark:text-teal-400">
+                        You&apos;re saving £{proAnnualSavePerYearGbp} compared to monthly billing
+                      </p>
+                    ) : null}
                   </CardHeader>
                   <CardContent className="relative z-[1] flex flex-1 flex-col gap-2 !px-8">
                     <ul className="flex flex-col gap-1 text-sm text-[var(--text-primary)]">
@@ -866,7 +851,6 @@ export function PricingPageClient() {
                           style={{ animationDelay: `${idx * 50}ms` }}
                         >
                           <PricingPlanTick variant="professional" className="mt-0.5" />
-                          <f.Icon className={cn("pricing-pro-feature-inline-icon", PRICING_PRO_FEATURE_ICON_CLASS)} strokeWidth={2} aria-hidden />
                           <span className="min-w-0 flex flex-wrap items-center gap-2 pt-0.5">
                             <FeatureTooltip tip={FEATURE_TIPS[f.text]}>
                               <span>{f.text}</span>
@@ -890,18 +874,6 @@ export function PricingPageClient() {
                           >
                             {welcomeRewardEligible ? "Claim your free month →" : "Start 14-day free trial"}
                           </Link>
-                          <button
-                            type="button"
-                            disabled={checkoutLoading}
-                            onClick={() =>
-                              void startCheckout(STRIPE_PRICE_IDS.professional.monthly, {
-                                purchaseWithoutTrial: true,
-                              })
-                            }
-                            className="bg-white/[0.05] backdrop-blur-sm border border-white/[0.15] hover:bg-white/[0.08] text-white font-medium px-6 py-3 rounded-xl transition-all duration-300 text-center text-[13px] underline-offset-4 hover:underline disabled:opacity-50"
-                          >
-                            Or buy now from £{PRO_MONTHLY_LIST_GBP}/mo
-                          </button>
                         </div>
                       ) : (
                         <div className="flex w-full flex-col gap-2">
@@ -937,23 +909,11 @@ export function PricingPageClient() {
                               )}
                             </span>
                           </Button>
-                          {professionalCardCta.variant === "start_trial" ? (
-                            <button
-                              type="button"
-                              disabled={checkoutLoading}
-                              onClick={() =>
-                                void startCheckout(proPriceId, {
-                                  purchaseWithoutTrial: true,
-                                })
-                              }
-                              className="bg-white/[0.05] backdrop-blur-sm border border-white/[0.15] hover:bg-white/[0.08] text-white font-medium px-6 py-3 rounded-xl transition-all duration-300 text-center text-[13px] underline-offset-4 hover:underline disabled:opacity-50"
-                            >
-                              Or buy now from £{PRO_MONTHLY_LIST_GBP}/mo
-                            </button>
-                          ) : null}
                         </div>
                       )}
-                      <p className="mt-2 text-center text-[12px] text-white/40">14-day free trial - cancel anytime.</p>
+                      <p className="mt-2 text-center text-[12px] text-white/40">
+                        Cancel anytime
+                      </p>
                     </div>
                     {isSignedIn && !isEnterprisePlanUser ? (
                       <div className="mt-3 flex w-full items-start gap-2.5 rounded-[var(--radius)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/35 px-3 py-2.5 text-left">
@@ -983,62 +943,73 @@ export function PricingPageClient() {
               </ScrollRevealItem>
 
               <ScrollRevealItem index={1} className="min-w-0 h-full">
-              <div className="pricing-card-wrapper pricing-card-team relative z-0 flex h-full min-h-0 flex-col">
+              <div className="pricing-card-wrapper pricing-card-team relative z-0 flex h-full min-h-0 flex-col ring-1 ring-cyan-400/30">
                 <div className="pricing-card-inner flex min-h-0 flex-1 flex-col">
                   <div className="pricing-team-premium-dots" aria-hidden />
-                  <div className="pricing-card-glass bg-white/[0.06] backdrop-blur-xl border border-purple-500/40 rounded-2xl p-8 hover:border-purple-500/60 transition-all duration-300 shadow-lg shadow-purple-500/10 hover:shadow-purple-500/20 scale-[1.02] relative flex h-full min-h-0 flex-1 flex-col gap-5 ring-0">
-                    <div className="mx-auto mt-1 w-fit rounded-full border border-[#7C3AED]/35 bg-[#7C3AED]/12 px-3 py-1 text-center text-[11px] font-bold uppercase tracking-wide text-[#7C3AED]">
+                  <div className="pricing-card-glass bg-white/[0.04] backdrop-blur-xl border border-[var(--border)] rounded-2xl p-8 transition-all duration-300 hover:bg-white/[0.06] relative flex h-full min-h-0 flex-1 flex-col gap-5 shadow-none ring-0">
+                    <div className="mx-auto mt-1 w-fit bg-[var(--accent)]/15 text-[var(--accent)] border border-[var(--accent)]/30 text-[11px] font-medium px-2 py-0.5 rounded-full">
                       Most Popular
                     </div>
                     <CardHeader className="!px-8 pt-0 text-center">
-                      <CardTitle className="pricing-team-title-gradient text-xl">Team</CardTitle>
+                      <CardTitle className="text-xl text-[var(--text-primary)]">Team</CardTitle>
                       {billingPeriod === "monthly" ? (
-                        <p className="pricing-team-price-size mt-3 flex flex-wrap items-baseline justify-center gap-x-1">
-                          <span className="pricing-team-price-gradient">£{animatedTeamPrice}</span>
+                        <p className="mt-3 flex flex-wrap items-baseline justify-center gap-x-1 tabular-nums">
+                          <span className="text-[4.5rem] font-semibold leading-none tracking-[-0.04em] text-white tabular-nums">
+                            £{animatedTeamPrice}
+                          </span>
                           <span className="text-base font-normal text-[var(--text-secondary)]">/mo</span>
                         </p>
                       ) : (
                         <>
-                          <p className="pricing-team-price-size mt-3 flex flex-wrap items-baseline justify-center gap-x-1">
-                            <span className="pricing-team-price-gradient">£{animatedTeamPrice}</span>
+                          <p className="mt-3 flex flex-wrap items-baseline justify-center gap-x-1 tabular-nums">
+                            <span className="text-[4.5rem] font-semibold leading-none tracking-[-0.04em] text-white tabular-nums">
+                              £{animatedTeamPrice}
+                            </span>
                             <span className="text-base font-normal text-[var(--text-secondary)]">/mo</span>
                           </p>
                           <p className="mt-1 text-center text-[12px] leading-snug text-teal-600 dark:text-teal-400">
                             You&apos;re saving £{teamAnnualSavePerYearGbp}/year compared to monthly billing
                           </p>
                           <p className="mt-1 text-center text-sm font-medium text-[var(--text-secondary)]">
-                            £{teamTotalAnnual} billed annually
+                            £{teamAnnualTotal} billed annually
                           </p>
                         </>
                       )}
                       <p className="mt-2 text-center text-sm text-white/70">
-                        5 users included
+                        {billingPeriod === "annual"
+                          ? "5 users · Billed annually"
+                          : "5 users · Billed monthly"}
                       </p>
-                      <div className="mt-4 flex items-center justify-center gap-2">
-                        <button
-                          type="button"
-                          className="inline-flex size-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] transition hover:bg-[var(--bg-primary)] disabled:opacity-40"
-                          aria-label="Decrease users"
-                          disabled={teamSeatCountClamped <= 1}
-                          onClick={() => setTeamSeats((s) => clampTeamSeatCount(s - 1))}
-                        >
-                          <Minus className="size-3.5" aria-hidden />
-                        </button>
-                        <span
-                          className="min-w-[5.5rem] text-center text-sm font-semibold tabular-nums text-[var(--text-primary)]"
-                          aria-live="polite"
-                        >
-                          {teamSeatCountClamped} {teamSeatCountClamped === 1 ? "user" : "users"}
-                        </span>
-                        <button
-                          type="button"
-                          className="inline-flex size-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] transition hover:bg-[var(--bg-primary)] disabled:opacity-40"
-                          aria-label="Increase users"
-                          disabled={teamSeatCountClamped >= 20}
-                          onClick={() => setTeamSeats((s) => clampTeamSeatCount(s + 1))}
-                        >
-                          <Plus className="size-3.5" aria-hidden />
-                        </button>
+                      <div className="mt-3 space-y-2">
+                        {extraSeats > 0 ? (
+                          <p className="text-center text-[12px] text-white/50">
+                            +{extraSeats} extra seat{extraSeats > 1 ? "s" : ""} · +£
+                            {extraSeats * TEAM_EXTRA_PER_SEAT_MONTHLY_GBP}/mo
+                          </p>
+                        ) : null}
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            className="inline-flex size-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] transition hover:bg-[var(--bg-primary)] disabled:opacity-40"
+                            aria-label="Decrease users"
+                            disabled={teamSeatCountClamped <= 5}
+                            onClick={() => setTeamSeats((s) => clampTeamSeatCount(s - 1))}
+                          >
+                            <Minus className="size-3.5" aria-hidden />
+                          </button>
+                          <span className="min-w-[5.5rem] text-center text-sm font-semibold tabular-nums text-white">
+                            {teamSeatCountClamped} users
+                          </span>
+                          <button
+                            type="button"
+                            className="inline-flex size-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] transition hover:bg-[var(--bg-primary)] disabled:opacity-40"
+                            aria-label="Increase users"
+                            disabled={teamSeatCountClamped >= 50}
+                            onClick={() => setTeamSeats((s) => clampTeamSeatCount(s + 1))}
+                          >
+                            <Plus className="size-3.5" aria-hidden />
+                          </button>
+                        </div>
                       </div>
                     </CardHeader>
                     <CardContent className="flex min-h-0 flex-1 flex-col gap-4 !px-8">
@@ -1047,11 +1018,6 @@ export function PricingPageClient() {
                           {teamCardFeatures.map((f) => (
                             <li key={f.text} className="flex items-start gap-2">
                               <PricingPlanTick variant="team" className="mt-0.5" />
-                              <f.Icon
-                                className={cn("mt-0.5", PRICING_TEAM_FEATURE_ICON_CLASS)}
-                                strokeWidth={2}
-                                aria-hidden
-                              />
                               <span className="min-w-0">
                                 <FeatureTooltip tip={FEATURE_TIPS[f.text]}>
                                   <span>{f.text}</span>
@@ -1075,12 +1041,6 @@ export function PricingPageClient() {
                             className="bg-gradient-to-r from-[#0EA5E9] to-[#0284C7] hover:from-[#0284C7] hover:to-[#0EA5E9] text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-[#0EA5E9]/20 hover:shadow-[#0EA5E9]/30 transition-all duration-300 transform hover:scale-[1.02] inline-flex h-11 w-full items-center justify-center gap-2 text-sm"
                           >
                             Start 14-day free trial
-                          </Link>
-                          <Link
-                            href={`/auth?tab=signup&returnTo=${encodeURIComponent("/pricing?checkout=buy-team")}`}
-                          className="bg-white/[0.05] backdrop-blur-sm border border-white/[0.15] hover:bg-white/[0.08] text-white font-medium px-6 py-3 rounded-xl transition-all duration-300 text-center text-[13px] underline-offset-4 hover:underline"
-                          >
-                            Or buy now from £{TEAM_BASE_MONTHLY_GBP}/mo
                           </Link>
                         </div>
                       ) : teamCardCta.variant === "manage_workspace" ? (
@@ -1122,22 +1082,6 @@ export function PricingPageClient() {
                               teamPrimaryButtonLabel
                             )}
                           </Button>
-                          {teamCardCta.variant === "start_trial" ? (
-                            <button
-                              type="button"
-                              disabled={checkoutLoading || !teamPriceId}
-                              onClick={() =>
-                                void startCheckout(teamPriceId, {
-                                  seats: teamSeatCountClamped,
-                                  skipTeamTrial: true,
-                                  purchaseWithoutTrial: true,
-                                })
-                              }
-                              className="bg-white/[0.05] backdrop-blur-sm border border-white/[0.15] hover:bg-white/[0.08] text-white font-medium px-6 py-3 rounded-xl transition-all duration-300 text-center text-[13px] underline-offset-4 hover:underline disabled:opacity-50"
-                            >
-                              Or buy now from £{TEAM_BASE_MONTHLY_GBP}/mo
-                            </button>
-                          ) : null}
                           {isSignedIn && !isEnterprisePlanUser ? (
                             <div className="mt-2 flex w-full items-start gap-2.5 rounded-[var(--radius)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/35 px-3 py-2.5 text-left">
                               <Checkbox
@@ -1160,17 +1104,19 @@ export function PricingPageClient() {
                             </div>
                           ) : null}
                           <p className="text-center text-[12px] text-[var(--text-muted)]">
-                            14-day free trial - cancel anytime.
+                            Cancel anytime
                           </p>
                           <p className="text-center text-[12px] text-[var(--text-muted)]">
-                            Refer a friend, get 3 months free -{" "}
+                            Refer a friend, get 3 months free —{" "}
                             <Link href="/referral" className="text-[var(--accent)] hover:underline">
                               Learn more
                             </Link>
                           </p>
                         </>
                       )}
-                      <p className="mt-2 text-center text-[12px] text-white/40">14-day free trial - cancel anytime.</p>
+                      <p className="mt-2 text-center text-[12px] text-white/40">
+                        Cancel anytime
+                      </p>
                       </div>
                     </CardFooter>
                   </div>
@@ -1179,67 +1125,32 @@ export function PricingPageClient() {
               </ScrollRevealItem>
 
               <ScrollRevealItem index={2} className="min-w-0 h-full">
-              <div
-                ref={enterpriseSheenRef}
-                className="pricing-card-wrapper pricing-card-enterprise relative flex h-full min-h-0 w-full max-w-full flex-col"
-                onMouseMove={(e) => {
-                  const el = enterpriseSheenRef.current;
-                  if (!el) return;
-                  const r = el.getBoundingClientRect();
-                  el.style.setProperty(
-                    "--ent-sheen-x",
-                    `${((e.clientX - r.left) / r.width) * 100}%`,
-                  );
-                  el.style.setProperty(
-                    "--ent-sheen-y",
-                    `${((e.clientY - r.top) / r.height) * 100}%`,
-                  );
-                }}
-                onMouseLeave={() => {
-                  enterpriseSheenRef.current?.style.setProperty("--ent-sheen-x", "50%");
-                  enterpriseSheenRef.current?.style.setProperty("--ent-sheen-y", "50%");
-                }}
-              >
+              <div className="pricing-card-wrapper pricing-card-enterprise relative flex h-full min-h-0 w-full max-w-full flex-col">
                 <div className="pricing-card-inner flex min-h-0 flex-1 flex-col">
-                  <div className="pricing-enterprise-premium-dots" aria-hidden />
-                  <div className="pricing-enterprise-holo-sheen" aria-hidden />
-                  <div className="pro-card-content pricing-card-glass bg-white/[0.04] backdrop-blur-xl border border-white/[0.10] rounded-2xl p-8 hover:border-white/[0.20] transition-all duration-300 hover:bg-white/[0.06] relative flex h-full min-h-0 flex-1 flex-col gap-5 shadow-none ring-0">
-                  <span className="mx-auto mt-2 block w-fit rounded-full border border-[#C9A84C]/45 bg-gradient-to-r from-[#C9A84C]/18 via-[#FFD700]/14 to-[#a67c2a]/16 px-3 py-1 text-center text-[11px] font-bold uppercase tracking-wide text-[#3d3318] dark:border-[#C9A84C]/40 dark:from-[#C9A84C]/22 dark:via-[#FFD700]/16 dark:to-[#8a7028]/20 dark:text-[#f5e6a8]">
-                    For larger teams
-                  </span>
+                  <div className="pricing-card-glass bg-white/[0.04] backdrop-blur-xl border border-[var(--border)] rounded-2xl p-8 transition-all duration-300 hover:bg-white/[0.06] relative flex h-full min-h-0 flex-1 flex-col gap-5 shadow-none ring-0">
                   <CardHeader className="!px-8 pb-2 pt-0 text-center">
-                    <CardTitle className="pricing-enterprise-name-gradient text-xl">Enterprise</CardTitle>
-                    <p className="mt-2 text-sm text-white/70">Starts from £249/mo</p>
-                    <p className="mt-2 text-sm text-[var(--text-secondary)]">
-                      Custom deployments and unlimited scale
+                    <CardTitle className="text-xl text-[var(--text-primary)]">Enterprise</CardTitle>
+                    <p className="mt-2 flex flex-wrap items-baseline justify-center gap-2 leading-none tabular-nums">
+                      <span className="pricing-pro-premium-price text-4xl">£249</span>
+                      <span className="text-base font-normal text-[var(--text-secondary)]">/mo</span>
                     </p>
-                    <div className="flex items-center gap-2 text-[13px] text-[var(--text-secondary)]">
-                      <Users className="size-3.5 text-[#C9A84C]" />
-                      <span>Unlimited users included</span>
-                    </div>
+                    <p className="mt-2 text-center text-sm text-white/70">
+                      Unlimited users · Custom contract
+                    </p>
                   </CardHeader>
                   <CardContent className="flex min-h-0 flex-1 flex-col gap-3 !px-8">
                     <ul className="flex flex-col gap-2.5 text-sm text-[var(--text-primary)]">
-                      {enterpriseFeatures.map((f) => (
+                      {enterpriseFeatures
+                        .filter((f) => !f.comingSoon)
+                        .map((f) => (
                         <li key={f.text} className="flex items-start gap-2">
-                          {f.comingSoon ? (
-                            <span
-                              className="mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-950 dark:bg-amber-950/45 dark:text-amber-50"
-                              aria-label="Coming soon"
-                            >
-                              <Clock className="size-3" strokeWidth={2.5} aria-hidden />
-                              Coming Soon
-                            </span>
-                          ) : (
-                            <PricingPlanTick variant="enterprise" className="mt-0.5" />
-                          )}
-                          <f.Icon className={cn("mt-0.5", PRICING_ENT_FEATURE_ICON_CLASS)} strokeWidth={2} aria-hidden />
+                          <PricingPlanTick variant="enterprise" className="mt-0.5" />
                           <span className="min-w-0">
                             <FeatureTooltip tip={FEATURE_TIPS[f.text]}>
                               <span className="inline-flex flex-wrap items-center gap-2">
                                 <span>{f.text}</span>
                                 {f.beta ? (
-                                  <span className="rounded-full border border-[#C9A84C]/45 bg-gradient-to-r from-[#C9A84C]/18 via-[#FFD700]/14 to-[#a67c2a]/16 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#3d3318] dark:border-[#C9A84C]/40 dark:from-[#C9A84C]/22 dark:via-[#FFD700]/16 dark:to-[#8a7028]/20 dark:text-[#f5e6a8]">
+                                  <span className="rounded-md border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white/60">
                                     Beta
                                   </span>
                                 ) : null}
@@ -1254,13 +1165,13 @@ export function PricingPageClient() {
                     <div className="mt-auto pt-6 flex flex-col gap-3">
                       <Link
                         href="/contact/sales?plan=enterprise"
-                        className="bg-gradient-to-r from-[#0EA5E9] to-[#0284C7] hover:from-[#0284C7] hover:to-[#0EA5E9] text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-[#0EA5E9]/20 hover:shadow-[#0EA5E9]/30 transition-all duration-300 transform hover:scale-[1.02] inline-flex h-12 w-full items-center justify-center text-sm"
+                        className="border border-white/15 bg-white/[0.04] hover:bg-white/[0.08] text-white font-medium px-6 py-3 rounded-xl transition-all duration-200 inline-flex h-12 w-full items-center justify-center text-sm"
                       >
                         Contact Sales
                       </Link>
                       <Link
                         href="/demo"
-                        className="text-center text-[13px] text-[#C9A84C] underline-offset-4 transition-colors hover:text-[#FFD700] hover:underline"
+                        className="text-sm text-white/55 underline underline-offset-2 transition-colors hover:text-white"
                       >
                         or Book a demo call →
                       </Link>
@@ -1301,16 +1212,17 @@ export function PricingPageClient() {
               </div>
             </ScrollRevealItem>
 
-          <ScrollRevealItem index={5} className="block">
-          <p className="mt-2 flex items-center justify-center gap-2 text-center text-xs text-[var(--text-muted)]">
-            <Shield className="size-3.5 shrink-0" aria-hidden />
-            <span>
-              Your data is never stored or shared. OpenAI API data is not used for training.{" "}
-              <Link href="/privacy" className="hover:underline">
+          <ScrollRevealItem index={5} className="flex justify-center">
+            <div className="mx-auto inline-flex items-center gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-2.5 text-sm text-white/75">
+              <Shield className="size-4 shrink-0 text-emerald-400" aria-hidden />
+              <span>Your data is never stored or used for AI training.</span>
+              <Link
+                href="/privacy"
+                className="whitespace-nowrap text-cyan-300 transition-colors hover:text-cyan-200"
+              >
                 Privacy policy →
               </Link>
-            </span>
-          </p>
+            </div>
           </ScrollRevealItem>
         </div>
       </section>

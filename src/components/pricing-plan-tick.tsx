@@ -1,37 +1,31 @@
-import { Check } from "lucide-react";
-
 import { cn } from "@/lib/utils";
 
-/** Plan accent colours — hex only (no CSS variables) for consistent rendering. */
-const VARIANT = {
-  professional: "#0EA5E9",
-  team: "#7C3AED",
-  enterprise: "#C9A84C",
-} as const;
-
-export type PricingPlanTickVariant = keyof typeof VARIANT;
+export type PricingPlanTickVariant = "professional" | "team" | "enterprise";
 
 /**
- * Unified tick for pricing cards: filled circle + checkmark, same size/weight on every plan.
+ * Unified stroked check for pricing cards — cyan on all plans.
  */
 export function PricingPlanTick({
-  variant,
+  variant: _variant,
   className,
 }: {
-  variant: PricingPlanTickVariant;
+  variant?: PricingPlanTickVariant;
   className?: string;
 }) {
-  const bg = VARIANT[variant];
   return (
-    <span
-      className={cn(
-        "inline-flex size-5 shrink-0 items-center justify-center rounded-full",
-        className,
-      )}
-      style={{ backgroundColor: bg, color: "#ffffff" }}
+    <svg
+      className={cn("mt-0.5 size-[18px] shrink-0 text-cyan-400", className)}
+      viewBox="0 0 20 20"
+      fill="none"
       aria-hidden
     >
-      <Check className="size-[0.65rem]" strokeWidth={3} />
-    </span>
+      <path
+        d="M5 10l3.5 3.5L15 7"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

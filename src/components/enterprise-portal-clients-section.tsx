@@ -45,6 +45,7 @@ import {
   fetchDeliveryHealth,
 } from "@/lib/delivery-health-swr";
 import { usePSAConnections } from "@/hooks/use-psa-connections";
+import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 import { normalizePlanLabel } from "@/lib/utils/getPlan";
 
@@ -578,14 +579,23 @@ export function EnterprisePortalClientsSection(props: {
 
   const portfolioRagCounts = useMemo(() => {
     const c = { red: 0, amber: 0, green: 0, grey: 0 };
-    for (const r of overviewRows) {
-      if (r.rag === "red") c.red += 1;
-      else if (r.rag === "amber") c.amber += 1;
-      else if (r.rag === "green") c.green += 1;
+    const clientNames = [
+      ...new Set(overviewRows.map((r) => r.clientName).filter(Boolean)),
+    ];
+    for (const clientName of clientNames) {
+      const worst = worstRagForRows(overviewRows, clientName);
+      if (worst === "red") c.red += 1;
+      else if (worst === "amber") c.amber += 1;
+      else if (worst === "green") c.green += 1;
       else c.grey += 1;
     }
     return c;
   }, [overviewRows]);
+
+  const portfolioClientCount = useMemo(
+    () => new Set(overviewRows.map((r) => r.clientName).filter(Boolean)).size,
+    [overviewRows],
+  );
 
   const weekGenData = useMemo(() => {
     const keys: string[] = [];
@@ -671,11 +681,15 @@ export function EnterprisePortalClientsSection(props: {
 
   return (
     <>
-      <div className="flex w-full" style={{ minHeight: "calc(100vh - 52px)" }}>
+      <div
+        className="flex h-full min-h-0 w-full"
+        style={{ minHeight: "calc(100vh - 52px)" }}
+      >
         <div className="flex w-[220px] shrink-0 flex-col overflow-y-auto border-r border-[var(--border)] bg-[var(--bg-secondary)]">
           <div className="shrink-0 border-b border-[var(--border)] px-4 py-4">
-            <h1 className="text-[15px] font-semibold text-[var(--text-primary)]">Organisation</h1>
-            <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">Client portals and company</p>
+            <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
+              Enterprise
+            </p>
           </div>
           <nav className="flex-1 p-2">
             <button
@@ -727,6 +741,11 @@ export function EnterprisePortalClientsSection(props: {
               panelSection === "overview" ? "max-w-6xl" : "max-w-3xl",
             )}
           >
+            <PageHeader
+              eyebrow="PORTFOLIO · OVERVIEW"
+              title="Organisation"
+              description="Client health, portfolio RAG status, and delivery metrics across your MSP."
+            />
             {panelSection === "company" ? (
               <div className="space-y-6">
                 <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-5">
@@ -886,11 +905,14 @@ export function EnterprisePortalClientsSection(props: {
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-5">
-                    <p className="text-[13px] text-[var(--text-secondary)]">Total clients</p>
+                    <p className="text-[13px] font-medium text-white/60">Portal clients</p>
                     <p className="mt-2 text-3xl font-bold text-white">{enabledPortalCount}</p>
+                    <p className="mt-1 text-[10px] leading-snug text-[var(--text-muted)]">
+                      Client portals configured
+                    </p>
                   </div>
                   <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-5">
-                    <p className="text-[13px] text-[var(--text-secondary)]">Generations this month</p>
+                    <p className="text-[13px] font-medium text-white/60">Generations this month</p>
                     <p className="mt-2 text-3xl font-bold text-white">
                       {props.monthCount !== null ? props.monthCount : "—"}
                     </p>
@@ -901,13 +923,13 @@ export function EnterprisePortalClientsSection(props: {
                     ) : null}
                   </div>
                   <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-5">
-                    <p className="text-[13px] text-[var(--text-secondary)]">Active scheduled reports</p>
+                    <p className="text-[13px] font-medium text-white/60">Active scheduled reports</p>
                     <p className="mt-2 text-3xl font-bold text-white">
                       {scheduledEnabledCount !== null ? scheduledEnabledCount : "—"}
                     </p>
                   </div>
                   <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-5">
-                    <p className="text-[13px] text-[var(--text-secondary)]">Open tickets</p>
+                    <p className="text-[13px] font-medium text-white/60">Open tickets</p>
                     <p className="mt-2 text-3xl font-bold text-white">
                       {props.deliveryAccess !== "none" && orgHealthData?.stats?.tickets?.activeCount != null
                         ? orgHealthData.stats.tickets.activeCount
@@ -947,7 +969,10 @@ export function EnterprisePortalClientsSection(props: {
                                 ))}
                               </Pie>
                               <Tooltip
-                                formatter={(v: number, n: string) => [`${v}`, n]}
+                                formatter={(v: number, n: string) => [
+                                  `${v} client${v === 1 ? "" : "s"}`,
+                                  n,
+                                ]}
                                 contentStyle={{
                                   background: "var(--bg-primary)",
                                   border: "1px solid var(--border)",
@@ -959,17 +984,25 @@ export function EnterprisePortalClientsSection(props: {
                           </ResponsiveContainer>
                           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center pt-2">
                             <span className="text-center text-[11px] font-medium text-[var(--text-muted)]">
-                              Portfolio
+                              <span className="tabular-nums text-white">
+                                {portfolioClientCount}
+                              </span>
                               <br />
-                              health
+                              PSA clients
                             </span>
                           </div>
+                        </div>
+                        <div className="mt-1 text-center text-[11px] text-white/35">
+                          Clients with active tickets
                         </div>
                         <ul className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-2 text-[12px] text-[var(--text-secondary)]">
                           {piePortfolioData.map((s) => (
                             <li key={s.name} className="inline-flex items-center gap-1.5">
                               <span className="size-2 rounded-full" style={{ backgroundColor: s.fill }} />
-                              {s.name}: <span className="tabular-nums text-white">{s.value}</span>
+                              {s.name}:{" "}
+                              <span className="tabular-nums text-white">
+                                {s.value} client{s.value === 1 ? "" : "s"}
+                              </span>
                             </li>
                           ))}
                         </ul>
@@ -1176,7 +1209,7 @@ export function EnterprisePortalClientsSection(props: {
                     </Button>
                   </div>
                 ) : (
-                  <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)]">
+                  <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)]">
                     <div className="grid grid-cols-[1.6fr_1.5fr_0.7fr_0.9fr_0.9fr_0.6fr_56px] items-center border-b border-[var(--border)] px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#94a3b8]">
                       <span>Client name</span>
                       <span>Portal URL</span>

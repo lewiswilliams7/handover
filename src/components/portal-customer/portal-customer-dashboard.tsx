@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { ChevronDown, Loader2 } from "lucide-react";
+import { ChevronDown, ExternalLink, Loader2, X } from "lucide-react";
 import {
   Component,
   type ErrorInfo,
@@ -31,6 +31,17 @@ import { cleanTicketNoteContent } from "@/lib/note-cleaner";
 import { mspBrandAccentColour, mspBrandLogoUrl } from "@/lib/portal-customer-brand-display";
 import { cn } from "@/lib/utils";
 
+type PortalNoteLine = { date: string | null; author: string; content: string };
+
+type PortalTicketRow = {
+  id: number;
+  summary: string;
+  status: string;
+  priority: string;
+  engineer: string;
+  lastUpdated: string | null;
+};
+
 type SessionPayload = {
   session: { expires_at: string };
   user: { email: string; display_name: string | null };
@@ -53,17 +64,11 @@ type SessionPayload = {
     company_name?: string | null;
     display_name?: string | null;
   } | null;
+  isOwnerPreview?: boolean;
 };
 
 type PortalData = {
-  tickets?: Array<{
-    id: number;
-    summary: string;
-    status: string;
-    priority: string;
-    engineer: string;
-    lastUpdated: string | null;
-  }>;
+  tickets?: PortalTicketRow[];
   projects?: Array<{
     id: number;
     name: string;
@@ -74,8 +79,11 @@ type PortalData = {
   }>;
   rag?: "red" | "amber" | "green" | "grey" | null;
   lastUpdated: string;
-  ticketNotes?: Array<{ date: string | null; author: string; content: string }>;
+  selfServiceUrl?: string | null;
+  ticketNotes?: PortalNoteLine[];
   ticketNotesTicketId?: number;
+  projectNotes?: PortalNoteLine[];
+  projectNotesProjectId?: number;
   stats?: {
     openTickets: number;
     highPriority?: number;
@@ -85,6 +93,7 @@ type PortalData = {
     avgProjectProgress: number;
     rag: "red" | "amber" | "green" | "grey";
     resolvedThisMonth?: number;
+    monthlyVolume?: Record<string, number>;
   };
   recentActivity?: Array<{ date: string | null; author: string; summary: string }>;
 };
@@ -180,19 +189,25 @@ function PortalCustomerDashboardInner() {
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotMsg, setForgotMsg] = useState<string | null>(null);
+  const [volumePeriod, setVolumePeriod] = useState<"3m" | "6m" | "12m">("6m");
 
   const [tab, setTab] = useState<"overview" | "tickets" | "projects" | "reports">("overview");
   const [data, setData] = useState<PortalData | null>(null);
   const [dataErr, setDataErr] = useState<string | null>(null);
+  const [ticketModalOpen, setTicketModalOpen] = useState(false);
+  const [ticketModalId, setTicketModalId] = useState<string | null>(null);
+  const [ticketModalRow, setTicketModalRow] = useState<PortalTicketRow | null>(null);
   const [expandedTicketId, setExpandedTicketId] = useState<number | null>(null);
-  const [ticketNotesById, setTicketNotesById] = useState<
-    Record<number, Array<{ date: string | null; author: string; content: string }>>
-  >({});
+  const [ticketNotesById, setTicketNotesById] = useState<Record<number, PortalNoteLine[]>>({});
   const [ticketNotesLoadingId, setTicketNotesLoadingId] = useState<number | null>(null);
+  const [expandedProjectId, setExpandedProjectId] = useState<number | null>(null);
+  const [projectNotesById, setProjectNotesById] = useState<Record<number, PortalNoteLine[]>>({});
+  const [projectNotesLoadingId, setProjectNotesLoadingId] = useState<number | null>(null);
   const [portalReports, setPortalReports] = useState<PortalReportRow[] | null>(null);
   const [portalReportsErr, setPortalReportsErr] = useState<string | null>(null);
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
   const ticketNotesLoadedRef = useRef<Set<number>>(new Set());
+  const projectNotesLoadedRef = useRef<Set<number>>(new Set());
 
   const mergedVisibility = useMemo(() => {
     const sc = session?.user && session.client ? session.client : null;
@@ -232,8 +247,18 @@ function PortalCustomerDashboardInner() {
         percentComplete: Math.min(100, Math.max(0, p?.percentComplete ?? 0)),
       };
     });
-    return { priorityPieData, priorityTotal, projectBars };
-  }, [data]);
+    const monthsBack = volumePeriod === "3m" ? 3 : volumePeriod === "12m" ? 12 : 6;
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - monthsBack);
+    const monthlyVolumeData = Object.entries(s?.monthlyVolume ?? {})
+      .filter(([month]) => new Date(`${month}-01`) >= cutoff)
+      .sort()
+      .map(([month, count]) => ({
+        month: new Date(`${month}-01`).toLocaleDateString("en-GB", { month: "short", year: "2-digit" }),
+        tickets: count as number,
+      }));
+    return { priorityPieData, priorityTotal, projectBars, monthlyVolumeData };
+  }, [data, volumePeriod]);
 
   const mspDisplay =
     profile?.brand_name?.trim() ||
@@ -339,6 +364,36 @@ function PortalCustomerDashboardInner() {
       }
     },
     [dataUrl, expandedTicketId, showTicketNotes],
+  );
+
+  const toggleProjectExpanded = useCallback(
+    async (projectId: number) => {
+      if (!showTicketNotes) return;
+      if (expandedProjectId === projectId) {
+        setExpandedProjectId(null);
+        return;
+      }
+      setExpandedProjectId(projectId);
+      if (projectNotesLoadedRef.current.has(projectId)) return;
+      projectNotesLoadedRef.current.add(projectId);
+      setProjectNotesLoadingId(projectId);
+      try {
+        const res = await fetch(
+          `${dataUrl}?projectId=${encodeURIComponent(String(projectId))}`,
+          { credentials: "include", cache: "no-store" },
+        );
+        const j = (await res.json().catch(() => ({}))) as {
+          projectNotes?: PortalNoteLine[];
+        };
+        const notes = Array.isArray(j.projectNotes) ? j.projectNotes : [];
+        setProjectNotesById((prev) => ({ ...prev, [projectId]: notes }));
+      } catch {
+        projectNotesLoadedRef.current.delete(projectId);
+      } finally {
+        setProjectNotesLoadingId(null);
+      }
+    },
+    [dataUrl, expandedProjectId, showTicketNotes],
   );
 
   const onLogin = async (e: React.FormEvent) => {
@@ -530,11 +585,13 @@ function PortalCustomerDashboardInner() {
   const portalRag = (data?.stats?.rag ?? data?.rag ?? null) as PortalData["rag"];
   const openTickets = data?.stats?.openTickets ?? data?.tickets?.length ?? 0;
   const openProjects = data?.stats?.activeProjects ?? data?.projects?.length ?? 0;
+  const selfServiceUrl = data?.selfServiceUrl?.trim() || "";
 
-  const { priorityPieData, priorityTotal, projectBars } = chartDerived;
+  const { priorityPieData, priorityTotal, projectBars, monthlyVolumeData } = chartDerived;
 
   const hasPriorityChart = showPriorityBreakdownUi && showTickets;
   const hasProjectChart = showProjects && projectBars.length > 0;
+  const hasMonthlyVolumeChart = showVisibilityStats && monthlyVolumeData.length > 0;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -624,7 +681,7 @@ function PortalCustomerDashboardInner() {
               ) : null}
             </div>
 
-            {showVisibilityStats && (hasPriorityChart || hasProjectChart) ? (
+            {showVisibilityStats && (hasPriorityChart || hasProjectChart || hasMonthlyVolumeChart) ? (
               <div
                 className={cn(
                   "grid gap-4",
@@ -633,7 +690,7 @@ function PortalCustomerDashboardInner() {
               >
                 {hasPriorityChart ? (
                   <div className="rounded-2xl border border-[#2d3f5e] bg-[#1a2540] p-6">
-                    <p className="mb-2 text-[13px] font-medium text-[var(--text-secondary)]">
+                    <p className="mb-2 text-[13px] font-medium text-white">
                       Open tickets by priority
                     </p>
                     {priorityPieData.length === 0 ? (
@@ -659,13 +716,15 @@ function PortalCustomerDashboardInner() {
                               ))}
                             </Pie>
                             <Tooltip
-                              formatter={(v: number) => [v, "Tickets"]}
+                              formatter={(v: number, name: string) => [`${v} ticket${v !== 1 ? "s" : ""}`, name]}
                               contentStyle={{
                                 background: "#0f172a",
                                 border: "1px solid #2d3f5e",
                                 borderRadius: 8,
                                 fontSize: 12,
                               }}
+                              labelStyle={{ color: "#ffffff" }}
+                              itemStyle={{ color: "#ffffff" }}
                             />
                           </PieChart>
                         </ResponsiveContainer>
@@ -674,11 +733,19 @@ function PortalCustomerDashboardInner() {
                         </div>
                       </div>
                     )}
+                    <div className="mt-3 flex justify-center gap-4">
+                      {priorityPieData.map((entry) => (
+                        <div key={entry.name} className="flex items-center gap-1.5">
+                          <div className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: entry.fill }} />
+                          <span className="text-[11px] text-white">{entry.value} {entry.name}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ) : null}
                 {hasProjectChart ? (
                   <div className="rounded-2xl border border-[#2d3f5e] bg-[#1a2540] p-6">
-                    <p className="mb-3 text-[13px] font-medium text-[var(--text-secondary)]">Project progress</p>
+                    <p className="mb-3 text-[13px] font-medium text-white">Project progress</p>
                     <div className="h-56 w-full min-w-0">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart
@@ -687,12 +754,12 @@ function PortalCustomerDashboardInner() {
                           margin={{ top: 4, right: 12, left: 4, bottom: 4 }}
                         >
                           <CartesianGrid strokeDasharray="3 3" stroke="#2d3f5e" horizontal={false} />
-                          <XAxis type="number" domain={[0, 100]} tick={{ fill: "#94a3b8", fontSize: 11 }} />
+                          <XAxis type="number" domain={[0, 100]} tick={{ fill: "#ffffff", fontSize: 11 }} />
                           <YAxis
                             type="category"
                             dataKey="name"
                             width={108}
-                            tick={{ fill: "#94a3b8", fontSize: 10 }}
+                            tick={{ fill: "#ffffff", fontSize: 11 }}
                             interval={0}
                           />
                           <Tooltip
@@ -703,6 +770,8 @@ function PortalCustomerDashboardInner() {
                               borderRadius: 8,
                               fontSize: 12,
                             }}
+                            labelStyle={{ color: "#ffffff" }}
+                            itemStyle={{ color: "#ffffff" }}
                           />
                           <Bar dataKey="percentComplete" radius={[0, 4, 4, 0]}>
                             {projectBars.map((_, i) => (
@@ -714,6 +783,55 @@ function PortalCustomerDashboardInner() {
                     </div>
                   </div>
                 ) : null}
+                {hasMonthlyVolumeChart && (
+                  <div className="col-span-full rounded-2xl border border-[#2d3f5e] bg-[#1a2540] p-6">
+                    <div className="mb-4 flex items-center justify-between">
+                      <p className="text-[13px] font-medium text-white">Ticket volume</p>
+                      <div className="flex gap-1">
+                        {(["3m", "6m", "12m"] as const).map((p) => (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => setVolumePeriod(p)}
+                            className={cn(
+                              "rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+                              volumePeriod === p
+                                ? "border border-[var(--accent)]/30 bg-[var(--accent)]/20 text-white"
+                                : "text-[var(--text-secondary)] hover:text-white",
+                            )}
+                          >
+                            {p === "3m" ? "3 months" : p === "6m" ? "6 months" : "12 months"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <ResponsiveContainer width="100%" height={180}>
+                      <BarChart data={monthlyVolumeData} barSize={28}>
+                        <XAxis
+                          dataKey="month"
+                          tick={{ fill: "#94a3b8", fontSize: 11 }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <YAxis
+                          tick={{ fill: "#94a3b8", fontSize: 11 }}
+                          axisLine={false}
+                          tickLine={false}
+                          allowDecimals={false}
+                          width={24}
+                        />
+                        <Tooltip
+                          cursor={{ fill: "rgba(14,165,233,0.08)" }}
+                          contentStyle={{ background: "#0f172a", border: "1px solid #2d3f5e", borderRadius: 8, fontSize: 12 }}
+                          labelStyle={{ color: "#ffffff" }}
+                          itemStyle={{ color: "#ffffff" }}
+                          formatter={(v: number) => [`${v} ticket${v !== 1 ? "s" : ""}`, ""]}
+                        />
+                        <Bar dataKey="tickets" fill="var(--accent)" radius={[4, 4, 0, 0]} opacity={0.85} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
               </div>
             ) : null}
 
@@ -816,8 +934,7 @@ function PortalCustomerDashboardInner() {
               </thead>
               <tbody>
                 {(data?.tickets ?? []).map((row) => {
-                  const open = expandedTicketId === row.id;
-                  const notes = ticketNotesById[row.id] ?? [];
+                  const open = ticketModalOpen && ticketModalId === String(row.id);
                   return (
                     <Fragment key={row.id}>
                       <tr
@@ -826,7 +943,12 @@ function PortalCustomerDashboardInner() {
                           showTicketNotes ? "cursor-pointer hover:bg-[var(--bg-primary)]/40" : "",
                         )}
                         onClick={() => {
-                          if (showTicketNotes) void toggleTicketExpanded(row.id);
+                          if (showTicketNotes) {
+                            setTicketModalRow(row);
+                            setTicketModalId(String(row.id));
+                            setTicketModalOpen(true);
+                            void toggleTicketExpanded(row.id);
+                          }
                         }}
                       >
                         {showTicketNotes ? (
@@ -852,10 +974,76 @@ function PortalCustomerDashboardInner() {
                             : "—"}
                         </td>
                       </tr>
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+            {(data?.tickets ?? []).length === 0 ? (
+              <p className="p-4 text-[13px] text-[var(--text-secondary)]">No open tickets.</p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {tab === "projects" && showProjects ? (
+          <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)]">
+            <table className="min-w-full text-left text-[13px]">
+              <thead className="border-b border-[var(--border)] text-[11px] uppercase tracking-wide text-[var(--text-muted)]">
+                <tr>
+                  {showTicketNotes ? (
+                    <th className="w-8 px-1 py-2 font-medium" aria-hidden />
+                  ) : null}
+                  <th className="px-3 py-2 font-medium">Name</th>
+                  <th className="px-3 py-2 font-medium">Status</th>
+                  <th className="px-3 py-2 font-medium">% complete</th>
+                  <th className="hidden px-3 py-2 font-medium sm:table-cell">Engineer</th>
+                  <th className="hidden px-3 py-2 font-medium md:table-cell">Target</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(data?.projects ?? []).map((row) => {
+                  const open = expandedProjectId === row.id;
+                  const notes = projectNotesById[row.id] ?? [];
+                  return (
+                    <Fragment key={row.id}>
+                      <tr
+                        className={cn(
+                          "border-b border-[var(--border)]",
+                          showTicketNotes ? "cursor-pointer hover:bg-[var(--bg-primary)]/40" : "",
+                        )}
+                        onClick={() => {
+                          if (showTicketNotes) void toggleProjectExpanded(row.id);
+                        }}
+                      >
+                        {showTicketNotes ? (
+                          <td className="px-1 py-2 align-middle">
+                            <ChevronDown
+                              className={cn(
+                                "mx-auto size-4 shrink-0 text-[var(--text-muted)] transition-transform",
+                                open ? "rotate-180" : "rotate-0",
+                              )}
+                              aria-hidden
+                            />
+                          </td>
+                        ) : null}
+                        <td className="max-w-[220px] truncate px-3 py-2">{row.name}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-[var(--text-secondary)]">{row.status}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-[var(--text-secondary)]">
+                          {row.percentComplete != null ? `${row.percentComplete}%` : "—"}
+                        </td>
+                        <td className="hidden whitespace-nowrap px-3 py-2 text-[var(--text-secondary)] sm:table-cell">
+                          {row.engineer}
+                        </td>
+                        <td className="hidden whitespace-nowrap px-3 py-2 text-[var(--text-secondary)] md:table-cell">
+                          {row.targetDate
+                            ? new Date(row.targetDate).toLocaleDateString(undefined, { dateStyle: "medium" })
+                            : "—"}
+                        </td>
+                      </tr>
                       {showTicketNotes && open ? (
-                        <tr key={`${row.id}-notes`} className="border-b border-[var(--border)] bg-[var(--bg-primary)]/30">
+                        <tr key={`${row.id}-project-notes`} className="border-b border-[var(--border)] bg-[var(--bg-primary)]/30">
                           <td colSpan={showTicketNotes ? 6 : 5} className="px-3 py-3">
-                            {ticketNotesLoadingId === row.id ? (
+                            {projectNotesLoadingId === row.id ? (
                               <div className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
                                 <Loader2 className="size-4 animate-spin" aria-hidden />
                                 Loading notes…
@@ -865,7 +1053,7 @@ function PortalCustomerDashboardInner() {
                             ) : (
                               <ul className="space-y-3">
                                 {notes.map((n, i) => (
-                                  <li key={`${row.id}-n-${i}`} className="text-[12px] leading-relaxed">
+                                  <li key={`${row.id}-pn-${i}`} className="text-[12px] leading-relaxed">
                                     <p className="font-medium text-[var(--text-secondary)]">
                                       {n.date
                                         ? new Date(n.date).toLocaleString(undefined, {
@@ -888,44 +1076,6 @@ function PortalCustomerDashboardInner() {
                     </Fragment>
                   );
                 })}
-              </tbody>
-            </table>
-            {(data?.tickets ?? []).length === 0 ? (
-              <p className="p-4 text-[13px] text-[var(--text-secondary)]">No open tickets.</p>
-            ) : null}
-          </div>
-        ) : null}
-
-        {tab === "projects" && showProjects ? (
-          <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)]">
-            <table className="min-w-full text-left text-[13px]">
-              <thead className="border-b border-[var(--border)] text-[11px] uppercase tracking-wide text-[var(--text-muted)]">
-                <tr>
-                  <th className="px-3 py-2 font-medium">Name</th>
-                  <th className="px-3 py-2 font-medium">Status</th>
-                  <th className="px-3 py-2 font-medium">% complete</th>
-                  <th className="hidden px-3 py-2 font-medium sm:table-cell">Engineer</th>
-                  <th className="hidden px-3 py-2 font-medium md:table-cell">Target</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(data?.projects ?? []).map((row) => (
-                  <tr key={row.id} className="border-b border-[var(--border)] last:border-0">
-                    <td className="max-w-[220px] truncate px-3 py-2">{row.name}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-[var(--text-secondary)]">{row.status}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-[var(--text-secondary)]">
-                      {row.percentComplete != null ? `${row.percentComplete}%` : "—"}
-                    </td>
-                    <td className="hidden whitespace-nowrap px-3 py-2 text-[var(--text-secondary)] sm:table-cell">
-                      {row.engineer}
-                    </td>
-                    <td className="hidden whitespace-nowrap px-3 py-2 text-[var(--text-secondary)] md:table-cell">
-                      {row.targetDate
-                        ? new Date(row.targetDate).toLocaleDateString(undefined, { dateStyle: "medium" })
-                        : "—"}
-                    </td>
-                  </tr>
-                ))}
               </tbody>
             </table>
             {(data?.projects ?? []).length === 0 ? (
@@ -987,6 +1137,87 @@ function PortalCustomerDashboardInner() {
         </footer>
       ) : (
         <footer className="h-2" />
+      )}
+
+      {ticketModalOpen && ticketModalRow && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setTicketModalOpen(false);
+          }}
+        >
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div
+            className="relative z-10 flex flex-col rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] shadow-2xl"
+            style={{ width: "700px", maxWidth: "90vw", maxHeight: "85vh", overflow: "hidden" }}
+          >
+            <div className="flex shrink-0 items-start justify-between border-b border-[var(--border)] px-6 py-4">
+              <div className="min-w-0 flex-1 pr-4">
+                <h2 className="truncate text-[15px] font-semibold text-white">{ticketModalRow.summary}</h2>
+                <div className="mt-2 flex flex-wrap gap-3 text-[12px] text-[var(--text-secondary)]">
+                  <span>Status: <span className="text-white">{ticketModalRow.status}</span></span>
+                  <span>Priority: <span className="text-white">{ticketModalRow.priority}</span></span>
+                  {ticketModalRow.engineer ? (
+                    <span>Engineer: <span className="text-white">{ticketModalRow.engineer}</span></span>
+                  ) : null}
+                  {ticketModalRow.lastUpdated ? (
+                    <span>Updated: <span className="text-white">{new Date(ticketModalRow.lastUpdated).toLocaleDateString()}</span></span>
+                  ) : null}
+                </div>
+                {selfServiceUrl ? (
+                  <a
+                    href={selfServiceUrl.replace(/\/$/, "")}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 inline-flex items-center gap-1.5 text-[12px] text-[var(--accent)] hover:underline"
+                  >
+                    <ExternalLink className="size-3" />
+                    View self-service portal
+                  </a>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => setTicketModalOpen(false)}
+                className="shrink-0 text-[var(--text-secondary)] transition-colors hover:text-white"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+              {ticketNotesLoadingId === ticketModalRow.id ? (
+                <div className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
+                  <Loader2 className="size-4 animate-spin" />
+                  Loading notes...
+                </div>
+              ) : (ticketNotesById[ticketModalRow.id] ?? []).length === 0 ? (
+                <p className="text-[12px] text-[var(--text-muted)]">No notes to show.</p>
+              ) : (
+                <ul className="space-y-4">
+                  {(ticketNotesById[ticketModalRow.id] ?? []).map((n, i) => (
+                    <li key={i} className="border-b border-[var(--border)] pb-4 last:border-0 last:pb-0">
+                      <p className="mb-1 text-[11px] font-medium text-[var(--text-secondary)]">
+                        {n.date ? new Date(n.date).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—"} · {n.author}
+                      </p>
+                      <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--text-primary)]">
+                        {cleanTicketNoteContent(n.content)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="flex shrink-0 justify-end border-t border-[var(--border)] px-6 py-3">
+              <button
+                type="button"
+                onClick={() => setTicketModalOpen(false)}
+                className="text-[13px] text-[var(--text-secondary)] transition-colors hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

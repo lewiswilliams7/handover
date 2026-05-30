@@ -12,6 +12,7 @@ import { TrialAutoStartFromQuery } from "@/components/trial-auto-start-from-quer
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
+  display: "swap",
 });
 
 const siteUrlRaw = process.env.NEXT_PUBLIC_APP_URL || "https://gethandover.uk";
@@ -41,8 +42,9 @@ export const metadata: Metadata = {
     title: "Handover",
   },
   openGraph: {
-    title: "Handover - AI-Powered MSP Reporting Tool",
-    description: META_DESCRIPTION,
+    title: "Handover — Automated MSP Client Reporting",
+    description:
+      "Connect HaloPSA or ConnectWise and generate professional client reports in 30 seconds. Built for MSPs.",
     url: "https://gethandover.uk",
     siteName: "Handover",
     images: [
@@ -50,16 +52,15 @@ export const metadata: Metadata = {
         url: "https://gethandover.uk/og-image.png",
         width: 1200,
         height: 630,
-        alt: "Handover - MSP reporting tool",
       },
     ],
-    locale: "en_GB",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Handover - AI-Powered MSP Reporting Tool",
-    description: META_DESCRIPTION,
+    title: "Handover — Automated MSP Client Reporting",
+    description:
+      "Connect HaloPSA or ConnectWise and generate professional client reports in 30 seconds.",
     images: ["https://gethandover.uk/og-image.png"],
   },
   keywords: [

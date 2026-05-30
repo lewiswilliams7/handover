@@ -115,8 +115,7 @@ export function ReferralCodeLanding({
             </div>
 
             <p className="mx-auto mt-8 max-w-[420px] text-[12px] leading-relaxed text-[var(--text-muted)]">
-              Free month applied automatically at checkout. Card required - cancel before month 2 to
-              pay nothing.
+              Free month applied automatically at checkout. Cancel before month 2 to pay nothing.
             </p>
           </ScrollRevealItem>
         </div>

@@ -238,7 +238,7 @@ export default function HandoverVsRewstVsN8nMspReportingPage() {
 
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               Handover starts at £29 per month for solo use and £79 per month for teams.
-              There&apos;s a free trial with no credit card required.
+              There&apos;s a 14-day free trial.
             </p>
 
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
@@ -288,8 +288,7 @@ export default function HandoverVsRewstVsN8nMspReportingPage() {
                   Start free trial
                 </h3>
                 <p className="mt-2 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
-                  Connect HaloPSA or ConnectWise and ship your next client report in minutes — no
-                  card required.
+                  Connect HaloPSA or ConnectWise and ship your next client report in minutes.
                 </p>
                 <div className="mt-5">
                   <Link

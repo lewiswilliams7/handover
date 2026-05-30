@@ -107,6 +107,48 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+
+  /* Typography scale */
+  --t-display: 36px;
+  --t-h1: 28px;
+  --t-h2: 22px;
+  --t-h3: 17px;
+  --t-h4: 15px;
+  --t-body: 14px;
+  --t-body-sm: 13px;
+  --t-caption: 12px;
+  --t-label: 10.5px;
+
+  /* Text opacity tokens */
+  --text-primary:   rgba(255, 255, 255, 0.96);
+  --text-default:   rgba(255, 255, 255, 0.85);
+  --text-secondary: rgba(255, 255, 255, 0.65);
+  --text-tertiary:  rgba(255, 255, 255, 0.48);
+  --text-disabled:  rgba(255, 255, 255, 0.28);
+
+  /* Surface tokens */
+  --surface-0: #0f1525;
+  --surface-1: #141c2e;
+  --surface-2: #1a2338;
+  --surface-3: #202a42;
+
+  /* Shadow tokens */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.3);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+.mono-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--text-tertiary);
 }
 
 .dark {
@@ -132,6 +174,13 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+
+  /* Text opacity tokens */
+  --text-primary:   rgba(255, 255, 255, 0.96);
+  --text-default:   rgba(255, 255, 255, 0.85);
+  --text-secondary: rgba(255, 255, 255, 0.65);
+  --text-tertiary:  rgba(255, 255, 255, 0.48);
+  --text-disabled:  rgba(255, 255, 255, 0.28);
 }
 
 @layer base {
@@ -159,6 +208,34 @@
     font-weight: 700;
     color: var(--text-primary);
   }
+}
+
+.app-shell-bg::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(800px 600px at 10% 0%, rgba(56, 189, 248, 0.04), transparent 60%),
+    radial-gradient(600px 500px at 90% 100%, rgba(99, 102, 241, 0.03), transparent 65%);
+  animation: ambientDrift 90s ease-in-out infinite alternate;
+}
+
+@keyframes ambientDrift {
+  0%   { opacity: 0.6; transform: scale(1) translate(0, 0); }
+  50%  { opacity: 1;   transform: scale(1.05) translate(1%, 1%); }
+  100% { opacity: 0.7; transform: scale(1) translate(-1%, -1%); }
+}
+
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.interactive {
+  transition: background-color 150ms ease, border-color 150ms ease, color 100ms ease, transform 150ms ease, opacity 100ms ease;
 }
 
 @layer base {
@@ -402,7 +479,7 @@
       transparent 68%
     );
     opacity: 0.22;
-    animation: drift1 18s ease-in-out infinite;
+    animation: drift1 25s ease-in-out infinite;
     will-change: transform;
   }
 
@@ -415,12 +492,12 @@
     bottom: 5%;
     background: radial-gradient(
       circle,
-      color-mix(in srgb, #60d8ff 22%, transparent) 0%,
-      color-mix(in srgb, #60d8ff 9%, transparent) 42%,
+      color-mix(in srgb, var(--accent) 22%, transparent) 0%,
+      color-mix(in srgb, var(--accent) 9%, transparent) 42%,
       transparent 70%
     );
     opacity: 0.2;
-    animation: drift2 20s ease-in-out infinite;
+    animation: drift2 30s ease-in-out infinite;
     will-change: transform;
   }
 
@@ -478,6 +555,29 @@
   .page-route-fade {
     animation: page-route-enter 0.3s ease-out forwards;
     opacity: 0;
+  }
+  body.onboarding-fullscreen .page-route-fade {
+    padding-top: 0 !important;
+  }
+  @keyframes slideInRight {
+    from {
+      opacity: 0;
+      transform: translateX(32px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+  @keyframes slideInLeft {
+    from {
+      opacity: 0;
+      transform: translateX(-32px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
   }
   .nav-site-link {
     position: relative;
@@ -538,6 +638,22 @@
     flex-direction: column;
     justify-content: center;
   }
+  .marketing-aurora {
+    background:
+      radial-gradient(80% 60% at 15% 10%, oklch(0.42 0.18 240 / 0.28), transparent 60%),
+      radial-gradient(70% 50% at 88% 25%, oklch(0.38 0.2 285 / 0.2), transparent 65%),
+      radial-gradient(90% 70% at 50% 92%, oklch(0.3 0.15 235 / 0.25), transparent 70%);
+    background-attachment: fixed;
+    animation: aurora-drift 90s ease-in-out infinite alternate;
+  }
+  @keyframes aurora-drift {
+    0% {
+      background-position: 0% 0%, 100% 0%, 50% 100%;
+    }
+    100% {
+      background-position: 8% 6%, 93% 7%, 46% 94%;
+    }
+  }
   @media (min-width: 768px) {
     .marketing-page-hero {
       min-height: min(45vh, 480px);
@@ -555,19 +671,12 @@
     }
   }
   .home-hero-headline-shimmer {
-    background: linear-gradient(
-      105deg,
-      var(--text-primary) 0%,
-      var(--text-primary) 42%,
-      #0ea5e9 50%,
-      var(--text-primary) 58%,
-      var(--text-primary) 100%
-    );
-    background-size: 220% 100%;
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    animation: home-hero-headline-shimmer 10s ease-in-out infinite;
+    color: #ffffff;
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    -webkit-text-fill-color: currentColor;
+    animation: none;
   }
 
   .footer-site-link {
@@ -663,7 +772,7 @@
       from 0deg,
       transparent 0deg,
       var(--accent) 0deg,
-      #60d8ff 90deg,
+      var(--accent) 90deg,
       transparent 120deg,
       transparent 360deg
     );
@@ -706,7 +815,7 @@
       transparent 0deg,
       #7c3aed 0deg,
       #a78bfa 60deg,
-      #60d8ff 90deg,
+      var(--accent) 90deg,
       transparent 120deg,
       transparent 360deg
     );
@@ -717,7 +826,7 @@
     filter: blur(4px);
     box-shadow:
       0 0 24px 8px color-mix(in srgb, #7c3aed 45%, transparent),
-      0 0 48px 16px color-mix(in srgb, #60d8ff 22%, transparent);
+      0 0 48px 16px color-mix(in srgb, var(--accent) 22%, transparent);
   }
 
   .enterprise-card-wrapper::after {
@@ -736,15 +845,15 @@
   }
 
   .text-gradient-brand {
-    background: linear-gradient(135deg, var(--accent) 0%, #60d8ff 50%, #a78bfa 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent !important;
-    color: transparent;
+    color: var(--accent);
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    -webkit-text-fill-color: currentColor;
   }
 
   .pricing-honest-gradient {
-    background: linear-gradient(135deg, var(--accent) 0%, #60d8ff 50%, #a78bfa 100%);
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent) 50%, #a78bfa 100%);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent !important;
@@ -943,122 +1052,75 @@
   }
 
   .pricing-card-wrapper.pricing-card-pro {
-    --card-border-base: rgba(56, 189, 248, 0.2);
-    box-shadow:
-      0 0 40px rgba(56, 189, 248, 0.25),
-      0 0 80px rgba(56, 189, 248, 0.1);
+    --card-border-base: rgba(255, 255, 255, 0.08);
+    box-shadow: none;
   }
 
   .pricing-card-wrapper.pricing-card-pro::after {
-    background: conic-gradient(
-      from var(--border-angle),
-      transparent 20%,
-      #38bdf8 40%,
-      #7dd3fc 50%,
-      #0ea5e9 60%,
-      transparent 80%
-    );
-    animation: borderSpin 4s linear infinite;
+    display: none;
   }
 
   .pricing-card-wrapper.pricing-card-team {
-    --card-border-base: rgba(168, 85, 247, 0.2);
+    --card-border-base: rgba(34, 211, 238, 0.3);
     box-shadow:
-      0 0 40px rgba(168, 85, 247, 0.25),
-      0 0 80px rgba(168, 85, 247, 0.1);
+      0 0 80px -30px rgba(34, 211, 238, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    outline: 1px solid rgba(34, 211, 238, 0.3);
+    outline-offset: 0;
+    animation: team-glow-pulse 4s ease-in-out infinite;
   }
 
   .pricing-card-wrapper.pricing-card-team::after {
     background: conic-gradient(
       from var(--border-angle),
       transparent 20%,
-      #a855f7 40%,
-      #c084fc 50%,
-      #7c3aed 60%,
+      #22d3ee 40%,
+      #67e8f9 50%,
+      #06b6d4 60%,
       transparent 80%
     );
     animation: borderSpin 5s linear infinite;
   }
-
-  @keyframes enterprise-gold-border-pulse {
+  @keyframes team-glow-pulse {
     0%,
     100% {
-      box-shadow:
-        0 0 36px rgba(201, 168, 76, 0.32),
-        0 0 72px rgba(255, 215, 0, 0.14);
+      box-shadow: 0 0 80px -30px rgba(34, 211, 238, 0.35);
     }
     50% {
-      box-shadow:
-        0 0 52px rgba(255, 215, 0, 0.36),
-        0 0 96px rgba(201, 168, 76, 0.2);
+      box-shadow: 0 0 80px -30px rgba(34, 211, 238, 0.55);
     }
+  }
+
+  .pricing-team-premium-dots::before,
+  .pricing-team-premium-dots::after {
+    background: none !important;
+    box-shadow: none !important;
   }
 
   .pricing-card-wrapper.pricing-card-enterprise {
-    --ent-sheen-x: 50%;
-    --ent-sheen-y: 50%;
-    --card-border-base: rgba(201, 168, 76, 0.38);
-    box-shadow:
-      0 0 40px rgba(201, 168, 76, 0.28),
-      0 0 80px rgba(255, 215, 0, 0.12);
-    animation: enterprise-gold-border-pulse 3.6s ease-in-out infinite;
+    --card-border-base: rgba(255, 255, 255, 0.08);
+    box-shadow: none;
   }
 
   .pricing-card-wrapper.pricing-card-enterprise::after {
-    background: conic-gradient(
-      from var(--border-angle),
-      transparent 18%,
-      #b88a28 32%,
-      #c9a84c 42%,
-      #ffd700 50%,
-      #e6c85c 58%,
-      #a67c2a 68%,
-      transparent 82%
-    );
-    animation: borderSpin 6s linear infinite;
+    display: none;
   }
 
-  .pricing-enterprise-holo-sheen {
-    pointer-events: none;
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    border-radius: inherit;
-    opacity: 0.62;
-    mix-blend-mode: soft-light;
-    background:
-      radial-gradient(
-        ellipse 88% 68% at var(--ent-sheen-x, 50%) var(--ent-sheen-y, 50%),
-        rgba(255, 215, 0, 0.3) 0%,
-        rgba(201, 168, 76, 0.1) 38%,
-        transparent 58%
-      ),
-      linear-gradient(
-        118deg,
-        transparent 0%,
-        rgba(201, 168, 76, 0.2) 28%,
-        rgba(255, 215, 0, 0.26) 42%,
-        rgba(230, 200, 92, 0.14) 56%,
-        transparent 72%
-      ),
-      linear-gradient(
-        305deg,
-        transparent 35%,
-        rgba(255, 248, 220, 0.16) 48%,
-        transparent 62%
-      );
+  .pricing-enterprise-holo-sheen,
+  .pricing-enterprise-premium-dots {
+    display: none !important;
   }
 
   .pricing-team-benefits-callout {
-    background: rgba(168, 85, 247, 0.06);
-    border: 1px solid rgba(168, 85, 247, 0.15);
+    background: rgba(34, 211, 238, 0.06);
+    border: 1px solid rgba(34, 211, 238, 0.25);
     border-radius: var(--radius);
     padding: 12px 16px;
     margin-top: auto;
     margin-bottom: 16px;
     text-align: center;
     font-size: 12px;
-    color: rgba(168, 85, 247, 0.7);
+    color: rgba(34, 211, 238, 0.85);
   }
 
   /* Pricing: Pro card premium (individual tab only) */
@@ -1077,19 +1139,19 @@
     font-size: 12px;
     font-weight: 700;
     color: #fff;
-    background: linear-gradient(135deg, var(--accent), #60d8ff);
+    background: linear-gradient(135deg, var(--accent), var(--accent));
     box-shadow: 0 0 20px rgba(var(--accent-rgb), 0.4);
     animation: pricing-pro-badge-pulse 2.4s ease-in-out infinite;
   }
   .pricing-pro-premium-price {
-    font-size: 52px;
-    font-weight: 800;
+    color: #ffffff;
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    font-size: 4.5rem;
+    font-weight: 600;
+    letter-spacing: -0.04em;
     line-height: 1;
-    letter-spacing: -0.02em;
-    background: linear-gradient(135deg, #ffffff 0%, var(--accent) 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
   }
   .pricing-pro-feature-row {
     display: flex;
@@ -1107,10 +1169,6 @@
   .pricing-pro-feature-row:hover {
     border-left-color: color-mix(in srgb, var(--accent) 55%, transparent);
     background-color: color-mix(in srgb, var(--accent) 6%, transparent);
-  }
-  .pricing-pro-feature-inline-icon {
-    flex-shrink: 0;
-    margin-top: 2px;
   }
   .pricing-pro-premium-cta {
     position: relative;
@@ -1160,19 +1218,18 @@
   }
 
   .pricing-team-title-gradient {
-    background: linear-gradient(135deg, #a855f7, #7c3aed, #6d28d9);
-    -webkit-background-clip: text;
+    color: #ffffff;
+    background: none;
+    -webkit-background-clip: unset;
     background-clip: text;
-    -webkit-text-fill-color: transparent;
-    color: transparent;
+    -webkit-text-fill-color: currentColor;
   }
 
   .pricing-team-price-gradient {
-    background: linear-gradient(135deg, #c084fc, #a855f7, #7c3aed);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    color: transparent;
+    color: #ffffff;
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
   }
 
   .pricing-team-price-size {
@@ -1637,7 +1694,7 @@ nav.h-14 img[alt="Handover"] {
       from 0deg,
       transparent 0deg,
       var(--accent) 0deg,
-      #60d8ff 90deg,
+      var(--accent) 90deg,
       transparent 120deg,
       transparent 360deg
     ) !important;
@@ -1649,7 +1706,7 @@ nav.h-14 img[alt="Handover"] {
       transparent 0deg,
       #7c3aed 0deg,
       #a78bfa 60deg,
-      #60d8ff 90deg,
+      var(--accent) 90deg,
       transparent 120deg,
       transparent 360deg
     ) !important;
@@ -1684,9 +1741,7 @@ nav.h-14 img[alt="Handover"] {
   }
   .pricing-card-wrapper.pricing-card-enterprise {
     animation: none !important;
-    box-shadow:
-      0 0 40px rgba(201, 168, 76, 0.28),
-      0 0 80px rgba(255, 215, 0, 0.12);
+    box-shadow: none;
   }
   .pricing-pro-premium-badge,
   .pricing-pro-feature-row,
@@ -1713,10 +1768,10 @@ nav.h-14 img[alt="Handover"] {
 /* Hero drift orbs: unlayered + !important so @layer utilities cannot override component-layer animations */
 @media (prefers-reduced-motion: no-preference) {
   .home-hero-drift-orb--a {
-    animation: drift1 18s ease-in-out infinite !important;
+    animation: drift1 25s ease-in-out infinite !important;
   }
   .home-hero-drift-orb--b {
-    animation: drift2 20s ease-in-out infinite !important;
+    animation: drift2 30s ease-in-out infinite !important;
   }
 }
 

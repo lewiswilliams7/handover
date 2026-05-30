@@ -1,6 +1,6 @@
 import useSWR, { mutate as globalMutate } from "swr";
 
-const CACHE_TTL = 3 * 60 * 1000;
+const CACHE_TTL = 5 * 60 * 1000;
 
 type Fetcher<T> = () => Promise<T>;
 
@@ -33,7 +33,7 @@ function usePsaSWR<T>(key: readonly unknown[] | null, fetcher: Fetcher<T>) {
 export function useHaloTickets(enabled = true) {
   return usePsaSWR(
     enabled ? ["psa", "halo", "tickets"] as const : null,
-    () => fetchJson<{ tickets: unknown[] }>("/api/halo/tickets", { method: "POST", body: JSON.stringify({ type: "tickets", count: 1000 }) }),
+    () => fetchJson<{ tickets: unknown[] }>("/api/halo/tickets", { method: "POST", body: JSON.stringify({ type: "tickets", count: 1000, includeDetails: false }) }),
   );
 }
 
