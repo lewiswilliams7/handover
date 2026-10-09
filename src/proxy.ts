@@ -14,7 +14,19 @@ function pathnameRequiresConfirmedEmail(pathname: string): boolean {
   if (pathname === "/") return true;
   if (pathname.startsWith("/dashboard")) return true;
   if (pathname.startsWith("/account")) return true;
+  if (pathname.startsWith("/settings")) return true;
+  if (pathname === "/onboarding") return true;
   return false;
+}
+
+function isAllowedBeforeEmailVerification(pathname: string): boolean {
+  if (pathname.startsWith("/auth")) return true;
+  if (pathname === "/onboarding/results") return true;
+  return (
+    pathname === "/api/auth/sign-in-hint" ||
+    pathname === "/api/auth/scan-claim-redirect" ||
+    pathname.startsWith("/api/auth/email-verification/")
+  );
 }
 
 export async function proxy(request: NextRequest) {
@@ -25,22 +37,63 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
+  const mustVerify = user
+    ? await shouldRedirectToVerifyEmailPage(
+        (() => {
+          try {
+            return createServiceRoleClient();
+          } catch {
+            return supabase;
+          }
+        })(),
+        user,
+      )
+    : false;
+
+  if (user && mustVerify && pathname === "/") {
+    let hasClaimedScan = false;
+    try {
+      const admin = createServiceRoleClient();
+      const { data } = await admin
+        .from("scan_sessions")
+        .select("id")
+        .eq("claimed_by_user_id", user.id)
+        .eq("status", "claimed")
+        .limit(1)
+        .maybeSingle();
+      hasClaimedScan = Boolean(data?.id);
+    } catch {
+      // Verification redirects must remain safe if the scan lookup is unavailable.
+    }
+    if (hasClaimedScan) {
+      const resultsUrl = request.nextUrl.clone();
+      resultsUrl.pathname = "/onboarding/results";
+      resultsUrl.search = "";
+      const redirectRes = NextResponse.redirect(resultsUrl);
+      response.cookies.getAll().forEach((c) => {
+        redirectRes.cookies.set(c.name, c.value);
+      });
+      return redirectRes;
+    }
+  }
 
   if (
     user &&
-    (await shouldRedirectToVerifyEmailPage(
-      (() => {
-        try {
-          return createServiceRoleClient();
-        } catch {
-          // Fail open to session client if service role is unavailable.
-          return supabase;
-        }
-      })(),
-      user,
-    )) &&
+    mustVerify &&
+    pathname.startsWith("/api") &&
+    !isAllowedBeforeEmailVerification(pathname)
+  ) {
+    return NextResponse.json(
+      { ok: false, error: "email_verification_required" },
+      { status: 403 },
+    );
+  }
+
+  if (
+    user &&
+    mustVerify &&
     pathnameRequiresConfirmedEmail(pathname) &&
-    !pathname.startsWith("/api")
+    !isAllowedBeforeEmailVerification(pathname)
   ) {
     const verifyUrl = request.nextUrl.clone();
     verifyUrl.pathname = "/auth/verify-email";

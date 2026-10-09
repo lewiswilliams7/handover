@@ -15,6 +15,7 @@
 
 # next.js
 /.next/
+/.next-build/
 /out/
 
 # production
@@ -36,8 +37,17 @@ yarn-error.log*
 # vercel
 .vercel
 
+# Supabase CLI local link metadata
+/supabase/.temp/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
 
 .vercel
+
+# Sentry Config File
+.env.sentry-build-plugin
+
+.vercel
+.env*

@@ -139,28 +139,17 @@ export function TrialBanner({ className, plan }: { className?: string; plan?: st
     subtext =
       "Upgrade now to keep your team's access and scheduled reports running.";
   } else if (urgency === "calm") {
-    headline = isPro ? (
+    headline = (
       <>
         <span className="font-semibold tabular-nums">
           {daysRemaining} day{daysRemaining === 1 ? "" : "s"} left
         </span>
-        {" on your Professional trial"}
-      </>
-    ) : (
-      <>
-        <span className="font-semibold tabular-nums">
-          {daysRemaining} day{daysRemaining === 1 ? "" : "s"} left
-        </span>
-        {" on your team trial"}
+        {" on your trial"}
       </>
     );
-    subtext = isPro
-      ? `Trial ends ${dateStr}. Upgrade to keep generating client-ready reports.`
-      : `Trial ends ${dateStr}. Upgrade now to keep your team's access and scheduled reports running.`;
+    subtext = `Trial ends ${dateStr}. Upgrade to keep your access and scheduled reports running.`;
   } else {
-    headline = isPro
-      ? `${daysRemaining} day${daysRemaining === 1 ? "" : "s"} left on your Professional trial`
-      : `${daysRemaining} day${daysRemaining === 1 ? "" : "s"} left on your team trial`;
+    headline = `${daysRemaining} day${daysRemaining === 1 ? "" : "s"} left on your trial`;
     if (urgency === "amber") {
       subtext = "Your trial ends soon - upgrade to avoid losing access.";
     } else {
@@ -172,8 +161,8 @@ export function TrialBanner({ className, plan }: { className?: string; plan?: st
     urgency === "expired"
       ? "Restore access now →"
       : isPro
-        ? "Upgrade to Pro →"
-        : "Upgrade team plan →";
+        ? "Upgrade to Starter →"
+        : "Upgrade to Growth →";
 
   return (
     <div

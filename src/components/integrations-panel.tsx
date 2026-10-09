@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronLeft, Cog, Copy, EyeOff, Loader2, Lock, Plus, Shield, X } from "lucide-react";
 
 import { CardMouseSpotlight } from "@/components/card-mouse-spotlight";
+import { HaloCredentialsFields } from "@/components/halo-credentials-fields";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
@@ -41,6 +42,8 @@ type IntegrationsPanelProps = {
   onConsumedInitialOpenDetail?: () => void;
   haloConnected: boolean;
   haloUrl: string;
+  haloClientIdMasked: string;
+  haloClientIdLength: number | null;
   haloUpdatedAt: string | null;
   haloImportedCount: number;
   haloConfigOpen: boolean;
@@ -258,6 +261,12 @@ function maskZapierKeyDisplay(key: string): string {
   return `${key.slice(0, 4)}${"•".repeat(16)}`;
 }
 
+function formatConnectionDate(value: string | null): string {
+  if (!value) return "Not recorded";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Not recorded" : date.toLocaleString();
+}
+
 export function IntegrationsPanel({
   hasProFeatures,
   userTeamId,
@@ -266,7 +275,9 @@ export function IntegrationsPanel({
   onConsumedInitialOpenDetail,
   haloConnected,
   haloUrl,
-  haloUpdatedAt: _haloUpdatedAt,
+  haloClientIdMasked,
+  haloClientIdLength,
+  haloUpdatedAt,
   haloImportedCount,
   haloConfigOpen,
   setHaloConfigOpen,
@@ -354,7 +365,16 @@ export function IntegrationsPanel({
   const [activeIntegration, setActiveIntegration] = useState<ActiveIntegrationId | null>(null);
   const [disconnectConfirm, setDisconnectConfirm] = useState<DisconnectConfirmId | null>(null);
   const [haloDetailTab, setHaloDetailTab] = useState<"connection" | "settings">("connection");
+  const [haloCredentialsEntryMode, setHaloCredentialsEntryMode] = useState(false);
+  const wasHaloLoading = useRef(false);
   const [cwDetailTab, setCwDetailTab] = useState<"connection" | "settings">("connection");
+
+  useEffect(() => {
+    if (wasHaloLoading.current && !haloLoading && haloConnected && !haloError) {
+      setHaloCredentialsEntryMode(false);
+    }
+    wasHaloLoading.current = haloLoading;
+  }, [haloConnected, haloError, haloLoading]);
 
   const openIntegration = useCallback(
     (id: ActiveIntegrationId) => {
@@ -487,7 +507,7 @@ export function IntegrationsPanel({
         onClick={onUpgrade}
         disabled={upgradeDisabled}
       >
-        Upgrade to Pro
+        Upgrade to Starter
       </Button>
     </div>
   );
@@ -583,7 +603,7 @@ export function IntegrationsPanel({
                   />
                   <h2 className="text-xl font-semibold text-[var(--text-primary)]">{INTEGRATION_DETAIL_TITLES.halopsa}</h2>
                 </div>
-                {(!haloConnected || haloDetailTab === "connection") ? (
+                {(!haloConnected || haloCredentialsEntryMode) ? (
                   <>
                     <DialogHeader className="space-y-1 pb-4 text-left">
                       <p className="text-[13px] leading-relaxed text-[var(--text-secondary)]">
@@ -637,62 +657,45 @@ export function IntegrationsPanel({
                             unknown={integrationsBootstrapping}
                           />
                         </div>
-                        {haloConnected && haloUrl ? (
-                          <p className="mb-4 text-[12px] text-[var(--text-muted)]">Connected to {haloUrl}</p>
+                        {haloConnected ? (
+                          <div className="mb-4 space-y-2 rounded-[var(--radius)] border border-emerald-500/20 bg-emerald-500/5 p-4 text-[12px]">
+                            <p className="font-medium text-[var(--text-primary)]">Connected</p>
+                            <p className="text-[var(--text-muted)]">
+                              Instance: <span className="text-[var(--text-secondary)]">{haloUrl || "Unknown"}</span>
+                            </p>
+                            <p className="text-[var(--text-muted)]">
+                              Last used successfully:{" "}
+                              <span className="text-[var(--text-secondary)]">
+                                {formatConnectionDate(haloUpdatedAt)}
+                              </span>
+                            </p>
+                            <p className="text-[var(--text-muted)]">
+                              Client ID:{" "}
+                              <span className="font-mono text-[var(--text-secondary)]">
+                                {haloClientIdMasked || "••••"}{" "}
+                                {haloClientIdLength != null ? `(${haloClientIdLength} characters)` : ""}
+                              </span>
+                            </p>
+                            <p className="text-[var(--text-muted)]">
+                              Client secret:{" "}
+                              <span className="font-mono text-[var(--text-secondary)]">••••••••••••</span>
+                            </p>
+                          </div>
                         ) : null}
-                        {!haloConnected ? (
+                        {!haloConnected || haloCredentialsEntryMode ? (
                           <div className="space-y-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-4">
-                            <div className="space-y-2">
-                              <label className="text-[13px] font-medium text-[var(--text-secondary)]">HaloPSA URL</label>
-                              <input
-                                className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)]"
-                                placeholder="https://yourcompany.halopsa.com"
-                                value={haloUrlInput}
-                                onChange={(e) => setHaloUrlInput(e.target.value)}
-                              />
-                              <p className="mt-1.5 text-[11px] text-[var(--text-muted)] leading-relaxed">
-                                Enter your HaloPSA instance URL without any path suffix. Examples:{" "}
-                                <span className="text-[var(--text-secondary)] font-medium">
-                                  https://halo.yourcompany.com
-                                </span>{" "}
-                                or{" "}
-                                <span className="text-[var(--text-secondary)] font-medium">
-                                  https://yourcompany.halopsa.com
-                                </span>
-                                . Do not include /halo or any subfolder path. For on-prem instances ensure your API
-                                application is enabled under Configuration → Integrations → HaloPSA API.
-                              </p>
-                            </div>
-                            <div className="space-y-2">
-                              <label className="text-[13px] font-medium text-[var(--text-secondary)]">
-                                Tenant (optional)
-                              </label>
-                              <input
-                                className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)]"
-                                placeholder="yourcompany"
-                                value={haloTenant}
-                                onChange={(e) => setHaloTenant(e.target.value)}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <label className="text-[13px] font-medium text-[var(--text-secondary)]">Client ID</label>
-                              <input
-                                className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)]"
-                                value={haloClientId}
-                                onChange={(e) => setHaloClientId(e.target.value)}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <label className="text-[13px] font-medium text-[var(--text-secondary)]">
-                                Client Secret
-                              </label>
-                              <input
-                                type="password"
-                                className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)]"
-                                value={haloClientSecret}
-                                onChange={(e) => setHaloClientSecret(e.target.value)}
-                              />
-                            </div>
+                            <HaloCredentialsFields
+                              url={haloUrlInput}
+                              onUrlChange={setHaloUrlInput}
+                              tenant={haloTenant}
+                              onTenantChange={setHaloTenant}
+                              clientId={haloClientId}
+                              onClientIdChange={setHaloClientId}
+                              clientSecret={haloClientSecret}
+                              onClientSecretChange={setHaloClientSecret}
+                              variant="configuration"
+                              idPrefix="configuration-halo"
+                            />
                             <button
                               type="button"
                               className="w-full px-3 py-2 text-left text-sm font-medium text-[var(--text-primary)]"
@@ -709,14 +712,26 @@ export function IntegrationsPanel({
                                 <li>Copy the Client ID and Client Secret</li>
                               </ol>
                             ) : null}
-                            {haloError ? <p className="text-sm text-[var(--danger)]">{haloError}</p> : null}
+                            {haloError ? (
+                              <div>
+                                <p className="text-sm text-[var(--danger)]">{haloError}</p>
+                                <p className="mt-1 text-[12px] text-white/40">
+                                  Double-check your Client ID and Secret in HaloPSA →
+                                  Configuration → Integrations.
+                                </p>
+                              </div>
+                            ) : null}
                             <Button
                               type="button"
                               className="w-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
                               onClick={() => void onConnect()}
                               disabled={haloLoading}
                             >
-                              {haloLoading ? "Connecting..." : "Connect HaloPSA"}
+                              {haloLoading
+                                ? "Saving..."
+                                : haloCredentialsEntryMode
+                                  ? "Save and test connection"
+                                  : "Connect HaloPSA"}
                             </Button>
                           </div>
                         ) : (
@@ -724,19 +739,34 @@ export function IntegrationsPanel({
                             <Button
                               type="button"
                               className="w-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
-                              onClick={onImportTickets}
+                              onClick={() => void onTest()}
+                              disabled={haloTestLoading}
                             >
-                              Import tickets →
+                              {haloTestLoading ? "Testing..." : "Test connection"}
                             </Button>
                             <div className="flex flex-wrap gap-2">
                               <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                onClick={() => void onTest()}
-                                disabled={haloTestLoading}
+                                onClick={onImportTickets}
                               >
-                                {haloTestLoading ? "Testing..." : "Test connection"}
+                                Import tickets →
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setHaloCredentialsEntryMode(true);
+                                  setHaloUrlInput("");
+                                  setHaloTenant("");
+                                  setHaloClientId("");
+                                  setHaloClientSecret("");
+                                  setHaloHelpOpen(false);
+                                }}
+                              >
+                                Replace credentials
                               </Button>
                               <Button
                                 type="button"
@@ -752,7 +782,15 @@ export function IntegrationsPanel({
                             {haloPermissionWarning ? (
                               <p className="text-xs text-[var(--warning)]">{haloPermissionWarning}</p>
                             ) : null}
-                            {haloError ? <p className="text-sm text-[var(--danger)]">{haloError}</p> : null}
+                            {haloError ? (
+                              <div>
+                                <p className="text-sm text-[var(--danger)]">{haloError}</p>
+                                <p className="mt-1 text-[12px] text-white/40">
+                                  Double-check your Client ID and Secret in HaloPSA →
+                                  Configuration → Integrations.
+                                </p>
+                              </div>
+                            ) : null}
                           </div>
                         )}
                       </>
@@ -878,7 +916,15 @@ export function IntegrationsPanel({
                                 onChange={(e) => setCwClientIdInput(e.target.value)}
                               />
                             </div>
-                            {cwError ? <p className="text-sm text-[var(--danger)]">{cwError}</p> : null}
+                            {cwError ? (
+                              <div>
+                                <p className="text-sm text-[var(--danger)]">{cwError}</p>
+                                <p className="mt-1 text-[12px] text-white/40">
+                                  Check your Company ID and API keys in ConnectWise → System →
+                                  Members → API Members.
+                                </p>
+                              </div>
+                            ) : null}
                             {cwTestMessage ? (
                               <p
                                 className={cn(
@@ -949,7 +995,15 @@ export function IntegrationsPanel({
                                 {cwTestMessage}
                               </p>
                             ) : null}
-                            {cwError ? <p className="text-sm text-[var(--danger)]">{cwError}</p> : null}
+                            {cwError ? (
+                              <div>
+                                <p className="text-sm text-[var(--danger)]">{cwError}</p>
+                                <p className="mt-1 text-[12px] text-white/40">
+                                  Check your Company ID and API keys in ConnectWise → System →
+                                  Members → API Members.
+                                </p>
+                              </div>
+                            ) : null}
                           </div>
                         )}
                       </>
@@ -1144,14 +1198,14 @@ export function IntegrationsPanel({
                 <DialogHeader className="space-y-1 pb-4 text-left">
                   <p className="text-[13px] leading-relaxed text-[var(--text-secondary)]">
                     Zapier will let you trigger Handover when tickets change in other tools. We are finishing the
-                    hosted webhook and API key experience—preview the planned workflow below.
+                    hosted webhook and API key experience - preview the planned workflow below.
                   </p>
                 </DialogHeader>
                 <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-4 py-3 text-[13px] text-[var(--text-secondary)]">
                   <p className="font-medium text-[var(--text-primary)]">Coming soon</p>
                   <p className="mt-1">
                     You will generate an API key, copy the Handover webhook URL into a Zap action, and map ticket JSON
-                    into the request body—same flow described on the public Zapier overview when it ships.
+                    into the request body - same flow described on the public Zapier overview when it ships.
                   </p>
                 </div>
               </div>

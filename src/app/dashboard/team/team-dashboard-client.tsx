@@ -52,7 +52,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ScrollRevealItem } from "@/components/scroll-reveal-item";
-import { TrialBanner } from "@/components/trial-banner";
 import { useToast } from "@/components/toasts";
 import { cn } from "@/lib/utils";
 import type { TeamDashboardPermission } from "@/lib/team-dashboard-permission";
@@ -104,6 +103,7 @@ type OverviewPayload = {
   members: OverviewMember[];
   pendingInvites: OverviewInvite[];
   haloConnections: { user_id: string; updated_at: string }[];
+  cwConnections: { user_id: string; updated_at: string }[];
   usageStats: {
     dailyThisMonth: { date: string; day: number; count: number }[];
     memberMonthCounts: { user_id: string; display_name: string; count: number }[];
@@ -118,11 +118,9 @@ type OverviewPayload = {
 
 type TabId = "overview" | "members" | "settings";
 
-const PER_SEAT_MONTHLY_GENERATIONS = 200;
-
 const PERM_TOOLTIPS: Record<string, string> = {
   push_to_halo:
-    "Allows this member to push generated outputs back to HaloPSA tickets as notes",
+    "Allows this member to push generated outputs back to PSA tickets as notes",
   scheduled_reports:
     "Allows this member to create and manage scheduled weekly reports",
   excel_export: "Allows this member to export outputs as Excel files",
@@ -697,6 +695,7 @@ export function TeamDashboardClient() {
     members,
     pendingInvites,
     haloConnections,
+    cwConnections,
     permKeys,
     usageStats,
     viewerRole,
@@ -708,9 +707,20 @@ export function TeamDashboardClient() {
     typeof team.seat_limit === "number" && team.seat_limit >= 1 ? team.seat_limit : purchasedSeatLimit;
   const atTeamSeatPurchaseCap = seatLimitDisplay >= TEAM_LIMITS.team.seats;
   const haloConnected = haloConnections.length > 0;
+  const cwConnected = cwConnections.length > 0;
+  const psaConnected = haloConnected || cwConnected;
+  const psaConnectionStatusLabel =
+    haloConnected && cwConnected
+      ? "Both connected"
+      : haloConnected
+        ? "HaloPSA connected"
+        : cwConnected
+          ? "ConnectWise connected"
+          : "No active connection";
   const genLimit = team.generation_limit || 1;
   const genUsed = team.generation_count ?? 0;
   const genPct = Math.min(100, Math.round((genUsed / genLimit) * 100));
+  const generationsPerSeat = TEAM_LIMITS.team.generationsPerSeat;
   const isEnterprisePlan = normalizePlanLabel(team.plan ?? "") === "enterprise";
   const now = new Date();
   const monthName = now.toLocaleString("default", { month: "long", year: "numeric" });
@@ -738,7 +748,6 @@ export function TeamDashboardClient() {
 
   return (
     <div className="mx-auto max-w-5xl animate-in fade-in duration-300 space-y-8 px-4 py-10">
-      <TrialBanner />
       <div>
         <Link
           href="/"
@@ -823,7 +832,7 @@ export function TeamDashboardClient() {
                     Generations (billing period)
                   </p>
                   <p className="mt-2 text-[11px] leading-snug text-[var(--text-muted)]">
-                    200 generations per seat per month, pooled across your team
+                    {generationsPerSeat} generations per seat per month, pooled across your team
                   </p>
                 </CardMouseSpotlight>
               </ScrollRevealItem>
@@ -932,7 +941,7 @@ export function TeamDashboardClient() {
             <section className={cn(cardShell, "p-6 sm:p-7")} style={elevateCardStyle}>
               <h2 className={sectionTitleClass()}>Member usage this month</h2>
               <p className="mt-3 text-sm text-[var(--text-secondary)]">
-                Each bar shows usage against a {PER_SEAT_MONTHLY_GENERATIONS}/month seat allowance (team pool
+                Each bar shows usage against a {generationsPerSeat}/month seat allowance (team pool
                 is shared).
               </p>
             <ul className="mt-5 space-y-4">
@@ -943,7 +952,7 @@ export function TeamDashboardClient() {
                 )
                 .map((m, rowIdx) => {
                 const count = countByUser.get(m.user_id) ?? 0;
-                const pct = Math.min(100, (count / PER_SEAT_MONTHLY_GENERATIONS) * 100);
+                const pct = Math.min(100, (count / generationsPerSeat) * 100);
                 return (
                   <ScrollRevealItem key={m.id} index={rowIdx} className="block">
                   <li
@@ -1015,7 +1024,7 @@ export function TeamDashboardClient() {
           <section className={cn(cardShell, "p-6 sm:p-7")} style={elevateCardStyle}>
             <h2 className={sectionTitleClass()}>Members</h2>
             <p className="mt-3 text-sm text-[var(--text-secondary)]">
-              Each member has an individual allowance of 200 generations/month contributing to your team
+              Each member has an individual allowance of {generationsPerSeat} generations/month contributing to your team
               pool.
             </p>
             <div className="mt-5 min-w-0 [&_[data-slot=table-container]]:overflow-y-visible">
@@ -1285,7 +1294,7 @@ export function TeamDashboardClient() {
                   href="/pricing?tab=team"
                   className="mt-3 inline-flex text-sm font-semibold text-[var(--accent)] underline-offset-4 hover:underline"
                 >
-                  View Team plan & upgrade →
+                  View Growth plan & upgrade →
                 </Link>
               </div>
             )}
@@ -1357,17 +1366,17 @@ export function TeamDashboardClient() {
 
           <ScrollRevealItem index={1} className="block">
           <section className={cn(cardShell, "p-6 sm:p-7")} style={elevateCardStyle}>
-            <h2 className={sectionTitleClass()}>HaloPSA connection</h2>
+            <h2 className={sectionTitleClass()}>PSA connection</h2>
             <p className="mt-2 text-sm text-[var(--text-muted)]">
-              This connection is shared across your team. One connected account lets everyone use Halo
+              This connection is shared across your team. One connected account lets everyone use PSA
               imports according to their permissions.
             </p>
             <p className="mt-3 text-sm text-[var(--text-primary)]">
               Status:{" "}
-              <strong>{haloConnected ? "At least one member is connected" : "No active connection"}</strong>
+              <strong>{psaConnectionStatusLabel}</strong>
             </p>
             <Link
-              href="/integrations/halopsa"
+              href="/?openSettings=integrations"
               className="mt-4 inline-flex text-sm font-medium text-[var(--accent)] underline-offset-4 hover:underline"
             >
               Manage in Integrations
@@ -1604,8 +1613,8 @@ export function TeamDashboardClient() {
           <DialogHeader>
             <DialogTitle>Add team seats</DialogTitle>
             <DialogDescription>
-              Team includes up to 5 users. Each additional seat is £20/month or £192/year. Choose a billing rhythm,
-              then continue to Stripe. Extra seats added from team management update your subscription automatically.
+              Team workspace billing is retained for existing legacy accounts. New Handover purchases use
+              one account-level subscription with no seat or quantity billing.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-2" role="radiogroup" aria-label="Billing period">

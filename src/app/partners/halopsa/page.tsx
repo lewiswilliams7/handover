@@ -70,7 +70,7 @@ export default function HaloPsaPartnerPage() {
                 animation: "shimmer 3s linear infinite",
               }}
             >
-              HaloPSA Technology Alliance Partner — Verified
+              HaloPSA Technology Alliance Partner - Verified
             </span>
           </div>
 
@@ -111,10 +111,10 @@ export default function HaloPsaPartnerPage() {
               View on HaloPSA Marketplace →
             </a>
             <Link
-              href="/sign-up"
+              href="/onboarding/connect"
               className="inline-flex items-center justify-center rounded-[var(--radius)] border border-white/20 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10"
             >
-              Start free trial
+              Run the free PSA scan
             </Link>
           </div>
         </div>
@@ -233,10 +233,10 @@ export default function HaloPsaPartnerPage() {
               View on HaloPSA Marketplace →
             </a>
             <Link
-              href="/sign-up"
+              href="/onboarding/connect"
               className="inline-flex items-center justify-center rounded-[var(--radius)] border border-white/30 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10"
             >
-              Start free trial
+              Run the free PSA scan
             </Link>
           </div>
         </div>

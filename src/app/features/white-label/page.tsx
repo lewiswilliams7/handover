@@ -29,7 +29,7 @@ export default function WhiteLabelFeaturePage() {
         <MarketingHeroAmbient />
         <div className="relative z-[1] mx-auto max-w-[1000px] rounded-[var(--radius-lg)] border border-[rgba(56,189,248,0.25)] bg-[rgba(15,23,42,0.68)] p-8">
           <h1 className="text-3xl font-semibold text-white md:text-5xl">Your Reports. Your Brand. Your Identity.</h1>
-          <div className="mt-5"><Link href="/auth?tab=signup&returnTo=/welcome" className="inline-flex rounded-[var(--radius)] bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]">Start your free trial at gethandover.uk</Link></div>
+        <div className="mt-5"><Link href="/onboarding/connect" className="inline-flex rounded-[var(--radius)] bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]">Run the free PSA scan</Link></div>
         </div>
       </section>
       <section className="px-6 py-12 md:px-8">
@@ -47,7 +47,7 @@ export default function WhiteLabelFeaturePage() {
           <p>A report that arrives branded as your company reinforces that identity. A report that arrives with third-party tool branding, even subtly, introduces a question in the client&apos;s mind about whether the MSP is producing this themselves or just running something through a tool.</p>
           <p>White label removes that question entirely. Your clients experience your service. Your brand. Your professionalism. Handover stays completely in the background.</p>
           <h2 className="text-2xl font-semibold text-[var(--text-primary)]">Available on Team and Enterprise Plans</h2>
-          <p>White label mode is available on Team and Enterprise plans. Upload your logo and set your brand colour in the settings panel and every output from that point forward carries your identity.</p>
+          <p>White label mode is available on Growth and Enterprise plans. Upload your logo and set your brand colour in the settings panel and every output from that point forward carries your identity.</p>
           <div className="rounded-[var(--radius-lg)] border border-[var(--border)] border-l-[3px] border-l-[#0EA5E9] p-5">
             <h3 className="text-lg font-semibold text-[var(--text-primary)]">Who uses this</h3>
             <p className="mt-2 text-sm">Best fit for <a href="/solutions/account-managers" className="text-[var(--accent)] hover:underline">Account Managers</a>, <a href="/solutions/msp-directors" className="text-[var(--accent)] hover:underline">MSP Directors</a>, and <a href="/solutions/project-managers" className="text-[var(--accent)] hover:underline">Project Managers</a>.</p>

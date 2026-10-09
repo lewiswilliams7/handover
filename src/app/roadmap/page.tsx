@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 export const metadata: Metadata = {
   title: "Product Roadmap | Handover",
   description:
-    "See what's coming to Handover — new PSA integrations, report types, and delivery features.",
+    "See what's coming to Handover - new PSA integrations, report types, and delivery features.",
   alternates: {
     canonical: "https://gethandover.uk/roadmap",
   },
@@ -45,7 +45,7 @@ const shipped: RoadmapItem[] = [
 
 const inProgress: RoadmapItem[] = [
   { title: "ConnectWise integration", desc: "Native import from ConnectWise Manage.", badge: "Integration" },
-  { title: "Team plans", desc: "Shared workspaces and admin controls.", badge: "Pro" },
+  { title: "Growth plans", desc: "Shared workspaces and admin controls.", badge: "Pro" },
   { title: "NPS and feedback system", desc: "Lightweight in-app feedback loop.", badge: "Core" },
 ];
 

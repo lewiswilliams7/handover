@@ -1,25 +1,29 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Info } from "lucide-react";
 
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-const SLIDER_MAX = { clients: 20, minutes: 120, hourly: 150 } as const;
+export const HANDOVER_GROWTH_MONTHLY_GBP = 99;
+export const HANDOVER_PRO_MONTHLY_GBP = 49;
 
-/** Professional plan monthly (GBP) — ROI multiple = savings ÷ this cost. */
-export const HANDOVER_PRO_MONTHLY_GBP = 29;
-
-export function computeRoiMetrics(clients: number, minutes: number, hourly: number) {
-  const c = Number.isFinite(clients) && clients >= 1 ? clients : 1;
-  const m = Number.isFinite(minutes) && minutes >= 1 ? minutes : 1;
-  const h = Number.isFinite(hourly) && hourly >= 1 ? hourly : 1;
+export function computeRoiMetrics(
+  clients: number,
+  minutes: number,
+  hourly: number,
+) {
+  const c = Number.isFinite(clients) && clients >= 0 ? clients : 0;
+  const m = Number.isFinite(minutes) && minutes >= 0 ? minutes : 0;
+  const h = Number.isFinite(hourly) && hourly >= 0 ? hourly : 0;
   const hoursSavedWeek = (c * m) / 60;
   const moneySavedMonth = hoursSavedWeek * h * (52 / 12);
-  const handoverCost = HANDOVER_PRO_MONTHLY_GBP;
+  const handoverCost = HANDOVER_GROWTH_MONTHLY_GBP;
   const roiVal =
-    handoverCost > 0 ? Math.round((moneySavedMonth / handoverCost) * 10) / 10 : 0;
+    handoverCost > 0 && moneySavedMonth > 0
+      ? Math.round((moneySavedMonth / handoverCost) * 10) / 10
+      : 0;
   return {
     hoursWeek: Math.round(hoursSavedWeek * 10) / 10,
     moneyMonth: Math.round(moneySavedMonth),
@@ -27,331 +31,512 @@ export function computeRoiMetrics(clients: number, minutes: number, hourly: numb
   };
 }
 
-function useAnimatedNumber(target: number, decimals: 0 | 1 = 0) {
+function useAnimatedNumber(target: number, duration = 600) {
   const [display, setDisplay] = useState(target);
-  const displayRef = useRef(display);
-  displayRef.current = display;
+  const rafRef = useRef<number | null>(null);
+  const startRef = useRef<number | null>(null);
+  const fromRef = useRef(target);
 
   useEffect(() => {
-    const from = displayRef.current;
-    if (from === target) return;
-    const start = performance.now();
-    const duration = 520;
-    let raf = 0;
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / duration);
-      const eased = 1 - (1 - t) ** 3;
-      const v = from + (target - from) * eased;
-      setDisplay(decimals === 0 ? Math.round(v) : Math.round(v * 10) / 10);
-      if (t < 1) raf = requestAnimationFrame(tick);
+    fromRef.current = display;
+    startRef.current = null;
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+    }
+    const from = fromRef.current;
+    const animate = (ts: number) => {
+      if (!startRef.current) {
+        startRef.current = ts;
+      }
+      const progress = Math.min((ts - startRef.current) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(Math.round(from + (target - from) * eased));
+      if (progress < 1) {
+        rafRef.current = requestAnimationFrame(animate);
+      }
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [target, decimals]);
+    rafRef.current = requestAnimationFrame(animate);
+    return () => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+    };
+  }, [target, duration]);
 
   return display;
 }
 
-type HomeRoiCalculatorProps = {
-  className?: string;
-  /** Full marketing card (homepage) vs condensed with optional expand (pricing). */
+const EXTRA_CATEGORIES = [
+  {
+    id: "service_review",
+    label: "Service Review preparation",
+    description:
+      "Time spent preparing monthly service review packs manually",
+    minutesPerClient: 90,
+    frequency: "monthly",
+    weeklyMinutesPerClient: 90 / 4.3,
+  },
+  {
+    id: "qbr",
+    label: "QBR preparation",
+    description:
+      "Time spent preparing quarterly business review packs manually",
+    minutesPerClient: 270,
+    frequency: "quarterly",
+    weeklyMinutesPerClient: 270 / 13,
+  },
+  {
+    id: "meeting_prep",
+    label: "Client meeting prep",
+    description:
+      "Researching account history before client calls and meetings",
+    minutesPerClient: 30,
+    frequency: "monthly",
+    weeklyMinutesPerClient: 15,
+  },
+  {
+    id: "psa_updates",
+    label: "PSA ticket updates",
+    description: "Manually updating PSA tickets after generating reports",
+    minutesPerClient: 15,
+    frequency: "weekly",
+    weeklyMinutesPerClient: 15,
+  },
+] as const;
+
+interface Props {
   variant?: "full" | "condensed";
-  /** Heading when variant is condensed (pricing). */
-  condensedHeading?: string;
-};
+  className?: string;
+}
+
+function CustomSlider({
+  min,
+  max,
+  value,
+  onChange,
+  formatLabel: _formatLabel,
+}: {
+  min: number;
+  max: number;
+  value: number;
+  onChange: (v: number) => void;
+  formatLabel?: (v: number) => string;
+}) {
+  const pct = ((value - min) / (max - min)) * 100;
+
+  return (
+    <div className="relative w-full">
+      <div className="relative h-1.5 w-full cursor-pointer rounded-full bg-white/[0.08]">
+        <div
+          className="absolute left-0 top-0 h-1.5 rounded-full bg-[#38bdf8]"
+          style={{ width: `${pct}%` }}
+        />
+        <input
+          type="range"
+          min={min}
+          max={max}
+          value={value}
+          onChange={(e) => onChange(parseInt(e.target.value, 10))}
+          className="absolute inset-0 h-1.5 w-full cursor-pointer opacity-0"
+          style={{ margin: 0 }}
+        />
+        <div
+          className="pointer-events-none absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#38bdf8] bg-[#06091a] shadow-[0_0_8px_rgba(56,189,248,0.4)]"
+          style={{
+            left: `${pct}%`,
+          }}
+        />
+      </div>
+    </div>
+  );
+}
 
 export function HomeRoiCalculator({
+  variant: _variant = "full",
   className,
-  variant = "full",
-  condensedHeading = "Calculate your saving before you commit",
-}: HomeRoiCalculatorProps) {
-  const [clients, setClients] = useState(5);
-  const [minutes, setMinutes] = useState(45);
-  const [hourly, setHourly] = useState(50);
-  const [clientsForRoi, setClientsForRoi] = useState(5);
-  const [minutesForRoi, setMinutesForRoi] = useState(45);
-  const [hourlyForRoi, setHourlyForRoi] = useState(50);
-  const debounceRef = useRef<{
-    clients: ReturnType<typeof setTimeout> | null;
-    minutes: ReturnType<typeof setTimeout> | null;
-    hourly: ReturnType<typeof setTimeout> | null;
-  }>({ clients: null, minutes: null, hourly: null });
-
-  const scheduleRoi = useCallback(
-    (key: "clients" | "minutes" | "hourly", value: number, applyNow: boolean) => {
-      const setter =
-        key === "clients"
-          ? setClientsForRoi
-          : key === "minutes"
-            ? setMinutesForRoi
-            : setHourlyForRoi;
-      const prev = debounceRef.current[key];
-      if (prev) clearTimeout(prev);
-      if (applyNow) {
-        setter(value);
-        debounceRef.current[key] = null;
-        return;
-      }
-      debounceRef.current[key] = setTimeout(() => {
-        setter(value);
-        debounceRef.current[key] = null;
-      }, 300);
-    },
-    [],
-  );
+}: Props) {
+  const [clients, setClients] = useState(10);
+  const [minutes, setMinutes] = useState(85);
+  const [hourly, setHourly] = useState(30);
+  const [clientsForRoi, setClientsForRoi] = useState(10);
+  const [minutesForRoi, setMinutesForRoi] = useState(85);
+  const [hourlyForRoi, setHourlyForRoi] = useState(30);
+  const [enabledExtras, setEnabledExtras] = useState<string[]>([
+    "service_review",
+    "qbr",
+    "meeting_prep",
+    "psa_updates",
+  ]);
+  const [showMethodology, setShowMethodology] = useState(false);
 
   useEffect(() => {
-    return () => {
-      for (const k of ["clients", "minutes", "hourly"] as const) {
-        const t = debounceRef.current[k];
-        if (t) clearTimeout(t);
-      }
-    };
-  }, []);
+    const t = window.setTimeout(() => {
+      setClientsForRoi(clients);
+      setMinutesForRoi(minutes);
+      setHourlyForRoi(hourly);
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [clients, minutes, hourly]);
 
-  const { hoursWeek, moneyMonth, roi } = useMemo(
-    () => computeRoiMetrics(clientsForRoi, minutesForRoi, hourlyForRoi),
-    [clientsForRoi, minutesForRoi, hourlyForRoi],
+  const toggleExtra = (id: string) => {
+    setEnabledExtras((prev) =>
+      prev.includes(id) ? prev.filter((e) => e !== id) : [...prev, id],
+    );
+  };
+
+  const totalWeeklyMinutes = useMemo(() => {
+    const base = clientsForRoi * minutesForRoi;
+    const extras = EXTRA_CATEGORIES.filter((c) =>
+      enabledExtras.includes(c.id),
+    ).reduce(
+      (sum, cat) => sum + cat.weeklyMinutesPerClient * clientsForRoi,
+      0,
+    );
+    return base + extras;
+  }, [clientsForRoi, minutesForRoi, enabledExtras]);
+
+  const hoursWeek = useMemo(
+    () => Math.round((totalWeeklyMinutes / 60) * 10) / 10,
+    [totalWeeklyMinutes],
+  );
+
+  const moneyMonth = useMemo(
+    () =>
+      Math.round((totalWeeklyMinutes / 60) * hourlyForRoi * (52 / 12)),
+    [totalWeeklyMinutes, hourlyForRoi],
   );
 
   const moneyYear = useMemo(() => Math.round(moneyMonth * 12), [moneyMonth]);
-  const weeksPmYear = useMemo(
-    () => Math.round(((hoursWeek * 52) / 40) * 10) / 10,
-    [hoursWeek],
+
+  const roiMultiplier = useMemo(
+    () =>
+      moneyMonth > 0
+        ? Math.round(moneyMonth / HANDOVER_GROWTH_MONTHLY_GBP)
+        : 0,
+    [moneyMonth],
   );
 
-  const animMoneyMonth = useAnimatedNumber(moneyMonth, 0);
-  const animHoursWeek = useAnimatedNumber(
-    Math.round(hoursWeek * 10) / 10,
-    1,
-  );
-  const animRoi = useAnimatedNumber(
-    Math.round(roi * 10) / 10,
-    1,
-  );
-  const animMoneyYear = useAnimatedNumber(moneyYear, 0);
-  const animWeeksPm = useAnimatedNumber(weeksPmYear, 1);
-
-  const [expanded, setExpanded] = useState(variant !== "condensed");
-
-  const sliderClass =
-    "h-2 w-full cursor-pointer appearance-none rounded-full bg-[var(--bg-secondary)] [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[var(--accent)] [&::-webkit-slider-thumb]:shadow-md";
-
-  const syncFromSlider = (
-    key: "clients" | "minutes" | "hourly",
-    raw: number,
-    setter: (n: number) => void,
-  ) => {
-    const v = Math.round(raw);
-    setter(v);
-    scheduleRoi(key, v, true);
-  };
-
-  const syncFromInput = (
-    key: "clients" | "minutes" | "hourly",
-    raw: string,
-    setter: (n: number) => void,
-  ) => {
-    const n = Number.parseInt(raw.replace(/\D/g, ""), 10);
-    const v = Number.isFinite(n) ? Math.max(1, n) : 1;
-    setter(v);
-    scheduleRoi(key, v, false);
-  };
-
-  const clientsSliderVal = Math.min(clients, SLIDER_MAX.clients);
-  const minutesSliderVal = Math.min(minutes, SLIDER_MAX.minutes);
-  const hourlySliderVal = Math.min(hourly, SLIDER_MAX.hourly);
-
-  const resultsBlock = (
-    <div
-      className="mt-8 rounded-[var(--radius-lg)] border border-[color-mix(in_srgb,var(--accent)_22%,var(--border))] bg-black/30 p-5 shadow-[0_18px_48px_-24px_rgba(15,23,42,0.75)] backdrop-blur-md sm:p-7"
-    >
-      <p className="text-center text-[11px] font-semibold uppercase tracking-[0.12em] text-white/50">
-        Estimated savings
-      </p>
-      <p
-        className="mt-2 text-center text-[clamp(2.5rem,8vw,3.75rem)] font-extrabold leading-none tracking-tight text-[var(--accent)]"
-        style={{
-          textShadow:
-            "0 0 40px color-mix(in srgb, var(--accent) 42%, transparent), 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent)",
-        }}
-      >
-        £{animMoneyMonth.toLocaleString("en-GB")}
-        <span className="block text-lg font-semibold text-white/70 sm:inline sm:pl-2 sm:text-xl">
-          /month
-        </span>
-      </p>
-      <p className="mt-3 text-center text-sm text-white/65">
-        That&apos;s{" "}
-        <strong className="font-semibold text-white/90">{animWeeksPm}</strong> weeks of PM time
-        reclaimed per year <span className="text-white/40">(40h weeks)</span>
-      </p>
-      <div className="mt-6 grid gap-3 border-t border-white/10 pt-6 sm:grid-cols-2">
-        <div className="rounded-[var(--radius)] bg-white/[0.04] px-4 py-3 text-center">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-white/45">Time / week</p>
-          <p className="mt-1 text-xl font-bold text-[var(--accent)]">{animHoursWeek} hrs</p>
-        </div>
-        <div className="rounded-[var(--radius)] bg-white/[0.04] px-4 py-3 text-center">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-white/45">
-            ROI vs Pro (£{HANDOVER_PRO_MONTHLY_GBP})
-          </p>
-          <p className="mt-1 text-xl font-bold text-[var(--accent)]">{animRoi}×</p>
-        </div>
-      </div>
-      <p className="mt-4 text-center text-sm text-white/55">
-        Annual savings ≈{" "}
-        <strong className="text-[var(--accent)]">£{animMoneyYear.toLocaleString("en-GB")}</strong>
-        <span className="text-white/40"> · </span>
-        Handover Pro: <strong className="text-white/85">£{HANDOVER_PRO_MONTHLY_GBP}/mo</strong>
-      </p>
-    </div>
+  const paybackDays = useMemo(
+    () =>
+      moneyMonth > 0
+        ? Math.round((HANDOVER_GROWTH_MONTHLY_GBP / moneyMonth) * 30)
+        : 0,
+    [moneyMonth],
   );
 
-  if (variant === "condensed" && !expanded) {
-    return (
-      <section
-        className={cn(
-          "mx-auto w-full max-w-[640px] rounded-[var(--radius-lg)] border border-[var(--border)] p-6 shadow-lg md:p-8",
-          className,
-        )}
-        style={{
-          background:
-            "linear-gradient(155deg, rgba(15,23,42,0.92) 0%, rgba(30,41,59,0.88) 45%, rgba(15,23,42,0.95) 100%)",
-          borderColor: "color-mix(in srgb, var(--accent) 28%, var(--border))",
-        }}
-      >
-        <h3 className="border-l-4 border-[var(--accent)] pl-4 text-lg font-bold text-white md:text-xl">
-          {condensedHeading}
-        </h3>
-        {resultsBlock}
-        <button
-          type="button"
-          className="mt-6 w-full rounded-[var(--radius)] border border-[var(--accent)]/50 bg-transparent py-2.5 text-sm font-semibold text-[var(--accent)] transition-colors hover:bg-[color-mix(in_srgb,var(--accent)_12%,transparent)]"
-          onClick={() => setExpanded(true)}
-        >
-          Adjust for your team →
-        </button>
-      </section>
-    );
-  }
-
-  const controls = (
-    <div className="mt-6 space-y-5">
-      <label className="block">
-        <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-white/90">
-          <span>
-            Clients you report on weekly: <strong className="text-[var(--accent)]">{clients}</strong>
-          </span>
-          <Input
-            type="text"
-            inputMode="numeric"
-            aria-label="Clients per week"
-            value={String(clients)}
-            onChange={(e) => syncFromInput("clients", e.target.value, setClients)}
-            className="h-8 w-[4.25rem] border-white/20 bg-black/30 px-2 text-center text-sm text-white"
-          />
-        </span>
-        <input
-          type="range"
-          min={1}
-          max={SLIDER_MAX.clients}
-          value={clientsSliderVal}
-          onChange={(e) => syncFromSlider("clients", Number(e.target.value), setClients)}
-          className={cn(sliderClass, "mt-2")}
-          style={{ accentColor: "var(--accent)" }}
-        />
-      </label>
-      <label className="block">
-        <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-white/90">
-          <span>
-            Minutes per report manually: <strong className="text-[var(--accent)]">{minutes}</strong>
-          </span>
-          <Input
-            type="text"
-            inputMode="numeric"
-            aria-label="Minutes per report"
-            value={String(minutes)}
-            onChange={(e) => syncFromInput("minutes", e.target.value, setMinutes)}
-            className="h-8 w-[4.25rem] border-white/20 bg-black/30 px-2 text-center text-sm text-white"
-          />
-        </span>
-        <input
-          type="range"
-          min={1}
-          max={SLIDER_MAX.minutes}
-          step={1}
-          value={minutesSliderVal}
-          onChange={(e) => syncFromSlider("minutes", Number(e.target.value), setMinutes)}
-          className={cn(sliderClass, "mt-2")}
-          style={{ accentColor: "var(--accent)" }}
-        />
-      </label>
-      <label className="block">
-        <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-white/90">
-          <span>
-            Your hourly rate (£): <strong className="text-[var(--accent)]">{hourly}</strong>
-          </span>
-          <Input
-            type="text"
-            inputMode="numeric"
-            aria-label="Hourly rate in GBP"
-            value={String(hourly)}
-            onChange={(e) => syncFromInput("hourly", e.target.value, setHourly)}
-            className="h-8 w-[4.25rem] border-white/20 bg-black/30 px-2 text-center text-sm text-white"
-          />
-        </span>
-        <input
-          type="range"
-          min={1}
-          max={SLIDER_MAX.hourly}
-          step={1}
-          value={hourlySliderVal}
-          onChange={(e) => syncFromSlider("hourly", Number(e.target.value), setHourly)}
-          className={cn(sliderClass, "mt-2")}
-          style={{ accentColor: "var(--accent)" }}
-        />
-      </label>
-    </div>
-  );
+  const animatedHours = useAnimatedNumber(hoursWeek);
+  const animatedMoney = useAnimatedNumber(moneyMonth);
+  const animatedRoi = useAnimatedNumber(roiMultiplier);
+  const animatedYear = useAnimatedNumber(moneyYear);
 
   return (
-    <section
-      className={cn(
-        "mx-auto mt-10 w-full max-w-[720px] rounded-[var(--radius-lg)] border-2 p-4 shadow-2xl sm:p-6 md:mt-12 md:p-10",
-        "marketing-card-interactive",
-        className,
-      )}
-      style={{
-        background:
-          "linear-gradient(155deg, rgba(15,23,42,0.95) 0%, rgba(30,58,138,0.35) 42%, rgba(15,23,42,0.98) 100%)",
-        borderColor: "color-mix(in srgb, var(--accent) 35%, transparent)",
-        boxShadow:
-          "0 24px 64px -20px rgba(15, 23, 42, 0.55), 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent)",
-      }}
-    >
-      {variant === "condensed" ? (
-        <h3 className="border-l-4 border-[var(--accent)] pl-4 text-lg font-bold text-white md:text-xl">
-          {condensedHeading}
-        </h3>
-      ) : (
-        <>
-          <h3 className="border-l-4 border-[var(--accent)] pl-4 text-xl font-bold text-white md:text-2xl">
-            See how much time you&apos;ll save
+    <div className={cn("w-full", className)}>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h3 className="text-[16px] font-semibold text-white">
+            Calculate your ROI
           </h3>
-          <p className="mt-2 text-sm text-white/70">Based on your team size and reporting habits.</p>
-        </>
+          <p className="mt-0.5 text-[12px] text-white/40">
+            Adjust the inputs to match your team
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowMethodology(!showMethodology)}
+          className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] px-2.5 py-1.5 text-[11px] text-white/40 transition-colors hover:text-white/60"
+        >
+          <Info className="size-3.5" />
+          How we calculate this
+        </button>
+      </div>
+
+      {showMethodology && (
+        <div className="mb-6 space-y-2 rounded-xl border border-white/[0.08] bg-white/[0.03] p-4 text-[12px] leading-relaxed text-white/50">
+          <p className="font-semibold text-white/70">
+            How we calculate your ROI
+          </p>
+          <p>
+            <span className="font-medium text-white/60">Report writing:</span>{" "}
+            Your clients times minutes per report equals weekly hours saved.
+            Handover reduces this to 5 minutes per client (import, review,
+            send).
+          </p>
+          <p>
+            <span className="font-medium text-white/60">
+              Service Review preparation:
+            </span>{" "}
+            Industry average of 90 minutes per client per month to prepare a
+            service review pack manually, reduced to under 30 seconds. Averaged
+            to a weekly figure (approximately 21 minutes per week per client).
+          </p>
+          <p>
+            <span className="font-medium text-white/60">QBR preparation:</span>{" "}
+            Industry average of 4.5 hours per client per quarter (270 minutes),
+            reduced to under 60 seconds. Averaged to a weekly figure
+            (approximately 21 minutes per week per client).
+          </p>
+          <p>
+            <span className="font-medium text-white/60">Meeting prep:</span> 30
+            minutes per client per meeting, assumed twice monthly (15 minutes
+            per week equivalent). Eliminated by Client Intelligence account
+            summaries in 30 seconds.
+          </p>
+          <p>
+            <span className="font-medium text-white/60">PSA ticket updates:</span>{" "}
+            15 minutes per report cycle updating PSA tickets. Eliminated by
+            automatic push-back.
+          </p>
+          <p>
+            <span className="font-medium text-white/60">Monthly saving:</span>{" "}
+            Weekly hours times hourly rate times (52 divided by 12).
+          </p>
+          <p>
+            <span className="font-medium text-white/60">ROI:</span> Monthly
+            saving divided by £99 (Growth plan).
+          </p>
+        </div>
       )}
 
-      {variant === "condensed" && expanded ? controls : variant === "full" ? controls : null}
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-8">
+        <div className="space-y-6">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-white/30">
+            Your team
+          </p>
 
-      {resultsBlock}
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <label className="text-[12px] font-medium text-white/70">
+                Clients you report on
+              </label>
+              <span className="text-[14px] font-bold tabular-nums text-white">
+                {clients}
+              </span>
+            </div>
+            <CustomSlider
+              min={1}
+              max={30}
+              value={clients}
+              onChange={(v) => {
+                setClients(v);
+                setClientsForRoi(v);
+              }}
+            />
+            <div className="mt-1.5 flex justify-between">
+              <span className="text-[10px] text-white/25">1</span>
+              <span className="text-[10px] text-white/25">30</span>
+            </div>
+          </div>
 
-      <Link
-        href="/auth?tab=signup&returnTo=/welcome"
-        className="mt-8 flex w-full min-h-[48px] items-center justify-center rounded-[var(--radius)] bg-[var(--accent)] px-4 py-3.5 text-center text-sm font-semibold leading-snug text-white shadow-lg transition-[transform,box-shadow] duration-200 hover:bg-[var(--accent-hover)] hover:shadow-xl active:scale-[0.98] sm:text-[15px]"
-      >
-        Save £{animMoneyYear.toLocaleString("en-GB")} this year - start free today →
-      </Link>
-    </section>
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <label className="text-[12px] font-medium text-white/70">
+                Minutes per report (manually)
+              </label>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="number"
+                  value={minutes === 0 ? "" : minutes}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "" || val === "0") {
+                      setMinutes(0);
+                      return;
+                    }
+                    const parsed = parseInt(val, 10);
+                    if (!Number.isNaN(parsed)) {
+                      setMinutes(Math.max(0, parsed));
+                    }
+                  }}
+                  className="w-14 rounded-lg border border-white/[0.12] bg-white/[0.06] px-2 py-1 text-right text-[12px] text-white focus:outline-none focus:ring-1 focus:ring-[#38bdf8]/30"
+                />
+                <span className="text-[11px] text-white/40">min</span>
+              </div>
+            </div>
+            <CustomSlider
+              min={1}
+              max={180}
+              value={Math.max(1, minutes)}
+              onChange={(v) => {
+                setMinutes(v);
+                setMinutesForRoi(v);
+              }}
+            />
+            <div className="mt-1.5 flex justify-between">
+              <span className="text-[10px] text-white/25">1 min</span>
+              <span className="text-[10px] text-white/25">3 hrs</span>
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <label className="text-[12px] font-medium text-white/70">
+                PM loaded hourly cost
+              </label>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-white/40">£</span>
+                <input
+                  type="number"
+                  value={hourly === 0 ? "" : hourly}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "" || val === "0") {
+                      setHourly(0);
+                      return;
+                    }
+                    const parsed = parseInt(val, 10);
+                    if (!Number.isNaN(parsed)) {
+                      setHourly(Math.max(0, parsed));
+                    }
+                  }}
+                  className="w-14 rounded-lg border border-white/[0.12] bg-white/[0.06] px-2 py-1 text-right text-[12px] text-white focus:outline-none focus:ring-1 focus:ring-[#38bdf8]/30"
+                />
+              </div>
+            </div>
+            <CustomSlider
+              min={1}
+              max={150}
+              value={Math.max(1, hourly)}
+              onChange={(v) => {
+                setHourly(v);
+                setHourlyForRoi(v);
+              }}
+            />
+            <div className="mt-1.5 flex justify-between">
+              <span className="text-[10px] text-white/25">£1</span>
+              <span className="text-[10px] text-white/25">£150</span>
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-white/30">
+              Also include
+            </p>
+            <div className="space-y-2">
+              {EXTRA_CATEGORIES.map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => toggleExtra(cat.id)}
+                  className={cn(
+                    "flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left transition-all",
+                    enabledExtras.includes(cat.id)
+                      ? "border-[#38bdf8]/25 bg-[#38bdf8]/[0.05]"
+                      : "border-white/[0.06] bg-transparent opacity-40 hover:opacity-60",
+                  )}
+                >
+                  <div>
+                    <p
+                      className={cn(
+                        "text-[12px] font-medium",
+                        enabledExtras.includes(cat.id)
+                          ? "text-white"
+                          : "text-white/50",
+                      )}
+                    >
+                      {cat.label}
+                    </p>
+                    <p className="mt-0.5 text-[10px] text-white/30">
+                      ~{Math.round(cat.weeklyMinutesPerClient)} min/client/week
+                    </p>
+                  </div>
+                  <div
+                    className={cn(
+                      "ml-3 flex size-4 flex-shrink-0 items-center justify-center rounded-full border",
+                      enabledExtras.includes(cat.id)
+                        ? "border-[#38bdf8] bg-[#38bdf8]"
+                        : "border-white/20",
+                    )}
+                  >
+                    {enabledExtras.includes(cat.id) && (
+                      <svg width="8" height="8" viewBox="0 0 8 8">
+                        <path
+                          d="M1 4l2 2 4-4"
+                          stroke="#06091a"
+                          strokeWidth="1.5"
+                          fill="none"
+                        />
+                      </svg>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col">
+          <p className="mb-4 text-[11px] font-semibold uppercase tracking-wide text-white/30">
+            Your savings
+          </p>
+
+          <div className="mb-4 rounded-2xl border border-[#38bdf8]/20 bg-[#38bdf8]/[0.04] p-6 text-center">
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[#38bdf8]/60">
+              Return on investment
+            </p>
+            <p className="text-[56px] font-bold leading-none tabular-nums text-[#38bdf8]">
+              {animatedRoi}x
+            </p>
+            <p className="mt-2 text-[12px] text-white/30">
+              Handover pays for itself in{" "}
+              {paybackDays < 1 ? "less than a day" : `${paybackDays} days`}
+            </p>
+          </div>
+
+          <div className="mb-4 divide-y divide-white/[0.06] overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.02]">
+            <div className="flex items-center justify-between px-4 py-3">
+              <p className="text-[12px] text-white/50">Hours saved per week</p>
+              <p className="text-[13px] font-bold tabular-nums text-white">
+                {animatedHours}h
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between px-4 py-3">
+              <p className="text-[12px] text-white/50">PM time saved per month</p>
+              <p className="text-[13px] font-bold tabular-nums text-white">
+                £{animatedMoney.toLocaleString("en-GB")}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between bg-white/[0.02] px-4 py-3">
+              <p className="text-[12px] text-white/50">Annual saving</p>
+              <p className="text-[14px] font-bold tabular-nums text-white">
+                £{animatedYear.toLocaleString("en-GB")}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between px-4 py-3">
+              <p className="text-[12px] text-white/40">Handover Growth (£99/mo, or £79/mo annual)</p>
+              <p className="text-[12px] tabular-nums text-white/40">£99/mo</p>
+            </div>
+          </div>
+
+          {roiMultiplier >= 5 && (
+            <div className="mb-4 rounded-xl border border-[#38bdf8]/25 bg-[#38bdf8]/[0.08] px-4 py-4">
+              <p className="text-[13px] font-medium leading-relaxed text-white/80">
+                {animatedYear >= 45000
+                  ? "Your team recovers enough in PM time to cover a senior PM salary every year. Handover costs £1,188/year."
+                  : animatedYear >= 25000
+                    ? `Your team recovers £${animatedYear.toLocaleString("en-GB")} in PM time annually. That is more than half a senior PM salary from £79/month.`
+                    : animatedYear >= 10000
+                      ? `Your team recovers £${animatedYear.toLocaleString("en-GB")} in PM time annually at ${animatedRoi}x ROI.`
+                      : `At ${animatedRoi}x ROI, Handover pays for itself in ${paybackDays} days.`}
+              </p>
+            </div>
+          )}
+
+          <Link
+            href="/onboarding/connect"
+            className="mt-auto block w-full rounded-xl bg-[#38bdf8] py-3 text-center text-[13px] font-semibold text-[#06091a] transition-all hover:scale-[1.02]"
+          >
+            Run the free PSA scan
+          </Link>
+
+          <p className="mt-3 text-center text-[10px] leading-relaxed text-white/20">
+            Based on industry average preparation times. Your results may vary.
+            Click &quot;How we calculate this&quot; for full methodology.
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }

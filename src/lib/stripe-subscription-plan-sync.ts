@@ -1,7 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
 
-import { isKnownEnterpriseStripePriceId } from "@/lib/stripe-price-ids";
+import {
+  isKnownEnterpriseStripePriceId,
+  STRIPE_PRICE_IDS,
+} from "@/lib/stripe-price-ids";
 import {
   clampTeamSeatCount,
   getUserPlan,
@@ -91,6 +94,18 @@ export async function syncProfilesPlanFromStripeSubscription(
     isKnownEnterpriseStripePriceId(id),
   );
   const isEnterpriseSub = metaPlan === "enterprise" || enterpriseFromStripePrice;
+  const currentHandoverPriceIds = new Set(
+    [
+      STRIPE_PRICE_IDS.handover.monthly,
+      STRIPE_PRICE_IDS.handover.annual,
+      STRIPE_PRICE_IDS.starterProgramme.monthly,
+      STRIPE_PRICE_IDS.starterProgramme.annual,
+    ].filter(Boolean),
+  );
+  const isHandoverSub =
+    metaPlan === "handover" ||
+    metaPlan === "starter_programme" ||
+    priceIdsFromSubscription(subscription).some((id) => currentHandoverPriceIds.has(id));
 
   if (isTeamSub) {
     const { data: team } = await supabase
@@ -176,13 +191,20 @@ export async function syncProfilesPlanFromStripeSubscription(
 
   const paid = stripeSubscriptionIsPaid(subscription);
   const isTrialing = subscription.status === "trialing";
-  const planValue: "professional_trial" | "professional" | "enterprise" | "free" = !paid
+  const planValue:
+    | "professional_trial"
+    | "professional"
+    | "handover"
+    | "enterprise"
+    | "free" = !paid
     ? "free"
     : isTrialing
       ? "professional_trial"
       : isEnterpriseSub
         ? "enterprise"
-        : "professional";
+        : isHandoverSub
+          ? "handover"
+          : "professional";
 
   if (paid) {
     await supabase

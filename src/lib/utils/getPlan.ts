@@ -5,6 +5,8 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { getMonthlyReportLimit } from "@/lib/plan-limits";
+
 /** Canonical `profiles.plan` + `profiles.team_id` + trial + Stripe sync fields (same shape everywhere). */
 export type UserPlanFields = {
   plan: string | null;
@@ -98,6 +100,8 @@ export function isProOrTeam(plan: string): boolean {
   const p = canonicalPlanId(plan);
   return (
     p === "professional" ||
+    p === "handover" ||
+    p === "starter_programme" ||
     p === "team" ||
     p === "professional_trial" ||
     p === "team_trial"
@@ -109,6 +113,8 @@ export function isDeliveryHealthPlan(plan: string): boolean {
   const p = canonicalPlanId(plan);
   return (
     p === "professional" ||
+    p === "handover" ||
+    p === "starter_programme" ||
     p === "team" ||
     p === "enterprise" ||
     p === "professional_trial" ||
@@ -139,7 +145,7 @@ function normalizeTrialPlanSku(raw: string | null | undefined): "professional" |
 }
 
 /**
- * Numeric tier for feature gating (0 = none/basic/expired trial / inactive sub; 1 = Professional; 2 = Team; 3 = Enterprise).
+ * Numeric tier for feature gating (0 = none/basic/expired trial / inactive sub; 1 = legacy Professional; 2 = legacy Team; 3 = Handover/Enterprise).
  * Uses full profile fields: paid SKUs require a live `subscription_status` (null status = legacy permissive).
  */
 export function getPlanTierFromFields(fields: UserPlanFields): 0 | 1 | 2 | 3 {
@@ -173,15 +179,34 @@ export function getPlanTierFromFields(fields: UserPlanFields): 0 | 1 | 2 | 3 {
   if (
     canon === "enterprise" ||
     canon === "team" ||
-    canon === "professional"
+    canon === "professional" ||
+    canon === "handover" ||
+    canon === "starter_programme"
   ) {
     if (!isSoloSubscriptionLive(fields.subscription_status)) return 0;
+    if (canon === "handover" || canon === "starter_programme") return 3;
     if (canon === "enterprise") return 3;
     if (canon === "team") return 2;
     return 1;
   }
 
   return 0;
+}
+
+/**
+ * Current billing model entitlement. Handover and the application-only
+ * Starter Programme share one paid capability set; legacy paid plans and
+ * active trials remain accepted while existing accounts are migrated.
+ */
+export function hasHandoverEntitlement(fields: UserPlanFields): boolean {
+  if (fields.team_id?.trim()) return true;
+
+  const canon = canonicalPlanId(fields.plan);
+  if (canon === "handover" || canon === "starter_programme") {
+    return isSoloSubscriptionLive(fields.subscription_status);
+  }
+
+  return getPlanTierFromFields(fields) >= 1;
 }
 
 /**
@@ -252,7 +277,7 @@ export function userPlanHasProAccess(fields: UserPlanFields): boolean {
  * Pro-tier access from full `profiles` billing fields (plan + team + trials + solo `subscription_status`).
  */
 export function hasProTierAccess(fields: UserPlanFields): boolean {
-  return getPlanTierFromFields(fields) >= 1;
+  return hasHandoverEntitlement(fields);
 }
 
 /**
@@ -268,6 +293,13 @@ export function profilePlanToUiTier(fields: UserPlanFields): "free" | "pro" | "t
   if (hasTeamId) {
     if (p === "team" || p === "team_trial") return "team";
     if (p === "enterprise") return "enterprise";
+    return "pro";
+  }
+
+  if (
+    (p === "handover" || p === "starter_programme") &&
+    getPlanTierFromFields(fields) > 0
+  ) {
     return "pro";
   }
 
@@ -311,14 +343,20 @@ export function getPlanLabel(
   const sku = normalizeTrialPlanSku(opts?.trial_plan ?? null);
 
   if (p === "enterprise") return "Enterprise";
-  if (teamId) return "Team";
-  if (p === "free" && trialActive && sku === "team") return "Team trial";
-  if (p === "free" && trialActive && sku === "professional") return "Professional trial";
-  if (p === "professional_trial") return "Professional trial";
-  if (p === "team_trial") return "Team trial";
-  if (p === "team") return "Team";
-  if (p === "professional" || p === "pro") return "Professional";
-  if (isProOrTeam(plan)) return "Professional";
+  if (p === "handover" || p === "starter_programme") return "Handover";
+  if (
+    trialActive &&
+    (p === "team_trial" || (p === "team" && sku === "team"))
+  ) {
+    return "Trial";
+  }
+  if (teamId) return "Growth";
+  if (p === "free" && trialActive && (sku === "team" || sku === "professional")) return "Trial";
+  if (p === "professional_trial") return "Trial";
+  if (p === "team_trial") return "Trial";
+  if (p === "team") return "Growth";
+  if (p === "professional" || p === "pro") return "Starter";
+  if (isProOrTeam(plan)) return "Starter";
   if (p === "basic") return "Limited";
   return "Free";
 }
@@ -330,11 +368,11 @@ export function isTeamPlan(plan: string): boolean {
 
 /** Shown when solo Professional SKUs attempt to invite colleagues. */
 export const TEAM_MEMBER_INVITES_BLOCKED_MESSAGE =
-  "Team members are available on the Team plan and above. Upgrade to add your team.";
+  "Team members are available on the Growth plan and above. Upgrade to add your team.";
 
 /**
  * True when the user's profile is a Professional solo SKU (paid, legacy column trial, or in-app
- * Professional trial) — they must not invite additional users.
+ * Starter trial) — they must not invite additional users.
  * Team trial (`team_trial`, or free + active `trial_plan` team) is not blocked.
  */
 export function profilePlanBlocksTeamMemberInvites(row: {
@@ -387,31 +425,32 @@ export function isValidTeamSubscriptionStatus(
 
 /** Max seats Stripe allows; generations scale per purchased seat. */
 export const TEAM_LIMITS = {
-  team: { seats: 20, generationsPerSeat: 200 },
+  team: { seats: 20, generationsPerSeat: 300 },
 } as const;
 
-/** Solo Professional billing (`profiles.plan` professional, no `team_id`): same monthly cap as one Team seat. */
-export const PRO_SOLO_MONTHLY_GENERATION_LIMIT = 200;
+export {
+  getMonthlyGenerationLimit,
+  STARTER_MONTHLY_GENERATION_LIMIT as PRO_SOLO_MONTHLY_GENERATION_LIMIT,
+} from "@/lib/plan-limits";
+
+function getPlanTierLabel(fields: UserPlanFields): string {
+  const tier = getPlanTierFromFields(fields);
+  if (tier === 3) return "enterprise";
+  if (tier === 2) return "team";
+  if (tier === 1) return "professional";
+  return normalizePlanLabel(fields.plan ?? "") || "free";
+}
 
 export function getQbrPacksPerMonthLimit(
   fields: UserPlanFields,
   /** `teams.plan` when `fields.team_id` is set; ignored for solo billing. */
   teamPlanFromRow: string | null,
 ): number | null {
-  const tid =
-    typeof fields.team_id === "string" && fields.team_id.trim().length > 0
-      ? fields.team_id.trim()
-      : null;
-  if (tid) {
-    const tp = normalizePlanLabel(teamPlanFromRow ?? "team");
-    if (tp === "enterprise") return null;
-    return 3;
-  }
-  const tier = getPlanTierFromFields(fields);
-  if (tier >= 3) return null;
-  if (tier === 2) return 3;
-  if (tier === 1) return 1;
-  return 0;
+  const plan = fields.team_id
+    ? normalizePlanLabel(teamPlanFromRow ?? "team")
+    : getPlanTierLabel(fields);
+
+  return getMonthlyReportLimit(plan);
 }
 
 /**
@@ -427,10 +466,10 @@ export function qbrPackUsageHintCopy(
     typeof fields.team_id !== "string" || !fields.team_id.trim().length;
   const pdb = normalizePlanLabel(fields.plan ?? "");
   if (solo && pdb === "professional_trial") {
-    return "Professional includes 1 QBR pack per calendar month (UTC).";
+    return "Starter trial includes 1 QBR pack per calendar month (UTC).";
   }
   if (solo && pdb === "team_trial") {
-    return "Team includes 3 QBR packs per month, pooled across your team (UTC).";
+    return "Growth trial includes 3 QBR packs per month, pooled across your team (UTC).";
   }
   if (solo && pdb === "free") {
     const end = fields.trial_ends_at;
@@ -438,19 +477,27 @@ export function qbrPackUsageHintCopy(
     if (trialStillActive) {
       const sku = normalizeTrialPlanSku(fields.trial_plan);
       if (sku === "professional") {
-        return "Professional includes 1 QBR pack per calendar month (UTC).";
+        return "Starter trial includes 1 QBR pack per calendar month (UTC).";
       }
       if (sku === "team") {
-        return "Team includes 3 QBR packs per month, pooled across your team (UTC).";
+        return "Growth trial includes 3 QBR packs per month, pooled across your team (UTC).";
       }
     }
   }
 
   const n = getQbrPacksPerMonthLimit(fields, teamPlanFromRow);
-  if (n === null) return "Enterprise includes unlimited QBR packs.";
+  if (n === null) {
+    if (pdb === "handover" || pdb === "starter_programme") {
+      return "Handover includes unlimited QBR packs.";
+    }
+    const tier = getPlanTierFromFields(fields);
+    if (tier >= 3) return "Enterprise includes unlimited QBR packs.";
+    if (tier >= 1) return "Unlimited QBR packs.";
+    return null;
+  }
   if (n === 0) return null;
-  if (n === 1) return "Professional includes 1 QBR pack per calendar month (UTC).";
-  return "Team includes 3 QBR packs per month, pooled across your team (UTC).";
+  if (n === 1) return "Starter includes 1 QBR pack per calendar month (UTC).";
+  return "Growth includes 3 QBR packs per month, pooled across your team (UTC).";
 }
 
 export function clampTeamSeatCount(raw: number): number {

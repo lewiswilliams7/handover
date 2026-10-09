@@ -24,7 +24,11 @@ type Props = {
   userEmail: string | null
   plan: string | null
   hasProAccess: boolean
+  hasPortalPlanAccess?: boolean
   demoModeActive?: boolean
+  demoEnabled?: boolean
+  demoForceEnabled?: boolean
+  psaConnected?: boolean
   onToggleDemo?: (enabled: boolean) => void
   /** Shown when `hasProAccess`; Pro+ branding controls from the parent. */
   brandingSection?: ReactNode | null
@@ -71,8 +75,11 @@ const BASE_NAV_ITEMS: Array<{
 
 export function ConfigurationPanel({
   hasProAccess,
+  hasPortalPlanAccess = false,
   plan,
-  demoModeActive = false,
+  demoEnabled = false,
+  demoForceEnabled = false,
+  psaConnected = false,
   onToggleDemo,
   brandingSection = null,
   integrationsSection = null,
@@ -81,11 +88,11 @@ export function ConfigurationPanel({
   dashboardViewMode = "paginated",
   onDashboardViewModeChange,
 }: Props) {
-  const isEnterprise = plan === "enterprise"
+  const showClientPortal = hasPortalPlanAccess
   const navItems = useMemo(
     () => {
       const base = BASE_NAV_ITEMS.filter((item) => {
-        if (item.id === "client-portal") return isEnterprise
+        if (item.id === "client-portal") return showClientPortal
         if (item.id === "branding") return hasProAccess && brandingSection != null
         if (item.id === "integrations") return integrationsSection != null
         return true
@@ -98,7 +105,7 @@ export function ConfigurationPanel({
       })
       return base
     },
-    [isEnterprise, hasProAccess, brandingSection, integrationsSection],
+    [showClientPortal, hasProAccess, brandingSection, integrationsSection],
   )
   const [activeSection, setActiveSection] = useState<ConfigSection>("custom-fields")
   const active = navItems.find(n => n.id === activeSection) ?? navItems[0]
@@ -121,7 +128,7 @@ export function ConfigurationPanel({
   }, [targetSection, navItems, onTargetSectionApplied])
 
   return (
-    <div className="flex h-full min-h-0 w-full" style={{ minHeight: "calc(100vh - 52px)" }}>
+    <div className="flex h-full w-full min-h-[calc(100dvh-52px)] md:min-h-[calc(100vh-52px)]">
       {/* Left sidebar */}
       <div className="flex h-full min-h-0 w-[220px] shrink-0 flex-col overflow-y-auto border-r border-[var(--border)] bg-[var(--bg-secondary)]">
         <div className="shrink-0 border-b border-[var(--border)] px-4 py-4">
@@ -176,12 +183,14 @@ export function ConfigurationPanel({
             />
           ) : null}
           {activeSection === "custom-fields" && <CustomFieldsSection hasProAccess={hasProAccess} />}
-          {activeSection === "client-portal" && isEnterprise ? <ClientPortalSection /> : null}
+          {activeSection === "client-portal" && showClientPortal ? <ClientPortalSection /> : null}
           {activeSection === "branding" && hasProAccess && brandingSection ? brandingSection : null}
           {activeSection === "integrations" && integrationsSection ? integrationsSection : null}
           {activeSection === "demo-mode" ? (
             <DemoModeSection
-              enabled={demoModeActive}
+              enabled={demoEnabled}
+              forceEnabled={demoForceEnabled}
+              psaConnected={psaConnected}
               onToggle={(enabled) => onToggleDemo?.(enabled)}
             />
           ) : null}
@@ -278,11 +287,16 @@ function GeneralSection({
 
 function DemoModeSection({
   enabled,
+  forceEnabled,
+  psaConnected = false,
   onToggle,
 }: {
   enabled: boolean
+  forceEnabled?: boolean
+  psaConnected?: boolean
   onToggle: (enabled: boolean) => void
 }) {
+  const checked = psaConnected ? Boolean(forceEnabled) : enabled
   return (
     <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-5">
       <h3 className="text-[15px] font-semibold text-[var(--text-primary)]">Demo Mode</h3>
@@ -296,28 +310,28 @@ function DemoModeSection({
           <span
             className={cn(
               "rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide",
-              enabled
+              checked
                 ? "bg-[var(--accent)]/15 text-[var(--accent)]"
                 : "bg-white/[0.06] text-[var(--text-muted)]",
             )}
           >
-            {enabled ? "On" : "Off"}
+            {checked ? "On" : "Off"}
           </span>
         </div>
         <button
           type="button"
           role="switch"
-          aria-checked={enabled}
-          onClick={() => onToggle(!enabled)}
+          aria-checked={checked}
+          onClick={() => onToggle(!checked)}
           className={cn(
             "inline-flex h-7 min-w-[120px] items-center rounded-full border px-4 py-1.5 transition-colors",
-            enabled ? "border-[var(--accent)] bg-[var(--accent)]" : "border-[var(--border)] bg-[var(--bg-primary)]",
+            checked ? "border-[var(--accent)] bg-[var(--accent)]" : "border-[var(--border)] bg-[var(--bg-primary)]",
           )}
         >
           <span
             className={cn(
               "mx-1 block size-5 rounded-full bg-white transition-transform",
-              enabled ? "translate-x-5" : "translate-x-0",
+              checked ? "translate-x-5" : "translate-x-0",
             )}
           />
         </button>
@@ -673,7 +687,7 @@ function AddMappingForm({
               {psa === "halopsa" ? "Field name in HaloPSA" : "Field name in ConnectWise"}
               {psa === "halopsa" ? (
                 <span className="ml-1 font-normal text-[var(--text-muted)]">
-                  — HaloPSA prefixes custom fields with "CF" e.g. CFCompanyType
+                  - HaloPSA prefixes custom fields with "CF" e.g. CFCompanyType
                 </span>
               ) : null}
             </label>

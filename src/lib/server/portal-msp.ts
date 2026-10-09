@@ -1,6 +1,6 @@
+import { getPlanTierServer, verifyUserPlan } from "@/lib/server/verifyUserPlan";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { createServerClient } from "@/lib/supabase/server";
-import { normalizePlanLabel } from "@/lib/utils/getPlan";
 
 export type PortalAccountRow = {
   id: string;
@@ -22,16 +22,11 @@ export async function requireHandoverUserId(): Promise<string> {
   return user.id;
 }
 
+/** Client portal MSP APIs require Growth tier or above (tier >= 2). */
 export async function requireEnterprisePlan(userId: string): Promise<void> {
-  const admin = createServiceRoleClient();
-  const { data: profile, error } = await admin
-    .from("profiles")
-    .select("plan")
-    .eq("id", userId)
-    .maybeSingle();
-  if (error) throw new Error(`profile: ${error.message}`);
-  if (normalizePlanLabel(profile?.plan ?? "") !== "enterprise") {
-    throw new Error("enterprise_required");
+  const fields = await verifyUserPlan(userId);
+  if (getPlanTierServer(fields) < 2) {
+    throw new Error("growth_required");
   }
 }
 

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { MarketingPageLayout } from "@/components/marketing-page-layout";
+import PageTransition from "@/components/PageTransition";
 
 export const metadata: Metadata = {
   title: "Solutions | Handover",
@@ -27,6 +28,7 @@ const links = [
 
 export default function SolutionsIndexPage() {
   return (
+    <PageTransition>
     <MarketingPageLayout>
       <section className="px-6 py-14 md:px-8 md:py-20">
         <div className="mx-auto w-full max-w-[1100px]">
@@ -48,6 +50,7 @@ export default function SolutionsIndexPage() {
         </div>
       </section>
     </MarketingPageLayout>
+    </PageTransition>
   );
 }
 

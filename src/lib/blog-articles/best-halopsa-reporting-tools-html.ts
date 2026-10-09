@@ -28,7 +28,7 @@ export const BEST_HALOPSA_REPORTING_TOOLS_HTML = `
 <p><strong>What makes it different:</strong></p>
 <p>Unlike dashboard tools, Handover generates written outputs - actual emails and documents ready to send or export. It reads the full ticket note history including email correspondence, understands context, and writes like a senior PM would write.</p>
 <p>Generated outputs can be pushed directly back to HaloPSA as ticket notes automatically. Scheduled weekly reports run every Monday without anyone triggering them.</p>
-<p><strong>Pricing:</strong> Basic (14-day free trial) · Pro £29/month · Team from £35/seat/month</p>
+<p><strong>Pricing:</strong> Basic (14-day free trial) · Starter £49/month · Growth £99/month</p>
 <p><strong>Limitations:</strong> Focused on written outputs rather than visual dashboards. If you need charts and graphs for board-level reporting, a dashboard tool is a better fit.</p>
 <p><a href="/auth?tab=signup&returnTo=/welcome">Start free trial →</a></p>
 <hr class="blog-hr" />
@@ -124,7 +124,7 @@ export const BEST_HALOPSA_REPORTING_TOOLS_HTML = `
 <td>✓</td>
 <td>✓</td>
 <td>✓</td>
-<td>Basic / £29/mo</td>
+<td>Basic / £49/mo</td>
 </tr>
 <tr>
 <th scope="row">Squared Up</th>

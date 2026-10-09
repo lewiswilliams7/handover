@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { CardMouseSpotlight } from "@/components/card-mouse-spotlight";
+import PageTransition from "@/components/PageTransition";
 import { MarketingHeroAmbient } from "@/components/marketing-hero-ambient";
 import { ScrollRevealItem } from "@/components/scroll-reveal-item";
 import { Button } from "@/components/ui/button";
@@ -24,7 +25,7 @@ function BadgeAvailable() {
 export const metadata: Metadata = {
   title: "HaloPSA & ConnectWise Integrations - Handover | MSP Reporting Tool",
   description:
-    "Connect your PSA — HaloPSA and ConnectWise supported natively. Generate reports, push back to tickets, and automate weekly updates.",
+    "Connect your PSA - HaloPSA and ConnectWise supported natively. Generate reports, push back to tickets, and automate weekly updates.",
   alternates: {
     canonical: "https://gethandover.uk/integrations",
   },
@@ -42,6 +43,7 @@ function BadgeComingSoon({ pulse }: { pulse?: boolean }) {
 
 export default function IntegrationsPage() {
   return (
+    <PageTransition>
     <div
       className="animate-in fade-in duration-300"
       style={{ minHeight: "100vh" }}
@@ -375,5 +377,6 @@ export default function IntegrationsPage() {
         </div>
       </section>
     </div>
+    </PageTransition>
   );
 }

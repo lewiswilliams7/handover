@@ -91,15 +91,15 @@ export function MarketingConversionClient() {
             </h2>
             <p className="mt-3 text-sm leading-relaxed text-[var(--text-secondary)]">
               Connect HaloPSA or ConnectWise and generate client updates, logs, and Excel packs in seconds -
-              pushed back to tickets on Pro. 14-day free trial — cancel anytime.
+              pushed back to tickets on Handover. Run the free PSA scan before you buy.
             </p>
             <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center">
               <Link
-                href="/auth?tab=signup&returnTo=/welcome"
+                href="/onboarding/connect"
                 className="inline-flex flex-1 items-center justify-center rounded-[var(--radius)] bg-[var(--accent)] px-4 py-3 text-center text-sm font-semibold text-white shadow-md transition-[transform,box-shadow] hover:bg-[var(--accent-hover)] hover:shadow-lg active:scale-[0.95]"
                 onClick={() => setExitOpen(false)}
               >
-                Start free trial →
+                Run the free PSA scan →
               </Link>
               <button
                 type="button"

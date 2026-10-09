@@ -35,10 +35,9 @@ export const metadata: Metadata = {
     authors: [post.author],
     images: [
       {
-        url: "/og-image.png",
+        url: "https://gethandover.uk/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "Handover - MSP delivery tool",
       },
     ],
   },
@@ -47,7 +46,7 @@ export const metadata: Metadata = {
     title: "Your MSP reports now write and file themselves",
     description:
       "Push to HaloPSA or ConnectWise and scheduled weekly reports close the loop: pull from your PSA, generate, push back - automatically on Pro.",
-    images: ["/og-image.png"],
+    images: ["https://gethandover.uk/opengraph-image"],
   },
 };
 

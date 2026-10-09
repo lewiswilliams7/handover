@@ -166,7 +166,7 @@ export async function GET(request: Request) {
 
     const { data: profileRow } = await supabase
       .from("profiles")
-      .select("brand_name, plan, white_label_mode")
+      .select("brand_name, plan, team_id, trial_ends_at, trial_plan, subscription_status, white_label_mode")
       .eq("id", user.id)
       .maybeSingle();
     const profileBrandName =

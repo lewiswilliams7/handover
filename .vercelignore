@@ -1,0 +1,32 @@
+# Generated and local build output
+/.next/
+/.next-build/
+/.next-old/
+/out/
+/coverage/
+
+# Secondary project not used by this Next.js app
+/handover-zapier/
+
+# Cursor, agent, and local workspace artifacts
+/.agents/
+/.cursor/
+/canvases/
+/.supabase/
+/scancsv/
+/scripts/
+
+# Local tooling and metadata
+/stripe.exe
+/_audit-meta.mjs
+/CONTEXT.md
+/workspace.code-workspace
+*.tsbuildinfo
+
+# Never upload local environment files
+.env*
+
+# Explicit copies of Vercel CLI defaults
+/.git/
+/node_modules/
+/.vercel/

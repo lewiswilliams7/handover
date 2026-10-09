@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import Link from "next/link";
+
+import PageTransition from "@/components/PageTransition";
 import {
   Activity,
   AlertTriangle,
@@ -36,7 +38,7 @@ const FEATURE_CARD_ICON_CLASS = "size-[22px] shrink-0 text-[#0EA5E9]";
 export const metadata: Metadata = {
   title: "Features - Handover | AI-Powered MSP Project Reporting",
   description:
-    "Connect HaloPSA or ConnectWise to generate client updates, action and risk logs, Excel report packs, and scheduled delivery with PSA push-back to tickets. Start free - cancel anytime - 14-day free trial — cancel anytime.",
+    "Connect HaloPSA or ConnectWise to generate client updates, action and risk logs, Excel report packs, and scheduled delivery with PSA push-back to tickets. Run the free PSA scan before you buy.",
   alternates: {
     canonical: "https://gethandover.uk/features",
   },
@@ -52,6 +54,7 @@ function PainIcon({ children }: { children: ReactNode }) {
 
 export default function FeaturesPage() {
   return (
+    <PageTransition>
     <div
       className="animate-in fade-in duration-300"
       style={{
@@ -130,12 +133,12 @@ export default function FeaturesPage() {
             </div>
           </div>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-            <Link href="/auth?tab=signup&returnTo=/welcome">
+            <Link href="/onboarding/connect">
               <Button
                 size="lg"
                 className="rounded-[var(--radius)] bg-[var(--accent)] px-8 text-white hover:bg-[var(--accent-hover)]"
               >
-                Start free trial
+                Run the free PSA scan
               </Button>
             </Link>
             <Link href="/pricing">
@@ -262,7 +265,7 @@ export default function FeaturesPage() {
                   badge: "Pro",
                   Icon: Activity,
                   title: "Delivery health dashboard (RAG)",
-                  body: "Live RAG-style delivery status across active work on Professional and above - spot risk and drift before the client does.",
+                  body: "Live RAG-style delivery status across active work on Starter and above - spot risk and drift before the client does.",
                   href: "/features/health-dashboard",
                 },
                 {
@@ -283,7 +286,7 @@ export default function FeaturesPage() {
                   badge: "Team+",
                   Icon: Paintbrush,
                   title: "Custom branding & white label",
-                  body: "Custom branding on all outputs is available on Professional, Team, and Enterprise. White-label mode (no Handover branding in footers) is available on Team and Enterprise.",
+                  body: "Custom branding on all outputs is available on Starter, Growth, and Enterprise. White-label mode (no Handover branding in footers) is available on Team and Enterprise.",
                   href: "/features/white-label",
                 },
                 {
@@ -315,7 +318,7 @@ export default function FeaturesPage() {
                 {
                   badge: "Team",
                   Icon: Share2,
-                  title: "Team plans & pooled generations",
+                  title: "Growth plans & pooled generations",
                   body: "Team seats share a pooled monthly generation allowance so busy weeks don’t strand one PM without capacity.",
                 },
                 {
@@ -668,16 +671,16 @@ export default function FeaturesPage() {
           <p className="mt-4 text-[var(--sidebar-text)]">
             Join MSP teams saving hours every week on reporting and client communications.
           </p>
-          <Link href="/auth?tab=signup&returnTo=/welcome" className="mt-8 inline-block">
+          <Link href="/onboarding/connect" className="mt-8 inline-block">
             <Button
               size="lg"
               className="rounded-[var(--radius)] bg-[var(--accent)] px-8 text-white hover:bg-[var(--accent-hover)]"
             >
-              Start free trial
+              Run the free PSA scan
             </Button>
           </Link>
           <p className="mt-4 text-sm text-[var(--sidebar-text)]">
-            14-day free trial.
+            Run the free PSA scan before you buy.
           </p>
           <Link
             href="/case-studies"
@@ -706,5 +709,6 @@ export default function FeaturesPage() {
         </div>
       </section>
     </div>
+    </PageTransition>
   );
 }

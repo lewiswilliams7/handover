@@ -10,7 +10,7 @@ import { softwareApplicationJsonLd } from "@/lib/seo-page-jsonld";
 
 const PATH = "/features/halopsa-reporting";
 const CANONICAL = `https://gethandover.uk${PATH}`;
-const TITLE = "HaloPSA Reporting Tool — Automate HaloPSA Client Reports";
+const TITLE = "HaloPSA Reporting Tool - Automate HaloPSA Client Reports";
 const DESCRIPTION =
   "HaloPSA report generator for MSPs: automate HaloPSA reports, weekly client updates, and QBR packs from live ticket data. Native integration, listed on the HaloPSA marketplace.";
 
@@ -30,7 +30,7 @@ export const metadata: Metadata = {
 const faqs = [
   {
     q: "What is the best HaloPSA reporting tool for client updates?",
-    a: "Handover connects natively to HaloPSA and generates narrative client reports, QBR packs, and scheduled weekly updates from your live tickets and projects — without middleware or complex configuration.",
+    a: "Handover connects natively to HaloPSA and generates narrative client reports, QBR packs, and scheduled weekly updates from your live tickets and projects - without middleware or complex configuration.",
   },
   {
     q: "How do I automate HaloPSA reports?",
@@ -48,7 +48,7 @@ const faqs = [
 
 export default function HaloPsaReportingFeaturePage() {
   const jsonLd = softwareApplicationJsonLd({
-    name: "Handover — HaloPSA Reporting",
+    name: "Handover - HaloPSA Reporting",
     description: DESCRIPTION,
     url: CANONICAL,
   });
@@ -63,12 +63,12 @@ export default function HaloPsaReportingFeaturePage() {
           <div className="rounded-[var(--radius-lg)] border border-[rgba(56,189,248,0.28)] bg-[rgba(15,23,42,0.68)] px-6 py-8 shadow-[0_20px_60px_-22px_rgba(56,189,248,0.35)] md:px-10 md:py-10">
             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#38bdf8]">Features · HaloPSA</p>
             <h1 className="mt-3 text-3xl font-semibold leading-tight text-white md:text-5xl">
-              Automated client reporting for HaloPSA — built by an MSP PM
+              Automated client reporting for HaloPSA - built by an MSP PM
             </h1>
             <div className="mt-6 flex flex-wrap gap-3">
-              <Link href="/auth?tab=signup&returnTo=/welcome">
+              <Link href="/onboarding/connect">
                 <Button className="rounded-[var(--radius)] bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]">
-                  Start free trial
+                  Run the free PSA scan
                 </Button>
               </Link>
               <Link href="/demo">
@@ -89,7 +89,7 @@ export default function HaloPsaReportingFeaturePage() {
       <section className="px-6 py-12 md:px-8">
         <div className="mx-auto max-w-[900px] space-y-10 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
           <p>
-            HaloPSA holds the operational truth for your clients — tickets, projects, SLAs, and notes. But turning
+            HaloPSA holds the operational truth for your clients - tickets, projects, SLAs, and notes. But turning
             that data into consistent <strong className="text-[var(--text-primary)]">HaloPSA client reports</strong>{" "}
             every week still falls on your PMs. Handover is the HaloPSA reporting tool that closes that gap for{" "}
             <strong className="text-[var(--text-primary)]">UK MSPs</strong> and teams worldwide.
@@ -130,12 +130,12 @@ export default function HaloPsaReportingFeaturePage() {
             </h2>
             <h3 className="mt-4 text-xl font-semibold text-[var(--text-primary)]">Weekly client reports</h3>
             <p className="mt-2">
-              Plain-English summaries of activity, open tickets, risks, actions required, and next steps — written for
+              Plain-English summaries of activity, open tickets, risks, actions required, and next steps - written for
               business stakeholders, not engineers.
             </p>
             <h3 className="mt-6 text-xl font-semibold text-[var(--text-primary)]">QBR packs & Excel exports</h3>
             <p className="mt-2">
-              Branded quarterly business review packs and structured Excel report packs from the same HaloPSA dataset —
+              Branded quarterly business review packs and structured Excel report packs from the same HaloPSA dataset  - 
               in minutes instead of hours.
             </p>
             <h3 className="mt-6 text-xl font-semibold text-[var(--text-primary)]">Delivery health visibility</h3>
@@ -150,7 +150,7 @@ export default function HaloPsaReportingFeaturePage() {
             </h2>
             <p className="mt-3">
               Your team keeps logging tickets in HaloPSA as normal. Handover is the HaloPSA report generator that turns
-              that activity into professional client communication — a true{" "}
+              that activity into professional client communication - a true{" "}
               <strong className="text-[var(--text-primary)]">managed service provider</strong> reporting layer on top
               of your PSA.
             </p>

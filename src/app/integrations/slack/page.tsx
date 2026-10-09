@@ -86,9 +86,9 @@ export default function SlackIntegrationPage() {
         <div className="mx-auto w-full max-w-[1100px]">
           <ScrollRevealItem index={3} className="block">
             <section className="rounded-[var(--radius-lg)] border border-white/[0.07] bg-white/[0.03] p-8 text-center backdrop-blur-md">
-              <Link href={signedIn ? "/?openSettings=integrations" : "/auth?tab=signup&returnTo=/welcome"}>
+              <Link href={signedIn ? "/?openSettings=integrations" : "/onboarding/connect"}>
                 <Button className="bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]">
-                  Start free trial
+                  Run the free PSA scan
                 </Button>
               </Link>
             </section>

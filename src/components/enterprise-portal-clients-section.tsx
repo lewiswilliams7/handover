@@ -39,6 +39,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/toasts";
 import type { DeliveryHealthApiResponse, DeliveryHealthRag, DeliveryHealthRow } from "@/lib/delivery-health";
+import { DEMO_DELIVERY_HEALTH } from "@/lib/delivery-health";
 import {
   buildDeliveryHealthSwrKey,
   DELIVERY_HEALTH_SWR_OPTIONS,
@@ -46,8 +47,11 @@ import {
 } from "@/lib/delivery-health-swr";
 import { usePSAConnections } from "@/hooks/use-psa-connections";
 import { PageHeader } from "@/components/page-header";
+import { PortalBootstrapProvider } from "@/components/portal-customer/portal-bootstrap-context";
+import { PortalCustomerDashboard } from "@/components/portal-customer/portal-customer-dashboard";
 import { cn } from "@/lib/utils";
-import { normalizePlanLabel } from "@/lib/utils/getPlan";
+import { DEMO_PORTAL_DATA, DEMO_PORTAL_REPORTS } from "@/lib/demo-portal-data";
+import { getPlanTier } from "@/lib/utils/getPlan";
 
 type PortalClientRow = {
   id: string;
@@ -150,6 +154,70 @@ type TeamMemberRow = {
   joined_at: string | null;
 };
 
+const DEMO_PORTAL_CLIENTS = [
+  { name: "Acme Legal LLP", logo: null as string | null },
+  { name: "Northwood Manufacturing", logo: null as string | null },
+  { name: "Bridgewater Council", logo: null as string | null },
+];
+
+function DemoPortalClientsList({
+  overviewRows,
+  onPreview,
+  onOpenConfiguration,
+}: {
+  overviewRows: DeliveryHealthRow[];
+  onPreview: (clientName: string) => void;
+  onOpenConfiguration: () => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-[var(--radius-lg)] border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-[12px] leading-relaxed text-amber-100">
+        Demo mode — showing what a client portal looks like. Set up your real portal URL in{" "}
+        <button
+          type="button"
+          className="font-medium text-[var(--accent)] underline-offset-2 hover:underline"
+          onClick={onOpenConfiguration}
+        >
+          Configuration
+        </button>{" "}
+        to create live portals for your clients.
+      </div>
+      <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)]">
+        <div className="grid grid-cols-[1.6fr_0.6fr_auto] items-center border-b border-[var(--border)] px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#94a3b8]">
+          <span>Client name</span>
+          <span>RAG</span>
+          <span className="text-right">Actions</span>
+        </div>
+        <ul>
+          {DEMO_PORTAL_CLIENTS.map((c) => {
+            const rag = worstRagForRows(overviewRows, c.name);
+            return (
+              <li key={c.name}>
+                <div className="grid grid-cols-[1.6fr_0.6fr_auto] items-center border-b border-[var(--border)] px-3 py-2.5 last:border-b-0">
+                  <p className="truncate text-[13px] font-medium text-white">{c.name}</p>
+                  <span
+                    className={cn("size-2.5 shrink-0 rounded-full", ragDotClass(rag, true))}
+                    title="RAG"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 border-[var(--border)] text-[12px]"
+                    onClick={() => onPreview(c.name)}
+                  >
+                    Preview portal
+                  </Button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 export function EnterprisePortalClientsSection(props: {
   enabled: boolean;
   portalSlug: string;
@@ -212,8 +280,9 @@ export function EnterprisePortalClientsSection(props: {
   const [wizardClientPullSource, setWizardClientPullSource] = useState<"halopsa" | "connectwise">(
     "halopsa",
   );
+  const [previewClient, setPreviewClient] = useState<string | null>(null);
 
-  const enterprise = normalizePlanLabel(props.profilePlan ?? "") === "enterprise";
+  const hasPortalPlanAccess = getPlanTier(props.profilePlan) >= 2;
   const bothConnected = Boolean(props.bothConnected);
 
   const filteredClients = useMemo(() => {
@@ -238,7 +307,7 @@ export function EnterprisePortalClientsSection(props: {
   }, [openMenu, clients]);
 
   const loadClients = useCallback(async () => {
-    if (!props.enabled || !enterprise) return;
+    if (!props.enabled || !hasPortalPlanAccess) return;
     setLoading(true);
     try {
       const res = await fetch("/api/portal/clients", { credentials: "same-origin", cache: "no-store" });
@@ -247,10 +316,10 @@ export function EnterprisePortalClientsSection(props: {
     } finally {
       setLoading(false);
     }
-  }, [props.enabled, enterprise]);
+  }, [props.enabled, hasPortalPlanAccess]);
 
   const orgHealthSwrKey = useMemo(() => {
-    if (!props.enabled || props.deliveryAccess === "none" || !enterprise) {
+    if (!props.enabled || props.deliveryAccess === "none" || !hasPortalPlanAccess) {
       return null;
     }
     return buildDeliveryHealthSwrKey(
@@ -262,7 +331,7 @@ export function EnterprisePortalClientsSection(props: {
     props.enabled,
     props.deliveryAccess,
     props.demoModeActive,
-    enterprise,
+    hasPortalPlanAccess,
     psaConnections.connectwise,
     psaConnections.primary,
   ]);
@@ -283,7 +352,7 @@ export function EnterprisePortalClientsSection(props: {
   }, [loadClients]);
 
   useEffect(() => {
-    if (panelSection !== "overview" || !enterprise || !props.enabled) return;
+    if (panelSection !== "overview" || !hasPortalPlanAccess || !props.enabled) return;
     let cancelled = false;
     void fetch("/api/scheduled-reports", { credentials: "same-origin", cache: "no-store" })
       .then(async (res) => {
@@ -298,7 +367,7 @@ export function EnterprisePortalClientsSection(props: {
     return () => {
       cancelled = true;
     };
-  }, [panelSection, enterprise, props.enabled]);
+  }, [panelSection, hasPortalPlanAccess, props.enabled]);
 
   useEffect(() => {
     if (createOpen && !prevCreateOpenRef.current) {
@@ -309,7 +378,7 @@ export function EnterprisePortalClientsSection(props: {
   }, [createOpen]);
 
   useEffect(() => {
-    if (panelSection !== "company" || !enterprise || !props.enabled) return;
+    if (panelSection !== "company" || !hasPortalPlanAccess || !props.enabled) return;
     let cancelled = false;
     setTeamLoading(true);
     setTeamLoadError(null);
@@ -343,7 +412,7 @@ export function EnterprisePortalClientsSection(props: {
     return () => {
       cancelled = true;
     };
-  }, [panelSection, enterprise, props.enabled]);
+  }, [panelSection, hasPortalPlanAccess, props.enabled]);
 
   useEffect(() => {
     if (!createOpen) {
@@ -575,7 +644,9 @@ export function EnterprisePortalClientsSection(props: {
     return `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   }
 
-  const overviewRows = orgHealthData?.rows ?? healthRows;
+  const overviewRows = props.demoModeActive
+    ? DEMO_DELIVERY_HEALTH.rows
+    : (orgHealthData?.rows ?? healthRows);
 
   const portfolioRagCounts = useMemo(() => {
     const c = { red: 0, amber: 0, green: 0, grey: 0 };
@@ -667,7 +738,9 @@ export function EnterprisePortalClientsSection(props: {
     [portfolioRagCounts],
   );
 
-  if (!enterprise || !props.enabled) return null;
+  if ((!hasPortalPlanAccess && !props.demoModeActive) || !props.enabled) return null;
+
+  const showEnterpriseDemoBanner = props.demoModeActive === true && !hasPortalPlanAccess;
 
   const companyNavLabel =
     props.companyDisplayName?.trim() || "Company";
@@ -677,18 +750,17 @@ export function EnterprisePortalClientsSection(props: {
   const companyNameLabel =
     props.organisationCompanyName?.trim() ||
     props.companyDisplayName?.trim() ||
-    "—";
+    " - ";
 
   return (
     <>
       <div
-        className="flex h-full min-h-0 w-full"
-        style={{ minHeight: "calc(100vh - 52px)" }}
+        className="flex h-full w-full min-h-[calc(100dvh-52px)] md:min-h-[calc(100vh-52px)]"
       >
-        <div className="flex w-[220px] shrink-0 flex-col overflow-y-auto border-r border-[var(--border)] bg-[var(--bg-secondary)]">
+        <div className="flex w-[220px] shrink-0 flex-col overflow-visible border-r border-[var(--border)] bg-[var(--bg-secondary)] md:overflow-y-auto">
           <div className="shrink-0 border-b border-[var(--border)] px-4 py-4">
             <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
-              Enterprise
+              Organisation
             </p>
           </div>
           <nav className="flex-1 p-2">
@@ -734,13 +806,30 @@ export function EnterprisePortalClientsSection(props: {
           </nav>
         </div>
 
-        <div className="min-w-0 flex-1 overflow-y-auto bg-[var(--bg-secondary)]">
+        <div className="min-w-0 flex-1 overflow-visible bg-[var(--bg-secondary)] md:overflow-y-auto">
           <div
             className={cn(
               "mx-auto px-6 py-8",
               panelSection === "overview" ? "max-w-6xl" : "max-w-3xl",
             )}
           >
+            {showEnterpriseDemoBanner ? (
+              <div className="mb-4 flex items-center gap-2 rounded-xl border border-[var(--accent)]/20 bg-[var(--accent)]/5 px-4 py-3">
+                <span className="text-[12px] font-semibold uppercase tracking-wide text-[var(--accent)]">
+                  Growth feature
+                </span>
+                <span className="text-[12px] text-white/60">
+                  You&apos;re viewing a demo. Upgrade to Growth to create real client portals and manage your
+                  organisation.
+                </span>
+                <Link
+                  href="/pricing"
+                  className="ml-auto text-[12px] font-medium text-[var(--accent)] hover:underline"
+                >
+                  View plans →
+                </Link>
+              </div>
+            ) : null}
             <PageHeader
               eyebrow="PORTFOLIO · OVERVIEW"
               title="Organisation"
@@ -839,7 +928,7 @@ export function EnterprisePortalClientsSection(props: {
                   ) : !teamLoadError && teamSolo ? (
                     <div className="mt-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-4 py-4">
                       <p className="text-[13px] leading-relaxed text-[var(--text-secondary)]">
-                        You&apos;re on a solo plan. Upgrade to Team to add members.
+                        You&apos;re on a solo plan. Upgrade to Growth to add members.
                       </p>
                       <Link
                         href="/pricing"
@@ -859,7 +948,7 @@ export function EnterprisePortalClientsSection(props: {
                           const roleNorm = typeof m.role === "string" ? m.role.toLowerCase() : "member";
                           const roleLabel =
                             roleNorm === "owner" ? "Owner" : roleNorm === "admin" ? "Admin" : "Member";
-                          let lastIn = "—";
+                          let lastIn = " - ";
                           if (m.last_sign_in_at) {
                             const d = new Date(m.last_sign_in_at);
                             if (!Number.isNaN(d.getTime())) {
@@ -914,7 +1003,7 @@ export function EnterprisePortalClientsSection(props: {
                   <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-5">
                     <p className="text-[13px] font-medium text-white/60">Generations this month</p>
                     <p className="mt-2 text-3xl font-bold text-white">
-                      {props.monthCount !== null ? props.monthCount : "—"}
+                      {props.monthCount !== null ? props.monthCount : " - "}
                     </p>
                     {props.totalGenerationCount !== null ? (
                       <p className="mt-2 text-[11px] text-[var(--text-muted)]">
@@ -925,7 +1014,7 @@ export function EnterprisePortalClientsSection(props: {
                   <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-5">
                     <p className="text-[13px] font-medium text-white/60">Active scheduled reports</p>
                     <p className="mt-2 text-3xl font-bold text-white">
-                      {scheduledEnabledCount !== null ? scheduledEnabledCount : "—"}
+                      {scheduledEnabledCount !== null ? scheduledEnabledCount : " - "}
                     </p>
                   </div>
                   <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-5">
@@ -933,7 +1022,7 @@ export function EnterprisePortalClientsSection(props: {
                     <p className="mt-2 text-3xl font-bold text-white">
                       {props.deliveryAccess !== "none" && orgHealthData?.stats?.tickets?.activeCount != null
                         ? orgHealthData.stats.tickets.activeCount
-                        : "—"}
+                        : " - "}
                     </p>
                   </div>
                 </div>
@@ -1137,22 +1226,33 @@ export function EnterprisePortalClientsSection(props: {
                 </div>
               </div>
             ) : !props.portalSlug?.trim() ? (
-              <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6 text-center">
-                <p className="text-[14px] font-medium text-[var(--text-primary)]">Set up your portal URL first</p>
-                <p className="mt-2 text-[13px] text-[var(--text-secondary)]">
-                  Save your MSP portal slug in Configuration before adding client portals.
-                </p>
-                <Button
-                  type="button"
-                  className="mt-4 bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
-                  onClick={() => {
+              props.demoModeActive ? (
+                <DemoPortalClientsList
+                  overviewRows={overviewRows}
+                  onPreview={(clientName) => setPreviewClient(clientName)}
+                  onOpenConfiguration={() => {
                     props.onOpenConfiguration();
                     props.onCloseMobileSidebar?.();
                   }}
-                >
-                  Open Configuration
-                </Button>
-              </div>
+                />
+              ) : (
+                <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6 text-center">
+                  <p className="text-[14px] font-medium text-[var(--text-primary)]">Set up your portal URL first</p>
+                  <p className="mt-2 text-[13px] text-[var(--text-secondary)]">
+                    Save your MSP portal slug in Configuration before adding client portals.
+                  </p>
+                  <Button
+                    type="button"
+                    className="mt-4 bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                    onClick={() => {
+                      props.onOpenConfiguration();
+                      props.onCloseMobileSidebar?.();
+                    }}
+                  >
+                    Open Configuration
+                  </Button>
+                </div>
+              )
             ) : (
               <>
                 <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -1221,7 +1321,7 @@ export function EnterprisePortalClientsSection(props: {
                     </div>
                     <ul>
                       {filteredClients.map((c) => {
-                        const rag = c.enabled === false ? "off" : worstRagForRows(healthRows, c.client_name);
+                        const rag = c.enabled === false ? "off" : worstRagForRows(overviewRows, c.client_name);
                         const psaLabel =
                           String(c.psa_source ?? "").toLowerCase() === "connectwise" ? "CW" : "Halo";
                         return (
@@ -1299,7 +1399,7 @@ export function EnterprisePortalClientsSection(props: {
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent
-          className="!max-w-5xl w-[90vw] max-h-[90vh] overflow-y-auto border-[var(--border)] bg-[var(--bg-primary)] p-6 text-[var(--text-primary)]"
+          className="!max-w-5xl w-[90vw] max-h-[90dvh] overflow-y-auto overscroll-contain border-[var(--border)] bg-[var(--bg-primary)] p-6 text-[var(--text-primary)] md:max-h-[90vh] md:overscroll-auto"
           style={{ maxWidth: "64rem" }}
         >
           <DialogHeader>
@@ -1380,7 +1480,7 @@ export function EnterprisePortalClientsSection(props: {
                   />
                 </div>
               ) : (
-                <div className="max-h-96 space-y-1 overflow-y-auto rounded-[var(--radius)] border border-[var(--border)] p-2">
+                <div className="max-h-none space-y-1 overflow-visible rounded-[var(--radius)] border border-[var(--border)] p-2 md:max-h-96 md:overflow-y-auto">
                   {psaLoading ? (
                     <p className="text-[12px] text-[var(--text-muted)]">Loading…</p>
                   ) : (
@@ -1423,7 +1523,7 @@ export function EnterprisePortalClientsSection(props: {
                 />
                 <p className="mt-1 text-[11px] leading-snug text-[var(--text-muted)]">
                   {pendingPortalLogoFile
-                    ? `Selected: ${pendingPortalLogoFile.name} — uploads when you create the portal.`
+                    ? `Selected: ${pendingPortalLogoFile.name} - uploads when you create the portal.`
                     : "You can add or change the logo later from the client portal settings."}
                 </p>
               </div>
@@ -1592,7 +1692,7 @@ export function EnterprisePortalClientsSection(props: {
                 ))}
               </div>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-4 text-[13px]">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 text-[13px] md:overscroll-auto">
               {detailLoading ? (
                 <p className="text-[var(--text-muted)]">Loading…</p>
               ) : detail ? (
@@ -1802,6 +1902,86 @@ export function EnterprisePortalClientsSection(props: {
                   </button>
                 </li>
               </ul>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {previewClient && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60"
+              role="presentation"
+              onClick={() => setPreviewClient(null)}
+            >
+              <div
+                className="flex h-[100dvh] w-full max-w-full cursor-auto flex-col bg-[var(--bg-primary)] shadow-xl"
+                role="dialog"
+                aria-modal
+                aria-labelledby="portal-preview-title"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="relative shrink-0 border-b border-[var(--border)] px-4 py-3 pr-14">
+                  <div className="flex flex-wrap items-center gap-2 pr-2">
+                    <h2 id="portal-preview-title" className="text-[15px] font-semibold text-[var(--text-primary)]">
+                      Portal preview — {previewClient}
+                    </h2>
+                    <span className="rounded-full border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-200">
+                      Demo data
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="absolute top-3 right-4 flex size-9 items-center justify-center rounded-[var(--radius)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]"
+                    onClick={() => setPreviewClient(null)}
+                    aria-label="Close preview"
+                  >
+                    <X className="size-5 shrink-0" aria-hidden />
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain md:overscroll-auto">
+                  <PortalBootstrapProvider
+                    value={{
+                      account: {
+                        id: "demo",
+                        slug: "demo-msp",
+                        display_name: props.organisationCompanyName.trim() || "Your MSP",
+                        user_id: "demo",
+                      },
+                      client: {
+                        id: `demo-${previewClient}`,
+                        client_name: previewClient,
+                        slug: previewClient.toLowerCase().replace(/\s+/g, "-"),
+                        client_id: "demo",
+                        logo_url: null,
+                        psa_source: "halo",
+                        visibility_tickets: true,
+                        visibility_projects: true,
+                        visibility_rag: true,
+                        visibility_reports: true,
+                        visibility_ticket_notes: true,
+                        visibility_stats: true,
+                        visibility_priority_breakdown: true,
+                        visibility_resolved_count: true,
+                        visibility_recent_activity: true,
+                      },
+                      profile: {
+                        company_name: props.organisationCompanyName.trim() || null,
+                        display_name: props.companyDisplayName.trim() || null,
+                        brand_name: props.organisationCompanyName.trim() || null,
+                        brand_colour: props.brandColour.trim() || null,
+                        brand_logo_url: props.brandLogoUrl.trim() || null,
+                        white_label_mode: props.whiteLabelMode,
+                      },
+                    }}
+                  >
+                    <PortalCustomerDashboard
+                      demoData={DEMO_PORTAL_DATA[previewClient] ?? DEMO_PORTAL_DATA.default}
+                      demoReports={DEMO_PORTAL_REPORTS[previewClient] ?? DEMO_PORTAL_REPORTS.default}
+                    />
+                  </PortalBootstrapProvider>
+                </div>
+              </div>
             </div>,
             document.body,
           )

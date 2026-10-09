@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 
 import {
+  stripeSubscriptionIsPaid,
   syncProfilesPlanFromStripeSubscription,
 } from "@/lib/stripe-subscription-plan-sync";
 import { clampTeamSeatCount, teamGenerationLimitForSeats } from "@/lib/utils/getPlan";
 import { sendReferralRewardEmail } from "@/lib/emails";
 import { buildHandoverResendFromHeader } from "@/lib/resend-from-header";
+import { trackEvent } from "@/lib/logsnag";
 import { ensureReferralCodeForPayingUser } from "@/lib/referral-server";
 import {
   ensureReferrerRewardCoupon,
@@ -217,12 +219,27 @@ export async function POST(request: Request) {
               usedWelcomeCoupon,
               subscriptionId,
             );
+            const { data: teamUpgradeUser } = await supabase.auth.admin.getUserById(userId);
+            void trackEvent({
+              channel: "revenue",
+              event: "Plan Upgraded",
+              icon: "💰",
+              description: `${teamUpgradeUser.user?.email ?? "unknown"} upgraded to team`,
+              tags: {
+                email: teamUpgradeUser.user?.email ?? "unknown",
+                plan: "team",
+              },
+              notify: true,
+            });
           } else {
-            /** Solo Professional checkout: end in-app trial columns; plan + Stripe sync follow subscription events. */
+            /** Current Handover checkout: end legacy trial columns immediately. */
             const { error } = await supabase
               .from("profiles")
               .update({
-                plan: "professional",
+                plan:
+                  session.metadata?.plan === "starter_programme"
+                    ? "starter_programme"
+                    : "handover",
                 stripe_customer_id: customerId,
                 trial_ends_at: null,
                 trial_plan: null,
@@ -241,6 +258,18 @@ export async function POST(request: Request) {
               usedWelcomeCoupon,
               subscriptionId,
             );
+            const { data: proUpgradeUser } = await supabase.auth.admin.getUserById(userId);
+            void trackEvent({
+              channel: "revenue",
+              event: "Plan Upgraded",
+              icon: "💰",
+              description: `${proUpgradeUser.user?.email ?? "unknown"} purchased Handover`,
+              tags: {
+                email: proUpgradeUser.user?.email ?? "unknown",
+                plan: "handover",
+              },
+              notify: true,
+            });
           }
         }
         break;
@@ -384,6 +413,66 @@ export async function POST(request: Request) {
         }
         break;
       }
+      case "invoice.payment_failed": {
+        const invoice = event.data.object as Stripe.Invoice;
+        const customerId =
+          typeof invoice.customer === "string"
+            ? invoice.customer
+            : invoice.customer && typeof invoice.customer !== "string"
+              ? invoice.customer.id
+              : null;
+
+        if (!customerId) {
+          console.warn("[webhook] invoice.payment_failed without customer", {
+            invoiceId: invoice.id,
+          });
+          break;
+        }
+
+        // Keep the plan and entitlement unchanged during Stripe's retry window.
+        // The subscription.deleted event is the revocation path after Stripe gives up.
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .update({ subscription_status: "past_due" })
+          .eq("stripe_customer_id", customerId);
+        if (profileError) {
+          console.error("[webhook] invoice.payment_failed profile update:", profileError);
+          return NextResponse.json(
+            { error: "Database update failed" },
+            { status: 500 },
+          );
+        }
+
+        const { error: teamError } = await supabase
+          .from("teams")
+          .update({ subscription_status: "past_due" })
+          .eq("stripe_customer_id", customerId);
+        if (teamError) {
+          console.error("[webhook] invoice.payment_failed team update:", teamError);
+          return NextResponse.json(
+            { error: "Database update failed" },
+            { status: 500 },
+          );
+        }
+
+        const failedInvoiceSubscription =
+          invoice.parent?.type === "subscription_details"
+            ? invoice.parent.subscription_details?.subscription ?? null
+            : null;
+
+        console.warn("[webhook] invoice.payment_failed recorded", {
+          invoiceId: invoice.id,
+          customerId,
+          subscriptionId:
+            typeof failedInvoiceSubscription === "string"
+              ? failedInvoiceSubscription
+              : failedInvoiceSubscription?.id ?? null,
+          attemptCount: invoice.attempt_count ?? null,
+          nextPaymentAttempt: invoice.next_payment_attempt ?? null,
+          subscriptionStatus: "past_due",
+        });
+        break;
+      }
       case "customer.subscription.created":
       case "customer.subscription.updated": {
         const subscription = event.data.object as Stripe.Subscription;
@@ -393,6 +482,38 @@ export async function POST(request: Request) {
             stripe,
             subscription,
           );
+          if (
+            event.type === "customer.subscription.updated" &&
+            stripeSubscriptionIsPaid(subscription)
+          ) {
+            const syncUserId =
+              typeof subscription.metadata?.user_id === "string" &&
+              subscription.metadata.user_id.trim()
+                ? subscription.metadata.user_id.trim()
+                : null;
+            if (syncUserId) {
+              const { data: syncProf } = await supabase
+                .from("profiles")
+                .select("plan")
+                .eq("id", syncUserId)
+                .maybeSingle();
+              const { data: syncAuthUser } =
+                await supabase.auth.admin.getUserById(syncUserId);
+              const newPlan =
+                typeof syncProf?.plan === "string" ? syncProf.plan : "unknown";
+              void trackEvent({
+                channel: "revenue",
+                event: "Plan Upgraded",
+                icon: "💰",
+                description: `${syncAuthUser.user?.email ?? "unknown"} upgraded to ${newPlan}`,
+                tags: {
+                  email: syncAuthUser.user?.email ?? "unknown",
+                  plan: newPlan,
+                },
+                notify: true,
+              });
+            }
+          }
           if (event.type === "customer.subscription.updated") {
             console.log("[webhook] customer.subscription.updated plan sync OK", {
               subscriptionId: subscription.id,

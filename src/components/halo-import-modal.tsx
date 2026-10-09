@@ -230,6 +230,7 @@ type HaloImportModalProps = {
       status: string;
       type: "ticket" | "project";
     }>;
+    inputQuality?: { score: number; reasons: string[] };
   }) => void;
 };
 
@@ -285,6 +286,61 @@ function isAutomatedTicket(title: string): boolean {
     /\[request id/i,
   ];
   return automatedPatterns.some((p) => p.test(title));
+}
+
+function calculateInputQuality(tickets: HaloTicket[]): {
+  score: number;
+  reasons: string[];
+} {
+  if (tickets.length === 0) return { score: 0, reasons: ["No tickets selected"] };
+
+  const reasons: string[] = [];
+  let score = 100;
+
+  if (tickets.length < 3) {
+    score -= 20;
+    reasons.push(
+      `Only ${tickets.length} ticket${tickets.length === 1 ? "" : "s"} selected — outputs may be limited`,
+    );
+  }
+
+  const shortDesc = tickets.filter((t) => {
+    const desc = (t.details || t.summary || "").trim();
+    return desc.split(/\s+/).filter(Boolean).length < 20;
+  });
+  if (shortDesc.length > 0) {
+    const deduction = Math.min(shortDesc.length * 8, 40);
+    score -= deduction;
+    reasons.push(
+      `${shortDesc.length} ticket${shortDesc.length === 1 ? "" : "s"} with limited description`,
+    );
+  }
+
+  const noNotes = tickets.filter((t) => !t.notes || t.notes.length === 0);
+  if (noNotes.length > 0) {
+    const deduction = Math.min(noNotes.length * 5, 25);
+    score -= deduction;
+    reasons.push(`${noNotes.length} ticket${noNotes.length === 1 ? "" : "s"} with no notes`);
+  }
+
+  const closedNoResolution = tickets.filter((t) => {
+    const isClosed =
+      t.status?.name?.toLowerCase().includes("closed") ||
+      t.status?.name?.toLowerCase().includes("resolved");
+    const hasResolution = t.notes?.some(
+      (n) => (n.note || n.details || n.body || "").trim().length > 20,
+    );
+    return isClosed && !hasResolution;
+  });
+  if (closedNoResolution.length > 0) {
+    const deduction = Math.min(closedNoResolution.length * 7, 30);
+    score -= deduction;
+    reasons.push(
+      `${closedNoResolution.length} closed ticket${closedNoResolution.length === 1 ? "" : "s"} without resolution notes`,
+    );
+  }
+
+  return { score: Math.max(0, Math.min(100, score)), reasons };
 }
 
 export function HaloImportModal({
@@ -398,7 +454,6 @@ export function HaloImportModal({
       return;
     }
     await fetchHaloClients({ bustCache: true, resetSelection: true });
-    await invalidatePsaCache();
     const cacheBust = Date.now();
     if (importMode === "tickets") {
       await fetch(`/api/halo/tickets?refresh=1&_=${cacheBust}`, {
@@ -755,6 +810,30 @@ export function HaloImportModal({
     return pickedClients.map((c) => c.name).join(", ");
   }, [allClientsSelected, pickedClients]);
 
+  const step3PreviewLabels = useMemo(() => {
+    const items: Array<{ id: number | string; label: string }> = [];
+    if (importMode === "tickets") {
+      for (const t of tickets) {
+        if (t.is_project === true || t.is_project_task === true) continue;
+        if (!selectedIds.includes(t.id)) continue;
+        items.push({ id: t.id, label: t.summary?.trim() || `Ticket ${t.id}` });
+        if (items.length >= 3) break;
+      }
+    } else {
+      for (const p of projects) {
+        if (!selectedIds.includes(p.id)) continue;
+        items.push({ id: p.id, label: p.name?.trim() || `Project ${p.id}` });
+        if (items.length >= 3) break;
+      }
+    }
+    return items;
+  }, [importMode, tickets, projects, selectedIds]);
+
+  const step3PreviewOverflow = useMemo(() => {
+    const total = importMode === "tickets" ? selectedTicketCount : selectedProjectCount;
+    return Math.max(0, total - step3PreviewLabels.length);
+  }, [importMode, selectedTicketCount, selectedProjectCount, step3PreviewLabels.length]);
+
   const fetchSummaryLine = useMemo(() => {
     if (importMode !== "tickets") {
       if (allClientsSelected) return "Fetch all clients · open projects";
@@ -1019,7 +1098,6 @@ export function HaloImportModal({
       setStep2HiddenClientsCount(hiddenTickets);
       setTickets(detailed);
       setProjects([]);
-      void refreshHaloTickets();
       setSelectedIds([]);
       setSelectedNotes(buildEmptyNoteSelection(detailed));
       setStep(2);
@@ -1198,6 +1276,7 @@ export function HaloImportModal({
       new Set(allImportedItems.map((t) => t.clientName)).size === 1
         ? allImportedItems[0]?.clientName ?? null
         : null;
+    const inputQuality = calculateInputQuality(selectedTickets);
     onImport({
       formatted: `HaloPSA Export - ${allImportedItems.length} items\n\n${combinedText}`,
       count: allImportedItems.length,
@@ -1205,6 +1284,7 @@ export function HaloImportModal({
       dataType: selectedProjects.length > 0 && selectedTickets.length === 0 ? "projects" : "tickets",
       fromDemo: demoMode,
       importedItems: allImportedItems,
+      inputQuality,
     });
     window.setTimeout(() => onOpenChange(false), 500);
   };
@@ -1264,7 +1344,7 @@ export function HaloImportModal({
           Step {step} of 3
         </p>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-4 py-4 md:overscroll-auto">
         {forceDemoMode ? (
           <div
             className="mb-4 rounded-[var(--radius)] border px-3 py-2 text-[12px]"
@@ -1274,7 +1354,7 @@ export function HaloImportModal({
               color: "rgb(251, 191, 36)",
             }}
           >
-            Demo mode — showing sample tickets. Connect HaloPSA to import your real data.
+            Demo mode - showing sample tickets. Connect HaloPSA to import your real data.
           </div>
         ) : demoMode ? (
           <DemoBanner
@@ -1424,7 +1504,7 @@ export function HaloImportModal({
                     onClick={toggleAllClients}
                     className={cn(
                       "relative md:col-span-2 text-left transition-all duration-[150ms] ease-in-out",
-                      "rounded-[var(--radius)] border border-dashed",
+                      "rounded-[var(--radius)] border",
                       allClientsSelected
                         ? "border-[var(--accent)] bg-[rgba(56,189,248,0.06)]"
                         : "border-[var(--border)] bg-[rgba(56,189,248,0.03)] hover:border-[rgba(56,189,248,0.4)]",
@@ -1485,6 +1565,9 @@ export function HaloImportModal({
                           {`${allClientsFetchTotalTickets} tickets across ${clientsWithTickets.length} clients will be fetched for this time period`}
                         </span>
                       </div>
+                      <p className="md:col-span-2 rounded-[var(--radius)] border border-dashed border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-[13px] text-[var(--text-secondary)]">
+                        Tip: For best results, generate one client at a time
+                      </p>
                       {allClientsFetchTotalTickets > 50 ? (
                         <div
                           className="md:col-span-2"
@@ -1531,6 +1614,9 @@ export function HaloImportModal({
                           {`${allClientsFetchTotalProjects} projects across ${clientsWithProjects.length} clients will be fetched for this time period`}
                         </span>
                       </div>
+                      <p className="md:col-span-2 rounded-[var(--radius)] border border-dashed border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-[13px] text-[var(--text-secondary)]">
+                        Tip: For best results, generate one client at a time
+                      </p>
                       {allClientsFetchTotalProjects > 50 ? (
                         <div
                           className="md:col-span-2"
@@ -1588,8 +1674,8 @@ export function HaloImportModal({
                               ? "…"
                               : cnt !== undefined
                                 ? importMode === "tickets"
-                                  ? `${cnt} open tickets`
-                                  : `${cnt} open projects`
+                                  ? `${cnt} open ticket${cnt === 1 ? "" : "s"}`
+                                  : `${cnt} open project${cnt === 1 ? "" : "s"}`
                                 : " - "}
                           </span>
                         </div>
@@ -1604,7 +1690,7 @@ export function HaloImportModal({
                     <p className="text-[12px] font-semibold text-[var(--text-primary)]">
                       Sample open tickets ({tickets.length})
                     </p>
-                    <ul className="mt-2 max-h-48 space-y-2 overflow-y-auto">
+                    <ul className="mt-2 max-h-none space-y-2 overflow-visible md:max-h-48 md:overflow-y-auto">
                       {tickets.map((t) => (
                         <li key={String(t.id)} className="text-[12px] leading-snug text-[var(--text-secondary)]">
                           <span className="font-medium text-[var(--text-primary)]">
@@ -2156,7 +2242,7 @@ export function HaloImportModal({
           ) : null}
 
           {step === 3 ? (
-            <div className="space-y-3">
+            <div className="flex flex-1 flex-col space-y-3">
               <p className="text-[15px] font-semibold text-[var(--text-primary)]">Review and generate</p>
               <div className="space-y-1.5 text-[14px] text-[var(--text-secondary)]">
                 <p>
@@ -2180,10 +2266,28 @@ export function HaloImportModal({
                   All open {importMode === "tickets" ? "tickets" : "projects"}
                 </p>
               </div>
-              {allClientsSelected ? (
-                <p className="rounded-[var(--radius)] border border-dashed border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-[13px] text-[var(--text-secondary)]">
-                  Tip: For best results, generate one client at a time
-                </p>
+              {step3PreviewLabels.length > 0 ? (
+                <div className="mt-auto rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)]/40 px-3 py-3">
+                  <p className="text-[12px] font-medium text-[var(--text-muted)]">
+                    {importMode === "tickets" ? "Tickets to import" : "Projects to import"}
+                  </p>
+                  <ul className="mt-2 space-y-1.5">
+                    {step3PreviewLabels.map((item) => (
+                      <li
+                        key={item.id}
+                        className="truncate text-[13px] text-[var(--text-secondary)]"
+                        title={item.label}
+                      >
+                        {item.label}
+                      </li>
+                    ))}
+                  </ul>
+                  {step3PreviewOverflow > 0 ? (
+                    <p className="mt-2 text-[12px] text-[var(--text-muted)]">
+                      +{step3PreviewOverflow} more selected
+                    </p>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           ) : null}
@@ -2210,7 +2314,12 @@ export function HaloImportModal({
                   type="button"
                   variant="outline"
                   className="h-10 w-full"
-                  onClick={() => void refreshCachedPsaData()}
+                  onClick={() => {
+                    void (async () => {
+                      await invalidatePsaCache();
+                      await refreshCachedPsaData();
+                    })();
+                  }}
                 >
                   <RefreshCw className="mr-2 size-4" />
                   Refresh cached PSA data

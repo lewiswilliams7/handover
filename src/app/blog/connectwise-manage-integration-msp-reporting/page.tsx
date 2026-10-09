@@ -37,10 +37,9 @@ export const metadata: Metadata = {
     authors: [post.author],
     images: [
       {
-        url: "/og-image.png",
+        url: "https://gethandover.uk/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "Handover - ConnectWise Manage reporting",
       },
     ],
   },
@@ -49,7 +48,7 @@ export const metadata: Metadata = {
     title: "Handover Now Supports ConnectWise Manage: AI-Powered Client Reporting for MSPs",
     description:
       "ConnectWise Manage joins HaloPSA as a supported PSA. AI-powered client reports from live tickets and projects in under 30 seconds.",
-    images: ["/og-image.png"],
+    images: ["https://gethandover.uk/opengraph-image"],
   },
 };
 
@@ -68,7 +67,7 @@ export default function ConnectWiseManageIntegrationBlogPage() {
     datePublished: post.dateISO,
     dateModified: post.dateISO,
     mainEntityOfPage: "https://gethandover.uk/blog/connectwise-manage-integration-msp-reporting",
-    image: ["https://gethandover.uk/og-image.png"],
+    image: ["https://gethandover.uk/opengraph-image"],
   };
 
   return (
@@ -119,14 +118,14 @@ export default function ConnectWiseManageIntegrationBlogPage() {
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               If your MSP runs on ConnectWise Manage, you&apos;ve probably spent more time than you&apos;d like writing
               client reports. Pulling data from tickets, summarising project progress, formatting it into something a
-              client actually wants to read — it&apos;s repetitive, it&apos;s manual, and it adds up to hours every week
+              client actually wants to read - it&apos;s repetitive, it&apos;s manual, and it adds up to hours every week
               that could be spent elsewhere.
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">Today, that changes.</p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               Handover now fully supports ConnectWise Manage, joining HaloPSA as our second supported PSA integration.
               MSP delivery teams on ConnectWise can now generate AI-powered client reports directly from their live
-              ticket and project data — in under 30 seconds.
+              ticket and project data - in under 30 seconds.
             </p>
 
             <h2 className="mt-12 mb-4 text-[20px] font-semibold text-[var(--text-primary)] sm:text-[24px]">
@@ -135,7 +134,7 @@ export default function ConnectWiseManageIntegrationBlogPage() {
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               Handover is a reporting and delivery automation platform built specifically for MSP delivery teams. It
               connects to your PSA, pulls your live ticket and project data, and uses AI to generate professional
-              client-ready reports, action logs, risk summaries, and status updates — without you having to write a
+              client-ready reports, action logs, risk summaries, and status updates - without you having to write a
               single word manually. The same workflow applies whether your data lives in ConnectWise Manage or{" "}
               <Link
                 href="/blog/halopsa-integration-msp-reporting"
@@ -155,7 +154,7 @@ export default function ConnectWiseManageIntegrationBlogPage() {
             </h2>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               ConnectWise Manage is one of the most widely used PSA platforms in the MSP industry. A significant portion
-              of MSPs globally run their service delivery, project management, and billing through ConnectWise — making
+              of MSPs globally run their service delivery, project management, and billing through ConnectWise - making
               it one of the most requested integrations since we launched.
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
@@ -184,7 +183,7 @@ export default function ConnectWiseManageIntegrationBlogPage() {
               <li>
                 <strong className="text-[var(--text-primary)]">Generate AI-powered client reports.</strong> Using the
                 ticket notes, project task progress, and activity from your selected items, Handover generates a
-                professional client report that summarises progress, highlights actions required, and flags risks — all
+                professional client report that summarises progress, highlights actions required, and flags risks - all
                 in plain English that a non-technical client can understand.
               </li>
               <li>
@@ -200,7 +199,7 @@ export default function ConnectWiseManageIntegrationBlogPage() {
                 >
                   scheduled reports
                 </Link>{" "}
-                that pull from your ConnectWise tickets and projects on a cadence you choose — weekly, fortnightly, or
+                that pull from your ConnectWise tickets and projects on a cadence you choose - weekly, fortnightly, or
                 monthly. Reports are generated automatically and emailed to your client without you having to lift a
                 finger.
               </li>
@@ -224,8 +223,8 @@ export default function ConnectWiseManageIntegrationBlogPage() {
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               If your MSP uses HaloPSA, you&apos;re covered. If you use ConnectWise Manage, you&apos;re covered. And if
-              you&apos;re in the process of migrating between the two — something that happens more often than you&apos;d
-              think — Handover works with both simultaneously, so your reporting doesn&apos;t skip a beat during a
+              you&apos;re in the process of migrating between the two - something that happens more often than you&apos;d
+              think - Handover works with both simultaneously, so your reporting doesn&apos;t skip a beat during a
               transition.
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
@@ -237,7 +236,7 @@ export default function ConnectWiseManageIntegrationBlogPage() {
               Who Is Handover Built For?
             </h2>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
-              Handover is built for MSP delivery teams — specifically the people who are responsible for client
+              Handover is built for MSP delivery teams - specifically the people who are responsible for client
               communication, service delivery reporting, and project updates.
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
@@ -289,7 +288,7 @@ export default function ConnectWiseManageIntegrationBlogPage() {
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               We&apos;re also continuing to develop our Zapier integration, which will allow Handover to connect with any
-              PSA or ticketing tool via webhook — giving MSPs on platforms we don&apos;t yet natively support a way to use
+              PSA or ticketing tool via webhook - giving MSPs on platforms we don&apos;t yet natively support a way to use
               Handover today.
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">

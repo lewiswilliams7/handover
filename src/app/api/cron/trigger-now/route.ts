@@ -88,7 +88,12 @@ export async function POST(req: Request) {
   const baseUrl = getAppOrigin();
   const now = new Date();
   const nowIso = now.toISOString();
-  const results: Array<{ scheduleId: string; success: boolean; error?: string }> = [];
+  const results: Array<{
+    scheduleId: string;
+    success: boolean;
+    held?: boolean;
+    error?: string;
+  }> = [];
 
   for (const schedule of rows) {
     try {
@@ -184,9 +189,22 @@ export async function POST(req: Request) {
 
       const generated = (await generateRes.json()) as {
         success?: boolean;
+        held?: boolean;
+        reason?: string;
         error?: string;
       };
-      if (!generateRes.ok || generated.success !== true) {
+      if (!generateRes.ok) {
+        throw new Error(generated.error ?? `HTTP ${generateRes.status}`);
+      }
+
+      const isHeld =
+        generated.held === true && generated.reason === "hold_for_review";
+      if (isHeld) {
+        results.push({ scheduleId: schedule.id, success: true, held: true });
+        continue;
+      }
+
+      if (generated.success !== true) {
         throw new Error(generated.error ?? `HTTP ${generateRes.status}`);
       }
 

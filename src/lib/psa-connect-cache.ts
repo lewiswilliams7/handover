@@ -5,6 +5,8 @@ export const PSA_CONNECT_CACHE_TTL_MS = 3 * 60 * 1000;
 export type HaloConnectJson = {
   connected?: boolean;
   haloUrl?: string;
+  clientIdMasked?: string;
+  clientIdLength?: number;
   updatedAt?: string | null;
   proRequired?: boolean;
   autoClosureSummaryEnabled?: boolean;

@@ -3,9 +3,9 @@ import PageTransition from "@/components/PageTransition";
 import { HomeClientLoader } from "@/components/home-client-loader";
 
 export const metadata: Metadata = {
-  title: "Handover - The Reporting Tool Built for MSP Delivery Teams",
+  title: "Handover - Know Which Clients Need Your Attention",
   description:
-    "Handover — AI-powered client reporting for MSPs. Native HaloPSA and ConnectWise integration. Generate reports, push back to tickets, automate weekly updates.",
+    "Handover connects to HaloPSA or ConnectWise and surfaces the client accounts where commercial, service or relationship behaviour has materially changed. Built for MSPs.",
   alternates: {
     canonical: "https://gethandover.uk",
   },

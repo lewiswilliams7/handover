@@ -15,7 +15,7 @@ const post = getPostBySlug(SLUG)!;
 export const metadata: Metadata = {
   title: "How MSPs Can Automate QBR Preparation | Handover",
   description:
-    "QBR preparation takes MSP account managers 3-5 hours per client. Here's how to automate the data gathering, structuring, and first-draft writing — without losing the quality clients expect.",
+    "QBR preparation takes MSP account managers 3-5 hours per client. Here's how to automate the data gathering, structuring, and first-draft writing - without losing the quality clients expect.",
   keywords: [
     "QBR",
     "MSP reporting",
@@ -30,16 +30,15 @@ export const metadata: Metadata = {
   openGraph: {
     title: "How MSPs Can Automate QBR Preparation (Without Losing Quality)",
     description:
-      "QBR preparation takes MSP account managers 3-5 hours per client. Here's how to automate the data gathering, structuring, and first-draft writing — without losing the quality clients expect.",
+      "QBR preparation takes MSP account managers 3-5 hours per client. Here's how to automate the data gathering, structuring, and first-draft writing - without losing the quality clients expect.",
     type: "article",
     publishedTime: post.dateISO,
     authors: [post.author],
     images: [
       {
-        url: "/og-image.png",
+        url: "https://gethandover.uk/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "Handover - MSP delivery tool",
       },
     ],
   },
@@ -47,8 +46,8 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "How MSPs Can Automate QBR Preparation (Without Losing Quality)",
     description:
-      "QBR preparation takes MSP account managers 3-5 hours per client. Here's how to automate the data gathering, structuring, and first-draft writing — without losing the quality clients expect.",
-    images: ["/og-image.png"],
+      "QBR preparation takes MSP account managers 3-5 hours per client. Here's how to automate the data gathering, structuring, and first-draft writing - without losing the quality clients expect.",
+    images: ["https://gethandover.uk/opengraph-image"],
   },
 };
 
@@ -107,7 +106,7 @@ export default function AutomateMspQbrPreparationPage() {
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               Most account managers and service delivery managers spend between three and five
-              hours preparing each QBR — pulling data from the PSA, building slides, writing the
+              hours preparing each QBR - pulling data from the PSA, building slides, writing the
               executive summary, finding the right ticket references, and making it all look
               professional enough to present to a director.
             </p>
@@ -141,7 +140,7 @@ export default function AutomateMspQbrPreparationPage() {
             </p>
             <ul className="mb-5 list-disc pl-6 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               <li>
-                Organising data into a narrative — what happened, what&apos;s outstanding,
+                Organising data into a narrative - what happened, what&apos;s outstanding,
                 what&apos;s coming
               </li>
               <li>Writing the executive summary in plain English</li>
@@ -158,7 +157,7 @@ export default function AutomateMspQbrPreparationPage() {
               <li>Sending or uploading ahead of the meeting</li>
             </ul>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
-              The first two stages — data gathering and writing — are where automation has the
+              The first two stages - data gathering and writing - are where automation has the
               highest impact. The last stage is harder to automate entirely, but can be
               significantly accelerated.
             </p>
@@ -172,7 +171,7 @@ export default function AutomateMspQbrPreparationPage() {
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               A HaloPSA or ConnectWise ticket contains everything you need to write a client
-              update — the work done, the time spent, the outcome, the engineer responsible. But it
+              update - the work done, the time spent, the outcome, the engineer responsible. But it
               presents that information in a format designed for service desk workflows, not for a
               quarterly business review slide deck.
             </p>
@@ -183,7 +182,7 @@ export default function AutomateMspQbrPreparationPage() {
             </p>
 
             <h2 className="mt-12 mb-4 text-[20px] font-semibold text-[var(--text-primary)] sm:text-[24px]">
-              What can be automated — and what can&apos;t
+              What can be automated - and what can&apos;t
             </h2>
             <p className="mb-3 text-[16px] font-semibold leading-[1.8] text-[var(--text-primary)]">
               Can be automated:
@@ -193,7 +192,7 @@ export default function AutomateMspQbrPreparationPage() {
               <li>Identifying which work is complete, in progress, or blocked</li>
               <li>Calculating SLA performance, time logged, and ticket volumes</li>
               <li>
-                Drafting the narrative — what happened, what the risks are, what you recommend
+                Drafting the narrative - what happened, what the risks are, what you recommend
               </li>
               <li>Producing a structured slide deck in your brand colours</li>
               <li>Writing the client email that goes alongside the deck</li>
@@ -203,15 +202,15 @@ export default function AutomateMspQbrPreparationPage() {
             </p>
             <ul className="mb-5 list-disc pl-6 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               <li>
-                The relationship context — knowing what the client cares about, what they&apos;ve
+                The relationship context - knowing what the client cares about, what they&apos;ve
                 complained about, what&apos;s politically sensitive
               </li>
               <li>
-                The upsell conversation — identifying the right moment to raise a project or
+                The upsell conversation - identifying the right moment to raise a project or
                 upgrade
               </li>
               <li>
-                The meeting itself — the QBR&apos;s value is in the conversation, not the
+                The meeting itself - the QBR&apos;s value is in the conversation, not the
                 document
               </li>
             </ul>
@@ -233,7 +232,7 @@ export default function AutomateMspQbrPreparationPage() {
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               Rather than manually pulling tickets, connect your reporting tool directly to your
               PSA. A native HaloPSA or ConnectWise integration means the data is always current and
-              complete — you&apos;re not working from an export that&apos;s three days old or missing
+              complete - you&apos;re not working from an export that&apos;s three days old or missing
               the tickets that were closed this morning.
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
@@ -243,7 +242,7 @@ export default function AutomateMspQbrPreparationPage() {
               2. AI for first-draft writing
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
-              The executive summary, the risk register, the recommendations — these follow
+              The executive summary, the risk register, the recommendations - these follow
               predictable structures that AI handles well when given good PSA data as input.
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
@@ -262,7 +261,7 @@ export default function AutomateMspQbrPreparationPage() {
               and AI-written content eliminate the design phase almost entirely.
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
-              The output needs to be editable — you&apos;ll want to adjust the narrative, add a
+              The output needs to be editable - you&apos;ll want to adjust the narrative, add a
               client-specific comment, or swap out a chart. But starting from a generated deck rather
               than an empty template saves significant time.
             </p>
@@ -275,34 +274,34 @@ export default function AutomateMspQbrPreparationPage() {
             </p>
             <ul className="mb-5 list-disc pl-6 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               <li>
-                <strong className="text-[var(--text-primary)]">Executive summary</strong> — 2-3
+                <strong className="text-[var(--text-primary)]">Executive summary</strong> - 2-3
                 paragraphs covering the period&apos;s key themes, written in plain English,
                 referencing specific work where it matters
               </li>
               <li>
-                <strong className="text-[var(--text-primary)]">Key completions</strong> — what was
+                <strong className="text-[var(--text-primary)]">Key completions</strong> - what was
                 resolved, with named projects and ticket references
               </li>
               <li>
-                <strong className="text-[var(--text-primary)]">Open items</strong> — what&apos;s
+                <strong className="text-[var(--text-primary)]">Open items</strong> - what&apos;s
                 still in progress, with expected completion dates
               </li>
               <li>
-                <strong className="text-[var(--text-primary)]">Risks and recommendations</strong> —
+                <strong className="text-[var(--text-primary)]">Risks and recommendations</strong>  - 
                 surfaced from the ticket data, with specific actions and owners
               </li>
               <li>
-                <strong className="text-[var(--text-primary)]">SLA performance</strong> —
+                <strong className="text-[var(--text-primary)]">SLA performance</strong>  - 
                 presented cleanly, with context when performance was affected by client-side factors
               </li>
               <li>
-                <strong className="text-[var(--text-primary)]">Next quarter priorities</strong> —
+                <strong className="text-[var(--text-primary)]">Next quarter priorities</strong>  - 
                 the 3-5 things that matter most in the coming period
               </li>
             </ul>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               Done well, a client reading this document should feel that someone who knows their
-              account deeply has written it — not that it&apos;s been generated from a database.
+              account deeply has written it - not that it&apos;s been generated from a database.
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               That&apos;s the standard to hold automated QBR output to. If it reads generic, it
@@ -316,7 +315,7 @@ export default function AutomateMspQbrPreparationPage() {
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               MSPs using automated QBR preparation consistently report bringing the process from 3-5
               hours per client to 20-40 minutes. The remaining time is genuine account manager work
-              — reviewing the draft, adding relationship context, preparing for the conversation.
+              - reviewing the draft, adding relationship context, preparing for the conversation.
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               At ten clients per quarter, that&apos;s 25-40 hours returned per account manager.
@@ -335,7 +334,7 @@ export default function AutomateMspQbrPreparationPage() {
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               If you&apos;re on HaloPSA or ConnectWise Manage, you can connect Handover and generate
               a QBR pack from your live PSA data in under two minutes. The output includes a
-              PowerPoint deck, an Excel data pack, and a client email — all populated from your
+              PowerPoint deck, an Excel data pack, and a client email - all populated from your
               actual ticket and project history.
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
@@ -349,7 +348,7 @@ export default function AutomateMspQbrPreparationPage() {
               <Link href="/auth?tab=signup" className="text-[var(--accent)] hover:underline">
                 Start your free trial
               </Link>{" "}
-              — no configuration required.
+              - no configuration required.
             </p>
 
             <div
@@ -378,7 +377,7 @@ export default function AutomateMspQbrPreparationPage() {
                   Start free trial
                 </h3>
                 <p className="mt-2 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
-                  Connect HaloPSA or ConnectWise and generate your first QBR pack in minutes — 14-day
+                  Connect HaloPSA or ConnectWise and generate your first QBR pack in minutes - 14-day
                   free trial, cancel anytime.
                 </p>
                 <div className="mt-5">

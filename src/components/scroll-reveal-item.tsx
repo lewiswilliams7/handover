@@ -40,7 +40,7 @@ export function ScrollRevealItem({
           io.disconnect();
         }
       },
-      { threshold: 0.08, rootMargin: "0px 0px -32px 0px" },
+      { threshold: 0.05, rootMargin: "0px 0px -16px 0px" },
     );
     io.observe(el);
     return () => io.disconnect();
@@ -55,8 +55,8 @@ export function ScrollRevealItem({
       className={cn(className)}
       style={{
         opacity: visible ? 1 : 0,
-        transform: visible ? "translateY(0)" : "translateY(20px)",
-        transition: `opacity 400ms ease-out ${delay}ms, transform 400ms ease-out ${delay}ms`,
+        transform: visible ? "translateY(0)" : "translateY(36px)",
+        transition: `opacity 500ms cubic-bezier(0.25, 0.46, 0.45, 0.94) ${delay}ms, transform 500ms cubic-bezier(0.25, 0.46, 0.45, 0.94) ${delay}ms`,
       }}
     >
       {children}

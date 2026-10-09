@@ -35,10 +35,9 @@ export const metadata: Metadata = {
     authors: [post.author],
     images: [
       {
-        url: "/og-image.png",
+        url: "https://gethandover.uk/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "Handover - HaloPSA reporting automation",
       },
     ],
   },
@@ -47,7 +46,7 @@ export const metadata: Metadata = {
     title: "Handover Is Live on HaloPSA Marketplace + ConnectWise",
     description:
       "Automate client updates, handover notes, action logs, and scheduled reports from HaloPSA or ConnectWise ticket data.",
-    images: ["/og-image.png"],
+    images: ["https://gethandover.uk/opengraph-image"],
   },
 };
 
@@ -66,7 +65,7 @@ export default function HandoverLiveHaloPsaMarketplacePage() {
     datePublished: post.dateISO,
     dateModified: post.dateISO,
     mainEntityOfPage: "https://gethandover.uk/blog/handover-live-halopsa-marketplace",
-    image: ["https://gethandover.uk/og-image.png"],
+    image: ["https://gethandover.uk/opengraph-image"],
   };
 
   return (

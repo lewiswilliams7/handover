@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { NextResponse } from "next/server";
 
 import { GLOBAL_GENERATION_VOICE_AND_PUNCTUATION } from "@/lib/generation-global-style-rules";
+import { requireScanDetailsEntitlement } from "@/lib/scan-entitlement";
 import { createServerClient } from "@/lib/supabase/server";
 
 export async function POST(req: Request) {
@@ -14,6 +15,8 @@ export async function POST(req: Request) {
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const entitlementError = await requireScanDetailsEntitlement(user.id, supabase);
+    if (entitlementError) return entitlementError;
 
     const body = (await req.json()) as {
       original_output?: string;
@@ -23,11 +26,11 @@ export async function POST(req: Request) {
       context?: string;
     };
 
-    const originalOutput = body?.original_output?.trim();
+    const originalOutput = body?.original_output?.trim().slice(0, 8_000);
     const outputType = body?.output_type?.trim();
     const instruction = body?.instruction?.trim();
     const tone = body?.tone?.trim() || "professional";
-    const context = body?.context?.trim() || "";
+    const context = (body?.context?.trim() || "").slice(0, 4_000);
 
     if (!originalOutput || !outputType || !instruction) {
       return NextResponse.json(
@@ -54,6 +57,7 @@ rewritten text, no JSON wrapper, no explanation.`;
     const response = await client.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.3,
+      max_tokens: 2000,
       messages: [
         { role: "system", content: prompt },
         {

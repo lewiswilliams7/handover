@@ -119,6 +119,12 @@ async function handlePortalDataRequest(session: PortalSessionContext, req: Reque
   if (visibilityRecentActivity && payload.recentActivity && payload.recentActivity.length > 0) {
     filtered.recentActivity = payload.recentActivity;
   }
+  if (payload.timelineResolvedTickets?.length) {
+    filtered.timelineResolvedTickets = payload.timelineResolvedTickets;
+  }
+  if (payload.timelineProjectMilestones?.length) {
+    filtered.timelineProjectMilestones = payload.timelineProjectMilestones;
+  }
 
   const url = new URL(req.url);
   const ticketIdRaw = url.searchParams.get("ticketId");

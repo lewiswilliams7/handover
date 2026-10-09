@@ -93,9 +93,9 @@ export function ReferralCodeLanding({
               No commitment - cancel before month 2 and pay nothing.
               <br />
               {firstName && valid ? (
-                <>{firstName} earns £87 when you stay.</>
+                <>{firstName} earns £79 credit (1 month free) when you complete your first paid month.</>
               ) : (
-                <>Your referrer earns £87 when you stay.</>
+                <>Your referrer earns £79 credit (1 month free) when you complete your first paid month.</>
               )}
             </p>
 
@@ -173,7 +173,7 @@ export function ReferralCodeLanding({
               <li className="flex gap-2">
                 <span className="mt-0.5 shrink-0 font-semibold text-[var(--text-secondary)]">3.</span>
                 <span>
-                  If you love it, do nothing - you&apos;ll be charged £29 from month 2 onwards
+                  If you love it, do nothing - you&apos;ll be charged £49 from month 2 onwards
                 </span>
               </li>
               <li className="flex gap-2">
@@ -183,8 +183,8 @@ export function ReferralCodeLanding({
               <li className="flex gap-2">
                 <span className="mt-0.5 shrink-0 font-semibold text-[var(--text-secondary)]">5.</span>
                 <span>
-                  When you pay for month 2, {termsName} earns £87 - that&apos;s 3 months free on
-                  their account as a thank you
+                  When you complete your first paid month, {termsName} earns £79 credit - 1 month
+                  free on their subscription as a thank you
                 </span>
               </li>
             </ol>

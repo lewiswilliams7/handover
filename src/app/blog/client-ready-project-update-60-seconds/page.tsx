@@ -32,14 +32,20 @@ export const metadata: Metadata = {
     type: "article",
     publishedTime: post.dateISO,
     authors: [post.author],
-    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "Handover - MSP delivery tool" }],
+    images: [
+      {
+        url: "https://gethandover.uk/opengraph-image",
+        width: 1200,
+        height: 630,
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "How to Write a Client-Ready Project Update in Under 60 Seconds",
     description:
       "Most MSP PMs spend 20-30 minutes writing a single client update. Here's how to cut that to under 60 seconds without sacrificing quality.",
-    images: ["/og-image.png"],
+    images: ["https://gethandover.uk/opengraph-image"],
   },
 };
 
@@ -58,7 +64,7 @@ export default function ClientReadyProjectUpdate60SecondsPage() {
     datePublished: post.dateISO,
     dateModified: post.dateISO,
     mainEntityOfPage: "https://gethandover.uk/blog/client-ready-project-update-60-seconds",
-    image: ["https://gethandover.uk/og-image.png"],
+    image: ["https://gethandover.uk/opengraph-image"],
   };
 
   return (

@@ -35,6 +35,7 @@ export async function POST(req: Request) {
       clients_covered: Array.isArray(body.clientsCovered) ? body.clientsCovered : [],
       status: "sent",
       error_message: null,
+      source: "manual_qbr",
       report_type: "qbr",
       metadata: {
         date_range: typeof body.dateRange === "string" ? body.dateRange : null,
@@ -53,6 +54,7 @@ export async function POST(req: Request) {
         clients_covered: Array.isArray(body.clientsCovered) ? body.clientsCovered : [],
         status: "sent",
         error_message: null,
+        source: "manual_qbr",
       });
       if (fallbackErr) {
         console.error("[qbr/history]", fallbackErr.message);

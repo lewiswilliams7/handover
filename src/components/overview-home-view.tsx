@@ -9,6 +9,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { LightningBoltIcon } from "@/components/lightning-bolt-icon";
 import { cn } from "@/lib/utils";
 
 export type OverviewMonthlyStats = {
@@ -46,6 +47,7 @@ export type OverviewAttentionItem = {
   openCount: number;
   overdueCount: number;
   reason: string;
+  affectedItemNames: string[];
 };
 
 type Props = {
@@ -62,7 +64,11 @@ type Props = {
   onSelectProject: (project: OverviewProject) => void;
   onGoToGenerate: () => void;
   onGoToDelivery: () => void;
-  onGoToDeliveryForClient?: (clientName: string) => void;
+  onGoToDeliveryForClient?: (
+    clientName: string,
+    reason?: string,
+    affectedItemNames?: string[],
+  ) => void;
   isTrialExpired?: boolean;
 };
 
@@ -180,7 +186,7 @@ export function mspClientNameFromProject(p: OverviewProject): string | null {
   for (const candidate of [p.project_name, p.title]) {
     const raw = candidate?.trim();
     if (!raw || looksLikeGenerationTitle(raw)) continue;
-    const beforeDash = raw.split(/\s*[-–—]\s+/)[0]?.trim();
+    const beforeDash = raw.split(/\s*[-– - ]\s+/)[0]?.trim();
     const name = beforeDash && !looksLikeGenerationTitle(beforeDash) ? beforeDash : raw;
     if (name && !looksLikeGenerationTitle(name)) return name;
   }
@@ -428,12 +434,12 @@ export function OverviewHomeView({
 
   const activityChartTitle =
     activityPeriod === "30d"
-      ? "Activity — last 30 days"
+      ? "Activity - last 30 days"
       : activityPeriod === "3m"
-        ? "Activity — last 3 months"
+        ? "Activity - last 3 months"
         : activityPeriod === "6m"
-          ? "Activity — last 6 months"
-          : "Activity — last 12 months";
+          ? "Activity - last 6 months"
+          : "Activity - last 12 months";
 
   const attentionCount = attentionItems.length;
   const hasRedItems = attentionItems?.some((i) => i.worstRag === "red") ?? false;
@@ -516,16 +522,7 @@ export function OverviewHomeView({
                   onClick={onGoToGenerate}
                   className="flex shrink-0 items-center gap-2 rounded-lg bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] px-4 py-2 text-[13px] font-semibold text-[#0f172a] shadow-lg transition-all hover:scale-[1.02]"
                 >
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="var(--accent)"
-                    className="shrink-0"
-                    aria-hidden
-                  >
-                    <path d="M13 2L4.5 13.5H11L10 22L19.5 10.5H13L13 2Z" />
-                  </svg>
+                  <LightningBoltIcon className="text-[#0f172a]" />
                   Generate report
                 </button>
               </div>
@@ -578,13 +575,29 @@ export function OverviewHomeView({
                         role="button"
                         tabIndex={0}
                         className="grid cursor-pointer grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-white/[0.04] bg-[var(--surface-1)] px-4 py-2.5 transition-colors last:border-b-0 hover:bg-[var(--surface-2)]"
-                        onClick={() =>
-                          onGoToDeliveryForClient?.(item.clientName) ?? onGoToDelivery()
-                        }
+                        onClick={() => {
+                          if (onGoToDeliveryForClient) {
+                            onGoToDeliveryForClient(
+                              item.clientName,
+                              item.reason,
+                              item.affectedItemNames,
+                            );
+                          } else {
+                            onGoToDelivery();
+                          }
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
-                            onGoToDeliveryForClient?.(item.clientName) ?? onGoToDelivery();
+                            if (onGoToDeliveryForClient) {
+                              onGoToDeliveryForClient(
+                                item.clientName,
+                                item.reason,
+                                item.affectedItemNames,
+                              );
+                            } else {
+                              onGoToDelivery();
+                            }
                           }
                         }}
                       >
@@ -645,7 +658,7 @@ export function OverviewHomeView({
                 },
                 {
                   label: "Last report",
-                  value: dashStats?.lastAgo || "—",
+                  value: dashStats?.lastAgo || " - ",
                   sub: dashStats?.lastTitle
                     ? dashStats.lastTitle.length > 28
                       ? `${dashStats.lastTitle.slice(0, 28)}…`
@@ -661,7 +674,16 @@ export function OverviewHomeView({
                   <div className="tabular mb-1 text-[28px] font-semibold leading-none text-white/96">
                     {k.value}
                   </div>
-                  <div className="text-[12px] font-normal text-white/40">{k.sub}</div>
+                  <div
+                    className={cn(
+                      "text-[12px] font-normal text-white/40",
+                      k.label === "Last report" &&
+                        k.sub === "No reports yet" &&
+                        "animate-pulse text-white/30",
+                    )}
+                  >
+                    {k.sub}
+                  </div>
                 </div>
               ))}
             </div>
@@ -719,11 +741,11 @@ export function OverviewHomeView({
                       labelStyle={{ color: "var(--text-secondary)" }}
                       formatter={(value) => [
                         typeof value === "number" ? value : String(value ?? 0),
-                        "Reports",
+                        "Generations",
                       ]}
                     />
                     <Bar
-                      name="Reports"
+                      name="Generations"
                       dataKey="count"
                       fill="var(--accent)"
                       fillOpacity={0.8}
@@ -740,17 +762,40 @@ export function OverviewHomeView({
                 Recent activity
               </h2>
               {recentProjects.length === 0 ? (
-                <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] px-4 py-8 text-center">
-                  <p className="text-[14px] text-[var(--text-secondary)]">
-                    No reports generated yet — generate your first report to get
-                    started.
+                <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-1)] px-6 py-10 text-center">
+                  <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)]/10">
+                    <svg
+                      width="22"
+                      height="22"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      className="text-[var(--accent)]"
+                    >
+                      <path
+                        d="M13 2L4 14h7l-1 8 9-12h-7z"
+                        fill="currentColor"
+                        stroke="none"
+                      />
+                    </svg>
+                  </div>
+                  <p className="mb-1 text-[15px] font-semibold text-white/90">
+                    Generate your first report
+                  </p>
+                  <p className="mx-auto mb-5 max-w-xs text-[13px] text-white/45">
+                    Connect HaloPSA or ConnectWise and generate a professional client report in 30
+                    seconds.
                   </p>
                   <button
                     type="button"
                     onClick={onGoToGenerate}
-                    className="mt-4 text-[13px] font-medium text-[var(--accent)] transition-colors hover:text-white"
+                    className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] px-4 py-2 text-[13px] font-semibold text-[#0f172a] transition-all hover:scale-[1.02] hover:shadow-lg hover:shadow-[var(--accent)]/20"
                   >
-                    Generate now →
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M13 2L4 14h7l-1 8 9-12h-7z" />
+                    </svg>
+                    Generate now
                   </button>
                 </div>
               ) : (

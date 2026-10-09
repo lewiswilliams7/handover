@@ -1064,138 +1064,77 @@ export const DEMO_DELIVERY_HEALTH: {
 } = (() => {
   const nearSlaTargetIso = new Date(Date.now() + 18 * 3600000).toISOString();
   const demoOverdueTargetIso = new Date(Date.now() - 86400000 * 14).toISOString();
-  const rows: DeliveryHealthRow[] = [
-    {
-      id: 1001,
-      kind: "project",
+
+  const ORG_DEMO_PORTFOLIO: Array<{ clientName: string; rag: DeliveryHealthRag }> = [
+    { clientName: "Thornfield Academy", rag: "red" },
+    { clientName: "Yardleys School", rag: "red" },
+    { clientName: "Acme Legal LLP", rag: "red" },
+    { clientName: "Northwood Manufacturing", rag: "red" },
+    { clientName: "Pennine Logistics", rag: "red" },
+    { clientName: "Bridgewater Council", rag: "amber" },
+    { clientName: "Ashfield Energy Ltd", rag: "amber" },
+    { clientName: "Hartley and Sons", rag: "amber" },
+    { clientName: "Solent Academies Trust", rag: "amber" },
+    { clientName: "Harbour IT Group", rag: "green" },
+    { clientName: "Riverside Trust", rag: "green" },
+    { clientName: "Kestrel Dental Group", rag: "green" },
+    { clientName: "Marlowe Financial", rag: "green" },
+    { clientName: "Foxton Property Ltd", rag: "green" },
+    { clientName: "Cedar Medical Practice", rag: "green" },
+    { clientName: "Oakmere Construction", rag: "grey" },
+    { clientName: "Summit Retail Co", rag: "grey" },
+    { clientName: "Lakeside Veterinary", rag: "grey" },
+    { clientName: "Vale Engineering", rag: "grey" },
+    { clientName: "Brighton Arts Trust", rag: "grey" },
+    { clientName: "Coastal Hotels Group", rag: "grey" },
+    { clientName: "Wren Accounting", rag: "grey" },
+    { clientName: "Hawthorn Estates", rag: "grey" },
+  ];
+
+  function demoOrgRow(id: number, clientName: string, rag: DeliveryHealthRag): DeliveryHealthRow {
+    const isGreen = rag === "green";
+    const isGrey = rag === "grey";
+    const targetDateIso =
+      rag === "red" ? demoOverdueTargetIso : rag === "amber" ? nearSlaTargetIso : null;
+    return {
+      id,
+      kind: isGreen ? "project" : "ticket",
       source: "halopsa",
-      name: "Azure migration - phase 2",
-      clientName: "Thornfield Academy",
-      owner: "Alex Taylor",
-      statusName: "In progress",
-      priorityName: "High",
-      rag: "red",
-      openActions: 6,
-      openRisks: 2,
-      daysToTarget: daysToTargetDate(demoOverdueTargetIso),
-      lastGeneratedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-      ticketAgeDays: 95,
-      lastNoteAt: new Date(Date.now() - 86400000 * 31).toISOString(),
-      lastNotePreview: "Waiting on client VPN details…",
-      targetDateIso: demoOverdueTargetIso,
-      targetHours: null,
-      timeLogged: 42,
-      description: "Phase 2 migration scope and cutover window.",
-      notes: [
-        {
-          at: new Date(Date.now() - 86400000 * 31).toISOString(),
-          author: "Alex Taylor",
-          body: "Waiting on client VPN details before we can schedule cutover.",
-        },
-      ],
-      latestOpenActions: [
-        { task: "Confirm VPN credentials", owner: "Alex", dueDate: null },
-      ],
-      latestOpenRisks: [
-        { risk: "Cutover slip", impact: "High" },
-        { risk: "License renewal", impact: "Medium" },
-      ],
-      haloTicketUrl: "https://example.halopsa.com/ticket?id=1001",
-      slaRisk: computeSlaRiskFromTargetIso(demoOverdueTargetIso),
-    },
-    {
-      id: 1002,
-      kind: "ticket",
-      source: "halopsa",
-      name: "3CX out-of-hours upgrade",
-      clientName: "Yardleys School",
-      owner: "Jamie Smith",
-      statusName: "Open",
-      priorityName: "Normal",
-      rag: "amber",
-      openActions: 3,
-      openRisks: 1,
-      daysToTarget: 4,
-      lastGeneratedAt: new Date(Date.now() - 86400000).toISOString(),
-      ticketAgeDays: 34,
-      lastNoteAt: new Date(Date.now() - 86400000 * 15).toISOString(),
-      lastNotePreview: "Vendor confirmed maintenance slot…",
-      targetDateIso: nearSlaTargetIso,
-      targetHours: null,
-      timeLogged: 12,
-      description: "After-hours PBX upgrade with rollback plan.",
-      notes: [],
-      latestOpenActions: [],
-      latestOpenRisks: [{ risk: "Vendor availability", impact: "Medium" }],
-      haloTicketUrl: "https://example.halopsa.com/ticket?id=1002",
-      slaRisk: computeSlaRiskFromTargetIso(nearSlaTargetIso),
-    },
-    {
-      id: 1003,
-      kind: "project",
-      source: "halopsa",
-      name: "Intune conditional access rollout",
-      clientName: "Harbour IT Group",
-      owner: "Sam Patel",
-      statusName: "In progress",
-      priorityName: "Low",
-      rag: "green",
-      openActions: 2,
-      openRisks: 0,
-      daysToTarget: 21,
-      lastGeneratedAt: new Date(Date.now() - 86400000 * 4).toISOString(),
-      ticketAgeDays: 8,
-      lastNoteAt: new Date(Date.now() - 86400000).toISOString(),
-      lastNotePreview: "Pilot group signed off; expanding wave 2.",
-      targetDateIso: null,
-      targetHours: 120,
-      timeLogged: 88,
-      description: "Rollout across production tenants.",
-      notes: [
-        {
-          at: new Date(Date.now() - 86400000 * 2).toISOString(),
-          author: "Sam Patel",
-          body: "Pilot group signed off.",
-        },
-        {
-          at: new Date(Date.now() - 86400000).toISOString(),
-          author: "Sam Patel",
-          body: "Expanding to wave 2 next week.",
-        },
-      ],
-      latestOpenActions: [],
-      latestOpenRisks: [],
-      haloTicketUrl: "https://example.halopsa.com/ticket?id=1003",
-      slaRisk: null,
-    },
-    {
-      id: 1004,
-      kind: "ticket",
-      source: "halopsa",
-      name: "New starter laptop - imaging",
-      clientName: "Riverside Trust",
-      owner: null,
-      statusName: "Open",
-      priorityName: null,
-      rag: "grey",
-      openActions: 0,
-      openRisks: 0,
-      daysToTarget: null,
-      lastGeneratedAt: null,
-      ticketAgeDays: 1,
-      lastNoteAt: null,
-      lastNotePreview: null,
-      targetDateIso: null,
-      targetHours: null,
-      timeLogged: 0,
+      name: isGreen
+        ? "On-track rollout"
+        : rag === "red"
+          ? "Overdue critical work"
+          : rag === "amber"
+            ? "Active support work"
+            : "Routine request",
+      clientName,
+      owner: isGrey ? null : "Alex Taylor",
+      statusName: isGreen ? "In progress" : "Open",
+      priorityName: rag === "red" ? "High" : rag === "amber" ? "Normal" : isGreen ? "Low" : null,
+      rag,
+      openActions: isGrey ? 0 : rag === "red" ? 5 : rag === "amber" ? 3 : 2,
+      openRisks: rag === "red" ? 2 : rag === "amber" ? 1 : 0,
+      daysToTarget:
+        rag === "red" ? daysToTargetDate(demoOverdueTargetIso) : rag === "amber" ? 4 : isGreen ? 21 : null,
+      lastGeneratedAt: isGrey ? null : new Date(Date.now() - 86400000).toISOString(),
+      ticketAgeDays: isGrey ? 1 : rag === "red" ? 95 : 30,
+      lastNoteAt: isGrey ? null : new Date(Date.now() - 86400000 * 2).toISOString(),
+      lastNotePreview: isGrey ? null : "Latest update on this item…",
+      targetDateIso,
+      targetHours: isGreen ? 120 : null,
+      timeLogged: isGreen ? 88 : 0,
       description: null,
       notes: [],
       latestOpenActions: [],
       latestOpenRisks: [],
-      haloTicketUrl: "https://example.halopsa.com/ticket?id=1004",
-      slaRisk: null,
-    },
-  ];
+      haloTicketUrl: `https://example.halopsa.com/ticket?id=${id}`,
+      slaRisk: rag === "red" || rag === "amber" ? computeSlaRiskFromTargetIso(targetDateIso) : null,
+    };
+  }
+
+  const rows: DeliveryHealthRow[] = ORG_DEMO_PORTFOLIO.map((c, i) =>
+    demoOrgRow(1000 + i, c.clientName, c.rag),
+  );
 
   return {
     stats: buildDeliveryHealthStats(rows),

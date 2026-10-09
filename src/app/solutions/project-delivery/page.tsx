@@ -38,7 +38,7 @@ export default function ProjectDeliveryPage() {
             </h1>
             <div className="mt-6">
               <Link
-                href="/auth?tab=signup&returnTo=/welcome"
+                href="/onboarding/connect"
                 className="inline-flex items-center rounded-[var(--radius)] bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]"
               >
                 Start delivering better project communication today
@@ -147,7 +147,7 @@ export default function ProjectDeliveryPage() {
               professional, reads consistently, and goes out on time. Your clients experience a level of delivery
               communication consistency that most MSPs cannot achieve manually at scale.
             </p>
-            <Link href="/auth?tab=signup&returnTo=/welcome" className="marketing-page-bottom-cta mt-5 inline-flex items-center">
+            <Link href="/onboarding/connect" className="marketing-page-bottom-cta mt-5 inline-flex items-center">
               Start delivering better project communication today
             </Link>
           </section>

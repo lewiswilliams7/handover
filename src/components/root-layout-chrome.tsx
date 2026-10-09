@@ -19,6 +19,8 @@ export function RootLayoutChrome({ children }: Props) {
   const pathname = usePathname() ?? "";
   const isPortalRoute = pathname === "/portal" || pathname.startsWith("/portal/");
   const isDashboardRoute = pathname === "/dashboard" || pathname.startsWith("/dashboard/");
+  const isAuthRoute = pathname === "/auth" || pathname.startsWith("/auth/");
+  const isOnboardingRoute = pathname === "/onboarding" || pathname.startsWith("/onboarding/");
   const isMarketingRoute =
     pathname === "/pricing" ||
     pathname.startsWith("/pricing/") ||
@@ -67,7 +69,11 @@ export function RootLayoutChrome({ children }: Props) {
   }, []);
 
   const showMarketingChrome =
-    !isPortalRoute && !isDashboardRoute && (isMarketingRoute || (authChecked && !isAuthed));
+    !isPortalRoute &&
+    !isDashboardRoute &&
+    !isAuthRoute &&
+    !isOnboardingRoute &&
+    (isMarketingRoute || (authChecked && !isAuthed));
 
   return (
     <>

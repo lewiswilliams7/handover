@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
-const ABOUT_PAGE_TITLE = "Lewis Williams — Founder of Handover | AI Reporting for MSPs";
+const ABOUT_PAGE_TITLE = "Lewis Williams - Founder of Handover | AI Reporting for MSPs";
 const ABOUT_PAGE_DESCRIPTION =
   "Lewis Williams is the 18-year-old founder of Handover, an AI-powered client reporting tool for MSPs built on HaloPSA and ConnectWise. Accepted into PitchIT 2026.";
 

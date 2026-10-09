@@ -1,4 +1,7 @@
-import { getCachedHaloAccessToken } from "@/lib/halo-token-cache";
+import {
+  getCachedHaloAccessToken,
+  type HaloTokenFetchOptions,
+} from "@/lib/halo-token-cache";
 
 /**
  * Halo list/detail `fields` - user-requested columns plus Halo keys needed for
@@ -6,20 +9,103 @@ import { getCachedHaloAccessToken } from "@/lib/halo-token-cache";
  */
 const HALO_TICKETS_LIST_FIELDS =
   "id,summary,status,priority,client,agent,manager,team,dateoccurred,targetdate,timetaken," +
+  "dateresponded,dateclosed," +
   "details,description,tickettype,tickettype_id,use,main_project_id,projectinternaltask," +
   "client_id,clientid,assignedto,assigned_to,technician,who,who_agentid,actionby_agent_id," +
   "category_1,category_2,category1,category2,customfields";
 
+/** Open-ticket list pagination — preserves pre-scan behaviour (20 × 50 = 1_000 cap). */
+const HALO_TICKETS_DEFAULT_PAGE_SIZE = 50;
+const HALO_TICKETS_DEFAULT_MAX_PAGES = 20;
+
+/** Historical date-window fetches use the documented API max page size. */
+const HALO_TICKETS_HISTORICAL_PAGE_SIZE = 100;
+
+/**
+ * Max pages for date-window ticket sync (100 × 100 = 10_000 tickets).
+ * Covers roughly 2× a large MSP annual volume without an unbounded loop.
+ */
+export const HALO_TICKETS_HISTORICAL_MAX_PAGES = 100;
+
+/** Upper bound on tickets returned for a historical date window (100 × 100). */
+export const HALO_TICKETS_HISTORICAL_MAX_TICKETS =
+  HALO_TICKETS_HISTORICAL_MAX_PAGES * HALO_TICKETS_HISTORICAL_PAGE_SIZE;
+
+const HALO_TICKETS_DEFAULT_MAX_COUNT = 50;
+
+function resolveHaloTicketsMaxCount(
+  filters: { count?: number },
+  historical: boolean,
+): number {
+  if (typeof filters.count === "number" && filters.count > 0) return filters.count;
+  if (historical) return HALO_TICKETS_HISTORICAL_MAX_TICKETS;
+  return HALO_TICKETS_DEFAULT_MAX_COUNT;
+}
+
+/** Scan/aggregate historical list — no summary, details, description or notes. */
+const HALO_TICKETS_MINIMAL_HISTORICAL_FIELDS =
+  "id,client_id,clientid,dateoccurred,dateresponded,responsedate,first_responsedate," +
+  "dateclosed,date_fully_closed,targetdate,priority,status,priority_id,status_id," +
+  "agent,agent_id,assignedto,assigned_to,technician,owner,owner_id,who,who_agentid," +
+  "user,user_name,useremail,username,requester,requester_id,clientcontact,client_contact," +
+  "contact,contact_id,contactname,contact_name,openedby,opened_by,createdby," +
+  "summary,subject,tickettype,tickettype_id,category,category_id,category_1,category_2," +
+  "fixbydate,respondbydate,respondby_date,fix_by_date,hasbeenclosed,isclosed,isopen,open,closed";
+
+const HALO_TICKETS_DATESEARCH_FIELD = "dateoccurred";
+
+function isHistoricalHaloTicketFetch(filters: {
+  dateFrom?: string;
+  dateTo?: string;
+}): boolean {
+  return Boolean(filters.dateFrom?.trim() && filters.dateTo?.trim());
+}
+
+function parseHaloTicketsRecordCount(data: unknown): number | null {
+  if (!data || typeof data !== "object") return null;
+  const o = data as Record<string, unknown>;
+  const rcPick = o.record_count ?? o.recordCount ?? o.total ?? o.TotalRecordCount;
+  if (typeof rcPick === "number" && Number.isFinite(rcPick)) return rcPick;
+  if (typeof rcPick === "string") {
+    const n = Number.parseInt(rcPick, 10);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function applyHaloTicketDateSearchParams(url: URL, dateFrom: string, dateTo: string): void {
+  url.searchParams.set("datesearch", HALO_TICKETS_DATESEARCH_FIELD);
+  url.searchParams.set("startdate", dateFrom.trim());
+  url.searchParams.set("enddate", dateTo.trim());
+}
+
 function applyHaloTicketsListEnrichment(
   url: URL,
-  opts: { minimalTicketPayload?: boolean },
+  opts: { minimalTicketPayload?: boolean; minimalHistoricalPayload?: boolean },
 ): void {
   if (opts.minimalTicketPayload) return;
+  if (opts.minimalHistoricalPayload) {
+    url.searchParams.set("fields", HALO_TICKETS_MINIMAL_HISTORICAL_FIELDS);
+    return;
+  }
   url.searchParams.set("includedetails", "true");
   url.searchParams.set("includeagent", "true");
   url.searchParams.set("includeassignedagent", "true");
   url.searchParams.set("fields", HALO_TICKETS_LIST_FIELDS);
 }
+import {
+  capturePerTicketFieldProvenance,
+  FieldProvenanceAccumulator,
+  rawImpliesCloseOccurred,
+  rawImpliesResponseOccurred,
+  resolveField,
+  resolvePresentField,
+  resolveStatusOpen,
+  resolveTargetDate,
+  HALO_TICKET_FIELD_ALIASES,
+  type LogicalHaloTicketField,
+  type ScanFieldMappingContext,
+} from "@/lib/psa/halo-field-provenance";
 import {
   formatTicketsForPrompt,
   TICKET_SECTION_RULE,
@@ -169,7 +255,7 @@ async function haloPsaFetchTicketDetailWithExtra429Retry(
   url: string,
   init?: RequestInit,
 ): Promise<Response> {
-  let res = await haloPsaFetch(url, init);
+  const res = await haloPsaFetch(url, init);
   if (!isHaloRateLimitedResponse(res)) return res;
   await haloSleep(HALO_TICKET_DETAIL_EXTRA_429_WAIT_MS);
   return haloPsaFetch(url, init);
@@ -622,10 +708,10 @@ export function classifyHaloTicketType(
     isProjectFromTicketType || isProjectFromRawUse || is_project_task;
 
   let ticket_type: string;
-  if (isProjectFromTicketType || isProjectFromRawUse) {
-    ticket_type = "Project";
-  } else if (projectinternaltask || mainPid > 0) {
+  if (is_project_task) {
     ticket_type = "Project Task";
+  } else if (isProjectFromTicketType || isProjectFromRawUse) {
+    ticket_type = "Project";
   } else if (useVal === "task") {
     ticket_type = "Task";
   } else if (useVal === "opportunity") {
@@ -763,10 +849,63 @@ function mergeHaloActionNoteLists(lists: HaloNote[][]): HaloNote[] {
   return [...merged, ...noId];
 }
 
+/** Remove free-text fields from a mapped ticket before scan aggregation. */
+export function stripHaloTicketForScan(ticket: HaloTicket): HaloTicket {
+  return {
+    ...ticket,
+    summary: "",
+    details: null,
+    client: null,
+    site: null,
+    agent: null,
+    manager: null,
+    clientContact: null,
+    status: { name: "" },
+    priority: null,
+    team: undefined,
+    category_1: null,
+    category_2: null,
+    tickettype: null,
+    ticket_type_name: undefined,
+    actions: null,
+    latestnote: null,
+    notes: undefined,
+    customfields: null,
+    assignedto: undefined,
+    technician: undefined,
+    who: undefined,
+    who_agentid: undefined,
+  };
+}
+
+/** Returns true if a ticket still carries scan-disallowed free text. */
+export function haloScanTicketHasFreeText(ticket: HaloTicket): boolean {
+  if (ticket.summary?.trim()) return true;
+  if (ticket.details?.trim()) return true;
+  if (ticket.latestnote?.trim()) return true;
+  if (Array.isArray(ticket.notes) && ticket.notes.length > 0) return true;
+  if (Array.isArray(ticket.actions) && ticket.actions.length > 0) return true;
+  if (Array.isArray(ticket.customfields) && ticket.customfields.length > 0) return true;
+  if (ticket.client?.name?.trim()) return true;
+  if (ticket.site?.name?.trim()) return true;
+  if (ticket.agent?.name?.trim()) return true;
+  if (ticket.manager?.name?.trim()) return true;
+  if (ticket.clientContact?.name?.trim()) return true;
+  if (ticket.status?.name?.trim()) return true;
+  if (ticket.tickettype?.name?.trim()) return true;
+  return false;
+}
+
+export type MapTicketOpts = {
+  fieldProvenance?: FieldProvenanceAccumulator;
+  capturePerTicketProvenance?: boolean;
+};
+
 /** Normalizes HaloPSA API ticket payloads (flat or nested) into our HaloTicket shape. */
 export function mapTicket(
   ticket: Record<string, unknown>,
   ticketTypes?: Record<number, HaloTicketTypeEntry> | null,
+  opts?: MapTicketOpts,
 ): HaloTicket {
   const rawId = ticket.id ?? ticket.ticket_id;
   const id =
@@ -818,16 +957,36 @@ export function mapTicket(
     strField(ticket.note) ??
     null;
 
-  const dateoccurred =
-    strField(ticket.dateoccurred) ??
-    strField(ticket.date_occurred) ??
-    strField(ticket.dateopened) ??
-    strField(ticket.created_at) ??
-    strField(ticket.opendate) ??
-    strField(ticket.last_update) ??
-    null;
+  const dateEnteredResolved = resolveField(ticket, HALO_TICKET_FIELD_ALIASES.dateEntered);
+  const dateoccurred = dateEnteredResolved.value;
 
-  const targetdate = pickTargetDateSkippingHaloNullSentinels(ticket);
+  const targetResolved = resolveTargetDate(ticket);
+  const targetdate = targetResolved.value;
+
+  const dateRespondedResolved = resolveField(
+    ticket,
+    HALO_TICKET_FIELD_ALIASES.dateResponded,
+  );
+  const dateresponded = dateRespondedResolved.value;
+
+  const dateClosedResolved = resolveField(ticket, HALO_TICKET_FIELD_ALIASES.dateClosed);
+  const dateclosed = dateClosedResolved.value;
+
+  const priorityForScan = resolvePresentField(ticket, HALO_TICKET_FIELD_ALIASES.priority).value;
+  const statusOpenForScan = resolveStatusOpen(ticket).value;
+  const hasBeenClosedForScan =
+    typeof ticket.hasbeenclosed === "boolean"
+      ? ticket.hasbeenclosed
+      : typeof ticket.hasbeenclosed === "string" &&
+          ["true", "false"].includes(ticket.hasbeenclosed.trim().toLowerCase())
+        ? ticket.hasbeenclosed.trim().toLowerCase() === "true"
+        : null;
+  const ownerForScan = resolvePresentField(ticket, HALO_TICKET_FIELD_ALIASES.assignedOwner).value;
+  const requesterForScan = resolvePresentField(ticket, HALO_TICKET_FIELD_ALIASES.requester).value;
+  const ticketTypeForScan = resolvePresentField(ticket, HALO_TICKET_FIELD_ALIASES.ticketType).value;
+  const slaDueDateForScan = resolveField(ticket, HALO_TICKET_FIELD_ALIASES.slaDueDate).value;
+
+  opts?.fieldProvenance?.recordTicket(ticket);
 
   const timetaken = numField(
     ticket.projecttimeactual ?? ticket.act_time ?? ticket.timetaken ?? ticket.time_taken ?? ticket.time_logged ?? ticket.totaltime,
@@ -926,6 +1085,8 @@ export function mapTicket(
       : {}),
     ...(ticket.who !== undefined && ticket.who !== null ? { who: ticket.who } : {}),
     dateoccurred,
+    dateresponded,
+    dateclosed,
     targetdate,
     timetaken,
     flagged: Boolean(ticket.flagged ?? false),
@@ -952,6 +1113,29 @@ export function mapTicket(
     latestnote: strField(ticket.latestnote) ?? null,
     notes,
     customfields,
+    ...(opts?.capturePerTicketProvenance
+      ? {
+          fieldProvenance: capturePerTicketFieldProvenance(ticket),
+          scanSignals: {
+            impliesResponded: rawImpliesResponseOccurred(ticket),
+            impliesClosed: rawImpliesCloseOccurred(ticket),
+          },
+        }
+      : {}),
+    scanAttributes: {
+      priority: priorityForScan,
+      statusOpen:
+        statusOpenForScan === "open"
+          ? true
+          : statusOpenForScan === "closed"
+            ? false
+            : null,
+      hasBeenClosed: hasBeenClosedForScan,
+      owner: ownerForScan,
+      requester: requesterForScan,
+      ticketType: ticketTypeForScan,
+      slaDueDate: slaDueDateForScan,
+    },
   };
 }
 
@@ -1217,6 +1401,8 @@ export interface HaloTicket {
   who?: unknown;
   who_agentid?: number | string | null;
   dateoccurred: string | null;
+  dateresponded?: string | null;
+  dateclosed?: string | null;
   targetdate?: string | null;
   timetaken?: number | null;
   flagged?: boolean | null;
@@ -1246,6 +1432,20 @@ export interface HaloTicket {
     value?: string | number | null;
     display?: string | null;
   }> | null;
+  /** Dry-run only: raw Halo keys that supplied logical date fields. */
+  fieldProvenance?: Partial<Record<LogicalHaloTicketField, string | null>>;
+  /** Scan-path signals for mapping confidence (no free text). */
+  scanSignals?: { impliesResponded: boolean; impliesClosed: boolean };
+  /** Safe, scan-only dimensions retained after free-text redaction. */
+  scanAttributes?: {
+    priority: string | null;
+    statusOpen: boolean | null;
+    hasBeenClosed?: boolean | null;
+    owner: string | null;
+    requester: string | null;
+    ticketType: string | null;
+    slaDueDate: string | null;
+  };
 }
 
 export interface HaloClient {
@@ -1319,14 +1519,17 @@ function normalizeHaloUrl(url: string): string {
   return normalized;
 }
 
-export async function getHaloToken(credentials: HaloCredentials): Promise<string> {
+export async function getHaloToken(
+  credentials: HaloCredentials,
+  options?: HaloTokenFetchOptions,
+): Promise<string> {
   const haloUrl = normalizeHaloUrl(credentials.haloUrl);
   const token = await getCachedHaloAccessToken({
     haloUrl,
     tenant: credentials.tenant,
     clientId: credentials.clientId,
     clientSecret: credentials.clientSecret,
-  });
+  }, options);
   if (!token) {
     throw new Error(
       "Could not authenticate with HaloPSA. Check your Client ID and Secret.",
@@ -1460,38 +1663,32 @@ export async function getAllHaloClients(
   let page = 1;
   const pageSize = 100;
   let hasMore = true;
+  let endpoint: "Client" | "Clients" = "Client";
 
   while (hasMore) {
-    const url = `${base}/api/Clients?pageinate=true&page_size=${pageSize}&page_no=${page}&includeinactive=false`;
-    console.log(`[clients] Fetching page ${page}:`, url);
+    const url =
+      endpoint === "Client"
+        ? `${base}/api/Client?count=2500&page_size=${pageSize}&page_no=${page}&includeinactive=false`
+        : `${base}/api/Clients?pageinate=true&page_size=${pageSize}&page_no=${page}&includeinactive=false`;
+    console.log(`[clients] Fetching page ${page} from /api/${endpoint}:`, url);
 
-    const res = await haloPsaFetch(url, { headers, cache: "no-store" });
-
+    let res = await haloPsaFetch(url, { headers, cache: "no-store" });
+    if (!res.ok && page === 1 && endpoint === "Client") {
+      console.error("[clients] /api/Client failed:", res.status);
+      endpoint = "Clients";
+      res = await haloPsaFetch(
+        `${base}/api/Clients?pageinate=true&page_size=${pageSize}&page_no=${page}&includeinactive=false`,
+        { headers, cache: "no-store" },
+      );
+    }
     if (!res.ok) {
-      console.error("[clients] Failed:", res.status);
-      if (page === 1 && res.status === 404) {
-        const fallback = await haloPsaFetch(`${base}/api/Client`, {
-          headers,
-          cache: "no-store",
-        });
-        if (!fallback.ok) {
-          throw new Error("Could not fetch HaloPSA clients.");
-        }
-        const data = (await fallback.json()) as { clients?: HaloClient[] } | HaloClient[];
-        const arr = Array.isArray(data) ? data : Array.isArray(data.clients) ? data.clients : [];
-        return arr.map((c) => ({
-          id: typeof c.id === "number" ? c.id : Number(c.id),
-          name:
-            typeof (c as { name?: string }).name === "string"
-              ? (c as { name: string }).name
-              : String((c as { clientname?: string }).clientname ?? ""),
-        }));
-      }
+      console.error(`[clients] /api/${endpoint} failed:`, res.status);
       break;
     }
 
     const data = (await res.json()) as Record<string, unknown>;
     const clients =
+      (Array.isArray(data.client) ? data.client : null) ??
       (Array.isArray(data.clients) ? data.clients : null) ??
       (Array.isArray(data.result) ? data.result : null) ??
       (Array.isArray(data.data) ? data.data : null) ??
@@ -1517,16 +1714,26 @@ export async function getAllHaloClients(
   return allClients.map((c) => mapHaloApiRowToClient(c as Record<string, unknown>));
 }
 
-/** Normalizes one Halo `/api/Clients` row into `HaloClient`. */
+/** Normalizes one Halo `/api/Client` row into `HaloClient`. */
 export function mapHaloApiRowToClient(row: Record<string, unknown>): HaloClient {
   const id = row.id;
   const nid = typeof id === "number" ? id : Number(id);
+  const nameCandidates = [
+    row.name,
+    row.clientname,
+    row.client_name,
+    row.customername,
+    row.customer_name,
+    nestedName(row.client),
+    nestedName(row.customer),
+  ];
+  const name = nameCandidates.find(
+    (candidate): candidate is string =>
+      typeof candidate === "string" && candidate.trim().length > 0,
+  );
   return {
     id: Number.isFinite(nid) ? nid : 0,
-    name:
-      (typeof row.name === "string" ? row.name : null) ??
-      (typeof row.clientname === "string" ? row.clientname : "") ??
-      "",
+    name: name?.trim() ?? "",
   };
 }
 
@@ -1723,15 +1930,17 @@ function buildPaginatedTicketsSearchUrl(
     dateFrom?: string;
     dateTo?: string;
     minimalTicketPayload?: boolean;
+    minimalHistoricalPayload?: boolean;
     includeClosed?: boolean;
   },
   clientStyle: HaloTicketsClientUrlStyle | "none",
 ): string {
   const url = new URL(`${baseUrl}/api/Tickets`);
+  const historical = isHistoricalHaloTicketFetch(filters);
   url.searchParams.set("pageinate", "true");
   url.searchParams.set("page_size", String(pageSize));
   url.searchParams.set("page_no", String(page));
-  if (!filters.includeClosed) {
+  if (!filters.includeClosed && !historical) {
     url.searchParams.set("open_only", "true");
   }
 
@@ -1743,12 +1952,23 @@ function buildPaginatedTicketsSearchUrl(
   }
   if (filters.minimalTicketPayload) {
     url.searchParams.set("fields", "id,client_id,clientid");
+  } else if (historical && filters.minimalHistoricalPayload) {
+    url.searchParams.set("fields", HALO_TICKETS_MINIMAL_HISTORICAL_FIELDS);
   } else {
     applyHaloTicketsListEnrichment(url, filters);
   }
 
   const cid = filters.clientId;
-  if (clientStyle === "none" || typeof cid !== "number") {
+  if (historical && filters.dateFrom && filters.dateTo) {
+    applyHaloTicketDateSearchParams(url, filters.dateFrom, filters.dateTo);
+    if (typeof cid === "number") {
+      if (clientStyle === "clientid_dates" || clientStyle === "client_id_only") {
+        url.searchParams.set("clientid", String(cid));
+      } else {
+        url.searchParams.set("client_id", String(cid));
+      }
+    }
+  } else if (clientStyle === "none" || typeof cid !== "number") {
     if (filters.dateFrom) {
       url.searchParams.set("dateFrom", filters.dateFrom);
       url.searchParams.set("dateopen", filters.dateFrom);
@@ -1789,7 +2009,9 @@ async function discoverHaloTicketsClientFilterStyle(
     dateFrom?: string;
     dateTo?: string;
     minimalTicketPayload?: boolean;
+    minimalHistoricalPayload?: boolean;
     includeClosed?: boolean;
+    fetchMeta?: { recordCount: number | null };
   },
   headers: HeadersInit,
 ): Promise<
@@ -1810,7 +2032,11 @@ async function discoverHaloTicketsClientFilterStyle(
       throw new HaloRateLimitError();
     }
     if (!res.ok) continue;
-    const batch = parseTicketsPayload(await res.json());
+    const rawJson = await res.json();
+    if (filters.fetchMeta && filters.fetchMeta.recordCount == null) {
+      filters.fetchMeta.recordCount = parseHaloTicketsRecordCount(rawJson);
+    }
+    const batch = parseTicketsPayload(rawJson);
     if (batch.length > 0) {
       return { mode: "paginated", style, firstBatch: batch };
     }
@@ -1834,13 +2060,27 @@ export async function getHaloTickets(
     keyword?: string;
     /** Request only id + client fields from Halo (smaller payloads for counts). */
     minimalTicketPayload?: boolean;
+    /** Historical date-window only: slim fields for scan aggregation (no summary/details/notes). */
+    minimalHistoricalPayload?: boolean;
     includeClosed?: boolean;
+    /** Optional side channel: populated with Halo `record_count` from page 1 when paginating. */
+    fetchMeta?: {
+      recordCount: number | null;
+      fetchPath?: "modern" | "legacy";
+      fieldMapping?: ScanFieldMappingContext;
+    };
+    /** Dry-run: attach per-ticket fieldProvenance on mapped tickets. */
+    captureFieldProvenance?: boolean;
+    /** Scan workers need upstream failures rather than an indistinguishable empty list. */
+    throwOnFetchError?: boolean;
   } & { includeDetails?: boolean },
 ): Promise<HaloTicket[]> {
   const baseUrl = normalizeHaloUrl(haloUrl);
   const ticketTypes = await getTicketTypes(baseUrl, token);
-  const maxTickets = filters.count && filters.count > 0 ? filters.count : 50;
-  const pageSize = 50;
+  const historical = isHistoricalHaloTicketFetch(filters);
+  const maxTickets = resolveHaloTicketsMaxCount(filters, historical);
+  const pageSize = historical ? HALO_TICKETS_HISTORICAL_PAGE_SIZE : HALO_TICKETS_DEFAULT_PAGE_SIZE;
+  const maxPages = historical ? HALO_TICKETS_HISTORICAL_MAX_PAGES : HALO_TICKETS_DEFAULT_MAX_PAGES;
   const headers = {
     Authorization: `Bearer ${token}`,
   };
@@ -1865,7 +2105,7 @@ export async function getHaloTickets(
 
   const finalizeTickets = async (mapped: HaloTicket[]): Promise<HaloTicket[]> => {
     const keywordFiltered = applyKeywordFilter(mapped);
-    if (keywordFiltered.length === 0) {
+    if (keywordFiltered.length === 0 && !filters.minimalHistoricalPayload) {
       throw new Error(
         "No tickets found with the current filters. Try expanding the date range or changing the status filters.",
       );
@@ -1880,8 +2120,29 @@ export async function getHaloTickets(
     return keywordFiltered;
   };
 
-  const mapRawTickets = (rawTickets: unknown[]): HaloTicket[] =>
-    rawTickets.map((t) => mapTicket(t as unknown as Record<string, unknown>, ticketTypes));
+  const mapRawTickets = (rawTickets: unknown[]): HaloTicket[] => {
+    const trackFieldMapping =
+      Boolean(filters.minimalHistoricalPayload) ||
+      Boolean(filters.captureFieldProvenance);
+    const fieldProvenance = trackFieldMapping
+      ? new FieldProvenanceAccumulator()
+      : undefined;
+    const mapped = rawTickets.map((t) => {
+      const raw = t as Record<string, unknown>;
+      let ticket = mapTicket(raw, ticketTypes, {
+        fieldProvenance,
+        capturePerTicketProvenance: filters.captureFieldProvenance,
+      });
+      if (filters.minimalHistoricalPayload) {
+        ticket = stripHaloTicketForScan(ticket);
+      }
+      return ticket;
+    });
+    if (fieldProvenance && filters.fetchMeta) {
+      filters.fetchMeta.fieldMapping = fieldProvenance.buildReports();
+    }
+    return mapped;
+  };
 
   const runLegacyPath = async (): Promise<HaloTicket[] | null> => {
     try {
@@ -1895,26 +2156,35 @@ export async function getHaloTickets(
       if (typeof filters.statusId === "number") {
         legacy.searchParams.set("status_id", String(filters.statusId));
       }
-      if (filters.dateFrom) {
-        legacy.searchParams.set("dateFrom", filters.dateFrom);
-        legacy.searchParams.set("dateopen", filters.dateFrom);
+      if (historical && filters.dateFrom && filters.dateTo) {
+        applyHaloTicketDateSearchParams(legacy, filters.dateFrom, filters.dateTo);
+      } else {
+        if (filters.dateFrom) {
+          legacy.searchParams.set("dateFrom", filters.dateFrom);
+          legacy.searchParams.set("dateopen", filters.dateFrom);
+        }
+        if (filters.dateTo) legacy.searchParams.set("dateTo", filters.dateTo);
       }
-      if (filters.dateTo) legacy.searchParams.set("dateTo", filters.dateTo);
+      if (!filters.includeClosed && !historical) {
+        legacy.searchParams.set("open_only", "true");
+      }
       if (filters.minimalTicketPayload) {
         legacy.searchParams.set("fields", "id,client_id,clientid");
+      } else if (historical && filters.minimalHistoricalPayload) {
+        legacy.searchParams.set("fields", HALO_TICKETS_MINIMAL_HISTORICAL_FIELDS);
       } else {
         applyHaloTicketsListEnrichment(legacy, filters);
       }
-      legacy.searchParams.set(
-        "count",
-        String(filters.count && filters.count > 0 ? filters.count : 50),
-      );
+      legacy.searchParams.set("count", String(maxTickets));
       const legacyRes = await haloPsaFetch(legacy.toString(), { headers, cache: "no-store" });
       console.log("[delivery-health] legacy fetch status:", legacyRes.status);
       if (isHaloRateLimitedResponse(legacyRes)) {
         throw new HaloRateLimitError();
       }
       if (!legacyRes.ok) {
+        if (filters.throwOnFetchError) {
+          throw new Error(`Halo tickets request failed (${legacyRes.status})`);
+        }
         let errBody = "";
         try {
           errBody = await legacyRes.text();
@@ -1930,7 +2200,7 @@ export async function getHaloTickets(
       }
       const legacyData = (await legacyRes.json()) as { tickets?: unknown[] } | unknown[];
       const rawTickets = parseTicketsPayload(legacyData);
-      if (rawTickets.length > 0) {
+      if (rawTickets.length > 0 && !filters.minimalHistoricalPayload) {
         logFullRawTicket(rawTickets[0]);
       }
       const tickets = mapRawTickets(rawTickets);
@@ -1938,9 +2208,11 @@ export async function getHaloTickets(
         const r0 = rawTickets[0] as Record<string, unknown>;
         console.log("[HaloPSA] list (legacy) first ticket raw agent:", r0.agent ?? null);
       }
+      if (filters.fetchMeta) filters.fetchMeta.fetchPath = "legacy";
       return await finalizeTickets(tickets);
     } catch (e) {
       if (e instanceof HaloRateLimitError) throw e;
+      if (filters.throwOnFetchError) throw e;
       if (
         e instanceof Error &&
         e.message.includes("No tickets found with the current filters")
@@ -1962,13 +2234,16 @@ export async function getHaloTickets(
     let page = startPage;
     let hasMore = startHasMore;
     try {
-      while (hasMore && allRaw.length < maxTickets && page <= 20) {
+      while (hasMore && allRaw.length < maxTickets && page <= maxPages) {
         const url = buildPaginatedTicketsSearchUrl(baseUrl, page, pageSize, filters, style);
         const res = await haloPsaFetch(url, { headers, cache: "no-store" });
         if (isHaloRateLimitedResponse(res)) {
           throw new HaloRateLimitError();
         }
         if (!res.ok) {
+          if (filters.throwOnFetchError) {
+            throw new Error(`Halo tickets request failed (${res.status})`);
+          }
           if (page === 1 && style === "none") {
             return null;
           }
@@ -1976,8 +2251,16 @@ export async function getHaloTickets(
           break;
         }
         const data = (await res.json()) as unknown;
+        if (page === 1 && filters.fetchMeta && filters.fetchMeta.recordCount == null) {
+          filters.fetchMeta.recordCount = parseHaloTicketsRecordCount(data);
+        }
         const batch = parseTicketsPayload(data);
-        if (page === 1 && batch.length > 0 && style === "none") {
+        if (
+          page === 1 &&
+          batch.length > 0 &&
+          style === "none" &&
+          !filters.minimalHistoricalPayload
+        ) {
           logFullRawTicket(batch[0]);
         }
         if (batch.length === 0) {
@@ -1995,9 +2278,11 @@ export async function getHaloTickets(
         const r0 = sliced[0] as Record<string, unknown>;
         console.log("[HaloPSA] list first ticket raw agent:", r0.agent ?? null);
       }
+      if (filters.fetchMeta) filters.fetchMeta.fetchPath = "modern";
       return await finalizeTickets(tickets);
     } catch (e) {
       if (e instanceof HaloRateLimitError) throw e;
+      if (filters.throwOnFetchError) throw e;
       if (
         e instanceof Error &&
         e.message.includes("No tickets found with the current filters")
@@ -2021,7 +2306,9 @@ export async function getHaloTickets(
           dateFrom: filters.dateFrom,
           dateTo: filters.dateTo,
           minimalTicketPayload: filters.minimalTicketPayload,
+          minimalHistoricalPayload: filters.minimalHistoricalPayload,
           includeClosed: filters.includeClosed,
+          fetchMeta: filters.fetchMeta,
         },
         headers,
       );
@@ -2031,7 +2318,7 @@ export async function getHaloTickets(
         const modern = await tryModernPaginated([], 1, true, "none");
         return modern ?? [];
       }
-      if (disc.firstBatch.length > 0) {
+      if (disc.firstBatch.length > 0 && !filters.minimalHistoricalPayload) {
         logFullRawTicket(disc.firstBatch[0]);
       }
       const startPage = disc.firstBatch.length > 0 ? 2 : 1;
@@ -2054,6 +2341,7 @@ export async function getHaloTickets(
     return legacy ?? [];
   } catch (e) {
     if (e instanceof HaloRateLimitError) throw e;
+    if (filters.throwOnFetchError) throw e;
     if (
       e instanceof Error &&
       e.message.includes("No tickets found with the current filters")
@@ -2200,7 +2488,12 @@ export async function getHaloProjects(
       dateTo: filters?.dateTo,
       count: Math.max(filters?.count ?? 0, 3000),
     });
-    const projectTickets = allTickets.filter((t) => t.is_project === true);
+    const projectTickets = allTickets.filter(
+      (t) =>
+        t.is_project === true &&
+        t.is_project_task !== true &&
+        t.parent_project_id == null,
+    );
     const projectTaskTickets = allTickets.filter((t) => t.is_project_task === true);
     let agentsById = new Map<number, string>();
     try {

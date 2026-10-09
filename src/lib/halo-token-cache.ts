@@ -7,6 +7,15 @@ type CacheEntry = { token: string; expiresAt: number };
 
 const tokenCache: Record<string, CacheEntry> = {};
 
+export type HaloTokenFailureDetails = {
+  status: number | null;
+  body: string;
+};
+
+export type HaloTokenFetchOptions = {
+  onAuthFailure?: (details: HaloTokenFailureDetails) => void;
+};
+
 function normalizeBaseUrl(url: string): string {
   return url.trim().replace(/\/+$/, "");
 }
@@ -25,7 +34,10 @@ export type CachedTokenParams = {
 /**
  * Returns a valid access token, using cache when still within ~90% of `expires_in`.
  */
-export async function getCachedHaloAccessToken(params: CachedTokenParams): Promise<string | null> {
+export async function getCachedHaloAccessToken(
+  params: CachedTokenParams,
+  options?: HaloTokenFetchOptions,
+): Promise<string | null> {
   const base = normalizeBaseUrl(params.haloUrl);
   const cacheKey = makeCacheKey(base, params.tenant, params.clientId);
   const now = Date.now();
@@ -41,28 +53,43 @@ export async function getCachedHaloAccessToken(params: CachedTokenParams): Promi
     tokenUrl.searchParams.set("tenant", params.tenant.trim());
   }
 
-  const res = await fetch(tokenUrl.toString(), {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "client_credentials",
-      client_id: params.clientId,
-      client_secret: params.clientSecret,
-      scope: "all",
-    }).toString(),
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(tokenUrl.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: params.clientId,
+        client_secret: params.clientSecret,
+        scope: "all",
+      }).toString(),
+      cache: "no-store",
+    });
+  } catch {
+    options?.onAuthFailure?.({ status: null, body: "" });
+    throw new Error("Halo token request failed.");
+  }
 
+  const responseBody = await res.text().catch(() => "");
   if (!res.ok) {
+    options?.onAuthFailure?.({ status: res.status, body: responseBody });
     return null;
   }
 
-  const data = (await res.json()) as {
-    access_token?: string;
-    expires_in?: number;
-  };
+  let data: { access_token?: string; expires_in?: number };
+  try {
+    data = JSON.parse(responseBody) as {
+      access_token?: string;
+      expires_in?: number;
+    };
+  } catch {
+    options?.onAuthFailure?.({ status: res.status, body: responseBody });
+    return null;
+  }
   const token = data.access_token;
   if (!token) {
+    options?.onAuthFailure?.({ status: res.status, body: responseBody });
     return null;
   }
 

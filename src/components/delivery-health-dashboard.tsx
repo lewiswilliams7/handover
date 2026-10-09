@@ -19,6 +19,7 @@ import {
   Timer,
   User,
   Eye,
+  X,
 } from "lucide-react";
 
 import type {
@@ -196,7 +197,21 @@ type Props = {
   }) => void;
   /** Applied when navigating from overview attention queue (or similar). */
   initialClientFilter?: string;
+  /** One-line reason from overview attention (shown in banner when client filter is preset). */
+  initialClientReason?: string;
+  /** Ticket/project titles for the winning attention reason category. */
+  initialAffectedItemNames?: string[];
 };
+
+const AFFECTED_NAMES_BANNER_LIMIT = 5;
+
+function formatAffectedNamesForBanner(names: string[]): string {
+  if (names.length === 0) return "";
+  const shown = names.slice(0, AFFECTED_NAMES_BANNER_LIMIT);
+  const extra = names.length - shown.length;
+  const joined = shown.join(", ");
+  return extra > 0 ? `${joined}, +${extra} more` : joined;
+}
 
 function formatShortDate(iso: string | null): string {
   if (!iso) return " - ";
@@ -405,6 +420,8 @@ export function DeliveryHealthDashboard({
   onOpenHaloImport,
   onStartGenerationFromDelivery,
   initialClientFilter = "",
+  initialClientReason = "",
+  initialAffectedItemNames = [],
 }: Props) {
   const psaConnections = usePSAConnections();
   const psaStatus = usePSAStatus();
@@ -424,11 +441,31 @@ export function DeliveryHealthDashboard({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [clientFilter, setClientFilter] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("");
+  const [attentionBannerReason, setAttentionBannerReason] = useState<string | null>(null);
+  const [attentionBannerAffectedNames, setAttentionBannerAffectedNames] = useState<string[]>(
+    [],
+  );
+  const prevClientFilterRef = useRef(clientFilter);
 
   useEffect(() => {
     const preset = initialClientFilter.trim();
-    if (preset) setClientFilter(preset);
-  }, [initialClientFilter]);
+    if (preset) {
+      setClientFilter(preset);
+      const reason = initialClientReason.trim();
+      if (reason) setAttentionBannerReason(reason);
+      setAttentionBannerAffectedNames(initialAffectedItemNames.filter(Boolean));
+    }
+  }, [initialClientFilter, initialClientReason, initialAffectedItemNames]);
+
+  useEffect(() => {
+    const prev = prevClientFilterRef.current.trim();
+    const current = clientFilter.trim();
+    prevClientFilterRef.current = clientFilter;
+    if (prev !== current && (!current || (prev !== "" && current !== prev))) {
+      setAttentionBannerReason(null);
+      setAttentionBannerAffectedNames([]);
+    }
+  }, [clientFilter]);
   const [statusFilter, setStatusFilter] = useState("");
   const [ragFilter, setRagFilter] = useState<"all" | DeliveryHealthRag | "sla_at_risk">("all");
   const [statusPortfolioFilter, setStatusPortfolioFilter] =
@@ -1186,7 +1223,7 @@ export function DeliveryHealthDashboard({
     if (successCount > 0) {
       toast({
         message: `${successCount} chase note${successCount > 1 ? "s" : ""} sent`,
-        subtitle: failCount > 0 ? `${failCount} failed — check PSA connection` : undefined,
+        subtitle: failCount > 0 ? `${failCount} failed - check PSA connection` : undefined,
         variant: "success",
         durationMs: 4000,
       });
@@ -1252,7 +1289,7 @@ export function DeliveryHealthDashboard({
     );
   };
 
-  const lastRefreshedLabel = data ? formatRelativeRefreshed(data.refreshedAt) : "—";
+  const lastRefreshedLabel = data ? formatRelativeRefreshed(data.refreshedAt) : " - ";
 
   const handleHealthRefresh = useCallback(async () => {
     if (demoMode) return;
@@ -1317,9 +1354,57 @@ export function DeliveryHealthDashboard({
           </div>
         ) : null}
 
+        {attentionBannerReason ? (
+          <div
+            className="mb-4 w-full rounded-[var(--radius)] border border-white/[0.1] bg-white/[0.04] px-3 py-2 text-white/80"
+            role="status"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <p className="min-w-0 text-[12px] font-medium sm:text-[13px]">
+                Flagged for: {attentionBannerReason}
+                {attentionBannerAffectedNames.length > 0 ? (
+                  <>
+                    {" "}
+                    Affecting: {formatAffectedNamesForBanner(attentionBannerAffectedNames)}.
+                  </>
+                ) : null}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setAttentionBannerReason(null);
+                  setAttentionBannerAffectedNames([]);
+                }}
+                className={cn(
+                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white/80",
+                  focusRing,
+                )}
+                aria-label="Dismiss flagged reason"
+              >
+                <X className="size-3.5" aria-hidden />
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         {fetchError ? (
           <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6 text-sm text-[var(--text-secondary)]">
             {fetchError}
+          </div>
+        ) : null}
+
+        {liveAccess && data?.connectHint ? (
+          <div
+            className="mb-4 rounded-[var(--radius-lg)] border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-[13px] text-amber-100"
+            role="alert"
+          >
+            <p>{data.connectHint}</p>
+            <Link
+              href="/?openSettings=integrations"
+              className="mt-2 inline-flex font-medium text-amber-50 underline underline-offset-4"
+            >
+              Open Configuration
+            </Link>
           </div>
         ) : null}
 
@@ -1406,7 +1491,7 @@ export function DeliveryHealthDashboard({
                     return (
                       <div
                         key={card.label}
-                        className="animate-in fade-in slide-in-from-bottom-2 fill-mode-both relative rounded-[var(--radius-lg)] border border-white/[0.06] bg-[var(--surface-1)] p-4 duration-500"
+                        className="animate-in fade-in slide-in-from-bottom-2 fill-mode-both relative rounded-[var(--radius-lg)] border border-white/[0.06] bg-[var(--surface-1)] p-4 duration-500 [box-shadow:var(--shadow-sm),var(--shadow-inset)]"
                         style={{ animationDelay: card.delay }}
                       >
                         <div className="relative flex items-start justify-between gap-2">
@@ -2031,7 +2116,7 @@ export function DeliveryHealthDashboard({
 
                   {chaseModalOpen && (
                     <div
-                      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 pt-16"
+                      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overscroll-contain p-4 pt-16 md:overscroll-auto"
                       style={{ backgroundColor: "rgba(0,0,0,0.7)" }}
                       onClick={(e) => {
                         if (e.target === e.currentTarget) setChaseModalOpen(false);
@@ -2062,7 +2147,7 @@ export function DeliveryHealthDashboard({
                           <label className="mb-1.5 block text-[12px] font-medium text-[var(--text-secondary)]">
                             Note to send{" "}
                             <span className="font-normal text-[var(--text-muted)]">
-                              — use {"{engineer}"} to insert their name
+                              - use {"{engineer}"} to insert their name
                             </span>
                           </label>
                           <textarea
@@ -2077,7 +2162,7 @@ export function DeliveryHealthDashboard({
                           <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
                             Tickets ({selectedForChase.size})
                           </p>
-                          <div className="flex max-h-48 flex-col gap-1.5 overflow-y-auto pr-1">
+                          <div className="flex max-h-none flex-col gap-1.5 overflow-visible pr-1 md:max-h-48 md:overflow-y-auto">
                             {overdueRows
                               .filter((r) => selectedForChase.has(r.id))
                               .map((r) => (
@@ -2261,7 +2346,7 @@ export function DeliveryHealthDashboard({
                               </td>
                               <td className="px-3 py-2.5 align-top text-[12px] text-[var(--text-secondary)]">
                                 <div className="flex flex-wrap items-center gap-1.5">
-                                  <span>{row.statusName || "—"}</span>
+                                  <span>{row.statusName || " - "}</span>
                                   {closed ? (
                                     <span className="rounded-full bg-slate-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-300">
                                       Closed
@@ -2270,10 +2355,10 @@ export function DeliveryHealthDashboard({
                                 </div>
                               </td>
                               <td className="px-3 py-2.5 align-top text-[12px] text-[var(--text-secondary)]">
-                                {row.owner || "—"}
+                                {row.owner || " - "}
                               </td>
                               <td className="px-3 py-2.5 align-top text-[12px] text-[var(--text-secondary)]">
-                                {row.priorityName || "—"}
+                                {row.priorityName || " - "}
                               </td>
                               <td className="px-3 py-2.5 align-top">
                                 {row.slaRisk ? (

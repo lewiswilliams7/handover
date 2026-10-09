@@ -11,9 +11,9 @@ import { softwareApplicationJsonLd } from "@/lib/seo-page-jsonld";
 
 const PATH = "/compare/handover-vs-rewst";
 const CANONICAL = `https://gethandover.uk${PATH}`;
-const TITLE = "Rewst vs Handover — MSP Automation Reporting Compared";
+const TITLE = "Rewst vs Handover - MSP Automation Reporting Compared";
 const DESCRIPTION =
-  "Rewst alternative for reporting? Handover is purpose-built MSP automation reporting for client updates — not general workflow automation. Compare Rewst vs Handover for UK MSPs.";
+  "Rewst alternative for reporting? Handover is purpose-built MSP automation reporting for client updates - not general workflow automation. Compare Rewst vs Handover for UK MSPs.";
 
 export const metadata: Metadata = {
   title: `${TITLE} | Handover`,
@@ -41,15 +41,15 @@ const rewstRows = [
 const faqs = [
   {
     q: "Is Handover a Rewst alternative?",
-    a: "Handover is a Rewst alternative for reporting specifically — not for general MSP automation. If you need client-ready weekly reports from PSA data, Handover is faster than building and maintaining Rewst workflows for each client.",
+    a: "Handover is a Rewst alternative for reporting specifically - not for general MSP automation. If you need client-ready weekly reports from PSA data, Handover is faster than building and maintaining Rewst workflows for each client.",
   },
   {
-    q: "Rewst vs Handover — can I use both?",
+    q: "Rewst vs Handover - can I use both?",
     a: "Yes. Many MSPs use Rewst for provisioning, onboarding, and internal automations while Handover handles client-facing reporting. They solve different problems.",
   },
   {
     q: "What is MSP automation reporting?",
-    a: "MSP automation reporting means generating consistent client updates from live PSA tickets and projects on a schedule — without manual writing. Handover specialises in that outcome; Rewst specialises in automating arbitrary processes.",
+    a: "MSP automation reporting means generating consistent client updates from live PSA tickets and projects on a schedule - without manual writing. Handover specialises in that outcome; Rewst specialises in automating arbitrary processes.",
   },
   {
     q: "Who is Handover built for?",
@@ -73,18 +73,18 @@ export default function HandoverVsRewstPage() {
         <div className="relative z-[1] mx-auto max-w-[1000px] text-center">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Comparison</p>
           <h1 className="mt-4 text-3xl font-bold leading-tight text-[var(--text-primary)] md:text-5xl">
-            Handover vs Rewst — purpose-built reporting vs workflow automation
+            Handover vs Rewst - purpose-built reporting vs workflow automation
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg text-[var(--text-secondary)]">
             Rewst automates processes. Handover automates client reports. Different tools for different jobs.
           </p>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-            <Link href="/auth?tab=signup&returnTo=/welcome">
+            <Link href="/onboarding/connect">
               <Button
                 size="lg"
                 className="rounded-[var(--radius)] bg-[var(--accent)] px-8 text-white hover:bg-[var(--accent-hover)]"
               >
-                Start free trial
+                Run the free PSA scan
               </Button>
             </Link>
             <Link href="/demo">
@@ -113,7 +113,7 @@ export default function HandoverVsRewstPage() {
             <p className="mt-3">
               Handover is purpose-built <strong className="text-[var(--text-primary)]">MSP automation reporting</strong>.
               A <strong className="text-[var(--text-primary)]">managed service provider</strong> connects HaloPSA or
-              ConnectWise, and Handover turns live ticket and project data into client-ready narrative reports — on
+              ConnectWise, and Handover turns live ticket and project data into client-ready narrative reports - on
               demand or on a schedule.
             </p>
             <p className="mt-3">
@@ -134,7 +134,7 @@ export default function HandoverVsRewstPage() {
             <h3 className="mt-4 text-xl font-semibold text-[var(--text-primary)]">Reporting is the bottleneck</h3>
             <p className="mt-2">
               If PMs still write weekly client emails by hand, Handover delivers MSP reporting automation out of the
-              box — including AI summaries, risk flags, and PSA push-back.
+              box - including AI summaries, risk flags, and PSA push-back.
             </p>
             <h3 className="mt-6 text-xl font-semibold text-[var(--text-primary)]">You want results in minutes</h3>
             <p className="mt-2">

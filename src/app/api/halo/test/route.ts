@@ -127,6 +127,14 @@ export async function GET() {
       );
     }
 
+    const { error: touchError } = await supabase
+      .from("halo_connections")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("user_id", user.id);
+    if (touchError) {
+      console.warn("[halo/test] could not record successful connection check:", touchError.message);
+    }
+
     return NextResponse.json({ ok: true, message: "Connection successful" });
   } catch (e) {
     const message =

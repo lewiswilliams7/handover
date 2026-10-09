@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { ChevronDown, ExternalLink, Loader2, X } from "lucide-react";
+import { ChevronDown, ExternalLink, FileText, Flag, FolderKanban, Loader2, Ticket, X } from "lucide-react";
 import {
   Component,
   type ErrorInfo,
@@ -16,7 +16,6 @@ import {
 import {
   Bar,
   BarChart,
-  CartesianGrid,
   Cell,
   Pie,
   PieChart,
@@ -27,19 +26,31 @@ import {
 } from "recharts";
 
 import { usePortalBootstrap } from "@/components/portal-customer/portal-bootstrap-context";
+import type { PortalBootstrapProfile } from "@/components/portal-customer/portal-bootstrap-context";
 import { cleanTicketNoteContent } from "@/lib/note-cleaner";
 import { mspBrandAccentColour, mspBrandLogoUrl } from "@/lib/portal-customer-brand-display";
 import { cn } from "@/lib/utils";
 
 type PortalNoteLine = { date: string | null; author: string; content: string };
 
-type PortalTicketRow = {
+export type PortalTicketRow = {
   id: number;
   summary: string;
   status: string;
   priority: string;
   engineer: string;
   lastUpdated: string | null;
+  notes?: PortalNoteLine[];
+};
+
+export type PortalProjectRow = {
+  id: number;
+  name: string;
+  status: string;
+  percentComplete: number | null;
+  engineer: string;
+  targetDate: string | null;
+  notes?: PortalNoteLine[];
 };
 
 type SessionPayload = {
@@ -67,16 +78,9 @@ type SessionPayload = {
   isOwnerPreview?: boolean;
 };
 
-type PortalData = {
+export type PortalData = {
   tickets?: PortalTicketRow[];
-  projects?: Array<{
-    id: number;
-    name: string;
-    status: string;
-    percentComplete: number | null;
-    engineer: string;
-    targetDate: string | null;
-  }>;
+  projects?: PortalProjectRow[];
   rag?: "red" | "amber" | "green" | "grey" | null;
   lastUpdated: string;
   selfServiceUrl?: string | null;
@@ -96,13 +100,26 @@ type PortalData = {
     monthlyVolume?: Record<string, number>;
   };
   recentActivity?: Array<{ date: string | null; author: string; summary: string }>;
+  timelineResolvedTickets?: Array<{
+    id: number;
+    summary: string;
+    priority: string;
+    resolvedAt: string | null;
+  }>;
+  timelineProjectMilestones?: Array<{
+    id: number;
+    name: string;
+    description: string;
+    milestoneAt: string | null;
+  }>;
 };
 
-type PortalReportRow = {
+export type PortalReportRow = {
   id: string;
   title: string;
   content: unknown;
   created_at: string;
+  created_by?: string;
 };
 
 class PortalDashboardErrorBoundary extends Component<
@@ -171,17 +188,416 @@ function ragColor(r: PortalData["rag"]): string {
   }
 }
 
-export function PortalCustomerDashboard() {
+function portalReportString(v: unknown): string {
+  return typeof v === "string" ? v.trim() : "";
+}
+
+function portalReportExcerpt(content: unknown): string {
+  if (content == null || typeof content !== "object") return "";
+  const c = content as Record<string, unknown>;
+  const text =
+    portalReportString(c.account_narrative) ||
+    portalReportString(c.summary) ||
+    portalReportString(c.status_report);
+  if (!text) return "";
+  return text.length > 140 ? `${text.slice(0, 140)}…` : text;
+}
+
+function extractReportRisks(content: unknown): string[] {
+  if (content == null || typeof content !== "object") return [];
+  const c = content as Record<string, unknown>;
+  const openRisks = Array.isArray(c.open_risks)
+    ? c.open_risks.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+    : [];
+  const structured = Array.isArray(c.risks)
+    ? c.risks
+        .map((r) => {
+          const row = r as Record<string, unknown>;
+          return portalReportString(row.risk);
+        })
+        .filter(Boolean)
+    : [];
+  return [...openRisks, ...structured];
+}
+
+function normalizeRiskLabel(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+type PortalTimelineEntry = {
+  id: string;
+  date: string;
+  type: "report" | "project" | "ticket_resolved" | "risk_resolved";
+  title: string;
+  description: string;
+};
+
+const TIMELINE_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
+
+function buildPortalTimeline(
+  reports: PortalReportRow[] | null,
+  data: PortalData | null,
+): PortalTimelineEntry[] {
+  const cutoff = Date.now() - TIMELINE_WINDOW_MS;
+  const entries: PortalTimelineEntry[] = [];
+
+  for (const report of reports ?? []) {
+    const t = Date.parse(report.created_at);
+    if (!Number.isFinite(t) || t < cutoff) continue;
+    entries.push({
+      id: `report-${report.id}`,
+      date: report.created_at,
+      type: "report",
+      title: report.title || "Report shared",
+      description: portalReportExcerpt(report.content) || "Your MSP shared a new report.",
+    });
+  }
+
+  for (const milestone of data?.timelineProjectMilestones ?? []) {
+    const when = milestone.milestoneAt ?? "";
+    const t = Date.parse(when);
+    if (!when || !Number.isFinite(t) || t < cutoff) continue;
+    entries.push({
+      id: `project-${milestone.id}-${when}`,
+      date: when,
+      type: "project",
+      title: milestone.name,
+      description: milestone.description,
+    });
+  }
+
+  for (const ticket of data?.timelineResolvedTickets ?? []) {
+    const when = ticket.resolvedAt ?? "";
+    const t = Date.parse(when);
+    if (!when || !Number.isFinite(t) || t < cutoff) continue;
+    entries.push({
+      id: `ticket-${ticket.id}-${when}`,
+      date: when,
+      type: "ticket_resolved",
+      title: ticket.summary || `Ticket #${ticket.id}`,
+      description: `${ticket.priority} priority ticket resolved`,
+    });
+  }
+
+  const sortedReports = [...(reports ?? [])].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  );
+  for (let i = 0; i < sortedReports.length - 1; i++) {
+    const olderRisks = extractReportRisks(sortedReports[i].content);
+    const newerRisks = new Set(
+      extractReportRisks(sortedReports[i + 1].content).map(normalizeRiskLabel),
+    );
+    for (const risk of olderRisks) {
+      if (newerRisks.has(normalizeRiskLabel(risk))) continue;
+      const when = sortedReports[i + 1].created_at;
+      const t = Date.parse(when);
+      if (!Number.isFinite(t) || t < cutoff) continue;
+      entries.push({
+        id: `risk-${i}-${normalizeRiskLabel(risk).slice(0, 24)}`,
+        date: when,
+        type: "risk_resolved",
+        title: "Risk addressed",
+        description: risk,
+      });
+    }
+  }
+
+  return entries
+    .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
+    .slice(0, 60);
+}
+
+function timelineEntryIcon(type: PortalTimelineEntry["type"]) {
+  switch (type) {
+    case "report":
+      return FileText;
+    case "project":
+      return FolderKanban;
+    case "ticket_resolved":
+      return Ticket;
+    case "risk_resolved":
+      return Flag;
+  }
+}
+
+function timelineEntryLabel(type: PortalTimelineEntry["type"]): string {
+  switch (type) {
+    case "report":
+      return "Report sent";
+    case "project":
+      return "Project milestone";
+    case "ticket_resolved":
+      return "Ticket resolved";
+    case "risk_resolved":
+      return "Risk resolved";
+  }
+}
+
+const HEALTH_BADGE: Record<string, { bg: string; text: string; dot: string }> = {
+  red: {
+    bg: "bg-red-500/10",
+    text: "text-red-400",
+    dot: "bg-red-500",
+  },
+  amber: {
+    bg: "bg-amber-500/10",
+    text: "text-amber-400",
+    dot: "bg-amber-500",
+  },
+  green: {
+    bg: "bg-green-500/10",
+    text: "text-green-400",
+    dot: "bg-green-500",
+  },
+};
+
+function RelationshipHealthBadge({ health }: { health: string }) {
+  const key = health.toLowerCase();
+  const badge = HEALTH_BADGE[key];
+  return (
+    <div
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold",
+        badge?.bg ?? "bg-white/5",
+        badge?.text ?? "text-white/60",
+      )}
+    >
+      <span className={cn("size-1.5 rounded-full", badge?.dot ?? "bg-white/40")} />
+      {health.charAt(0).toUpperCase() + health.slice(1)} health
+    </div>
+  );
+}
+
+function PortalReportBody({ content }: { content: unknown }) {
+  if (content == null) {
+    return <p className="text-[12px] text-[var(--text-muted)]">No report content.</p>;
+  }
+  if (typeof content !== "object") {
+    return <p className="whitespace-pre-wrap text-[13px] text-[var(--text-primary)]">{String(content)}</p>;
+  }
+
+  const c = content as Record<string, unknown>;
+  const accountNarrative = portalReportString(c.account_narrative);
+  const summaryField = portalReportString(c.summary);
+  const summaryText = accountNarrative || summaryField;
+  const statusReport = portalReportString(c.status_report);
+  const period = portalReportString(c.period);
+  const clientEmail = portalReportString(c.client_email);
+  const relationshipHealth = portalReportString(c.relationship_health);
+  const actions = Array.isArray(c.actions) ? c.actions : [];
+  const risks = Array.isArray(c.risks) ? c.risks : [];
+  const highlights = Array.isArray(c.highlights)
+    ? c.highlights.filter((h): h is string => typeof h === "string" && h.trim().length > 0)
+    : [];
+  const keyAchievements = Array.isArray(c.key_achievements)
+    ? c.key_achievements.filter((h): h is string => typeof h === "string" && h.trim().length > 0)
+    : [];
+  const openRisks = Array.isArray(c.open_risks)
+    ? c.open_risks.filter((h): h is string => typeof h === "string" && h.trim().length > 0)
+    : [];
+  const recommendedActions = Array.isArray(c.recommended_actions)
+    ? c.recommended_actions.filter((h): h is string => typeof h === "string" && h.trim().length > 0)
+    : [];
+
+  const hasHandoverShape =
+    summaryText.length > 0 ||
+    statusReport.length > 0 ||
+    actions.length > 0 ||
+    risks.length > 0 ||
+    clientEmail.length > 0 ||
+    keyAchievements.length > 0 ||
+    openRisks.length > 0 ||
+    recommendedActions.length > 0;
+  const hasBriefShape =
+    summaryText.length > 0 && (period.length > 0 || highlights.length > 0 || relationshipHealth.length > 0);
+
+  if (!hasHandoverShape && !hasBriefShape) {
+    return (
+      <pre className="max-h-[min(60vh,28rem)] overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed text-[var(--text-primary)]">
+        {JSON.stringify(content, null, 2)}
+      </pre>
+    );
+  }
+
+  return (
+    <div className="space-y-4 text-[13px] leading-relaxed text-[var(--text-primary)]">
+      {period || relationshipHealth ? (
+        <div className="mb-3 flex items-center justify-between">
+          {period ? (
+            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">
+              {period}
+            </span>
+          ) : (
+            <span />
+          )}
+          {relationshipHealth ? <RelationshipHealthBadge health={relationshipHealth} /> : null}
+        </div>
+      ) : null}
+      {summaryText ? (
+        <section>
+          <h4 className="mb-1 text-[12px] font-semibold text-[var(--text-secondary)]">Summary</h4>
+          <p className="whitespace-pre-wrap">{summaryText}</p>
+        </section>
+      ) : null}
+      {keyAchievements.length > 0 ? (
+        <section>
+          <h4 className="mb-1 text-[12px] font-semibold text-[var(--text-secondary)]">Key achievements</h4>
+          <ul className="list-disc space-y-1 pl-5">
+            {keyAchievements.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {openRisks.length > 0 ? (
+        <section>
+          <h4 className="mb-1 text-[12px] font-semibold text-[var(--text-secondary)]">Open risks</h4>
+          <ul className="list-disc space-y-1 pl-5">
+            {openRisks.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {recommendedActions.length > 0 ? (
+        <section>
+          <h4 className="mb-1 text-[12px] font-semibold text-[var(--text-secondary)]">Recommended actions</h4>
+          <ol className="list-decimal space-y-1 pl-5">
+            {recommendedActions.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
+      {highlights.length > 0 ? (
+        <section>
+          <h4 className="mb-1 text-[12px] font-semibold text-[var(--text-secondary)]">Highlights</h4>
+          <ul className="list-disc space-y-1 pl-5">
+            {highlights.map((h) => (
+              <li key={h}>{h}</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {statusReport ? (
+        <section>
+          <h4 className="mb-1 text-[12px] font-semibold text-[var(--text-secondary)]">Status report</h4>
+          <p className="whitespace-pre-wrap">{statusReport}</p>
+        </section>
+      ) : null}
+      {actions.length > 0 ? (
+        <section>
+          <h4 className="mb-2 text-[12px] font-semibold text-[var(--text-secondary)]">Actions</h4>
+          <ul className="space-y-2">
+            {actions.map((a, i) => {
+              const row = a as Record<string, unknown>;
+              const task = portalReportString(row.task);
+              if (!task) return null;
+              const meta = [
+                portalReportString(row.suggested_owner) || portalReportString(row.owner),
+                portalReportString(row.priority),
+                portalReportString(row.status),
+              ]
+                .filter(Boolean)
+                .join(" · ");
+              return (
+                <li
+                  key={`action-${i}`}
+                  className="rounded border border-[var(--border)] bg-[var(--bg-primary)]/40 p-2 text-[12px]"
+                >
+                  <p className="font-medium">{task}</p>
+                  {meta ? <p className="mt-1 text-[var(--text-muted)]">{meta}</p> : null}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
+      {risks.length > 0 ? (
+        <section>
+          <h4 className="mb-2 text-[12px] font-semibold text-[var(--text-secondary)]">Risks</h4>
+          <ul className="space-y-2">
+            {risks.map((r, i) => {
+              const row = r as Record<string, unknown>;
+              const risk = portalReportString(row.risk);
+              if (!risk) return null;
+              const mitigation = portalReportString(row.mitigation);
+              return (
+                <li
+                  key={`risk-${i}`}
+                  className="rounded border border-[var(--border)] bg-[var(--bg-primary)]/40 p-2 text-[12px]"
+                >
+                  <p className="font-medium">{risk}</p>
+                  {mitigation ? <p className="mt-1 text-[var(--text-muted)]">{mitigation}</p> : null}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
+      {clientEmail ? (
+        <section>
+          <h4 className="mb-1 text-[12px] font-semibold text-[var(--text-secondary)]">Client email draft</h4>
+          <p className="whitespace-pre-wrap">{clientEmail}</p>
+        </section>
+      ) : null}
+      <p className="mt-4 border-t border-white/[0.06] pt-3 text-[11px] text-white/30">
+        Generated by Handover
+      </p>
+    </div>
+  );
+}
+
+function buildDemoSession(profile: PortalBootstrapProfile): SessionPayload {
+  return {
+    session: { expires_at: new Date(Date.now() + 86_400_000).toISOString() },
+    user: { email: "demo@client.example", display_name: "Demo User" },
+    client: {
+      visibility_tickets: true,
+      visibility_projects: true,
+      visibility_rag: true,
+      visibility_reports: true,
+      visibility_ticket_notes: true,
+      visibility_stats: true,
+      visibility_priority_breakdown: true,
+      visibility_resolved_count: true,
+      visibility_recent_activity: true,
+    },
+    msp_profile: profile
+      ? {
+          brand_name: profile.brand_name,
+          brand_logo_url: profile.brand_logo_url,
+          brand_colour: profile.brand_colour,
+          white_label_mode: profile.white_label_mode,
+          company_name: profile.company_name,
+          display_name: profile.display_name,
+        }
+      : null,
+    isOwnerPreview: true,
+  };
+}
+
+export type PortalCustomerDashboardProps = {
+  demoData?: PortalData;
+  demoReports?: PortalReportRow[];
+};
+
+export function PortalCustomerDashboard(props: PortalCustomerDashboardProps = {}) {
   return (
     <PortalDashboardErrorBoundary>
-      <PortalCustomerDashboardInner />
+      <PortalCustomerDashboardInner {...props} />
     </PortalDashboardErrorBoundary>
   );
 }
 
-function PortalCustomerDashboardInner() {
+function PortalCustomerDashboardInner({
+  demoData,
+  demoReports,
+}: PortalCustomerDashboardProps) {
   const { account, client, profile } = usePortalBootstrap();
-  const [session, setSession] = useState<SessionPayload | null | undefined>(undefined);
+  const [session, setSession] = useState<SessionPayload | null | undefined>(() =>
+    demoData ? buildDemoSession(profile) : undefined,
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -191,8 +607,8 @@ function PortalCustomerDashboardInner() {
   const [forgotMsg, setForgotMsg] = useState<string | null>(null);
   const [volumePeriod, setVolumePeriod] = useState<"3m" | "6m" | "12m">("6m");
 
-  const [tab, setTab] = useState<"overview" | "tickets" | "projects" | "reports">("overview");
-  const [data, setData] = useState<PortalData | null>(null);
+  const [tab, setTab] = useState<"overview" | "tickets" | "projects" | "reports" | "timeline">("overview");
+  const [data, setData] = useState<PortalData | null>(demoData ?? null);
   const [dataErr, setDataErr] = useState<string | null>(null);
   const [ticketModalOpen, setTicketModalOpen] = useState(false);
   const [ticketModalId, setTicketModalId] = useState<string | null>(null);
@@ -203,7 +619,7 @@ function PortalCustomerDashboardInner() {
   const [expandedProjectId, setExpandedProjectId] = useState<number | null>(null);
   const [projectNotesById, setProjectNotesById] = useState<Record<number, PortalNoteLine[]>>({});
   const [projectNotesLoadingId, setProjectNotesLoadingId] = useState<number | null>(null);
-  const [portalReports, setPortalReports] = useState<PortalReportRow[] | null>(null);
+  const [portalReports, setPortalReports] = useState<PortalReportRow[] | null>(demoReports ?? null);
   const [portalReportsErr, setPortalReportsErr] = useState<string | null>(null);
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
   const ticketNotesLoadedRef = useRef<Set<number>>(new Set());
@@ -242,9 +658,15 @@ function PortalCustomerDashboardInner() {
         : 0;
     const projectBars = (data?.projects ?? []).slice(0, 5).map((p) => {
       const name = typeof p?.name === "string" ? p.name : "";
+      const rawPct = p?.percentComplete;
+      const percentComplete =
+        typeof rawPct === "number" && Number.isFinite(rawPct)
+          ? Math.min(100, Math.max(0, rawPct))
+          : 0;
       return {
-        name: name.length > 32 ? `${name.slice(0, 29)}…` : name,
-        percentComplete: Math.min(100, Math.max(0, p?.percentComplete ?? 0)),
+        name: name.length > 35 ? `${name.slice(0, 35)}…` : name,
+        fullName: name,
+        percentComplete,
       };
     });
     const monthsBack = volumePeriod === "3m" ? 3 : volumePeriod === "12m" ? 12 : 6;
@@ -282,8 +704,12 @@ function PortalCustomerDashboardInner() {
   }, []);
 
   useEffect(() => {
+    if (demoData) {
+      setSession(buildDemoSession(profile));
+      return;
+    }
     void loadSession();
-  }, [loadSession]);
+  }, [demoData, loadSession, profile]);
 
   const dataUrl = useMemo(
     () => `/api/portal/${encodeURIComponent(account.slug)}/${encodeURIComponent(client.slug)}/data`,
@@ -306,14 +732,24 @@ function PortalCustomerDashboardInner() {
   }, [dataUrl]);
 
   useEffect(() => {
+    if (demoData) {
+      setData(demoData);
+      setDataErr(null);
+      return;
+    }
     if (session && session.user) void loadData();
-  }, [session, loadData]);
+  }, [demoData, session, loadData]);
 
   useEffect(() => {
+    if (demoReports) {
+      setPortalReports(demoReports);
+      setPortalReportsErr(null);
+      return;
+    }
     const showReportsMerged =
       session?.user && (session.client?.visibility_reports ?? client.visibility_reports) === true;
-    if (!showReportsMerged) return;
-    if (tab !== "reports" && tab !== "overview") return;
+    if (!showReportsMerged && tab !== "timeline") return;
+    if (tab !== "reports" && tab !== "overview" && tab !== "timeline") return;
     let cancelled = false;
     setPortalReportsErr(null);
     void (async () => {
@@ -331,7 +767,7 @@ function PortalCustomerDashboardInner() {
     return () => {
       cancelled = true;
     };
-  }, [session, tab, reportsUrl, client.visibility_reports]);
+  }, [demoReports, session, tab, reportsUrl, client.visibility_reports]);
 
   const showTicketNotes =
     (session?.client?.visibility_ticket_notes ?? client.visibility_ticket_notes) !== false;
@@ -344,6 +780,14 @@ function PortalCustomerDashboardInner() {
         return;
       }
       setExpandedTicketId(ticketId);
+      if (demoData) {
+        const ticket = data?.tickets?.find((t) => t.id === ticketId);
+        if (ticket?.notes?.length) {
+          setTicketNotesById((prev) => ({ ...prev, [ticketId]: ticket.notes! }));
+          ticketNotesLoadedRef.current.add(ticketId);
+        }
+        return;
+      }
       if (ticketNotesLoadedRef.current.has(ticketId)) return;
       ticketNotesLoadedRef.current.add(ticketId);
       setTicketNotesLoadingId(ticketId);
@@ -363,7 +807,7 @@ function PortalCustomerDashboardInner() {
         setTicketNotesLoadingId(null);
       }
     },
-    [dataUrl, expandedTicketId, showTicketNotes],
+    [data?.tickets, dataUrl, demoData, expandedTicketId, showTicketNotes],
   );
 
   const toggleProjectExpanded = useCallback(
@@ -374,6 +818,14 @@ function PortalCustomerDashboardInner() {
         return;
       }
       setExpandedProjectId(projectId);
+      if (demoData) {
+        const project = data?.projects?.find((p) => p.id === projectId);
+        if (project?.notes?.length) {
+          setProjectNotesById((prev) => ({ ...prev, [projectId]: project.notes! }));
+          projectNotesLoadedRef.current.add(projectId);
+        }
+        return;
+      }
       if (projectNotesLoadedRef.current.has(projectId)) return;
       projectNotesLoadedRef.current.add(projectId);
       setProjectNotesLoadingId(projectId);
@@ -393,7 +845,7 @@ function PortalCustomerDashboardInner() {
         setProjectNotesLoadingId(null);
       }
     },
-    [dataUrl, expandedProjectId, showTicketNotes],
+    [data?.projects, dataUrl, demoData, expandedProjectId, showTicketNotes],
   );
 
   const onLogin = async (e: React.FormEvent) => {
@@ -454,7 +906,7 @@ function PortalCustomerDashboardInner() {
     setData(null);
   };
 
-  if (session === undefined) {
+  if (session === undefined && !demoData) {
     return (
       <div className="flex min-h-screen items-center justify-center text-[var(--text-secondary)]">
         Loading…
@@ -479,7 +931,7 @@ function PortalCustomerDashboardInner() {
             )}
             <div>
               <h1 className="text-lg font-semibold">{mspDisplay}</h1>
-              <p className="mt-1 text-[13px] text-[var(--text-secondary)]">Client portal — {client.client_name}</p>
+              <p className="mt-1 text-[13px] text-[var(--text-secondary)]">Client portal - {client.client_name}</p>
             </div>
           </div>
           {!forgotOpen ? (
@@ -581,6 +1033,12 @@ function PortalCustomerDashboardInner() {
   if (showTickets) tabs.push({ id: "tickets", label: "Tickets" });
   if (showProjects) tabs.push({ id: "projects", label: "Projects" });
   if (showReports) tabs.push({ id: "reports", label: "Reports" });
+  tabs.push({ id: "timeline", label: "Timeline" });
+
+  const timelineEntries = useMemo(
+    () => buildPortalTimeline(portalReports, data),
+    [portalReports, data],
+  );
 
   const portalRag = (data?.stats?.rag ?? data?.rag ?? null) as PortalData["rag"];
   const openTickets = data?.stats?.openTickets ?? data?.tickets?.length ?? 0;
@@ -662,21 +1120,35 @@ function PortalCustomerDashboardInner() {
               {showTickets ? (
                 <div className="rounded-2xl border border-[#2d3f5e] bg-[#1a2540] p-6">
                   <p className="text-[13px] text-[var(--text-secondary)]">Open tickets</p>
-                  <p className="mt-3 text-3xl font-bold tabular-nums text-white">{openTickets}</p>
+                  {openTickets > 0 ? (
+                    <p className="mt-3 text-3xl font-bold tabular-nums text-white">{openTickets}</p>
+                  ) : (
+                    <p className="mt-3 text-[12px] leading-relaxed text-white/40">No open tickets</p>
+                  )}
                 </div>
               ) : null}
               {showProjects ? (
                 <div className="rounded-2xl border border-[#2d3f5e] bg-[#1a2540] p-6">
                   <p className="text-[13px] text-[var(--text-secondary)]">Active projects</p>
-                  <p className="mt-3 text-3xl font-bold tabular-nums text-white">{openProjects}</p>
+                  {openProjects > 0 ? (
+                    <p className="mt-3 text-3xl font-bold tabular-nums text-white">{openProjects}</p>
+                  ) : (
+                    <p className="mt-3 text-[12px] leading-relaxed text-white/40">No active projects</p>
+                  )}
                 </div>
               ) : null}
               {showResolvedCountUi && data?.stats != null && data.stats.resolvedThisMonth != null ? (
                 <div className="rounded-2xl border border-[#2d3f5e] bg-[#1a2540] p-6">
                   <p className="text-[13px] text-[var(--text-secondary)]">Resolved this month</p>
-                  <p className="mt-3 text-3xl font-bold tabular-nums text-white">
-                    {data.stats.resolvedThisMonth}
-                  </p>
+                  {data.stats.resolvedThisMonth > 0 ? (
+                    <p className="mt-3 text-3xl font-bold tabular-nums text-white">
+                      {data.stats.resolvedThisMonth}
+                    </p>
+                  ) : (
+                    <p className="mt-3 text-[12px] leading-relaxed text-white/40">
+                      No tickets closed this month
+                    </p>
+                  )}
                 </div>
               ) : null}
             </div>
@@ -746,40 +1218,29 @@ function PortalCustomerDashboardInner() {
                 {hasProjectChart ? (
                   <div className="rounded-2xl border border-[#2d3f5e] bg-[#1a2540] p-6">
                     <p className="mb-3 text-[13px] font-medium text-white">Project progress</p>
-                    <div className="h-56 w-full min-w-0">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
-                          layout="vertical"
-                          data={projectBars ?? []}
-                          margin={{ top: 4, right: 12, left: 4, bottom: 4 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" stroke="#2d3f5e" horizontal={false} />
-                          <XAxis type="number" domain={[0, 100]} tick={{ fill: "#ffffff", fontSize: 11 }} />
-                          <YAxis
-                            type="category"
-                            dataKey="name"
-                            width={108}
-                            tick={{ fill: "#ffffff", fontSize: 11 }}
-                            interval={0}
-                          />
-                          <Tooltip
-                            formatter={(v: number) => [`${v}%`, "Complete"]}
-                            contentStyle={{
-                              background: "#0f172a",
-                              border: "1px solid #2d3f5e",
-                              borderRadius: 8,
-                              fontSize: 12,
-                            }}
-                            labelStyle={{ color: "#ffffff" }}
-                            itemStyle={{ color: "#ffffff" }}
-                          />
-                          <Bar dataKey="percentComplete" radius={[0, 4, 4, 0]}>
-                            {projectBars.map((_, i) => (
-                              <Cell key={i} fill="#0EA5E9" />
-                            ))}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
+                    <div className="space-y-3">
+                      {projectBars.map((p) => (
+                        <div key={p.fullName || p.name}>
+                          <div className="mb-1 flex items-center justify-between gap-2 text-[11px]">
+                            <span className="max-w-[200px] truncate text-white/70" title={p.fullName || p.name}>
+                              {p.name}
+                            </span>
+                            {p.percentComplete > 0 ? (
+                              <span className="shrink-0 tabular-nums text-white">{p.percentComplete}%</span>
+                            ) : (
+                              <span className="shrink-0 text-[11px] text-white/30">In progress</span>
+                            )}
+                          </div>
+                          {p.percentComplete > 0 ? (
+                            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                              <div
+                                className="h-1.5 rounded-full bg-[#0EA5E9]"
+                                style={{ width: `${p.percentComplete}%` }}
+                              />
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ) : null}
@@ -851,7 +1312,7 @@ function PortalCustomerDashboardInner() {
                               dateStyle: "medium",
                               timeStyle: "short",
                             })
-                          : "—"}{" "}
+                          : " - "}{" "}
                         · {item.author}
                       </p>
                       <p className="mt-1 leading-relaxed text-[var(--text-secondary)]">{item.summary}</p>
@@ -866,7 +1327,7 @@ function PortalCustomerDashboardInner() {
                 <h3 className="text-[15px] font-semibold text-white">Reports</h3>
                 {portalReportsErr ? <p className="mt-2 text-red-400">{portalReportsErr}</p> : null}
                 {!portalReportsErr && portalReports && portalReports.length === 0 ? (
-                  <p className="mt-3">No reports yet — your MSP will share reports here.</p>
+                  <p className="mt-3">No reports yet - your MSP will share reports here.</p>
                 ) : null}
                 {portalReports && portalReports.length > 0 ? (
                   <ul className="mt-4 space-y-3">
@@ -896,9 +1357,9 @@ function PortalCustomerDashboardInner() {
                             </button>
                           </div>
                           {open ? (
-                            <pre className="mt-3 max-h-[min(60vh,28rem)] overflow-auto whitespace-pre-wrap rounded border border-[#2d3f5e] bg-[#0f172a] p-3 text-[11px] leading-relaxed text-[var(--text-primary)]">
-                              {JSON.stringify(r.content, null, 2)}
-                            </pre>
+                            <div className="mt-3 max-h-[min(60vh,28rem)] overflow-auto rounded border border-[#2d3f5e] bg-[#0f172a] p-3">
+                              <PortalReportBody content={r.content} />
+                            </div>
                           ) : null}
                         </li>
                       );
@@ -912,7 +1373,7 @@ function PortalCustomerDashboardInner() {
               Last updated:{" "}
               {data?.lastUpdated
                 ? new Date(data.lastUpdated).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
-                : "—"}
+                : " - "}
             </div>
           </div>
         ) : null}
@@ -971,7 +1432,7 @@ function PortalCustomerDashboardInner() {
                         <td className="hidden whitespace-nowrap px-3 py-2 text-[var(--text-secondary)] md:table-cell">
                           {row.lastUpdated
                             ? new Date(row.lastUpdated).toLocaleDateString(undefined, { dateStyle: "medium" })
-                            : "—"}
+                            : " - "}
                         </td>
                       </tr>
                     </Fragment>
@@ -1026,10 +1487,16 @@ function PortalCustomerDashboardInner() {
                             />
                           </td>
                         ) : null}
-                        <td className="max-w-[220px] truncate px-3 py-2">{row.name}</td>
+                        <td className="max-w-[280px] truncate px-3 py-2" title={row.name}>
+                          {row.name}
+                        </td>
                         <td className="whitespace-nowrap px-3 py-2 text-[var(--text-secondary)]">{row.status}</td>
                         <td className="whitespace-nowrap px-3 py-2 text-[var(--text-secondary)]">
-                          {row.percentComplete != null ? `${row.percentComplete}%` : "—"}
+                          {row.percentComplete != null && row.percentComplete > 0 ? (
+                            `${row.percentComplete}%`
+                          ) : (
+                            <span className="text-[11px] text-white/30">In progress</span>
+                          )}
                         </td>
                         <td className="hidden whitespace-nowrap px-3 py-2 text-[var(--text-secondary)] sm:table-cell">
                           {row.engineer}
@@ -1037,7 +1504,7 @@ function PortalCustomerDashboardInner() {
                         <td className="hidden whitespace-nowrap px-3 py-2 text-[var(--text-secondary)] md:table-cell">
                           {row.targetDate
                             ? new Date(row.targetDate).toLocaleDateString(undefined, { dateStyle: "medium" })
-                            : "—"}
+                            : " - "}
                         </td>
                       </tr>
                       {showTicketNotes && open ? (
@@ -1060,7 +1527,7 @@ function PortalCustomerDashboardInner() {
                                             dateStyle: "medium",
                                             timeStyle: "short",
                                           })
-                                        : "—"}{" "}
+                                        : " - "}{" "}
                                       · {n.author}
                                     </p>
                                     <p className="mt-1 whitespace-pre-wrap text-[var(--text-primary)]">
@@ -1084,11 +1551,57 @@ function PortalCustomerDashboardInner() {
           </div>
         ) : null}
 
+        {tab === "timeline" ? (
+          <div className="rounded-2xl border border-[#2d3f5e] bg-[#1a2540] p-6">
+            <h3 className="text-[15px] font-semibold text-white">Your timeline</h3>
+            <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+              Reports, project milestones, and significant updates from the last 12 months.
+            </p>
+            {timelineEntries.length === 0 ? (
+              <p className="mt-8 text-center text-[13px] text-[var(--text-secondary)]">
+                No timeline activity yet. Your MSP will share reports and updates here as work progresses.
+              </p>
+            ) : (
+              <ul className="mt-6 space-y-4 border-l border-[#2d3f5e] pl-4">
+                {timelineEntries.map((entry) => {
+                  const Icon = timelineEntryIcon(entry.type);
+                  return (
+                    <li key={entry.id} className="relative text-[13px]">
+                      <span
+                        className="absolute -left-[21px] top-1.5 flex size-2.5 items-center justify-center rounded-full bg-[var(--accent)] ring-2 ring-[#1a2540]"
+                        aria-hidden
+                      />
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/5 text-[var(--accent)]">
+                          <Icon className="size-4" aria-hidden />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
+                            {new Date(entry.date).toLocaleString(undefined, {
+                              dateStyle: "medium",
+                              timeStyle: "short",
+                            })}{" "}
+                            · {timelineEntryLabel(entry.type)}
+                          </p>
+                          <p className="mt-0.5 font-medium text-white">{entry.title}</p>
+                          <p className="mt-1 leading-relaxed text-[var(--text-secondary)]">
+                            {entry.description}
+                          </p>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        ) : null}
+
         {tab === "reports" && showReports ? (
           <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-4 text-[13px] text-[var(--text-secondary)] md:p-6">
             {portalReportsErr ? <p className="text-red-400">{portalReportsErr}</p> : null}
             {!portalReportsErr && portalReports && portalReports.length === 0 ? (
-              <p>No reports yet — your MSP will share reports here.</p>
+              <p>No reports yet - your MSP will share reports here.</p>
             ) : null}
             {portalReports && portalReports.length > 0 ? (
               <ul className="space-y-3">
@@ -1118,9 +1631,9 @@ function PortalCustomerDashboardInner() {
                         </button>
                       </div>
                       {open ? (
-                        <pre className="mt-3 max-h-[min(60vh,28rem)] overflow-auto whitespace-pre-wrap rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3 text-[11px] leading-relaxed text-[var(--text-primary)]">
-                          {JSON.stringify(r.content, null, 2)}
-                        </pre>
+                        <div className="mt-3 max-h-[min(60vh,28rem)] overflow-auto rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3">
+                          <PortalReportBody content={r.content} />
+                        </div>
                       ) : null}
                     </li>
                   );
@@ -1184,7 +1697,7 @@ function PortalCustomerDashboardInner() {
                 <X className="size-4" />
               </button>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-4 md:overscroll-auto">
               {ticketNotesLoadingId === ticketModalRow.id ? (
                 <div className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
                   <Loader2 className="size-4 animate-spin" />
@@ -1197,7 +1710,7 @@ function PortalCustomerDashboardInner() {
                   {(ticketNotesById[ticketModalRow.id] ?? []).map((n, i) => (
                     <li key={i} className="border-b border-[var(--border)] pb-4 last:border-0 last:pb-0">
                       <p className="mb-1 text-[11px] font-medium text-[var(--text-secondary)]">
-                        {n.date ? new Date(n.date).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—"} · {n.author}
+                        {n.date ? new Date(n.date).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : " - "} · {n.author}
                       </p>
                       <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--text-primary)]">
                         {cleanTicketNoteContent(n.content)}

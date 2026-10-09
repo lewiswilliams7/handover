@@ -29,7 +29,7 @@ export default function PsaIntegrationFeaturePage() {
         <MarketingHeroAmbient />
         <div className="relative z-[1] mx-auto max-w-[1000px] rounded-[var(--radius-lg)] border border-[rgba(56,189,248,0.25)] bg-[rgba(15,23,42,0.68)] p-8">
           <h1 className="text-3xl font-semibold text-white md:text-5xl">Native PSA Integration. No Middleware. No Setup. No Compromise.</h1>
-          <div className="mt-5"><Link href="/auth?tab=signup&returnTo=/welcome" className="inline-flex rounded-[var(--radius)] bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]">Connect your PSA today</Link></div>
+          <div className="mt-5"><Link href="/onboarding/connect" className="inline-flex rounded-[var(--radius)] bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]">Run the free PSA scan</Link></div>
         </div>
       </section>
       <section className="px-6 py-12 md:px-8">

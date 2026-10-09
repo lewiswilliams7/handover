@@ -110,12 +110,26 @@ function isPortalCustomerPath(pathname: string): boolean {
 export function RouteTransition({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "";
   const isDashboardRoute = pathname.startsWith("/dashboard");
+  const isAuthenticatedAppRoute =
+    pathname === "/" ||
+    pathname === "/attention" ||
+    pathname === "/attention-placeholder";
   const isWelcomeRoute = pathname === "/welcome";
-  const skipNavTopPad = isDashboardRoute || isWelcomeRoute || isPortalCustomerPath(pathname);
+  const isAuthRoute = pathname === "/auth" || pathname.startsWith("/auth/");
+  const isOnboardingRoute = pathname === "/onboarding" || pathname.startsWith("/onboarding/");
+  const skipNavTopPad =
+    isDashboardRoute ||
+    isAuthenticatedAppRoute ||
+    isWelcomeRoute ||
+    isAuthRoute ||
+    isOnboardingRoute ||
+    isPortalCustomerPath(pathname);
   return (
     <div
       key={pathname}
-      className={`page-route-fade relative flex min-h-0 w-full flex-1 flex-col ${skipNavTopPad ? "" : "pt-20"}`}
+      className={`page-route-fade relative flex min-h-0 w-full flex-1 flex-col ${
+        skipNavTopPad ? "" : "md:pt-20"
+      } ${isAuthRoute ? "bg-[#0f172a]" : ""}`}
     >
       {children}
     </div>

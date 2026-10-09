@@ -25,7 +25,11 @@ import {
 } from "@/lib/halo";
 import { runAutoClosureSummaryCheck } from "@/lib/auto-closure-summary-runner";
 import { getCWAuthHeaders, getCWConnectionForUser } from "@/lib/cw-auth";
-import { getDeliveryHealthDashboardAccess } from "@/lib/utils/getPlan";
+import {
+  getDeliveryHealthDashboardAccess,
+  getUserPlan,
+  hasProTierAccess,
+} from "@/lib/utils/getPlan";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { createServerClient } from "@/lib/supabase/server";
 
@@ -532,6 +536,47 @@ export async function GET(request: Request) {
 
     if (!user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const planFields = await getUserPlan(supabase, user.id);
+    if (!hasProTierAccess(planFields)) {
+      const access = await getDeliveryHealthDashboardAccess(supabase, user.id);
+      const refreshedAt = new Date().toISOString();
+      const [{ data: haloConn }, { data: cwConn }] = await Promise.all([
+        supabase
+          .from("halo_connections")
+          .select("halo_url")
+          .eq("user_id", user.id)
+          .maybeSingle(),
+        supabase
+          .from("cw_connections")
+          .select("site_url")
+          .eq("user_id", user.id)
+          .maybeSingle(),
+      ]);
+      const haloConnected = Boolean(
+        typeof haloConn?.halo_url === "string" && haloConn.halo_url.trim(),
+      );
+      const cwConnected = Boolean(
+        typeof cwConn?.site_url === "string" && cwConn.site_url.trim(),
+      );
+      const body: DeliveryHealthApiResponse = {
+        access,
+        refreshedAt,
+        haloConnected,
+        cwConnected,
+        ...(haloConnected && typeof haloConn?.halo_url === "string"
+          ? { haloWebBaseUrl: haloConn.halo_url }
+          : {}),
+        stats: emptyDeliveryHealthStats(),
+        rows: [],
+        statDetails: {
+          openRisks: [],
+          overdueTickets: [],
+          slaAtRisk: [],
+        },
+      };
+      return NextResponse.json(body);
     }
 
     const url = new URL(request.url);

@@ -23,7 +23,7 @@ const steps = [
   },
   {
     title: "You both benefit",
-    body: "You receive 3 months free (£57 value) added to your account automatically - they receive their first month free.",
+    body: "You receive 1 month free (£79 credit on Team) on your subscription automatically - they receive their first month free on signup.",
   },
 ] as const;
 
@@ -109,7 +109,7 @@ export function ReferralPageContent() {
                 Referral programme
               </p>
               <h1 className="mt-4 text-4xl font-bold tracking-tight text-[var(--text-primary)] md:text-5xl">
-                Refer a friend. Get <span className="text-gradient-brand">3 months</span> free.
+                Refer a friend. Get <span className="text-gradient-brand">1 month</span> free.
               </h1>
               <p className="mx-auto mt-5 max-w-xl text-[17px] leading-relaxed text-[var(--text-secondary)]">
                 Know an MSP project manager who&apos;d benefit from Handover? Refer them and you both
@@ -196,7 +196,7 @@ export function ReferralPageContent() {
         ) : signedIn === false ? (
           <section className="relative z-[1] border-t border-[var(--border)] bg-[var(--bg-primary)] px-6 py-12 md:px-8 md:py-16">
             <div className="mx-auto max-w-[480px] text-center">
-              <Link href="/auth?tab=signup&returnTo=/welcome">
+              <Link href="/onboarding/connect">
                 <Button
                   type="button"
                   size="lg"

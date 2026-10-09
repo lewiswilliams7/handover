@@ -41,7 +41,7 @@ export default function ConnectWiseSolutionPage() {
             </h1>
             <div className="mt-6">
               <Link
-                href="/auth?tab=signup&returnTo=/welcome"
+                href="/onboarding/connect"
                 className="inline-flex items-center rounded-[var(--radius)] bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]"
               >
                 Connect ConnectWise and generate your first report free
@@ -162,7 +162,7 @@ export default function ConnectWiseSolutionPage() {
               Connect ConnectWise Manage and generate your first client report today. Nothing to configure. Nothing to
               install. Nothing to learn.
             </p>
-            <Link href="/auth?tab=signup&returnTo=/welcome" className="marketing-page-bottom-cta mt-5 inline-flex items-center">
+            <Link href="/onboarding/connect" className="marketing-page-bottom-cta mt-5 inline-flex items-center">
               Connect ConnectWise and generate your first report free
             </Link>
           </section>

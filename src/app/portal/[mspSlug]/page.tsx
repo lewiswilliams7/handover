@@ -135,7 +135,7 @@ export default async function PortalMspSlugPage({ params, searchParams }: PagePr
   if (hasDomainRestriction && userDomain !== allowedDomain) {
     await supabase.auth.signOut();
     return (
-      <div className="mx-auto flex min-h-[calc(100vh-180px)] w-full max-w-[760px] items-center px-4 py-12">
+      <div className="mx-auto flex min-h-[calc(100dvh-180px)] w-full max-w-[760px] items-center px-4 py-12 md:min-h-[calc(100vh-180px)]">
         <div className="w-full rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6 text-center md:p-8">
           <h1 className="text-xl font-semibold text-[var(--text-primary)] md:text-2xl">Portal access restricted</h1>
           <p className="mt-3 text-[14px] leading-relaxed text-[var(--text-secondary)]">

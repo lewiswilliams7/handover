@@ -967,6 +967,9 @@ export const DEMO_CLIENTS = [
   { id: 105, name: "Hartley and Sons" },
   { id: 106, name: "Pennine Logistics" },
   { id: 107, name: "Solent Academies Trust" },
+  { id: 108, name: "Harbour IT Group" },
+  { id: 109, name: "Riverside Trust" },
+  { id: 110, name: "Kestrel Dental Group" },
 ];
 
 export const DEMO_EXAMPLE_INPUT = `Service desk handover notes - mixed accounts this week.

@@ -5,27 +5,17 @@ import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
-  ArrowLeftRight,
   BarChart3,
-  BadgeCheck,
+  Brain,
   CalendarClock,
   ChevronDown,
+  ClipboardCheck,
   ClipboardList,
-  Clock,
-  FileDown,
-  FolderKanban,
-  Gauge,
-  Handshake,
-  Headphones,
-  LayoutTemplate,
   Menu,
   Moon,
-  Paintbrush,
-  Plug,
   Presentation,
   RefreshCw,
   Settings,
-  Sparkles,
   Sun,
   X,
 } from "lucide-react";
@@ -52,151 +42,57 @@ type MegaNavItem = {
   comingSoon?: boolean;
 };
 
-const SOLUTIONS_BY_ROLE: MegaNavItem[] = [
+const CLIENT_INTELLIGENCE_NAV: MegaNavItem[] = [
   {
-    label: "For Project Managers",
-    href: "/solutions/project-managers",
-    description: "Automate every client project update.",
+    label: "Client intelligence",
+    href: "/features/client-intelligence",
+    description: "Account health and attention signals across your portfolio.",
+    Icon: Brain,
+  },
+  {
+    label: "Know which clients need attention",
+    href: "/features/health-dashboard",
+    description: "Delivery health dashboard and proactive risk flagging.",
+    Icon: Activity,
+  },
+  {
+    label: "Account memory",
+    href: "/solutions/client-intelligence",
+    description: "Structured history from every report and client touchpoint.",
     Icon: ClipboardList,
   },
   {
-    label: "For Account Managers",
-    href: "/solutions/account-managers",
-    description: "QBR packs and account reports in seconds.",
-    Icon: Handshake,
-  },
-  {
-    label: "For Service Desk Managers",
-    href: "/solutions/service-desk-managers",
-    description: "Turn your ticket queue into client communication.",
-    Icon: Headphones,
-  },
-  {
-    label: "For MSP Directors",
+    label: "Client retention",
     href: "/solutions/msp-directors",
-    description: "Prove value. Retain clients. Scale reporting.",
+    description: "Prove value, retain clients, and scale reporting.",
     Icon: BarChart3,
   },
 ];
 
-const SOLUTIONS_BY_USE_CASE: MegaNavItem[] = [
+const REPORTING_NAV: MegaNavItem[] = [
   {
-    label: "Weekly Client Reporting",
+    label: "Service reviews",
+    href: "/solutions/service-review",
+    description: "Structured service review packs from live PSA data.",
+    Icon: ClipboardCheck,
+  },
+  {
+    label: "QBR packs",
+    href: "/solutions/qbr",
+    description: "Complete quarterly business review exports in minutes.",
+    Icon: Presentation,
+  },
+  {
+    label: "Weekly client reporting",
     href: "/solutions/weekly-client-reporting",
     description: "Professional updates sent automatically every week.",
     Icon: CalendarClock,
   },
   {
-    label: "Quarterly Business Reviews",
-    href: "/solutions/qbr",
-    description: "A complete QBR pack from your PSA in 60 seconds.",
-    Icon: Presentation,
-  },
-  {
-    label: "Project Delivery Updates",
-    href: "/solutions/project-delivery",
-    description: "Keep clients informed without writing a word.",
-    Icon: FolderKanban,
-  },
-  {
-    label: "SLA and Performance Reporting",
-    href: "/solutions/sla-reporting",
-    description: "Show clients exactly how you are performing.",
-    Icon: Gauge,
-  },
-];
-
-const SOLUTIONS_BY_PSA: MegaNavItem[] = [
-  {
-    label: "HaloPSA Users",
-    href: "/solutions/halopsa",
-    description: "Native integration. Works out of the box.",
-    Icon: Plug,
-  },
-  {
-    label: "HaloPSA Partner Programme",
-    href: "/partners/halopsa",
-    description: "Official Technology Alliance Partner",
-    Icon: BadgeCheck,
-  },
-  {
-    label: "ConnectWise Users",
-    href: "/solutions/connectwise",
-    description: "Full ConnectWise Manage support. Live now.",
-    Icon: Plug,
-  },
-  {
-    label: "Coming Soon: Autotask",
-    href: "#",
-    description: "Autotask integration in development.",
-    Icon: Clock,
-    comingSoon: true,
-  },
-];
-
-const FEATURES_REPORTS_INSIGHTS: MegaNavItem[] = [
-  {
-    label: "Automated Weekly Reports",
-    href: "/features/automated-reports",
-    description: "Reports that write and send themselves.",
-    Icon: RefreshCw,
-  },
-  {
-    label: "QBR Pack Generator",
-    href: "/features/qbr-generator",
-    description: "Charts, summaries, and exports in under a minute.",
-    Icon: LayoutTemplate,
-  },
-  {
-    label: "Scheduled Reporting",
+    label: "Scheduled reports",
     href: "/features/scheduled-reports",
-    description: "Set once. Runs forever. Zero manual effort.",
-    Icon: CalendarClock,
-  },
-  {
-    label: "AI-Powered Insights",
-    href: "/features/ai-insights",
-    description: "MSP-trained AI that understands your data.",
-    Icon: Sparkles,
-  },
-  {
-    label: "Delivery Health Dashboard",
-    href: "/features/health-dashboard",
-    description: "RAG status across every client account, live.",
-    Icon: Activity,
-  },
-];
-
-const FEATURES_INTEGRATIONS_EXPORTS: MegaNavItem[] = [
-  {
-    label: "HaloPSA Integration",
-    href: "/features/psa-integration#halopsa",
-    description: "Native API connection. Full ticket and project data.",
-    Icon: Plug,
-  },
-  {
-    label: "ConnectWise Integration",
-    href: "/features/psa-integration#connectwise",
-    description: "Direct ConnectWise Manage REST API integration.",
-    Icon: Plug,
-  },
-  {
-    label: "Excel and PowerPoint Export",
-    href: "/features/exports",
-    description: "Branded exports ready to send or present.",
-    Icon: FileDown,
-  },
-  {
-    label: "Push Notes to PSA",
-    href: "/features/psa-push",
-    description: "Reports that update your PSA automatically.",
-    Icon: ArrowLeftRight,
-  },
-  {
-    label: "White Label and Branding",
-    href: "/features/white-label",
-    description: "Your logo. Your colours. Your identity throughout.",
-    Icon: Paintbrush,
+    description: "Set once. Runs on schedule. Optional approval before send.",
+    Icon: RefreshCw,
   },
 ];
 
@@ -293,11 +189,8 @@ export function Nav() {
   const [navScrolled, setNavScrolled] = useState(false);
   const [guestMenuOpen, setGuestMenuOpen] = useState(false);
   const [solutionsOpen, setSolutionsOpen] = useState(false);
-  const [featuresOpen, setFeaturesOpen] = useState(false);
   const [mobileSolutionsOpen, setMobileSolutionsOpen] = useState(false);
-  const [mobileFeaturesOpen, setMobileFeaturesOpen] = useState(false);
   const solutionsCloseTimerRef = useRef<number | null>(null);
-  const featuresCloseTimerRef = useRef<number | null>(null);
 
   const openSolutionsMenu = () => {
     if (solutionsCloseTimerRef.current != null) {
@@ -317,31 +210,11 @@ export function Nav() {
     }, 60);
   };
 
-  const openFeaturesMenu = () => {
-    if (featuresCloseTimerRef.current != null) {
-      window.clearTimeout(featuresCloseTimerRef.current);
-      featuresCloseTimerRef.current = null;
-    }
-    setFeaturesOpen(true);
-  };
-
-  const closeFeaturesMenuSoon = () => {
-    if (featuresCloseTimerRef.current != null) {
-      window.clearTimeout(featuresCloseTimerRef.current);
-    }
-    featuresCloseTimerRef.current = window.setTimeout(() => {
-      setFeaturesOpen(false);
-      featuresCloseTimerRef.current = null;
-    }, 60);
-  };
-
   useEffect(() => {
     startTransition(() => {
       setGuestMenuOpen(false);
       setSolutionsOpen(false);
-      setFeaturesOpen(false);
       setMobileSolutionsOpen(false);
-      setMobileFeaturesOpen(false);
     });
   }, [pathname]);
 
@@ -349,9 +222,6 @@ export function Nav() {
     return () => {
       if (solutionsCloseTimerRef.current != null) {
         window.clearTimeout(solutionsCloseTimerRef.current);
-      }
-      if (featuresCloseTimerRef.current != null) {
-        window.clearTimeout(featuresCloseTimerRef.current);
       }
     };
   }, []);
@@ -397,8 +267,15 @@ export function Nav() {
     window.localStorage.setItem(THEME_KEY, next);
   };
 
-  const solutionsNavActive = pathname.startsWith("/solutions");
-  const featuresNavActive = pathname.startsWith("/features");
+  const solutionsNavActive =
+    pathname.startsWith("/features/client-intelligence") ||
+    pathname.startsWith("/features/health-dashboard") ||
+    pathname.startsWith("/solutions/client-intelligence") ||
+    pathname.startsWith("/solutions/msp-directors") ||
+    pathname.startsWith("/solutions/service-review") ||
+    pathname.startsWith("/solutions/qbr") ||
+    pathname.startsWith("/solutions/weekly-client-reporting") ||
+    pathname.startsWith("/features/scheduled-reports");
 
   const wlNav =
     isSignedIn &&
@@ -468,7 +345,7 @@ export function Nav() {
             {navTitle}
           </span>
         </Link>
-        <div className="flex min-w-0 shrink-0 items-center justify-end gap-2 text-sm md:gap-4">
+        <div className="flex min-w-0 shrink-0 items-center justify-end gap-2 text-sm">
           {!authChecked ? (
             <>
               <div
@@ -482,170 +359,106 @@ export function Nav() {
             </>
           ) : !isSignedIn ? (
             <>
-              <div className="hidden items-center gap-3 lg:gap-4 md:flex">
-                <Link
-                  href="/integrations"
-                  className="nav-site-link text-[var(--text-secondary)]"
-                  data-active={isNavLinkActive(pathname, "/integrations") ? "true" : undefined}
-                >
-                  Integrations
-                </Link>
-                <div className="relative" onMouseEnter={openSolutionsMenu} onMouseLeave={closeSolutionsMenuSoon}>
-                  <button
-                    type="button"
-                    className={cn(
-                      "nav-site-link inline-flex items-center gap-1 text-[var(--text-secondary)]",
-                      solutionsOpen && "text-[var(--text-primary)]",
-                    )}
-                    data-active={solutionsNavActive ? "true" : undefined}
-                    aria-expanded={solutionsOpen}
+              <div className="hidden items-center md:flex">
+                <div className="flex items-center gap-6 lg:gap-8">
+                  <Link
+                    href="/integrations"
+                    className="nav-site-link text-[var(--text-secondary)]"
+                    data-active={isNavLinkActive(pathname, "/integrations") ? "true" : undefined}
                   >
-                    Solutions
-                    <ChevronDown
+                    Integrations
+                  </Link>
+                  <div className="relative" onMouseEnter={openSolutionsMenu} onMouseLeave={closeSolutionsMenuSoon}>
+                    <button
+                      type="button"
                       className={cn(
-                        "size-3.5 transition-transform duration-150 ease-in-out",
-                        solutionsOpen && "rotate-180",
+                        "nav-site-link inline-flex items-center gap-1 text-[var(--text-secondary)]",
+                        solutionsOpen && "text-[var(--text-primary)]",
                       )}
-                    />
-                  </button>
-                  <div
-                    className={cn(
-                      "absolute left-1/2 top-[calc(100%+10px)] z-[60] w-[min(920px,calc(100vw-1.5rem))] max-w-[calc(100vw-1rem)] -translate-x-1/2 overflow-x-auto rounded-2xl border border-[var(--border)]/80 p-4 shadow-2xl backdrop-blur-xl transition-all duration-150 ease-in-out",
-                      solutionsOpen
-                        ? "pointer-events-auto translate-y-0 opacity-100"
-                        : "pointer-events-none -translate-y-1.5 opacity-0",
-                    )}
-                    onMouseEnter={openSolutionsMenu}
-                    onMouseLeave={closeSolutionsMenuSoon}
-                    style={{
-                      background:
-                        theme === "dark"
-                          ? "linear-gradient(180deg, rgba(15,23,42,0.96) 0%, rgba(15,23,42,0.94) 100%)"
-                          : "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.96) 100%)",
-                    }}
-                  >
-                    <div
-                      className="grid min-w-[872px] gap-4"
-                      style={{ gridTemplateColumns: "repeat(3, minmax(280px, 1fr))" }}
+                      data-active={solutionsNavActive ? "true" : undefined}
+                      aria-expanded={solutionsOpen}
                     >
-                      <div className="min-w-[280px] rounded-xl border border-[var(--border)]/60 bg-[var(--bg-primary)]/50 p-3">
-                        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#38bdf8]">By role</p>
-                        <div className="space-y-1">
-                          {SOLUTIONS_BY_ROLE.map((item) => (
-                            <MegaMenuItemDesktop key={item.href + item.label} item={item} />
-                          ))}
+                      Solutions
+                      <ChevronDown
+                        className={cn(
+                          "size-3.5 transition-transform duration-150 ease-in-out",
+                          solutionsOpen && "rotate-180",
+                        )}
+                      />
+                    </button>
+                    <div
+                      className={cn(
+                        "absolute left-1/2 top-[calc(100%+10px)] z-[60] w-[min(680px,calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-xl border border-[var(--border)]/80 p-3 shadow-2xl backdrop-blur-xl transition-all duration-150 ease-in-out",
+                        solutionsOpen
+                          ? "pointer-events-auto translate-y-0 opacity-100"
+                          : "pointer-events-none -translate-y-1.5 opacity-0",
+                      )}
+                      onMouseEnter={openSolutionsMenu}
+                      onMouseLeave={closeSolutionsMenuSoon}
+                      style={{
+                        background:
+                          theme === "dark"
+                            ? "linear-gradient(180deg, rgba(15,23,42,0.96) 0%, rgba(15,23,42,0.94) 100%)"
+                            : "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.96) 100%)",
+                      }}
+                    >
+                      <div className="grid grid-cols-2 gap-x-3">
+                        <div>
+                          <p className="px-2.5 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6B7280] dark:text-slate-400">
+                            Client intelligence
+                          </p>
+                          <div className="space-y-1">
+                            {CLIENT_INTELLIGENCE_NAV.map((item) => (
+                              <MegaMenuItemDesktop key={item.href + item.label} item={item} />
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                      <div className="min-w-[280px] rounded-xl border border-[var(--border)]/60 bg-[var(--bg-primary)]/50 p-3">
-                        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#38bdf8]">By use case</p>
-                        <div className="space-y-1">
-                          {SOLUTIONS_BY_USE_CASE.map((item) => (
-                            <MegaMenuItemDesktop key={item.href + item.label} item={item} />
-                          ))}
-                        </div>
-                      </div>
-                      <div className="min-w-[280px] rounded-xl border border-[var(--border)]/60 bg-[var(--bg-primary)]/50 p-3">
-                        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#38bdf8]">By PSA</p>
-                        <div className="space-y-1">
-                          {SOLUTIONS_BY_PSA.map((item) => (
-                            <MegaMenuItemDesktop key={item.label} item={item} />
-                          ))}
+                        <div>
+                          <p className="px-2.5 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6B7280] dark:text-slate-400">
+                            Reporting
+                          </p>
+                          <div className="space-y-1">
+                            {REPORTING_NAV.map((item) => (
+                              <MegaMenuItemDesktop key={item.href + item.label} item={item} />
+                            ))}
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
-                </div>
-                <div className="relative" onMouseEnter={openFeaturesMenu} onMouseLeave={closeFeaturesMenuSoon}>
-                  <button
-                    type="button"
-                    className={cn(
-                      "nav-site-link inline-flex items-center gap-1 text-[var(--text-secondary)]",
-                      featuresOpen && "text-[var(--text-primary)]",
-                    )}
-                    data-active={featuresNavActive ? "true" : undefined}
-                    aria-expanded={featuresOpen}
+                  <Link
+                    href="/pricing"
+                    className="nav-site-link text-[var(--text-secondary)]"
+                    data-active={isNavLinkActive(pathname, "/pricing") ? "true" : undefined}
                   >
-                    Features
-                    <ChevronDown
-                      className={cn(
-                        "size-3.5 transition-transform duration-150 ease-in-out",
-                        featuresOpen && "rotate-180",
-                      )}
-                    />
-                  </button>
-                  <div
-                    className={cn(
-                      "absolute left-1/2 top-[calc(100%+10px)] z-[60] w-[min(720px,calc(100vw-1.5rem))] max-w-[calc(100vw-1rem)] -translate-x-1/2 overflow-x-auto rounded-2xl border border-[var(--border)]/80 p-4 shadow-2xl backdrop-blur-xl transition-all duration-150 ease-in-out",
-                      featuresOpen
-                        ? "pointer-events-auto translate-y-0 opacity-100"
-                        : "pointer-events-none -translate-y-1.5 opacity-0",
-                    )}
-                    onMouseEnter={openFeaturesMenu}
-                    onMouseLeave={closeFeaturesMenuSoon}
-                    style={{
-                      background:
-                        theme === "dark"
-                          ? "linear-gradient(180deg, rgba(15,23,42,0.96) 0%, rgba(15,23,42,0.94) 100%)"
-                          : "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.96) 100%)",
-                    }}
-                  >
-                    <div
-                      className="grid min-w-[592px] gap-4"
-                      style={{ gridTemplateColumns: "repeat(2, minmax(280px, 1fr))" }}
-                    >
-                      <div className="min-w-[280px] rounded-xl border border-[var(--border)]/60 bg-[var(--bg-primary)]/50 p-3">
-                        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#38bdf8]">
-                          Reports and Insights
-                        </p>
-                        <div className="space-y-1">
-                          {FEATURES_REPORTS_INSIGHTS.map((item) => (
-                            <MegaMenuItemDesktop key={item.href + item.label} item={item} />
-                          ))}
-                        </div>
-                      </div>
-                      <div className="min-w-[280px] rounded-xl border border-[var(--border)]/60 bg-[var(--bg-primary)]/50 p-3">
-                        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#38bdf8]">
-                          Integrations and Exports
-                        </p>
-                        <div className="space-y-1">
-                          {FEATURES_INTEGRATIONS_EXPORTS.map((item) => (
-                            <MegaMenuItemDesktop key={item.href + item.label} item={item} />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                    Pricing
+                  </Link>
                 </div>
-                <Link
-                  href="/pricing"
-                  className="nav-site-link text-[var(--text-secondary)]"
-                  data-active={isNavLinkActive(pathname, "/pricing") ? "true" : undefined}
-                >
-                  Pricing
-                </Link>
-                <Link
-                  href="/demo"
-                  className={cn(
-                    "inline-flex h-9 shrink-0 items-center justify-center rounded-[var(--radius)] border border-[var(--border)]",
-                    "bg-transparent px-3.5 text-sm font-medium text-[var(--text-secondary)]",
-                    "transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]",
-                  )}
-                  data-active={isNavLinkActive(pathname, "/demo") ? "true" : undefined}
-                >
-                  Book a demo
-                </Link>
-                <Link
-                  href="/auth?tab=signin"
-                  className="nav-site-link text-[var(--text-secondary)]"
-                  data-active={isNavLinkActive(pathname, "/auth") ? "true" : undefined}
-                >
-                  Sign in
-                </Link>
-                <Link href="/signup">
-                  <Button className="bg-gradient-to-r from-[#0EA5E9] to-[#0284C7] hover:from-[#0284C7] hover:to-[#0EA5E9] text-white font-semibold px-4 py-2 rounded-xl shadow-md shadow-[#0EA5E9]/20 transition-all duration-300 transform hover:scale-[1.02] text-sm">
-                    Start free trial
-                  </Button>
-                </Link>
+                <div className="ml-6 flex items-center gap-3 border-l border-[var(--border)] pl-6 lg:ml-8 lg:gap-4 lg:pl-8">
+                  <Link
+                    href="/auth?tab=signin"
+                    className="nav-site-link text-[var(--text-secondary)]"
+                    data-active={isNavLinkActive(pathname, "/auth") ? "true" : undefined}
+                  >
+                    Sign in
+                  </Link>
+                  <Link
+                    href="/demo"
+                    className={cn(
+                      "inline-flex h-8 shrink-0 items-center justify-center whitespace-nowrap rounded-[var(--radius)] border border-[var(--border)]",
+                      "bg-transparent px-3 text-[13px] font-medium text-[var(--text-secondary)]",
+                      "transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]",
+                    )}
+                    data-active={isNavLinkActive(pathname, "/demo") ? "true" : undefined}
+                  >
+                    Book a walkthrough
+                  </Link>
+                  <Link href="/onboarding/connect">
+                    <Button className="h-8 whitespace-nowrap bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] hover:from-[var(--accent-hover)] hover:to-[var(--accent)] px-3.5 text-[13px] font-semibold text-white shadow-md shadow-[#0EA5E9]/20 transition-all duration-300 hover:scale-[1.02]">
+                      See what&apos;s in your client base
+                    </Button>
+                  </Link>
+                </div>
               </div>
 
               <button
@@ -699,9 +512,11 @@ export function Nav() {
                         {mobileSolutionsOpen ? (
                           <div className="space-y-3 border-t border-[var(--border)] px-3 pb-3 pt-2">
                             <div>
-                              <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[#38bdf8]">By role</p>
+                              <p className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6B7280] dark:text-slate-400">
+                                Client intelligence
+                              </p>
                               <div className="space-y-1">
-                                {SOLUTIONS_BY_ROLE.map((item) => (
+                                {CLIENT_INTELLIGENCE_NAV.map((item) => (
                                   <MegaMenuItemMobile
                                     key={item.href + item.label}
                                     item={item}
@@ -711,61 +526,11 @@ export function Nav() {
                               </div>
                             </div>
                             <div>
-                              <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[#38bdf8]">By use case</p>
+                              <p className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6B7280] dark:text-slate-400">
+                                Reporting
+                              </p>
                               <div className="space-y-1">
-                                {SOLUTIONS_BY_USE_CASE.map((item) => (
-                                  <MegaMenuItemMobile
-                                    key={item.href + item.label}
-                                    item={item}
-                                    onNavigate={() => setGuestMenuOpen(false)}
-                                  />
-                                ))}
-                              </div>
-                            </div>
-                            <div>
-                              <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[#38bdf8]">By PSA</p>
-                              <div className="space-y-1">
-                                {SOLUTIONS_BY_PSA.map((item) => (
-                                  <MegaMenuItemMobile
-                                    key={item.label}
-                                    item={item}
-                                    onNavigate={() => setGuestMenuOpen(false)}
-                                  />
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                      <div className="rounded-[var(--radius)] border border-[var(--border)]">
-                        <button
-                          type="button"
-                          className="nav-site-link flex w-full items-center justify-between rounded-[var(--radius)] px-3 py-3 text-left text-[15px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]"
-                          data-active={featuresNavActive ? "true" : undefined}
-                          aria-expanded={mobileFeaturesOpen}
-                          onClick={() => setMobileFeaturesOpen((v) => !v)}
-                        >
-                          <span>Features</span>
-                          <ChevronDown className={cn("size-4 transition-transform", mobileFeaturesOpen && "rotate-180")} />
-                        </button>
-                        {mobileFeaturesOpen ? (
-                          <div className="space-y-3 border-t border-[var(--border)] px-3 pb-3 pt-2">
-                            <div>
-                              <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[#38bdf8]">Reports and insights</p>
-                              <div className="space-y-1">
-                                {FEATURES_REPORTS_INSIGHTS.map((item) => (
-                                  <MegaMenuItemMobile
-                                    key={item.href + item.label}
-                                    item={item}
-                                    onNavigate={() => setGuestMenuOpen(false)}
-                                  />
-                                ))}
-                              </div>
-                            </div>
-                            <div>
-                              <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[#38bdf8]">Integrations and exports</p>
-                              <div className="space-y-1">
-                                {FEATURES_INTEGRATIONS_EXPORTS.map((item) => (
+                                {REPORTING_NAV.map((item) => (
                                   <MegaMenuItemMobile
                                     key={item.href + item.label}
                                     item={item}
@@ -786,14 +551,6 @@ export function Nav() {
                         Pricing
                       </Link>
                       <Link
-                        href="/demo"
-                        className="rounded-[var(--radius)] px-3 py-3 text-[15px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]"
-                        data-active={isNavLinkActive(pathname, "/demo") ? "true" : undefined}
-                        onClick={() => setGuestMenuOpen(false)}
-                      >
-                        Book a demo
-                      </Link>
-                      <Link
                         href="/auth?tab=signin"
                         className="nav-site-link rounded-[var(--radius)] px-3 py-3 text-[15px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]"
                         data-active={isNavLinkActive(pathname, "/auth") ? "true" : undefined}
@@ -802,12 +559,20 @@ export function Nav() {
                         Sign in
                       </Link>
                       <Link
-                        href="/signup"
+                        href="/demo"
+                        className="rounded-[var(--radius)] px-3 py-3 text-[15px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]"
+                        data-active={isNavLinkActive(pathname, "/demo") ? "true" : undefined}
+                        onClick={() => setGuestMenuOpen(false)}
+                      >
+                        Book a walkthrough
+                      </Link>
+                      <Link
+                        href="/onboarding/connect"
                         className="mt-2 block"
                         onClick={() => setGuestMenuOpen(false)}
                       >
-                        <Button className="bg-gradient-to-r from-[#0EA5E9] to-[#0284C7] hover:from-[#0284C7] hover:to-[#0EA5E9] text-white font-semibold px-4 py-2 rounded-xl shadow-md shadow-[#0EA5E9]/20 transition-all duration-300 transform hover:scale-[1.02] text-sm h-11 w-full">
-                          Start free trial
+                        <Button className="h-10 w-full whitespace-nowrap bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] hover:from-[var(--accent-hover)] hover:to-[var(--accent)] px-4 text-[13px] font-semibold text-white shadow-md shadow-[#0EA5E9]/20 transition-all duration-300">
+                          See what&apos;s in your client base
                         </Button>
                       </Link>
                     </div>
@@ -835,7 +600,9 @@ export function Nav() {
               <button
                 type="button"
                 className="flex size-8 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-semibold text-white"
-                onClick={() => (window.location.href = "/?openSettings=1")}
+                onClick={() => {
+                  window.location.href = "/?openSettings=1";
+                }}
                 aria-label="Open settings"
               >
                 {userInitials}
@@ -843,7 +610,9 @@ export function Nav() {
               <button
                 type="button"
                 className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                onClick={() => (window.location.href = "/?openSettings=1")}
+                onClick={() => {
+                  window.location.href = "/?openSettings=1";
+                }}
                 aria-label="Open settings"
               >
                 <Settings className="size-4" />
@@ -857,7 +626,16 @@ export function Nav() {
 
   if (!isSignedIn) {
     return (
-      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[90%] max-w-5xl">
+      <div
+        className="
+        relative z-50
+        w-full px-4 pt-4
+        md:fixed md:top-4
+        md:left-1/2
+        md:-translate-x-1/2
+        md:w-[90%] md:max-w-5xl
+        md:px-0 md:pt-0"
+      >
         {navInner}
       </div>
     );

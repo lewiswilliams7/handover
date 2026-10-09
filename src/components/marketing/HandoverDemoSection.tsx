@@ -2,6 +2,9 @@
 
 import { useRef, useState, type ReactNode } from "react";
 
+import { LightningBoltIcon } from "@/components/lightning-bolt-icon";
+import { cn } from "@/lib/utils";
+
 type PriorityLevel = "high" | "medium";
 
 type ActionItem = {
@@ -59,7 +62,7 @@ const ACTIONS: ActionItem[] = [
     priority: "high",
   },
   {
-    task: "Complete number porting and deliver user training for Teams Direct Routing VoIP — target go-live 30 June",
+    task: "Complete number porting and deliver user training for Teams Direct Routing VoIP - target go-live 30 June",
     owner: "Alex Thompson",
     due: "18 Jun 2026",
     priority: "medium",
@@ -121,7 +124,7 @@ Areas requiring attention in the next quarter: completing the Fortigate firewall
 const CLIENT_EMAILS = [
   {
     client: "Northwood Manufacturing",
-    subject: "Delivery Update — Northwood Manufacturing",
+    subject: "Delivery Update - Northwood Manufacturing",
     body: `Hi,
 
 Our team has updated the SPF record for your Office 365 environment and is monitoring outbound email delivery for the sales team. We expect to confirm resolution after a 24-hour window.
@@ -136,7 +139,7 @@ Northwind IT · Service Delivery Manager`,
   },
   {
     client: "Bridgewater Council",
-    subject: "Delivery Update — Bridgewater Council",
+    subject: "Delivery Update - Bridgewater Council",
     body: `Hi,
 
 The pre-migration configuration review for the Fortigate firewall is complete and the migration window is set for Saturday 14 June. VPN tunnels have been documented and the change request is approved.
@@ -151,7 +154,7 @@ Northwind IT · Service Delivery Manager`,
   },
   {
     client: "Acme Legal LLP",
-    subject: "Delivery Update — Acme Legal LLP",
+    subject: "Delivery Update - Acme Legal LLP",
     body: `Hi,
 
 The SQL migration for your Osprey case management system upgrade has been successfully tested in staging. We are currently awaiting partner sign-off before proceeding to production deployment.
@@ -166,7 +169,7 @@ Northwind IT · Project Lead`,
   },
   {
     client: "Ashfield Energy Ltd",
-    subject: "Delivery Update — Ashfield Energy Ltd",
+    subject: "Delivery Update - Ashfield Energy Ltd",
     body: `Hi,
 
 The Teams Direct Routing VoIP system replacement project is progressing well. The SBC is configured, number porting has been submitted to the carrier, and user training sessions are scheduled for the week commencing 23 June.
@@ -179,7 +182,7 @@ Northwind IT · Service Delivery Manager`,
   },
   {
     client: "Hartley and Sons",
-    subject: "Delivery Update — Hartley and Sons",
+    subject: "Delivery Update - Hartley and Sons",
     body: `Hi,
 
 Three of the four remediation items for Cyber Essentials recertification are complete. The remaining item is closing the MFA gap on two admin accounts, which is currently with your IT manager for approval.
@@ -302,19 +305,19 @@ function ActionsPanel() {
               }}
             >
               <td
-                className="line-clamp-2"
+                className="line-clamp-3 sm:line-clamp-none"
                 style={{ padding: "10px 12px", color: "var(--text-primary)", lineHeight: 1.5 }}
               >
                 {a.task}
               </td>
               <td
-                className="whitespace-nowrap"
+                className="whitespace-nowrap text-right sm:text-left"
                 style={{ padding: "10px 12px", color: "var(--text-secondary)" }}
               >
                 {a.owner}
               </td>
               <td
-                className="whitespace-nowrap"
+                className="whitespace-nowrap text-right sm:text-left"
                 style={{
                   padding: "10px 12px",
                   color: "var(--text-secondary)",
@@ -516,72 +519,9 @@ function EmailPanel() {
 }
 
 function QbrPanel({ onStartTrial }: { onStartTrial?: () => void }) {
-  const [dlPptx, setDlPptx] = useState(false);
-  const [dlXlsx, setDlXlsx] = useState(false);
-
-  const download = (type: "pptx" | "xlsx") => {
-    const set = type === "pptx" ? setDlPptx : setDlXlsx;
-    set(true);
-    const a = document.createElement("a");
-    a.href = type === "pptx" ? "/demo/Example_QBR_Q2-2026.pptx" : "/demo/Excel Report.xlsx";
-    a.download = type === "pptx" ? "Example_QBR_Q2-2026.pptx" : "Excel Report.xlsx";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => set(false), 1500);
-  };
-
   return (
     <div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
-        <button
-          onClick={() => download("pptx")}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            background: dlPptx ? "rgba(56,189,248,0.1)" : "var(--bg-tertiary)",
-            border: `1px solid ${dlPptx ? "rgba(56,189,248,0.4)" : "var(--border)"}`,
-            borderRadius: "var(--radius)",
-            padding: "8px 16px",
-            fontSize: 13,
-            color: dlPptx ? "var(--accent)" : "var(--text-secondary)",
-            cursor: "pointer",
-            transition: "all 0.15s",
-            fontFamily: "inherit",
-          }}
-        >
-          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
-          {dlPptx ? "Downloading…" : "Download QBR Pack (.pptx)"}
-        </button>
-        <button
-          onClick={() => download("xlsx")}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            background: dlXlsx ? "rgba(34,197,94,0.1)" : "var(--bg-tertiary)",
-            border: `1px solid ${dlXlsx ? "rgba(34,197,94,0.4)" : "var(--border)"}`,
-            borderRadius: "var(--radius)",
-            padding: "8px 16px",
-            fontSize: 13,
-            color: dlXlsx ? "#22c55e" : "var(--text-secondary)",
-            cursor: "pointer",
-            transition: "all 0.15s",
-            fontFamily: "inherit",
-          }}
-        >
-          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
-          {dlXlsx ? "Downloading…" : "Download Excel Report Pack (.xlsx)"}
-        </button>
         <button
           onClick={() => onStartTrial?.()}
           style={{
@@ -699,7 +639,7 @@ export function HandoverDemoSection({ onStartTrial }: { onStartTrial?: () => voi
   const clearNoticeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showDemoNotice = () => {
-    setDemoNotice("Connect your PSA to use this feature — start free trial");
+    setDemoNotice("Connect your PSA to use this feature - run the free PSA scan");
     if (clearNoticeRef.current) clearTimeout(clearNoticeRef.current);
     clearNoticeRef.current = setTimeout(() => setDemoNotice(null), 3000);
   };
@@ -713,27 +653,98 @@ export function HandoverDemoSection({ onStartTrial }: { onStartTrial?: () => voi
   };
 
   return (
-    <section className="relative z-[1] px-6 py-16 md:px-8 md:py-24" style={{ borderTop: "1px solid var(--border)" }}>
+    <section className="relative z-[1] px-4 py-10 md:px-8 md:py-24" style={{ borderTop: "1px solid var(--border)" }}>
       <div className="mx-auto w-full max-w-[1100px]">
-        <div className="mb-10 text-center">
+        <div className="mb-10">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[rgba(56,189,248,0.3)] bg-[rgba(56,189,248,0.08)] px-3 py-1 text-[12px] font-medium text-[var(--accent)]">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#22c55e]" />
-            Live example — real demo data
+            Example output
           </div>
           <h2 className="mb-3 text-3xl font-bold tracking-tight text-[var(--text-primary)] md:text-4xl">
-            See exactly what your clients receive
+            See which clients need attention, with the evidence.
           </h2>
-          <p className="mx-auto max-w-[480px] text-base text-[var(--text-secondary)]">
-            Generated from 18 tickets and 4 projects across 5 MSP clients. Every output, ready to send.
+          <p className="mt-3 max-w-[580px] text-[14px] leading-relaxed text-white/55">
+            Connect HaloPSA or ConnectWise. Handover reads live ticket data and shows what changed, then the outputs
+            you send when you&apos;re ready.
+          </p>
+        </div>
+
+        <div className="mx-auto mb-8 w-full max-w-4xl overflow-hidden rounded-2xl">
+          <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] shadow-[0_0_60px_-10px_rgba(56,189,248,0.2)]">
+            <video
+              controls
+              playsInline
+              preload="metadata"
+              poster="/demo-poster.png"
+              className="block w-full rounded-2xl"
+              style={{
+                aspectRatio: "16/9",
+                backgroundColor: "#06091a",
+              }}
+            >
+              <source
+                src="/demo/handover-demo.mp4"
+                type="video/mp4"
+              />
+            </video>
+          </div>
+          <p className="mt-3 text-center text-[11px] text-white/25">
+            2 minute walkthrough: PSA import, report generation, Client Intelligence, what needs attention
           </p>
         </div>
 
         <div className="overflow-hidden rounded-xl border border-[var(--border)] shadow-2xl" style={{ background: "var(--bg-secondary)" }}>
+          <div className="px-4 pt-4">
+            <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
+              {[
+                {
+                  tab: "actions",
+                  label: "Action log",
+                  hint: "Every open action with owner and due date",
+                },
+                {
+                  tab: "risks",
+                  label: "Risk register",
+                  hint: "Flagged risks with mitigations",
+                },
+                {
+                  tab: "summary",
+                  label: "Executive summary",
+                  hint: "Portfolio overview for your PM",
+                },
+                {
+                  tab: "email",
+                  label: "Client email",
+                  hint: "Ready to send to your client",
+                },
+                {
+                  tab: "qbr",
+                  label: "QBR pack",
+                  hint: "Generate from client data - PowerPoint + Excel",
+                },
+              ].map((item) => (
+                <button
+                  key={item.tab}
+                  type="button"
+                  onClick={() => setActiveTab(item.tab as TabId)}
+                  className={cn(
+                    "flex cursor-pointer flex-col items-center gap-0.5 rounded-xl border px-4 py-2.5 text-left transition-all duration-200",
+                    activeTab === item.tab
+                      ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
+                      : "border-white/[0.08] bg-white/[0.03] text-[var(--text-secondary)] hover:border-white/20 hover:bg-white/[0.05]",
+                  )}
+                >
+                  <span className="text-[13px] font-semibold leading-tight">{item.label}</span>
+                  <span className="text-[11px] leading-tight opacity-70">{item.hint}</span>
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-2.5" style={{ background: "var(--bg-secondary)" }}>
             <div className="flex items-center gap-3">
               <span className="text-sm font-medium text-[var(--text-primary)]">Generate</span>
               <span className="rounded border border-[var(--border)] bg-[var(--bg-tertiary)] px-2 py-0.5 text-[11px] text-[var(--text-muted)]">
-                PSA data imported — 18 items
+                Sample data
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -770,7 +781,6 @@ export function HandoverDemoSection({ onStartTrial }: { onStartTrial?: () => voi
               {[
                 { label: "Email client", icon: "✉", action: "notice" as const },
                 { label: "Push to PSA", icon: "↑", action: "notice" as const },
-                { label: "Export Excel", icon: "⊞", action: "downloadExcel" as const },
                 { label: "Schedule this", icon: "⏱", pro: true },
                 { label: "Follow up email", icon: "↩", action: "notice" as const },
               ].map((btn) => (
@@ -779,20 +789,11 @@ export function HandoverDemoSection({ onStartTrial }: { onStartTrial?: () => voi
                   onClick={
                     btn.pro
                       ? () => {
-                          window.location.href = "/auth?tab=signup";
+                          window.location.href = "/onboarding/connect";
                         }
                       : btn.action === "notice"
                         ? showDemoNotice
-                        : btn.action === "downloadExcel"
-                          ? () => {
-                              const a = document.createElement("a");
-                              a.href = "/demo/Excel Report.xlsx";
-                              a.download = "Excel Report.xlsx";
-                              document.body.appendChild(a);
-                              a.click();
-                              document.body.removeChild(a);
-                            }
-                          : undefined
+                        : undefined
                   }
                   className="relative flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12px] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-primary)]"
                   style={{ background: "var(--bg-tertiary)" }}
@@ -806,7 +807,7 @@ export function HandoverDemoSection({ onStartTrial }: { onStartTrial?: () => voi
           </div>
 
           <div
-            className="flex overflow-x-auto gap-1 border-b border-white/10 px-3 pt-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden sm:overflow-x-visible"
+            className="scrollbar-none flex overflow-x-auto gap-1 border-b border-white/10 px-3 pt-2 sm:overflow-x-visible"
             style={{ background: "var(--bg-secondary)" }}
           >
                 {TABS.map((tab) => (
@@ -826,12 +827,8 @@ export function HandoverDemoSection({ onStartTrial }: { onStartTrial?: () => voi
           </div>
 
           <div
-            className="mt-0 flex min-h-0 flex-1 flex-col overflow-y-auto p-3 outline-none"
-            style={{
-              background: "var(--bg-secondary)",
-              minHeight: 320,
-              maxHeight: 440,
-            }}
+            className="mt-0 flex min-h-[20rem] flex-1 flex-col overflow-visible p-3 outline-none md:max-h-[27.5rem] md:overflow-y-auto"
+            style={{ background: "var(--bg-secondary)" }}
           >
             {panels[activeTab]}
           </div>
@@ -839,15 +836,20 @@ export function HandoverDemoSection({ onStartTrial }: { onStartTrial?: () => voi
           <div className="flex items-center gap-3 border-t border-[var(--border)] px-4 py-2.5" style={{ background: "var(--bg-secondary)" }}>
             <button
               onClick={() => onStartTrial?.()}
-              className="rounded-lg bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] px-4 py-1.5 text-sm font-semibold text-white shadow-md transition-all hover:scale-[1.02] hover:shadow-lg"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] px-4 py-1.5 text-sm font-semibold text-white shadow-md transition-all hover:scale-[1.02] hover:shadow-lg"
             >
-              Generate yours free →
+              <LightningBoltIcon className="text-[#0f172a]" />
+              See what&apos;s in your client base →
             </button>
           </div>
         </div>
 
         <div className="mt-5 flex flex-wrap justify-center gap-6">
-          {["18 tickets · 5 clients", "4 active projects", "5 structured commitments", "Zero manual writing"].map((item) => (
+          {[
+            "5 sample accounts",
+            "Commercial + service + relationship signals",
+            "Evidence-backed attention list",
+          ].map((item) => (
             <span key={item} className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
               <span className="text-[#22c55e]">✓</span>
               {item}

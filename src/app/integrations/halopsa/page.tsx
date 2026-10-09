@@ -159,9 +159,9 @@ export default function HaloPsaIntegrationPage() {
       <Dialog open={proUpgradeOpen} onOpenChange={setProUpgradeOpen}>
         <DialogContent className="sm:max-w-lg" showCloseButton>
           <DialogHeader>
-            <DialogTitle>Upgrade to Pro</DialogTitle>
+            <DialogTitle>Move to Handover</DialogTitle>
             <DialogDescription>
-              Unlock HaloPSA import, 200 generations per month, and automation. Choose monthly or annual billing.
+              Unlock HaloPSA import, automation, and the complete Handover workspace. Choose monthly or annual billing.
             </DialogDescription>
           </DialogHeader>
           <UpgradePlanCards
@@ -826,9 +826,9 @@ export default function HaloPsaIntegrationPage() {
           <ScrollRevealItem index={8} className="block">
             <section className="rounded-[var(--radius-lg)] border border-white/[0.07] bg-white/[0.03] p-8 text-center backdrop-blur-md">
               {!signedIn ? (
-                <Link href="/auth?tab=signup&returnTo=/welcome">
+                <Link href="/onboarding/connect">
                   <Button className="bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]">
-                    Start free trial
+                    Run the free PSA scan
                   </Button>
                 </Link>
               ) : plan === "free" ? (
@@ -841,7 +841,7 @@ export default function HaloPsaIntegrationPage() {
                   }
                   onClick={() => setProUpgradeOpen(true)}
                 >
-                  Upgrade to Pro to unlock HaloPSA import
+                  Move to Handover to unlock HaloPSA push-back, scheduled reports, and QBRs
                 </Button>
               ) : (
                 <Link href="/?openSettings=integrations">

@@ -9,13 +9,14 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
   AlertTriangle,
-  BarChart3,
-  Building2,
+  BarChart2,
+  Brain,
   Calendar,
   CalendarClock,
   Check,
@@ -23,95 +24,81 @@ import {
   ClipboardList,
   CheckCircle,
   CheckCircle2,
+  ClipboardCheck,
   ChevronDown,
   CornerDownLeft,
   ChevronLeft,
   ChevronRight,
   Clock,
   Database,
-  Download,
   Eye,
   FileEdit,
   FileSpreadsheet,
   FileText,
   Globe,
-  History,
-  Home as HomeIcon,
   LayoutList,
-  LayoutTemplate,
   Loader2,
   Lock,
   Mail,
-  Menu,
-  Palette,
-  PenLine,
   Plug,
   Plus,
   PoundSterling,
-  Settings,
   Shield,
   Sparkles,
   Sun,
   TrendingUp,
   Upload,
   User,
-  UserRoundPlus,
-  Users,
   Moon,
   Edit2,
   Pencil,
   Play,
-  Pin,
-  PinOff,
   Trash2,
   Send,
+  ThumbsDown,
+  ThumbsUp,
   Zap,
   X,
-  Gift,
+  Info,
 } from "lucide-react";
-import confetti from "canvas-confetti";
 import { mutate } from "swr";
+import { HandoverTourDevTrigger } from "@/components/handover-tour-dev-trigger";
+import {
+  advanceHandoverTourAfterGeneration,
+  HANDOVER_TOUR_ELEMENT_WAIT_MS,
+  hasHandoverTourStartedThisSession,
+  registerHandoverTourCompletionHandler,
+  startHandoverProductTour,
+  waitForHandoverTourElement,
+} from "@/lib/handover-tour-session";
 
 import { createClient } from "@/lib/supabase";
 import {
-  canonicalPlanId,
   getPlanLabel,
-  getUserPlan,
-  hasProTierAccess,
-  isProOrTeam,
-  isSoloGenerationBlockedByPlan,
+  getPlanTierFromFields,
   normalizePlanLabel,
   planFieldsFromProfileRow,
-  profilePlanToUiTier,
-  qbrPackUsageHintCopy,
 } from "@/lib/plans";
 import {
-  normalizeTeamDashboardPermission,
-  type TeamDashboardPermission,
-} from "@/lib/team-dashboard-permission";
+  FREE_MONTHLY_GENERATION_LIMIT,
+  GROWTH_MONTHLY_GENERATION_LIMIT,
+  STARTER_MONTHLY_GENERATION_LIMIT,
+  STARTER_MONTHLY_REPORT_LIMIT,
+} from "@/lib/plan-limits";
 import { partnerWhiteLabelActive } from "@/lib/white-label";
-import { DeliveryHealthDashboard } from "@/components/delivery-health-dashboard";
 import { DemoBanner } from "@/components/demo-banner";
 import { MarketingFooter } from "@/components/marketing-footer";
 import { ReferralsSettingsPanel } from "@/components/referrals-settings-panel";
 import { useToast } from "@/components/toasts";
 import { useCwProjects, useCwTickets, useHaloTickets } from "@/lib/psa-cache";
 import {
-  exportActionsCSV,
-  exportClientEmailTXT,
-  exportRisksCSV,
-  exportStatusReportTXT,
-  exportToExcel,
+  parseActionsFromText,
   splitStatusReportDisplayBlocks,
   getActionLogExportFilename,
-  getClientEmailExportFilename,
   getFullReportExportFilename,
-  getRiskLogExportFilename,
-  getStatusReportExportFilename,
-  parseActionsFromText,
   type ExportMeta,
   type FullReportOutputs,
-} from "@/lib/export";
+} from "@/lib/export-parsers";
 import {
   getCachedMeetingPrepContentFromKeys,
   getCachedMeetingPrepTicketTitleFromKeys,
@@ -126,7 +113,6 @@ import {
 import {
   STRIPE_PRO_ANNUAL_PRICE_ID,
   STRIPE_PRO_MONTHLY_PRICE_ID,
-  STRIPE_TEAM_MONTHLY_PRICE_ID,
 } from "@/lib/stripe-price-ids";
 import {
   detectImportFileFormat,
@@ -153,8 +139,15 @@ import {
   selectedExcelKeysFromRow,
   type NormalizedEmailContentPrefs,
 } from "@/lib/scheduled-email-prefs";
-import { getDateRangeEndIso, getDateRangeStartIso } from "@/lib/scheduled-reports";
-import { APP_VERSION } from "@/lib/version";
+import {
+  londonWallScheduleTimeToUtcStored,
+  utcStoredScheduleTimeToLondonWall,
+} from "@/lib/scheduled-report-schedule-time";
+import {
+  computeNextRunUtc,
+  getDateRangeEndIso,
+  getDateRangeStartIso,
+} from "@/lib/scheduled-reports";
 import { buildClientEmailSignOffBlock } from "@/lib/client-email-signature";
 import { buildDefaultClientEmailSubject } from "@/lib/client-email-send-html";
 import { buildDeliveryHealthSwrKey } from "@/lib/delivery-health-swr";
@@ -164,6 +157,32 @@ import { DEMO_CLIENTS, DEMO_EXAMPLE_INPUT, DEMO_PROJECTS, DEMO_TICKETS } from "@
 /** Signed-in shell background — shared by top bar and main content for a seamless join. */
 const SIGNED_IN_SHELL_BACKGROUND =
   "radial-gradient(ellipse at top right, rgba(14,165,233,0.04) 0%, transparent 60%), var(--bg-primary)";
+
+const MAIN_VIEW_VALUES = [
+  "overview",
+  "generate",
+  "reports",
+  "delivery",
+  "scheduled",
+  "configuration",
+  "organisation",
+  "changelog",
+  "client-intelligence",
+  "approvals",
+] as const;
+
+type MainView = (typeof MAIN_VIEW_VALUES)[number];
+
+const MAIN_VIEW_SET = new Set<string>(MAIN_VIEW_VALUES);
+
+function isMainView(value: string | null): value is MainView {
+  return value !== null && MAIN_VIEW_SET.has(value);
+}
+
+function homePathPreservingViewParam(): string {
+  const view = new URLSearchParams(window.location.search).get("view");
+  return view ? `/?view=${encodeURIComponent(view)}` : "/";
+}
 
 /** Extended outputs shown in Excel export only — excluded from on-screen output tab strip and panels. */
 const EXCEL_ONLY_TAB_KEYS: ReadonlySet<string> = EXTENDED_PM_TAB_KEYS_EXCEL_ONLY_STRIP;
@@ -466,10 +485,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { HeroProductMockup } from "@/components/hero-product-mockup";
-import { HomeRoiCalculator } from "@/components/home-roi-calculator";
-import { CountUp } from "@/components/count-up";
-import { HandoverDemoSection } from "@/components/marketing/HandoverDemoSection";
+import { LightningBoltIcon } from "@/components/lightning-bolt-icon";
 import { TestimonialMarquee } from "@/components/testimonial-marquee";
 import { ScrollRevealItem } from "@/components/scroll-reveal-item";
 import { IntegrationsPanel } from "@/components/integrations-panel";
@@ -479,13 +495,7 @@ import {
 } from "@/components/configuration-panel";
 import { EnterprisePortalOnboarding } from "@/components/enterprise-portal-onboarding";
 import { EnterprisePortalClientsSection } from "@/components/enterprise-portal-clients-section";
-import { invalidatePsaConnectionsCache, usePSAConnections } from "@/hooks/use-psa-connections";
-import { invalidatePSAStatusCache, usePSAStatus } from "@/hooks/usePSAStatus";
-import { getPsaConnectBundle } from "@/lib/psa-connect-cache";
-import { HaloImportModal } from "@/components/halo-import-modal";
-import { CwImportModal } from "@/components/cw-import-modal";
 import { FirstRunOnboardingOverlay } from "@/components/first-run-onboarding";
-import { TrialBanner } from "@/components/trial-banner";
 import { ChatsModal } from "@/components/chats-modal";
 import { FirstGenerationCelebrationModal } from "@/components/first-generation-celebration-modal";
 import { SendClientEmailModal } from "@/components/send-client-email-modal";
@@ -497,9 +507,12 @@ import {
 } from "@/components/getting-started-checklist-widget";
 import { PremiumHardLimitModal, ProFeatureGateModal } from "@/components/premium-upgrade-ui";
 import { UpgradePlanCards } from "@/components/upgrade-plan-cards";
-import { QbrPackBuilder } from "@/components/qbr-pack-builder";
+import { CiQbrBuilder } from "@/components/ci-qbr-builder";
+import { ClientIntelligenceAlerts } from "@/components/client-intelligence-alerts";
 import { OverviewHomeView } from "@/components/overview-home-view";
 import { PageHeader } from "@/components/page-header";
+import { ScheduledRecentSends } from "@/components/scheduled-recent-sends";
+import { useScheduledHistory } from "@/hooks/use-scheduled-history";
 import { ChangelogView } from "@/components/changelog-view";
 import { PSAEmptyState } from "@/components/psa-empty-state";
 import {
@@ -520,6 +533,69 @@ import {
 } from "@/lib/smart-actions";
 import { extractFirstEmailFromText } from "@/lib/email-recipients";
 import { cn } from "@/lib/utils";
+import { normalizeHaloUrlForSubmit } from "@/lib/halo-url";
+import { SettingsBodyPortal, useAppShell } from "@/components/app-shell";
+
+const QbrPackBuilder = dynamic(
+  () =>
+    import("@/components/qbr-pack-builder").then((m) => ({
+      default: m.QbrPackBuilder,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="size-6 animate-spin text-[var(--accent)]" />
+      </div>
+    ),
+  },
+);
+
+const HaloImportModal = dynamic(
+  () =>
+    import("@/components/halo-import-modal").then((m) => ({
+      default: m.HaloImportModal,
+    })),
+  { ssr: false, loading: () => null },
+);
+
+const CwImportModal = dynamic(
+  () =>
+    import("@/components/cw-import-modal").then((m) => ({
+      default: m.CwImportModal,
+    })),
+  { ssr: false, loading: () => null },
+);
+
+const DeliveryHealthDashboard = dynamic(
+  () =>
+    import("@/components/delivery-health-dashboard").then((m) => ({
+      default: m.DeliveryHealthDashboard,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="size-6 animate-spin text-[var(--accent)]" />
+      </div>
+    ),
+  },
+);
+
+const ClientIntelligenceView = dynamic(
+  () =>
+    import("@/components/client-intelligence-view").then((m) => ({
+      default: m.ClientIntelligenceView,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="size-6 animate-spin text-[var(--accent)]" />
+      </div>
+    ),
+  },
+);
 
 type ActionRow = {
   task: string | null;
@@ -537,6 +613,9 @@ type RiskRow = {
   risk: string | null;
   impact: string | null;
   mitigation: string | null;
+  owner?: string | null;
+  rag?: string | null;
+  priority?: string | null;
   source_ticket?: string | null;
 };
 
@@ -834,6 +913,9 @@ function parseRiskFromApi(x: unknown): RiskRow {
     risk: typeof riskRaw === "string" ? riskRaw : riskRaw != null ? String(riskRaw) : null,
     impact: typeof impactRaw === "string" ? impactRaw : impactRaw != null ? String(impactRaw) : null,
     mitigation: typeof mitRaw === "string" ? mitRaw : mitRaw != null ? String(mitRaw) : null,
+    owner: typeof o.owner === "string" ? o.owner : undefined,
+    rag: typeof o.rag === "string" ? o.rag : undefined,
+    priority: typeof o.priority === "string" ? o.priority : undefined,
     source_ticket,
   };
 }
@@ -1006,6 +1088,281 @@ const SIGNED_OUT_DEMO_RESULT: GenerateResult = {
     "PROJECT STATUS\nAzure Migration - Skyline IT Solutions - Overdue - Red\n\nPROGRESS\nMigration overdue by two weeks. Backup not yet started.\n\nACTIONS\n1. Chase Dave to start backup immediately (Dave) - High\n2. Send client update today (Unassigned) - High\n3. Assess hardware health (Dave) - High\n4. Complete migration by end of month (Dave) - Medium\n\nRISKS AND ISSUES\n1. Hardware failure risk - Data loss if hardware fails before backup - Start backup immediately\n\nNEXT STEPS\n1. Dave to start backup today\n2. Send client update to Skyline IT Solutions\n3. Assess hardware health before migration begins",
   ...emptyExtendedOutputsObject(),
 };
+
+function onboardingStagedDueDate(daysFromNow: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + daysFromNow);
+  return d.toISOString().slice(0, 10);
+}
+
+function ONBOARDING_STAGED_RESULT(): GenerateResult {
+  return {
+    actions: [
+      {
+        task: "Confirm SPF record change is fully propagated and monitor for any further bounce reports from Hartigan & Co through end of week",
+        suggested_owner: "Alex Thompson",
+        priority: "Medium",
+        due_date: onboardingStagedDueDate(4),
+        status: "Open",
+        client_name: "Northwood Manufacturing",
+      },
+      {
+        task: "Chase finance for MFA hardware token procurement sign-off - 3 remote users remain uncovered",
+        suggested_owner: "Jamie Clarke",
+        priority: "High",
+        due_date: onboardingStagedDueDate(7),
+        status: "Open",
+        client_name: "Northwood Manufacturing",
+      },
+      {
+        task: "Begin SharePoint Phase 2 archive migration (~2TB legacy folders) following successful 847GB active data cutover",
+        suggested_owner: "Alex Thompson",
+        priority: "Medium",
+        due_date: onboardingStagedDueDate(7),
+        status: "Open",
+        client_name: "Northwood Manufacturing",
+      },
+      {
+        task: "Complete warehouse floor 2 Wi-Fi site survey to assess additional access point placement near loading bay",
+        suggested_owner: "Jamie Clarke",
+        priority: "Low",
+        due_date: onboardingStagedDueDate(5),
+        status: "Open",
+        client_name: "Northwood Manufacturing",
+      },
+    ],
+    risks: [
+      {
+        risk: "3 remote users remain without MFA coverage while hardware token procurement awaits finance sign-off, leaving a security gap until resolved",
+        impact: "Medium",
+        mitigation:
+          "Escalate procurement approval directly with finance lead this week to avoid extended exposure",
+        owner: "Jamie Clarke",
+        rag: "amber",
+      },
+      {
+        risk: "SharePoint archive migration (~2TB) could encounter unforeseen file path or permission issues not present in Phase 1's smaller dataset",
+        impact: "Low",
+        mitigation:
+          "Review archive folder structure for legacy permission anomalies before migration window begins",
+        owner: "Alex Thompson",
+        rag: "green",
+      },
+    ],
+    summary:
+      "Northwood Manufacturing's portfolio is in a healthy state this week. The Office 365 email delivery issue was resolved promptly after an SPF misconfiguration was identified and corrected, with no further bounce reports since Wednesday. SharePoint Phase 2 migration is progressing well, with 847GB of active data successfully moved over the weekend and the larger archive phase now scheduled. The main outstanding item is MFA hardware token procurement, currently awaiting finance approval, which is the priority focus for next week.",
+    client_email:
+      "Hi team,\n\nA quick update on this week's activity.\n\nThe email delivery issue affecting outbound messages to external recipients has been resolved - this was caused by an SPF record misconfiguration following the recent DNS migration, which we've corrected and verified. We're monitoring delivery over the coming days to confirm full resolution.\n\nThe SharePoint migration continues on track. We successfully moved 847GB of active document data over the weekend with no reported issues, and we'll begin the archive phase (older legacy folders) next week.\n\nThe MFA hardware tokens for your remaining remote users are still pending procurement approval - we're chasing this and will keep you posted once tokens are ordered.\n\nLet us know if you have any questions.\n\nBest regards",
+    email_subject: "Northwood Manufacturing - Weekly Update",
+    status_report:
+      "Status Report - Northwood Manufacturing\n\nEmail Delivery: Resolved - SPF misconfiguration corrected, monitoring ongoing\nSharePoint Migration: On track - Phase 2 active data complete (847GB), archive phase scheduled next week\nMFA Rollout: Pending - hardware token procurement awaiting finance approval\nNetwork: Minor Wi-Fi coverage gap identified on warehouse floor 2, site survey scheduled",
+    ...emptyExtendedOutputsObject(),
+    decisions_log:
+      "DEC-001 | 12 June | Proceed with SPF record correction immediately rather than waiting for scheduled maintenance window | Alex Thompson | SPF misconfiguration after DNS migration was causing bounced emails to external recipients including Hartigan & Co | Medium | Wait for scheduled maintenance window | Agreed\nDEC-002 | 10 June | Defer SharePoint archive migration (~2TB) to next week's maintenance window rather than bundling with Phase 2 active data cutover | Client IT lead | Phase 2 active data cutover (847GB) completed without user-reported issues | Low | Bundle archive migration with Phase 2 active data cutover | Agreed",
+    meeting_notes:
+      "Northwood Manufacturing - Weekly Sync\n\nAttendees: Alex Thompson, Jamie Clarke\n\nDiscussed: SPF resolution confirmed stable, no further bounce reports. MFA hardware token order pending finance sign-off - client asked to expedite given remote worker exposure. SharePoint archive phase confirmed for next week, no concerns raised. Wi-Fi survey booked for warehouse floor 2.\n\nNext steps: chase finance on MFA approval, confirm archive migration window with client before Thursday.",
+  };
+}
+
+type CompareResultPayload = {
+  what_changed: string;
+  resolved: string[];
+  new_items: string[];
+  still_open: string[];
+  trend: "improving" | "stable" | "worsening";
+  trend_justification: string;
+};
+
+const ONBOARDING_STAGED_COMPARE_RESULT: CompareResultPayload = {
+  what_changed:
+    "Since the last Northwood report, the Office 365 SPF email delivery issue was resolved and monitoring is ongoing. MFA hardware token procurement has progressed to awaiting finance approval. SharePoint Phase 2 active data migration completed over the weekend; archive phase is now scheduled.",
+  resolved: [
+    "Office 365 outbound email delivery failure (SPF misconfiguration) — resolved since last report",
+  ],
+  new_items: [
+    "MFA hardware token procurement moved from Open to Awaiting Approval",
+    "SharePoint Phase 2 active data cutover (847GB) completed over the weekend",
+  ],
+  still_open: [
+    "MFA rollout — 3 remote users still without hardware token coverage pending finance sign-off",
+    "SharePoint Phase 2 archive migration (~2TB legacy folders) — scheduled to begin next week",
+    "Warehouse floor 2 Wi-Fi coverage gap — site survey booked for next Thursday",
+  ],
+  trend: "improving",
+  trend_justification:
+    "Email delivery restored after SPF fix; migration progressing with no user-reported issues from Phase 1 cutover.",
+};
+
+const INPUT_QUALITY_TOOLTIP_TEXT =
+  "Reflects how complete your ticket data is. Scores below 70 may result in shorter, more conservative outputs since we don't invent details that aren't in your tickets.";
+
+const REPORT_QUALITY_TOOLTIP_TEXT =
+  "Based on whether actions have clear owners and due dates, and whether risks include mitigations. Lower scores usually mean some ticket data was too sparse to generate complete details.";
+
+function formatRelativeTimeAgo(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return "just now";
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return "just now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} minute${min === 1 ? "" : "s"} ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} hour${hr === 1 ? "" : "s"} ago`;
+  const day = Math.floor(hr / 24);
+  return `${day} day${day === 1 ? "" : "s"} ago`;
+}
+
+function approvalSourceLabel(source: string): string {
+  if (source === "digest") return "Digest";
+  if (source === "ci") return "CI";
+  return "PSA";
+}
+
+const HOLD_FOR_REVIEW_TOOLTIP = "Hold for review before sending";
+
+function HoldForReviewRowToggle({
+  active,
+  disabled,
+  onToggle,
+}: {
+  active: boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+}) {
+  const [tipOpen, setTipOpen] = useState(false);
+  return (
+    <span className="relative inline-flex shrink-0">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onToggle}
+        onMouseEnter={() => setTipOpen(true)}
+        onMouseLeave={() => setTipOpen(false)}
+        onFocus={() => setTipOpen(true)}
+        onBlur={() => setTipOpen(false)}
+        className={cn(
+          "inline-flex size-7 items-center justify-center rounded-[var(--radius)] border transition-colors",
+          active
+            ? "border-[var(--accent)]/40 bg-[var(--accent)]/15 text-[var(--accent)]"
+            : "border-white/[0.08] bg-white/[0.04] text-white/40 hover:border-[var(--accent)]/25 hover:text-[var(--accent)]",
+          disabled && "cursor-not-allowed opacity-50",
+        )}
+        aria-label={HOLD_FOR_REVIEW_TOOLTIP}
+        aria-pressed={active}
+      >
+        <ClipboardCheck className="size-3.5" aria-hidden />
+      </button>
+      {tipOpen ? (
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 w-max max-w-[11rem] -translate-x-1/2 rounded-md border border-[var(--border)] bg-[var(--surface-1)] px-2 py-1 text-center text-[11px] leading-snug text-[var(--text-secondary)] shadow-[var(--shadow-sm)]"
+        >
+          {HOLD_FOR_REVIEW_TOOLTIP}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function HoldForReviewRequiredBadge() {
+  return (
+    <span className="rounded-full border border-[var(--accent)]/25 bg-[var(--accent)]/15 px-1.5 py-px text-[9px] font-semibold text-[var(--accent)]">
+      Review required
+    </span>
+  );
+}
+
+function ScheduleHoldForReviewField({
+  checked,
+  onChange,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 pr-2">
+          <p className="text-sm font-medium text-[var(--text-primary)]">
+            Hold for review before sending
+          </p>
+          <p className="mt-1 text-xs text-[var(--text-muted)]">
+            When enabled, reports generated by this schedule will wait in Approvals for your
+            review before sending.
+          </p>
+        </div>
+        <div
+          role="button"
+          tabIndex={disabled ? -1 : 0}
+          aria-pressed={checked}
+          aria-label="Hold for review before sending"
+          onClick={() => {
+            if (!disabled) onChange(!checked);
+          }}
+          onKeyDown={(e) => {
+            if (disabled) return;
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onChange(!checked);
+            }
+          }}
+          style={{
+            width: "44px",
+            height: "24px",
+            borderRadius: "999px",
+            background: checked ? "#1D9E75" : "rgba(255,255,255,0.15)",
+            position: "relative",
+            cursor: disabled ? "not-allowed" : "pointer",
+            transition: "background 0.2s ease",
+            flexShrink: 0,
+            opacity: disabled ? 0.5 : 1,
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              top: "3px",
+              left: checked ? "23px" : "3px",
+              width: "18px",
+              height: "18px",
+              borderRadius: "50%",
+              background: "white",
+              transition: "left 0.2s ease",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoHoverTooltip({ text, ariaLabel }: { text: string; ariaLabel: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span
+      className="relative inline-flex cursor-help"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onFocus={() => setOpen(true)}
+      onBlur={() => setOpen(false)}
+      tabIndex={0}
+      aria-label={ariaLabel}
+    >
+      <Info className="size-3.5 shrink-0 text-[var(--text-muted)]" aria-hidden />
+      {open ? (
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 max-w-xs -translate-x-1/2 rounded-md border border-[var(--border)] bg-[var(--surface-1)] px-2 py-1 text-[12px] leading-snug text-[var(--text-secondary)] shadow-[var(--shadow-sm)]"
+        >
+          {text}
+        </span>
+      ) : null}
+    </span>
+  );
+}
 
 function toFullReportOutputs(r: GenerateResult): FullReportOutputs {
   const ext = emptyExtendedOutputsObject();
@@ -1208,15 +1565,47 @@ function visibleExtendedTabsForResult(r: GenerateResult): ExtendedPmTabKey[] {
   return keys.filter((k) => !EXCEL_ONLY_TAB_KEYS.has(k));
 }
 
+/** Extended Excel tabs synthesized from core actions/risks/summary in exportFullReport. */
+const EXCEL_EXTENDED_SYNTH_FROM_CORE: ReadonlySet<ExtendedPmTabKey> = new Set([
+  "raid_log",
+  "change_log",
+  "stakeholder_update",
+  "communication_log",
+  "project_health_dashboard",
+  "risk_register_detailed",
+  "pestle_analysis",
+  "issue_log",
+  "lessons_learned",
+  "invoice_time_summary",
+]);
+
+/** Extended Excel tabs that need populated result field or external config (no core-only synthesis). */
+const EXCEL_EXTENDED_GATED_ON_FIELD: ReadonlySet<ExtendedPmTabKey> = new Set([
+  "decisions_log",
+  "meeting_notes",
+]);
+
+function hasCoreDataForExcelSynthesis(r: GenerateResult): boolean {
+  const hasActions = Array.isArray(r.actions) && r.actions.length > 0;
+  const hasRisks = Array.isArray(r.risks) && r.risks.length > 0;
+  const hasSummary = typeof r.summary === "string" && r.summary.trim().length > 0;
+  return hasActions || hasRisks || hasSummary;
+}
+
 /** Core + extended outputs for Excel export — extended IDs from content only (not _uiTabScope). */
 function generatedOutputTabIdsForExcelExport(r: GenerateResult): Set<string> {
   const coreIds =
     r._uiTabScope?.core && r._uiTabScope.core.length > 0
       ? [...r._uiTabScope.core]
       : [...visibleCoreTabsForResult(r)];
+  const canSynthesizeExt = hasCoreDataForExcelSynthesis(r);
   const extendedIds = EXTENDED_PM_TAB_KEYS.filter((k) => {
     const val = r[k];
-    return typeof val === "string" && val.trim().length > 0;
+    const hasContent = typeof val === "string" && val.trim().length > 0;
+    if (hasContent) return true;
+    if (EXCEL_EXTENDED_GATED_ON_FIELD.has(k)) return false;
+    if (EXCEL_EXTENDED_SYNTH_FROM_CORE.has(k) && canSynthesizeExt) return true;
+    return false;
   });
   return new Set<string>([...coreIds, ...extendedIds]);
 }
@@ -1225,6 +1614,13 @@ function isExportPickerTabGenerated(tabId: string, generated: Set<string>): bool
   if (tabId === "executive_summary") return generated.has("summary");
   if (tabId === "rag_dashboard") return false;
   return generated.has(tabId);
+}
+
+function exportPickerTabIdsForResult(r: GenerateResult): string[] {
+  const gen = generatedOutputTabIdsForExcelExport(r);
+  return EXPORT_FULLREPORT_TAB_OPTIONS.filter((o) => isExportPickerTabGenerated(o.id, gen)).map(
+    (o) => o.id,
+  );
 }
 
 function buildActionExportMeta(projectName: string, actions: ActionRow[]): ExportMeta {
@@ -1260,21 +1656,6 @@ type ProjectItem = {
   report_type?: string | null;
   reportType?: string | null;
 };
-
-function CyanBoltIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="var(--accent)"
-      className={cn("shrink-0", className)}
-      aria-hidden
-    >
-      <path d="M13 2L4.5 13.5H11L10 22L19.5 10.5H13L13 2Z" />
-    </svg>
-  );
-}
 
 function formatShortRelativeTime(iso: string): string {
   const t = Date.parse(iso);
@@ -1374,7 +1755,7 @@ function qualityImprovementTips(issues: string[]): string[] {
   for (const issue of issues) {
     if (issue.includes("missing owner")) {
       tips.push(
-        "Assign a named owner to each action — avoid TBC, blank, or unassigned owners.",
+        "Assign a named owner to each action - avoid TBC, blank, or unassigned owners.",
       );
     } else if (issue.includes("without due date")) {
       tips.push("Add a due date to every action so expectations are clear.");
@@ -1780,7 +2161,7 @@ const focusRing =
 
 /** Generation output tab panel — single scroll container for tab content */
 const OUTPUT_TAB_PANEL_CLASS =
-  "mt-0 flex min-h-0 flex-1 flex-col overflow-y-auto rounded-b-[var(--radius-lg)] border-x border-b border-[var(--border)] bg-[var(--bg-secondary)] p-3 outline-none";
+  "mt-0 flex min-h-0 flex-1 flex-col overflow-visible rounded-b-[var(--radius-lg)] border-x border-b border-[var(--border)] bg-[var(--bg-secondary)] p-3 outline-none md:overflow-y-auto";
 
 /** Inset surface wrapping Card inside each output tab */
 const OUTPUT_TAB_CONTENT_SHELL =
@@ -1809,6 +2190,27 @@ const OUTPUT_REGEN_INPUT_CLASS =
 
 const OUTPUT_REGEN_BUTTON_CLASS =
   "h-9 shrink-0 rounded-full px-3.5 text-[11px] font-semibold shadow-none";
+
+function isAuthConnectionFailure(err: unknown): boolean {
+  if (!err) return false;
+  if (typeof err === "object" && err !== null && "name" in err) {
+    const name = String((err as { name: unknown }).name);
+    if (name.includes("AuthRetryableFetchError") || name === "FetchError") return true;
+  }
+  const msg =
+    typeof err === "object" && err !== null && "message" in err
+      ? String((err as { message: unknown }).message)
+      : String(err);
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes("fetch") ||
+    lower.includes("network") ||
+    lower.includes("enotfound") ||
+    lower.includes("failed to fetch") ||
+    lower.includes("networkerror") ||
+    lower.includes("timeout")
+  );
+}
 
 function ResultsSkeleton() {
   return (
@@ -1913,105 +2315,228 @@ function UpgradeWall({ message }: { message: string }) {
   );
 }
 
+type OverviewAttentionReasonCategory =
+  | "past_target"
+  | "sla_breached"
+  | "sla_at_risk"
+  | "due_soon"
+  | "red_rag"
+  | "amber_rag";
+
+const OVERVIEW_ATTENTION_REASON_SEVERITY: Record<OverviewAttentionReasonCategory, number> = {
+  past_target: 1,
+  sla_breached: 2,
+  sla_at_risk: 3,
+  due_soon: 4,
+  red_rag: 5,
+  amber_rag: 6,
+};
+
+type OverviewAttentionRowMatch = {
+  name: string;
+  pastTargetDays?: number;
+  dueInDays?: number;
+};
+
+function classifyOverviewAttentionRow(row: DeliveryHealthRow): {
+  category: OverviewAttentionReasonCategory;
+  match: OverviewAttentionRowMatch;
+} | null {
+  const name = row.name?.trim() || "Untitled";
+  if (row.daysToTarget !== null && row.daysToTarget < 0) {
+    return {
+      category: "past_target",
+      match: { name, pastTargetDays: Math.abs(row.daysToTarget) },
+    };
+  }
+  if (row.slaRisk === "overdue") {
+    return { category: "sla_breached", match: { name } };
+  }
+  if (row.slaRisk === "at_risk") {
+    return { category: "sla_at_risk", match: { name } };
+  }
+  if (row.daysToTarget !== null && row.daysToTarget <= 7) {
+    return {
+      category: "due_soon",
+      match: { name, dueInDays: row.daysToTarget },
+    };
+  }
+  if (row.rag === "red") {
+    return { category: "red_rag", match: { name } };
+  }
+  if (row.rag === "amber") {
+    return { category: "amber_rag", match: { name } };
+  }
+  return null;
+}
+
+function buildOverviewAttentionReason(
+  category: OverviewAttentionReasonCategory,
+  matches: OverviewAttentionRowMatch[],
+): string {
+  const count = matches.length;
+  switch (category) {
+    case "past_target":
+      if (count === 1 && matches[0]?.pastTargetDays != null) {
+        return `${matches[0].pastTargetDays} days past target`;
+      }
+      if (count > 1) {
+        return `Past target on ${count} tickets`;
+      }
+      return "Past target";
+    case "sla_breached":
+      return count > 1 ? `SLA breached on ${count} tickets` : "SLA breached";
+    case "sla_at_risk":
+      return count > 1 ? `SLA at risk on ${count} tickets` : "SLA at risk";
+    case "due_soon": {
+      const days = matches[0]?.dueInDays;
+      if (days != null) {
+        return `Due in ${days} day${days === 1 ? "" : "s"}`;
+      }
+      return "Due soon";
+    }
+    case "red_rag":
+      return count > 1 ? `No recent activity on ${count} tickets` : "No recent activity";
+    case "amber_rag":
+      return count > 1 ? `Needs review on ${count} tickets` : "Needs review";
+    default:
+      return "";
+  }
+}
+
 export default function Home() {
   const router = useRouter();
-  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const shell = useAppShell();
+  const {
+    authChecked,
+    userEmail,
+    authUserId,
+    userCreatedAt,
+    userFirstName,
+    profile,
+    plan,
+    profileDbPlan,
+    trialEndsAt,
+    profileTrialPlan,
+    profileSubscriptionStatus,
+    userTeamId,
+    entitlement,
+    usage,
+    teamVisibility,
+    branding,
+    profileForm,
+    psa,
+    onboarding,
+    sidebarPinned,
+    sidebarHovered,
+    setSidebarOpenMobile,
+    theme,
+    setTheme,
+    settings,
+    refreshShellData,
+    registerOnSignOut,
+  } = shell;
+  const hasProAccess = entitlement.hasProAccess;
+  const soloGenerationLocked = entitlement.soloGenerationLocked;
+  const isExpiredTrial = entitlement.isExpiredTrial;
+  const qbrUsageHint = entitlement.qbrUsageHint;
+  const paymentPastDue = entitlement.paymentPastDue;
+  const {
+    monthCount,
+    qbrMonthCount,
+    generationLimitOverride,
+    monthlyStats,
+    monthlyStatsLoading,
+    totalGenerationCount,
+    setGenerationStreak,
+  } = usage;
+  const {
+    tourCompleted,
+    setTourCompleted,
+    hasCompletedLoop,
+    setHasCompletedLoop,
+  } = shell;
+  const {
+    deliveryAccess: deliveryDashboardAccess,
+  } = teamVisibility;
+  const {
+    brandName,
+    setBrandName,
+    brandColour,
+    setBrandColour,
+    brandSecondaryColour,
+    setBrandSecondaryColour,
+    brandLogoUrl,
+    setBrandLogoUrl,
+    brandLogoPreviewKey,
+    setBrandLogoPreviewKey,
+    whiteLabelMode,
+    setWhiteLabelMode,
+    brandColourError,
+    setBrandColourError,
+    brandSecondaryColourError,
+    setBrandSecondaryColourError,
+  } = branding;
+  const {
+    profileFirstName,
+    setProfileFirstName,
+    profileLastName,
+    setProfileLastName,
+    profileDisplayName,
+    setProfileDisplayName,
+    profileJobTitle,
+    setProfileJobTitle,
+    profileCompanyName,
+    setProfileCompanyName,
+    profileOutputLanguage,
+    setProfileOutputLanguage,
+    signatureOverride,
+    setSignatureOverride,
+    writingStyle,
+    setWritingStyle,
+    compactMode,
+    setCompactMode,
+    dashboardViewMode,
+    setDashboardViewMode,
+    showCharacterCount,
+    setShowCharacterCount,
+    privacyMode,
+    setPrivacyMode,
+  } = profileForm;
+  const {
+    haloConnected,
+    setHaloConnected,
+    haloUrl,
+    setHaloUrl,
+    haloClientIdMasked,
+    haloClientIdLength,
+    haloUpdatedAt,
+    haloAutoClosureSummary,
+    setHaloAutoClosureSummary,
+    haloReconnectRecommended,
+    setHaloReconnectRecommended,
+    loading: psaLoading,
+    cwConnected,
+    cwSiteUrl,
+    slackWebhookUrl,
+    setSlackWebhookUrl,
+    slackNotificationsEnabled,
+    setSlackNotificationsEnabled,
+    teamsWebhookUrl,
+    setTeamsWebhookUrl,
+    teamsNotificationsEnabled,
+    setTeamsNotificationsEnabled,
+  } = psa;
+  const {
+    profileLoaded: onboardingProfileLoaded,
+    requiredExplicit: onboardingRequiredExplicit,
+    setRequiredExplicit: setOnboardingRequiredExplicit,
+    overlayOpen: onboardingOverlayOpen,
+    setOverlayOpen: setOnboardingOverlayOpen,
+  } = onboarding;
   const [gettingStartedChecklistMountKey, setGettingStartedChecklistMountKey] = useState(0);
-  const [authUserId, setAuthUserId] = useState<string | null>(null);
   const showLeftSidebar = Boolean(userEmail);
-  const [userFirstName, setUserFirstName] = useState<string | null>(null);
-  const [userCreatedAt, setUserCreatedAt] = useState<string | null>(null);
-  const [plan, setPlan] = useState<"free" | "pro" | "team" | "enterprise" | null>(
-    null,
-  );
-  /** Raw `profiles.plan` for `getPlanLabel` (sidebar badge). */
-  const [profileDbPlan, setProfileDbPlan] = useState<string | null>(null);
-  const [trialEndsAt, setTrialEndsAt] = useState<string | null>(null);
-  const [profileTrialPlan, setProfileTrialPlan] = useState<string | null>(null);
-  const [profileSubscriptionStatus, setProfileSubscriptionStatus] = useState<string | null>(null);
-  const [planBadgeReady, setPlanBadgeReady] = useState(false);
-  const [userTeamId, setUserTeamId] = useState<string | null>(null);
-  const [showTeamDashboardLink, setShowTeamDashboardLink] = useState(false);
-  /** Pro-tier UI (same rule as `/api/delivery-health` — full `profiles` billing fields). */
-  const hasProAccess = useMemo(
-    () =>
-      hasProTierAccess(
-        planFieldsFromProfileRow({
-          plan: profileDbPlan,
-          team_id: userTeamId,
-          trial_ends_at: trialEndsAt,
-          trial_plan: profileTrialPlan,
-          subscription_status: profileSubscriptionStatus,
-        }),
-      ),
-    [
-      profileDbPlan,
-      userTeamId,
-      trialEndsAt,
-      profileTrialPlan,
-      profileSubscriptionStatus,
-    ],
-  );
-
-  const soloGenerationLocked = useMemo(
-    () =>
-      isSoloGenerationBlockedByPlan(
-        planFieldsFromProfileRow({
-          plan: profileDbPlan,
-          team_id: userTeamId,
-          trial_ends_at: trialEndsAt,
-          trial_plan: profileTrialPlan,
-          subscription_status: profileSubscriptionStatus,
-        }),
-      ),
-    [
-      profileDbPlan,
-      userTeamId,
-      trialEndsAt,
-      profileTrialPlan,
-      profileSubscriptionStatus,
-    ],
-  );
-
-  const isExpiredTrial = useMemo(() => {
-    if (!trialEndsAt) return false;
-    return new Date(trialEndsAt) <= new Date();
-  }, [trialEndsAt]);
-
-  const qbrUsageHint = useMemo(
-    () =>
-      qbrPackUsageHintCopy(
-        planFieldsFromProfileRow({
-          plan: profileDbPlan,
-          team_id: userTeamId,
-          trial_ends_at: trialEndsAt,
-          trial_plan: profileTrialPlan,
-          subscription_status: profileSubscriptionStatus,
-        }),
-        null,
-      ),
-    [
-      profileDbPlan,
-      userTeamId,
-      trialEndsAt,
-      profileTrialPlan,
-      profileSubscriptionStatus,
-    ],
-  );
-
-  /** Stripe: no second subscription trial while Handover in-app trial is active (server also checks profile). */
-  const checkoutHasActiveSoloTrial = useMemo(() => {
-    if (userTeamId) return false;
-    if (!trialEndsAt || Number.isNaN(Date.parse(trialEndsAt))) return false;
-    if (new Date(trialEndsAt) <= new Date()) return false;
-    const pdb = normalizePlanLabel(profileDbPlan ?? "");
-    return (
-      pdb === "professional_trial" ||
-      pdb === "team_trial" ||
-      (pdb === "free" && Boolean(profileTrialPlan?.trim()))
-    );
-  }, [userTeamId, trialEndsAt, profileDbPlan, profileTrialPlan]);
-
   const onboardingWelcomeFirst = useMemo(() => {
     const fromProfile = userFirstName?.trim();
     if (fromProfile) {
@@ -2029,22 +2554,12 @@ export default function Home() {
     );
   }, [userFirstName, userEmail]);
 
-  const [monthCount, setMonthCount] = useState<number | null>(null);
-  const [monthlyStats, setMonthlyStats] = useState<{
-    this_month: number;
-    last_month: number;
-  } | null>(null);
-  const [monthlyStatsLoading, setMonthlyStatsLoading] = useState(false);
-  const [totalGenerationCount, setTotalGenerationCount] = useState<number | null>(null);
-  /** Consecutive UTC days with at least one saved generation (from profiles.current_streak). */
-  const [generationStreak, setGenerationStreak] = useState(0);
   const [streakFlameBurst, setStreakFlameBurst] = useState(false);
   /** One dismissible referral line per browser session after a successful generation (output panel). */
   const [showPostGenReferralFooter, setShowPostGenReferralFooter] = useState(false);
   const [firstGenTipDismissed, setFirstGenTipDismissed] = useState<boolean | null>(null);
   const [pro75Dismissed, setPro75Dismissed] = useState(false);
   const [showProTeamRecommendation, setShowProTeamRecommendation] = useState(false);
-  const [isSigningOut, setIsSigningOut] = useState(false);
 
   const [input, setInput] = useState("");
   const [projectName, setProjectName] = useState("");
@@ -2060,6 +2575,11 @@ export default function Home() {
     [input, lastInput],
   );
   const [isGenerating, setIsGenerating] = useState(false);
+  const [genProgress, setGenProgress] = useState(0);
+  const genProgressRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const genStartTime = useRef<number | null>(null);
+  const [lastGenDurationMs, setLastGenDurationMs] = useState<number | null>(null);
+  const [showTimeSaved, setShowTimeSaved] = useState(false);
   const [generationLongWait, setGenerationLongWait] = useState(false);
   /** UI-only: brief "Compacting..." before fetch when input is over the soft character cap. */
   const [generationPhase, setGenerationPhase] = useState<
@@ -2070,6 +2590,9 @@ export default function Home() {
   const [importedFileName, setImportedFileName] = useState<string | null>(null);
   const [importedFileTypeLabel, setImportedFileTypeLabel] = useState<string | null>(null);
   const [lastImportedHaloItems, setLastImportedHaloItems] = useState<ImportedHaloItem[]>([]);
+  const [lastInputQuality, setLastInputQuality] = useState<{ score: number; reasons: string[] } | null>(
+    null,
+  );
   const [lastImportSourcePsa, setLastImportSourcePsa] = useState<"halopsa" | "connectwise" | null>(null);
   const [pushModalOpen, setPushModalOpen] = useState(false);
   /** Mobile (< md) stepped layout inside push modal; desktop ignores. */
@@ -2103,6 +2626,15 @@ export default function Home() {
     ("client_email" | "actions" | "risks" | "summary" | "status_report")[]
   >([]);
   const [result, setResult] = useState<GenerateResult | null>(null);
+  const [savedGenerationId, setSavedGenerationId] = useState<string | null>(null);
+  const [compareResult, setCompareResult] = useState<CompareResultPayload | null>(null);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareNoPrevious, setCompareNoPrevious] = useState(false);
+  const [hasPreviousReport, setHasPreviousReport] = useState(false);
+  const [stagedCompareExample, setStagedCompareExample] = useState(false);
+  const [generationRating, setGenerationRating] = useState<"positive" | "negative" | null>(
+    null,
+  );
   const [reportQualityTipsOpen, setReportQualityTipsOpen] = useState(false);
   const [followUpLoading, setFollowUpLoading] = useState(false);
   const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
@@ -2119,6 +2651,8 @@ export default function Home() {
   const outputTabScrollRef = useRef<HTMLDivElement | null>(null);
   const [outputTabScrollEdges, setOutputTabScrollEdges] = useState({ left: false, right: false });
   const [isInputCollapsed, setIsInputCollapsed] = useState(false);
+  /** Empty-layout "Add manually" — presentation only; does not affect import/generation logic. */
+  const [generateManualExpanded, setGenerateManualExpanded] = useState(false);
   const [fullReportExportPickerOpen, setFullReportExportPickerOpen] = useState(false);
   const [schedulePrefillImportBanner, setSchedulePrefillImportBanner] = useState(false);
   const [scheduleWizardNextFlash, setScheduleWizardNextFlash] = useState(false);
@@ -2201,12 +2735,10 @@ export default function Home() {
   const [clientContactName, setClientContactName] = useState("");
   const [showSuccessBanner, setShowSuccessBanner] = useState(false);
   const [showSignUpBanner, setShowSignUpBanner] = useState(false);
-  const [trialBannerDismissed, setTrialBannerDismissed] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  const authChecked = mounted;
+  const mounted = authChecked;
   const [dashGreeting, setDashGreeting] = useState<string | null>(null);
   const [checkoutLoadingPriceId, setCheckoutLoadingPriceId] = useState<string | null>(null);
-  /** Active Stripe subscription on monthly Pro or Team price - offer portal to switch to annual */
+  /** Active Stripe subscription on monthly Starter or Growth price - offer portal to switch to annual */
   const [stripeMonthlyPayingPlan, setStripeMonthlyPayingPlan] = useState<
     "professional" | "team" | null
   >(null);
@@ -2224,9 +2756,6 @@ export default function Home() {
   const [selectedHistoryCollectionId, setSelectedHistoryCollectionId] = useState<string | null>(
     null,
   );
-  const [onboardingProfileLoaded, setOnboardingProfileLoaded] = useState(false);
-  const [onboardingRequiredExplicit, setOnboardingRequiredExplicit] = useState(false);
-  const [onboardingOverlayOpen, setOnboardingOverlayOpen] = useState(false);
   const [onboardingPageVisited, setOnboardingPageVisited] = useState(false);
   const onboardingRedirectPending = useMemo(() => {
     if (!userEmail) return false;
@@ -2242,10 +2771,13 @@ export default function Home() {
   ]);
   const lastOnboardingHydratedUserIdRef = useRef<string | null>(null);
   const autoRestoreLastSessionRanRef = useRef(false);
+  const [stagedGenerationReady, setStagedGenerationReady] = useState(false);
+  const [shouldAutoStartTour, setShouldAutoStartTour] = useState(false);
+  const tourAutoStartAttemptedRef = useRef(false);
+  const tourCompletionCelebrationFiredRef = useRef(false);
   const [proFeatureGate, setProFeatureGate] = useState<string | null>(null);
   const [showPostGenProUpsell, setShowPostGenProUpsell] = useState(false);
   /** True after user has pushed to PSA or sent client email at least once (profiles.has_completed_loop). */
-  const [hasCompletedLoop, setHasCompletedLoop] = useState(false);
   /** When non-null, show dismissible banner above output after auto-restoring last generation. */
   const [lastSessionRestoreBannerProject, setLastSessionRestoreBannerProject] =
     useState<ProjectItem | null>(null);
@@ -2257,7 +2789,6 @@ export default function Home() {
   const [templateNameDraft, setTemplateNameDraft] = useState("");
   const [regenInstruction, setRegenInstruction] = useState<Record<string, string>>({});
   const [regenLoadingFor, setRegenLoadingFor] = useState<string | null>(null);
-  const [sidebarOpenMobile, setSidebarOpenMobile] = useState(false);
   const [chatsModalOpen, setChatsModalOpen] = useState(false);
   const [firstGenCelebrationOpen, setFirstGenCelebrationOpen] = useState(false);
   const [hasExportedExcel, setHasExportedExcel] = useState(() => {
@@ -2268,18 +2799,9 @@ export default function Home() {
       return false;
     }
   });
-  const [teamMemberCount, setTeamMemberCount] = useState<number | null>(null);
-  const [teamMemberRole, setTeamMemberRole] = useState<string | null>(null);
-  const [teamDashboardPermission, setTeamDashboardPermission] =
-    useState<TeamDashboardPermission>("full");
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<"profile" | "preferences" | "referrals">(
-    "profile",
-  );
-  const [prefsAccordionOpen, setPrefsAccordionOpen] = useState<Record<string, boolean>>({});
-  const togglePrefsAccordion = useCallback((section: string) => {
-    setPrefsAccordionOpen((prev) => ({ ...prev, [section]: !prev[section] }));
-  }, []);
+  const settingsTab = settings.tab;
+  const setSettingsOpen = settings.setOpen;
+  const setSettingsTab = settings.setTab;
   const [configurationTargetSection, setConfigurationTargetSection] =
     useState<ConfigurationTargetSection | null>(null);
   const clearConfigurationTargetSection = useCallback(() => {
@@ -2296,19 +2818,92 @@ export default function Home() {
     },
     [],
   );
-  const [mainView, setMainView] = useState<
-    | "overview"
-    | "generate"
-    | "reports"
-    | "delivery"
-    | "scheduled"
-    | "configuration"
-    | "organisation"
-    | "changelog"
-  >("overview");
+  const [mainView, setMainView] = useState<MainView>("overview");
+  const viewUrlHydratedRef = useRef(false);
+  const viewChangedFromUrlRef = useRef(false);
+
+  useEffect(() => {
+    const viewParam = searchParams.get("view");
+    if (isMainView(viewParam) && viewParam !== mainView) {
+      viewChangedFromUrlRef.current = true;
+      setMainView(viewParam);
+    }
+    viewUrlHydratedRef.current = true;
+  }, [mainView, searchParams]);
+
+  useEffect(() => {
+    if (!viewUrlHydratedRef.current) return;
+    if (viewChangedFromUrlRef.current) {
+      viewChangedFromUrlRef.current = false;
+      return;
+    }
+
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("view") === mainView) return;
+    url.searchParams.set("view", mainView);
+
+    const query = url.searchParams.toString();
+    const nextUrl = `${url.pathname}${query ? `?${query}` : ""}${url.hash}`;
+    window.history.replaceState(window.history.state, "", nextUrl);
+    window.dispatchEvent(new Event("handover:view-change"));
+  }, [mainView]);
+
+  const [reportsSubView, setReportsSubView] = useState<
+    "service-review" | "qbr"
+  >("service-review");
+  const reportsSubviewUrlHydratedRef = useRef(false);
+  const reportsSubviewChangedFromUrlRef = useRef(false);
+
+  useEffect(() => {
+    const value = searchParams.get("reportsSubview");
+    const fromUrl =
+      value === "qbr"
+        ? "qbr"
+        : value === "service" || value === "service-review"
+          ? "service-review"
+          : null;
+    if (fromUrl && fromUrl !== reportsSubView) {
+      reportsSubviewChangedFromUrlRef.current = true;
+      setReportsSubView(fromUrl);
+    }
+    reportsSubviewUrlHydratedRef.current = true;
+  }, [reportsSubView, searchParams]);
+
+  useEffect(() => {
+    if (!reportsSubviewUrlHydratedRef.current) return;
+    if (reportsSubviewChangedFromUrlRef.current) {
+      reportsSubviewChangedFromUrlRef.current = false;
+      return;
+    }
+    const url = new URL(window.location.href);
+    const nextValue = reportsSubView === "qbr" ? "qbr" : "service";
+    if (url.searchParams.get("reportsSubview") === nextValue) return;
+    url.searchParams.set("reportsSubview", nextValue);
+    const query = url.searchParams.toString();
+    const nextUrl = `${url.pathname}${query ? `?${query}` : ""}${url.hash}`;
+    window.history.replaceState(window.history.state, "", nextUrl);
+  }, [reportsSubView]);
+  const [qbrIntelligenceContext, setQbrIntelligenceContext] = useState<{
+    clientName: string;
+    accountNarrative: string;
+    keyAchievements: string[];
+    openRisks: string[];
+    qbrTalkingPoints: string[];
+    relationshipHealth: string;
+  } | null>(null);
   const [deliveryHealthPresetClient, setDeliveryHealthPresetClient] = useState("");
-  const [sidebarPinned, setSidebarPinned] = useState(false);
-  const [sidebarHovered, setSidebarHovered] = useState(false);
+  const [deliveryHealthPresetReason, setDeliveryHealthPresetReason] = useState("");
+  const [deliveryHealthPresetAffectedItems, setDeliveryHealthPresetAffectedItems] = useState<
+    string[]
+  >([]);
+  const [clientIntelligencePresetClient, setClientIntelligencePresetClient] = useState<
+    string | null
+  >(null);
+  const [clientIntelligencePresetTab, setClientIntelligencePresetTab] = useState<
+    "history" | "summary" | null
+  >(null);
+  const [clientIntelligencePresetHighlight, setClientIntelligencePresetHighlight] =
+    useState(false);
   const [projectsBootstrapped, setProjectsBootstrapped] = useState(false);
   const [integrationsInitialDetail, setIntegrationsInitialDetail] = useState<
     "halo" | "connectwise" | null
@@ -2328,7 +2923,49 @@ export default function Home() {
     fetchedAt: number;
   } | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [digestSettings, setDigestSettings] = useState<{
+    enabled: boolean;
+    frequency: string;
+    send_day: string;
+    send_time: string;
+    delivery_email: boolean;
+    delivery_slack: boolean;
+    delivery_teams: boolean;
+    email_to: string;
+  } | null>(null);
+  const [digestLoading, setDigestLoading] = useState(false);
+  const [digestSaving, setDigestSaving] = useState(false);
+  const [digestSettingsExpanded, setDigestSettingsExpanded] = useState(false);
+  const [scheduledCiOpen, setScheduledCiOpen] = useState(false);
+  const [newCiScheduleType, setNewCiScheduleType] = useState<"service_review" | "qbr">("service_review");
+  const [newCiFrequency, setNewCiFrequency] = useState<"weekly" | "fortnightly" | "monthly">("monthly");
+  const [newCiScheduleClient, setNewCiScheduleClient] = useState("");
+  const [newCiScheduleEmail, setNewCiScheduleEmail] = useState("");
+  const [newCiScheduleDay, setNewCiScheduleDay] = useState("monday");
+  const [newCiScheduleTime, setNewCiScheduleTime] = useState("08:00");
+  const [newCiHoldForReview, setNewCiHoldForReview] = useState(false);
+  const [editingCiScheduleId, setEditingCiScheduleId] = useState<string | null>(null);
+  const [savingCiSchedule, setSavingCiSchedule] = useState(false);
+  const [ciClients, setCiClients] = useState<{ name: string }[]>([]);
   const [sendingNowId, setSendingNowId] = useState<string | null>(null);
+  const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
+  const [pendingApprovals, setPendingApprovals] = useState<
+    Array<{
+      id: string;
+      schedule_id: string | null;
+      source: string;
+      created_at: string;
+      schedule_name: string | null;
+      client_label: string | null;
+      subject: string | null;
+      text: string | null;
+      html: string | null;
+    }>
+  >([]);
+  const [pendingApprovalsLoading, setPendingApprovalsLoading] = useState(false);
+  const [approvalActionId, setApprovalActionId] = useState<string | null>(null);
+  const [rejectConfirmApprovalId, setRejectConfirmApprovalId] = useState<string | null>(null);
+  const [expandedApprovalIds, setExpandedApprovalIds] = useState<Set<string>>(() => new Set());
   const [deleteConfirmScheduleId, setDeleteConfirmScheduleId] = useState<string | null>(null);
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [schEnabled, setSchEnabled] = useState(false);
@@ -2380,12 +3017,14 @@ export default function Home() {
       brand_name?: string | null;
       email_tone?: string | null;
       push_to_halo?: boolean | null;
+      hold_for_review?: boolean | null;
       halo_push_outputs?: string[] | null;
       halo_push_excel?: boolean | null;
       halo_push_excel_tabs?: string[] | null;
       halo_push_target?: "all" | "projects" | "tickets" | null;
       post_to_ticket_ids?: number[] | null;
       post_consolidated?: boolean | null;
+      ci_qbr_client_name?: string | null;
     }>
   >([]);
   /** Master toggle UI — not derived from `campaigns.every(enabled)` so pausing one row cannot flip it. */
@@ -2431,6 +3070,7 @@ export default function Home() {
   });
   const [schAttachExcel, setSchAttachExcel] = useState(true);
   const [schPushToHalo, setSchPushToHalo] = useState(false);
+  const [schHoldForReview, setSchHoldForReview] = useState(false);
   const [schHaloPushOutputs, setSchHaloPushOutputs] = useState<string[]>([
     "client_email",
     "actions",
@@ -2449,23 +3089,6 @@ export default function Home() {
     {},
   );
   const [scheduleCountsLoading, setScheduleCountsLoading] = useState(false);
-  const [reportHistory, setReportHistory] = useState<
-    {
-      id: string;
-      sent_at: string;
-      email_to: string | null;
-      tickets_processed: number | null;
-      clients_covered: string[] | null;
-      status: string | null;
-      error_message: string | null;
-    }[]
-  >([]);
-  const [reportHistoryLoading, setReportHistoryLoading] = useState(false);
-  const [profileFirstName, setProfileFirstName] = useState("");
-  const [profileLastName, setProfileLastName] = useState("");
-  const [profileDisplayName, setProfileDisplayName] = useState("");
-  const [profileJobTitle, setProfileJobTitle] = useState("");
-  const [profileCompanyName, setProfileCompanyName] = useState("");
   const [portalSlug, setPortalSlug] = useState("");
   const [portalSlugChecking, setPortalSlugChecking] = useState(false);
   const [portalSlugAvailable, setPortalSlugAvailable] = useState<boolean | null>(null);
@@ -2476,18 +3099,10 @@ export default function Home() {
   const [deliveryPortalClients, setDeliveryPortalClients] = useState<
     Array<{ clientName: string; slug: string; mspSlug: string }>
   >([]);
-  const [brandName, setBrandName] = useState("");
-  const [brandColour, setBrandColour] = useState(HANDOVER_BRAND_PRIMARY_HEX);
-  const [brandSecondaryColour, setBrandSecondaryColour] = useState(HANDOVER_BRAND_SECONDARY_HEX);
-  const [brandLogoUrl, setBrandLogoUrl] = useState("");
-  const [brandLogoPreviewKey, setBrandLogoPreviewKey] = useState(0);
   const [brandLogoUploading, setBrandLogoUploading] = useState(false);
-  const [brandColourError, setBrandColourError] = useState("");
-  const [brandSecondaryColourError, setBrandSecondaryColourError] = useState("");
   const logoFileInputRef = useRef<HTMLInputElement>(null);
   const brandPrimaryColorPickerRef = useRef<HTMLInputElement>(null);
   const brandSecondaryColorPickerRef = useRef<HTMLInputElement>(null);
-  const [whiteLabelMode, setWhiteLabelMode] = useState(false);
   const isLogoUrlAccessible = useCallback(async (url: string): Promise<boolean> => {
     const trimmed = url.trim();
     if (!trimmed) return false;
@@ -2505,12 +3120,6 @@ export default function Home() {
     }
   }, []);
 
-  const [signatureOverride, setSignatureOverride] = useState("");
-  const [writingStyle, setWritingStyle] = useState("");
-  const [compactMode, setCompactMode] = useState(false);
-  const [dashboardViewMode, setDashboardViewMode] = useState<"paginated" | "continuous">("paginated");
-  const [showCharacterCount, setShowCharacterCount] = useState(true);
-  const [privacyMode, setPrivacyMode] = useState(false);
   const toast = useToast();
 
   const flushAchievementToasts = useCallback(
@@ -2554,31 +3163,25 @@ export default function Home() {
     [toast],
   );
 
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    if (typeof window === "undefined") return "dark";
-    const saved = window.localStorage.getItem("handover-theme");
-    return saved === "light" ? "light" : "dark";
-  });
-  const [heroDashboard3dHovered, setHeroDashboard3dHovered] = useState(false);
-  const [confirmSignOut, setConfirmSignOut] = useState(false);
-  const [haloConnected, setHaloConnected] = useState(false);
-  const [haloUrl, setHaloUrl] = useState("");
-  const [haloUpdatedAt, setHaloUpdatedAt] = useState<string | null>(null);
   const [haloImportedCount, setHaloImportedCount] = useState<number>(0);
+  const [featuredShot, setFeaturedShot] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setFeaturedShot((prev) => (prev + 1) % 6);
+    }, 3500);
+    return () => clearInterval(interval);
+  }, []);
+  const [lightboxImage, setLightboxImage] = useState<{ src: string; alt: string } | null>(null);
   const [haloTestLoading, setHaloTestLoading] = useState(false);
-  const [haloAutoClosureSummary, setHaloAutoClosureSummary] = useState(false);
   const [haloAutoClosureSummaryBusy, setHaloAutoClosureSummaryBusy] = useState(false);
   const [haloTenant, setHaloTenant] = useState("");
   const [haloClientId, setHaloClientId] = useState("");
   const [haloClientSecret, setHaloClientSecret] = useState("");
   const [haloError, setHaloError] = useState<string | null>(null);
-  const [haloReconnectRecommended, setHaloReconnectRecommended] = useState(false);
   const [haloPermissionWarning, setHaloPermissionWarning] = useState<string | null>(null);
   const [haloLoading, setHaloLoading] = useState(false);
-  const [slackWebhookUrl, setSlackWebhookUrl] = useState("");
-  const [slackNotificationsEnabled, setSlackNotificationsEnabled] = useState(false);
-  const [teamsWebhookUrl, setTeamsWebhookUrl] = useState("");
-  const [teamsNotificationsEnabled, setTeamsNotificationsEnabled] = useState(false);
+  const slackConnected = Boolean(slackWebhookUrl.trim());
+  const teamsConnected = Boolean(teamsWebhookUrl.trim());
   const [slackWebhookSaveLoading, setSlackWebhookSaveLoading] = useState(false);
   const [teamsWebhookSaveLoading, setTeamsWebhookSaveLoading] = useState(false);
   const [slackWebhookTestLoading, setSlackWebhookTestLoading] = useState(false);
@@ -2587,7 +3190,6 @@ export default function Home() {
   const [cwImportOpen, setCwImportOpen] = useState(false);
   const [haloHelpOpen, setHaloHelpOpen] = useState(false);
   const [haloConfigOpen, setHaloConfigOpen] = useState(false);
-  const [cwConnected, setCwConnected] = useState(false);
   const [haloLastSynced, setHaloLastSynced] = useState<Date | null>(null);
   const [cwLastSynced, setCwLastSynced] = useState<Date | null>(null);
   const { data: cachedHaloTickets, mutate: refreshHaloTicketsCache } = useHaloTickets(haloConnected);
@@ -2601,7 +3203,6 @@ export default function Home() {
   useEffect(() => {
     if (cachedCwTickets) setCwLastSynced(new Date());
   }, [cachedCwTickets]);
-  const [cwSiteUrl, setCwSiteUrl] = useState("");
   const [cwImportedCount, setCwImportedCount] = useState<number>(0);
   const [cwSiteUrlInput, setCwSiteUrlInput] = useState("");
   const [cwCompanyIdInput, setCwCompanyIdInput] = useState("");
@@ -2614,11 +3215,19 @@ export default function Home() {
   const [cwTestLoading, setCwTestLoading] = useState(false);
   const [cwTestOk, setCwTestOk] = useState<boolean | null>(null);
   const [cwTestMessage, setCwTestMessage] = useState<string | null>(null);
-  const psaConnections = usePSAConnections({
-    halopsa: haloConnected,
-    connectwise: cwConnected,
-  });
-  const psaStatus = usePSAStatus();
+  const psaConnections = useMemo(() => {
+    const multiple = haloConnected && cwConnected;
+    return {
+      halopsa: haloConnected,
+      connectwise: cwConnected,
+      primary: haloConnected ? ("halopsa" as const) : cwConnected ? ("connectwise" as const) : null,
+      multiple,
+    };
+  }, [cwConnected, haloConnected]);
+  const psaStatus = useMemo(
+    () => ({ loading: psaLoading, halo: haloConnected, connectwise: cwConnected }),
+    [cwConnected, haloConnected, psaLoading],
+  );
   const noPsaConnected = !psaStatus.loading && !psaStatus.halo && !psaStatus.connectwise;
   useEffect(() => {
     try {
@@ -2633,6 +3242,11 @@ export default function Home() {
     Boolean(userEmail) &&
     !psaStatus.loading &&
     ((noPsaConnected && !demoDisabled) || demoForceEnabled);
+  const psaConnected =
+    !psaStatus.loading && (psaStatus.halo || psaStatus.connectwise);
+  const demoToggleChecked = psaConnected
+    ? demoForceEnabled
+    : demoForceEnabled || (noPsaConnected && !demoDisabled);
   const showDemoDataBanner = demoModeActive && sessionUsesDemoData;
   const importPsaLabel =
     psaConnections.primary === "connectwise" && !psaConnections.multiple
@@ -2674,254 +3288,6 @@ export default function Home() {
     }
   }, [psaConnections.multiple, psaConnections.primary, lastImportSourcePsa]);
 
-  const refreshUsage = useCallback(async (): Promise<number | null> => {
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      setUserEmail(null);
-      setAuthUserId(null);
-      setUserFirstName(null);
-      setUserCreatedAt(null);
-      setPlan(null);
-      setProfileDbPlan(null);
-      setTrialEndsAt(null);
-      setPlanBadgeReady(false);
-      setUserTeamId(null);
-      setShowTeamDashboardLink(false);
-      setMonthCount(null);
-      setMonthlyStats(null);
-      setMonthlyStatsLoading(false);
-      setTotalGenerationCount(null);
-      setGenerationStreak(0);
-      setHasCompletedLoop(false);
-      setTemplates([]);
-      setProjects([]);
-      setOverviewHealthRows([]);
-      setCollections([]);
-      lastOnboardingHydratedUserIdRef.current = null;
-      setOnboardingProfileLoaded(true);
-      setOnboardingRequiredExplicit(false);
-      setOnboardingOverlayOpen(false);
-      return null;
-    }
-    if (lastOnboardingHydratedUserIdRef.current !== user.id) {
-      setOnboardingProfileLoaded(false);
-    }
-    setUserEmail(user.email ?? null);
-    setAuthUserId(user.id);
-    setUserCreatedAt(typeof user.created_at === "string" ? user.created_at : null);
-    setShowSignUpBanner(false);
-
-    const PROFILE_SELECT_FULL =
-      "plan, team_id, stripe_customer_id, subscription_status, trial_ends_at, trial_plan, first_name, last_name, display_name, job_title, company_name, brand_name, brand_colour, brand_secondary_colour, brand_logo_url, white_label_mode, signature_override, custom_signoff, writing_style, privacy_mode, compact_mode, show_character_count, dashboard_view_mode, output_preferences, total_generations, current_streak, onboarding_completed, referred_by, slack_webhook_url, slack_notifications_enabled, teams_webhook_url, teams_notifications_enabled, has_completed_loop, last_generation_at";
-    const PROFILE_SELECT_FALLBACK =
-      "plan, team_id, stripe_customer_id, subscription_status, trial_ends_at, trial_plan, first_name, last_name, job_title, company_name, brand_name, brand_colour, brand_secondary_colour, brand_logo_url, white_label_mode, signature_override, custom_signoff, writing_style, privacy_mode, compact_mode, show_character_count, output_preferences, total_generations, current_streak, onboarding_completed, referred_by, slack_webhook_url, slack_notifications_enabled, teams_webhook_url, teams_notifications_enabled, has_completed_loop, last_generation_at";
-
-    let profileRes = await supabase
-      .from("profiles")
-      .select(PROFILE_SELECT_FULL)
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (profileRes.error) {
-      console.warn(
-        "[refreshUsage] profile select failed (retrying without display_name):",
-        profileRes.error.message,
-      );
-      profileRes = await supabase
-        .from("profiles")
-        .select(PROFILE_SELECT_FALLBACK)
-        .eq("id", user.id)
-        .maybeSingle();
-      if (profileRes.error) {
-        console.error("[refreshUsage] profile fallback failed:", profileRes.error.message);
-      }
-    }
-
-    const profile = profileRes.data;
-
-    setOnboardingRequiredExplicit(profile?.onboarding_completed === false);
-    setOnboardingProfileLoaded(true);
-    lastOnboardingHydratedUserIdRef.current = user.id;
-
-    const planFields = planFieldsFromProfileRow(profile);
-    const stripeCustRaw =
-      typeof profile?.stripe_customer_id === "string"
-        ? profile.stripe_customer_id.trim()
-        : "";
-
-    if (stripeCustRaw && !hasProTierAccess(planFields)) {
-      try {
-        const rec = await fetch("/api/profile/reconcile-stripe-plan", {
-          method: "POST",
-          credentials: "same-origin",
-          cache: "no-store",
-        });
-        if (rec.ok) {
-          const j = (await rec.json()) as {
-            updated?: boolean;
-            plan?: string | null;
-            team_id?: string | null;
-          };
-          if (j.updated) {
-            await getUserPlan(supabase, user.id);
-          }
-        }
-      } catch {
-        /* ignore reconcile failures */
-      }
-    }
-
-    const canonical = await getUserPlan(supabase, user.id);
-    const tidCanon =
-      typeof canonical.team_id === "string" && canonical.team_id.trim()
-        ? canonical.team_id.trim()
-        : null;
-    setUserTeamId(tidCanon);
-    setProfileDbPlan(typeof canonical.plan === "string" ? canonical.plan : null);
-    setTrialEndsAt(
-      typeof canonical.trial_ends_at === "string" && canonical.trial_ends_at.trim()
-        ? canonical.trial_ends_at.trim()
-        : null,
-    );
-    setProfileTrialPlan(
-      typeof canonical.trial_plan === "string" && canonical.trial_plan.trim()
-        ? canonical.trial_plan.trim()
-        : null,
-    );
-    setProfileSubscriptionStatus(
-      typeof canonical.subscription_status === "string" && canonical.subscription_status.trim()
-        ? canonical.subscription_status.trim()
-        : null,
-    );
-    const uiPlan = profilePlanToUiTier(canonical);
-    setPlan(uiPlan);
-    setPlanBadgeReady(true);
-
-    let showTeamLink = false;
-    try {
-      const res = await fetch("/api/user/team-sidebar", {
-        credentials: "same-origin",
-        cache: "no-store",
-      });
-      const body = (await res.json()) as { showTeamSidebarLink?: boolean };
-      showTeamLink = body.showTeamSidebarLink === true;
-    } catch {
-      showTeamLink = false;
-    }
-    setShowTeamDashboardLink(showTeamLink);
-    setUserFirstName(
-      typeof profile?.first_name === "string" ? profile.first_name : null,
-    );
-    setProfileFirstName(typeof profile?.first_name === "string" ? profile.first_name : "");
-    setProfileLastName(typeof profile?.last_name === "string" ? profile.last_name : "");
-    setProfileDisplayName(
-      typeof profile?.display_name === "string" ? profile.display_name : "",
-    );
-    setProfileJobTitle(typeof profile?.job_title === "string" ? profile.job_title : "");
-    setProfileCompanyName(typeof profile?.company_name === "string" ? profile.company_name : "");
-    if (uiPlan === "enterprise") {
-      try {
-        const portalRes = await fetch("/api/portal/account", {
-          credentials: "same-origin",
-          cache: "no-store",
-        });
-        const portalBody = (await portalRes.json()) as {
-          portal?: { slug?: string | null } | null;
-        };
-        setPortalSlug(
-          typeof portalBody?.portal?.slug === "string" ? portalBody.portal.slug : "",
-        );
-      } catch {
-        setPortalSlug("");
-      }
-    } else {
-      setPortalSlug("");
-    }
-    setBrandName(typeof profile?.brand_name === "string" ? profile.brand_name : "");
-    setBrandColour(
-      typeof profile?.brand_colour === "string" && HEX_COLOUR_6.test(profile.brand_colour.trim())
-        ? formatHex6Display(profile.brand_colour.trim())
-        : HANDOVER_BRAND_PRIMARY_HEX,
-    );
-    setBrandSecondaryColour(
-      typeof profile?.brand_secondary_colour === "string" &&
-        HEX_COLOUR_6.test(profile.brand_secondary_colour.trim())
-        ? formatHex6Display(profile.brand_secondary_colour.trim())
-        : HANDOVER_BRAND_SECONDARY_HEX,
-    );
-    const logoFromProfile =
-      typeof profile?.brand_logo_url === "string" ? profile.brand_logo_url.trim() : "";
-    setBrandLogoUrl(logoFromProfile);
-    setWhiteLabelMode((profile as { white_label_mode?: boolean })?.white_label_mode === true);
-    setSlackWebhookUrl(
-      typeof profile?.slack_webhook_url === "string" ? profile.slack_webhook_url : "",
-    );
-    setSlackNotificationsEnabled(profile?.slack_notifications_enabled === true);
-    setTeamsWebhookUrl(
-      typeof profile?.teams_webhook_url === "string" ? profile.teams_webhook_url : "",
-    );
-    setTeamsNotificationsEnabled(profile?.teams_notifications_enabled === true);
-    setSignatureOverride(
-      typeof profile?.signature_override === "string" && profile.signature_override.trim()
-        ? profile.signature_override
-        : "",
-    );
-    setWritingStyle(
-      typeof profile?.writing_style === "string" ? profile.writing_style : "",
-    );
-    setCompactMode(Boolean(profile?.compact_mode));
-    const dvmRaw =
-      profile && typeof profile === "object"
-        ? (profile as { dashboard_view_mode?: unknown }).dashboard_view_mode
-        : null;
-    setDashboardViewMode(
-      typeof dvmRaw === "string" && dvmRaw.trim().toLowerCase() === "continuous"
-        ? "continuous"
-        : "paginated",
-    );
-    setShowCharacterCount(profile?.show_character_count !== false);
-    setPrivacyMode(Boolean(profile?.privacy_mode));
-    setHasCompletedLoop(
-      (profile as { has_completed_loop?: boolean } | null)?.has_completed_loop === true,
-    );
-
-    const hydrated = hydrateOutputPrefsFromProfile(profile?.output_preferences);
-    setOutputPrefs(hydrated.core);
-    if (Object.values(hydrated.extended).every((v) => v === false)) {
-      setExtendedOutputPrefs(defaultExtendedOutputPrefs());
-    } else {
-      setExtendedOutputPrefs(hydrated.extended);
-    }
-
-    const [monthRes, totalRes] = await Promise.all([
-      supabase
-        .from("generations")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", user.id)
-        .gte("created_at", startOfMonthUtcIso()),
-      supabase
-        .from("generations")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", user.id),
-    ]);
-
-    setMonthCount(monthRes.count ?? 0);
-    const pg = profile as { total_generations?: number; current_streak?: number } | null;
-    if (typeof pg?.current_streak === "number" && pg.current_streak >= 0) {
-      setGenerationStreak(pg.current_streak);
-    }
-    const fromProfile =
-      typeof pg?.total_generations === "number" ? pg.total_generations : null;
-    const fromTable = totalRes.count ?? 0;
-    const total =
-      fromProfile !== null ? Math.max(fromProfile, fromTable) : fromTable;
-    setTotalGenerationCount(total);
-    return total;
-  }, []);
-
   const scheduleNpsAfterGeneration = useCallback((userId: string) => {
     if (typeof window === "undefined") return;
     if (window.localStorage.getItem("handover-nps-shown") === "true") return;
@@ -2962,72 +3328,6 @@ export default function Home() {
     }
   }, []);
 
-  const refreshHaloConnection = useCallback(async () => {
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      setHaloConnected(false);
-      setHaloUrl("");
-      setHaloPermissionWarning(null);
-      setHaloReconnectRecommended(false);
-      return;
-    }
-
-    try {
-      const bundle = await getPsaConnectBundle();
-      const res = { ok: bundle.halo.ok };
-      const data = bundle.halo.json;
-      if (!res.ok) {
-        setHaloConnected(false);
-        setHaloReconnectRecommended(true);
-        return;
-      }
-      if (data.proRequired) {
-        setHaloConnected(false);
-        setHaloUrl("");
-        setHaloUpdatedAt(null);
-        setHaloPermissionWarning(null);
-        setHaloReconnectRecommended(false);
-        return;
-      }
-      const softFail = Boolean(data.reconnectRecommended || data.connectionCheckFailed);
-      setHaloReconnectRecommended(softFail);
-      setHaloConnected(Boolean(data.connected) && !softFail);
-      if (typeof data.haloUrl === "string") {
-        setHaloUrl(data.haloUrl);
-      } else if (!data.connected && !softFail) {
-        setHaloUrl("");
-      }
-      if (typeof data.updatedAt === "string") {
-        setHaloUpdatedAt(data.updatedAt);
-      } else if (!data.connected && !softFail) {
-        setHaloUpdatedAt(null);
-      }
-      if (!softFail) {
-        setHaloAutoClosureSummary(data.autoClosureSummaryEnabled === true);
-      }
-      if (!data.connected || softFail) {
-        setHaloPermissionWarning(null);
-      }
-      if (user) {
-        const { count } = await supabase
-          .from("generations")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", user.id)
-          .ilike("input_text", "HaloPSA %Export%");
-        setHaloImportedCount(count ?? 0);
-      }
-    } catch (error) {
-      console.log("[integrations] load error:", error);
-      setHaloConnected(false);
-      setHaloUpdatedAt(null);
-      setHaloPermissionWarning(null);
-      setHaloReconnectRecommended(true);
-    }
-  }, []);
-
   const handleHaloAutoClosureSummaryChange = useCallback(
     async (enabled: boolean) => {
       if (haloAutoClosureSummaryBusy) return;
@@ -3055,6 +3355,7 @@ export default function Home() {
           variant: "success",
           durationMs: 2800,
         });
+        await refreshShellData();
       } catch {
         setHaloAutoClosureSummary(previous);
         toast({
@@ -3066,35 +3367,8 @@ export default function Home() {
         setHaloAutoClosureSummaryBusy(false);
       }
     },
-    [haloAutoClosureSummaryBusy, haloAutoClosureSummary, toast],
+    [haloAutoClosureSummaryBusy, haloAutoClosureSummary, refreshShellData, toast],
   );
-
-  const refreshCwConnection = useCallback(async () => {
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      setCwConnected(false);
-      setCwSiteUrl("");
-      invalidatePsaConnectionsCache();
-      invalidatePSAStatusCache();
-      return;
-    }
-    try {
-      const bundle = await getPsaConnectBundle();
-      const data = bundle.cw.json;
-      setCwConnected(Boolean(data.connected));
-      setCwSiteUrl(typeof data.siteUrl === "string" ? data.siteUrl : "");
-      invalidatePsaConnectionsCache();
-      invalidatePSAStatusCache();
-    } catch {
-      setCwConnected(false);
-      setCwSiteUrl("");
-      invalidatePsaConnectionsCache();
-      invalidatePSAStatusCache();
-    }
-  }, []);
 
   const fetchProjects = useCallback(
     async (offset = 0, append = false) => {
@@ -3110,8 +3384,7 @@ export default function Home() {
         return;
       }
 
-      const profileRow = await getUserPlan(supabase, user.id);
-      const isPro = hasProTierAccess(profileRow);
+      const isPro = hasProAccess;
       const accountCreated = new Date(user.created_at ?? Date.now());
       const daysSinceCreation =
         (Date.now() - accountCreated.getTime()) / (1000 * 60 * 60 * 24);
@@ -3137,85 +3410,13 @@ export default function Home() {
       setHasMoreProjects(isPro && rows.length === pageSize);
       setProjectsBootstrapped(true);
     },
-    [],
+    [hasProAccess],
   );
-
-  useEffect(() => {
-    try {
-      setSidebarPinned(
-        window.localStorage.getItem("handover-sidebar-pinned") === "true",
-      );
-    } catch {
-      setSidebarPinned(false);
-    }
-  }, []);
 
   const sidebarExpanded = sidebarPinned || sidebarHovered;
-  const sidebarMainOffsetPx = sidebarExpanded ? 280 : 56;
-
-  const toggleSidebarPinned = useCallback(() => {
-    setSidebarPinned((prev) => {
-      const next = !prev;
-      try {
-        window.localStorage.setItem(
-          "handover-sidebar-pinned",
-          next ? "true" : "false",
-        );
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
-  }, []);
-
-  const sidebarNavLabelClass = cn(
-    "overflow-hidden whitespace-nowrap transition-opacity duration-150",
-    "max-md:opacity-100 max-md:w-auto",
-    sidebarExpanded ? "md:opacity-100 md:w-auto" : "md:w-0 md:opacity-0",
-  );
-
-  const sidebarNavItemClass = useCallback(
-    (active: boolean) =>
-      cn(
-        "relative flex h-8 w-full items-center rounded-[var(--radius)] border-l-2 text-[12px] transition-all duration-[120ms] ease-in-out",
-        sidebarExpanded
-          ? "gap-1.5 px-2.5 max-md:gap-1.5 max-md:px-2.5 md:gap-1.5 md:px-2.5"
-          : "max-md:gap-1.5 max-md:px-2.5 md:justify-center md:gap-0 md:px-0",
-        active
-          ? "border-[var(--accent)] bg-[var(--accent)]/15 font-medium text-white"
-          : "border-transparent text-[var(--text-secondary)] hover:bg-white/5 hover:text-white",
-      ),
-    [sidebarExpanded],
-  );
-
-  const sidebarSectionLabelClass = cn(
-    "mt-4 mb-1 px-3 text-[9.5px] font-medium uppercase tracking-[0.16em] text-white/30",
-    !sidebarExpanded && "md:hidden",
-  );
-
-  const shellPageTitle = useMemo(() => {
-    if (settingsOpen) return "Settings";
-    switch (mainView) {
-      case "overview":
-        return "Overview";
-      case "generate":
-        return "Generate";
-      case "delivery":
-        return "Delivery Health";
-      case "scheduled":
-        return "Scheduled";
-      case "reports":
-        return "QBR Builder";
-      case "organisation":
-        return "Organisation";
-      case "configuration":
-        return "Configuration";
-      case "changelog":
-        return "What's new";
-      default:
-        return "Handover";
-    }
-  }, [mainView, settingsOpen]);
+  const sidebarMainOffset = sidebarExpanded
+    ? "var(--app-sidebar-expanded-width)"
+    : "var(--app-sidebar-compact-width)";
 
   const refreshHistory = useCallback(async () => {
     await fetchProjects(0, false);
@@ -3229,14 +3430,14 @@ export default function Home() {
       });
       if (!res.ok) return;
       setHasCompletedLoop(true);
-      void refreshUsage();
+      void refreshShellData();
       if (userEmail && !hasProAccess && !readUpgradePromptConsumed()) {
         setShowPostGenProUpsell(true);
       }
     } catch {
       /* ignore */
     }
-  }, [userEmail, hasProAccess, refreshUsage]);
+  }, [userEmail, hasProAccess, refreshShellData]);
 
   const refreshCollections = useCallback(async () => {
     try {
@@ -3294,36 +3495,30 @@ export default function Home() {
     return [...names].sort((a, b) => a.localeCompare(b));
   }, [result?.actions]);
 
-  const trialInfo = useMemo(() => {
-    if (!userEmail || hasProAccess || !userCreatedAt) return null;
-    const accountCreated = new Date(userCreatedAt);
-    const daysSinceCreation =
-      (Date.now() - accountCreated.getTime()) / (1000 * 60 * 60 * 24);
-    if (daysSinceCreation >= 14) return null;
-    const trialEndMs = accountCreated.getTime() + 14 * 24 * 60 * 60 * 1000;
-    const used = projects.filter((p) => {
-      const t = new Date(p.created_at).getTime();
-      return t >= accountCreated.getTime() && t <= trialEndMs;
-    }).length;
-    const trialEnd = new Date(trialEndMs);
-    return {
-      active: true as const,
-      used,
-      remaining: Math.max(0, 10 - used),
-      endsAt: trialEnd.toISOString(),
-    };
-  }, [userEmail, hasProAccess, userCreatedAt, projects]);
-
   const freeGenUsage = useMemo(() => {
     if (!userEmail || hasProAccess) return null;
-    if (!userCreatedAt) return null;
-    const accountCreated = new Date(userCreatedAt);
-    const daysSinceCreation =
-      (Date.now() - accountCreated.getTime()) / (1000 * 60 * 60 * 24);
-    const inTrial = daysSinceCreation < 14;
-    const used = inTrial ? (totalGenerationCount ?? 0) : (monthCount ?? 0);
-    return { used, cap: 10 as const, inTrial };
-  }, [userEmail, hasProAccess, userCreatedAt, totalGenerationCount, monthCount]);
+    return { used: monthCount ?? 0, cap: 10 as const, inTrial: false };
+  }, [userEmail, hasProAccess, monthCount]);
+
+  const hasPortalPlanAccess = useMemo(
+    () =>
+      getPlanTierFromFields(
+        planFieldsFromProfileRow({
+          plan: profileDbPlan,
+          team_id: userTeamId,
+          trial_ends_at: trialEndsAt,
+          trial_plan: profileTrialPlan,
+          subscription_status: profileSubscriptionStatus,
+        }),
+      ) >= 2,
+    [
+      profileDbPlan,
+      userTeamId,
+      trialEndsAt,
+      profileTrialPlan,
+      profileSubscriptionStatus,
+    ],
+  );
 
   const normalizedProfilePlan = useMemo(
     () => normalizePlanLabel(profileDbPlan ?? ""),
@@ -3336,7 +3531,7 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!userEmail || !isEnterprisePlanUser || !portalSlug.trim()) {
+    if (!userEmail || !hasPortalPlanAccess || !portalSlug.trim()) {
       setDeliveryPortalClients([]);
       return;
     }
@@ -3358,11 +3553,11 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [userEmail, isEnterprisePlanUser, portalSlug]);
+  }, [userEmail, hasPortalPlanAccess, portalSlug]);
 
   useEffect(() => {
     let cancelled = false;
-    if (!result || !userEmail || !isEnterprisePlanUser || !portalSlug.trim()) {
+    if (!result || !userEmail || !hasPortalPlanAccess || !portalSlug.trim()) {
       setSharePortalClientId(null);
       return;
     }
@@ -3385,7 +3580,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [result, projectName, userEmail, isEnterprisePlanUser, portalSlug]);
+  }, [result, projectName, userEmail, hasPortalPlanAccess, portalSlug]);
 
   const isProfessionalPlanUser = useMemo(
     () =>
@@ -3513,7 +3708,7 @@ export default function Home() {
     sevenGenToastFiredRef.current = true;
     toast({
       message:
-        "You’re using your included monthly generations quickly. Upgrade to Pro for 200 generations, HaloPSA, scheduled reports, and the full delivery dashboard.",
+        "You’re using your included monthly generations quickly. Move to Handover for the complete workspace and automation.",
       durationMs: 12000,
     });
     try {
@@ -3532,19 +3727,30 @@ export default function Home() {
     if (!userEmail) return;
     if (hasProAccess) return;
     if (mainView === "delivery" || mainView === "organisation") {
-      setMainView("overview");
+      setMainView("generate");
     }
   }, [userEmail, hasProAccess, mainView]);
 
   useEffect(() => {
     if (!userEmail) return;
     if (mainView !== "organisation") return;
-    if (!hasProAccess || !isEnterprisePlanUser) {
-      setMainView("overview");
+    if (!hasProAccess || (!hasPortalPlanAccess && !demoModeActive)) {
+      if (hasProAccess) {
+        router.push("/attention");
+      } else {
+        setMainView("generate");
+      }
       setSidebarOpenMobile(false);
       setSettingsOpen(false);
     }
-  }, [userEmail, hasProAccess, isEnterprisePlanUser, mainView]);
+  }, [
+    userEmail,
+    hasProAccess,
+    hasPortalPlanAccess,
+    demoModeActive,
+    mainView,
+    router,
+  ]);
 
   const dashStats = useMemo(() => {
     if (!userEmail) return null;
@@ -3594,6 +3800,28 @@ export default function Home() {
 
   const [overviewHealthRows, setOverviewHealthRows] = useState<DeliveryHealthRow[]>([]);
   const [overviewHealthLoading, setOverviewHealthLoading] = useState(false);
+  const signOutInFlightRef = useRef(false);
+  const handleSignOut = useCallback(async () => {
+    if (signOutInFlightRef.current) return;
+    signOutInFlightRef.current = true;
+    await createClient().auth.signOut();
+    setProjects([]);
+    setOverviewHealthRows([]);
+    setProjectsOffset(0);
+    setHasMoreProjects(false);
+    setResult(null);
+    setInput("");
+    setProjectName("");
+    setSelectedProjectId(null);
+    try {
+      window.localStorage.removeItem("handover-pending-profile");
+    } catch {
+      /* ignore */
+    }
+    window.location.href = "/";
+  }, []);
+
+  useEffect(() => registerOnSignOut(handleSignOut), [handleSignOut, registerOnSignOut]);
 
   const overviewAttentionItems = useMemo(() => {
     if (!overviewHealthRows.length) return [];
@@ -3605,7 +3833,9 @@ export default function Home() {
         worstRag: "red" | "amber" | "green" | "grey";
         openCount: number;
         overdueCount: number;
-        reason: string;
+        buckets: Partial<
+          Record<OverviewAttentionReasonCategory, { matches: OverviewAttentionRowMatch[] }>
+        >;
       }
     >();
 
@@ -3626,19 +3856,12 @@ export default function Home() {
       const currentWorst = existing?.worstRag || "grey";
       const newWorst = ragOrder[rag] > ragOrder[currentWorst] ? rag : currentWorst;
 
-      let reason = "";
-      if (row.daysToTarget !== null && row.daysToTarget < 0) {
-        reason = `${Math.abs(row.daysToTarget)} days past target`;
-      } else if (row.slaRisk === "overdue") {
-        reason = "SLA breached";
-      } else if (row.slaRisk === "at_risk") {
-        reason = "SLA at risk";
-      } else if (row.daysToTarget !== null && row.daysToTarget <= 7) {
-        reason = `Due in ${row.daysToTarget} day${row.daysToTarget === 1 ? "" : "s"}`;
-      } else if (row.rag === "red") {
-        reason = "No recent activity";
-      } else if (row.rag === "amber") {
-        reason = "Needs review";
+      const classified = classifyOverviewAttentionRow(row);
+      const buckets = { ...(existing?.buckets ?? {}) };
+      if (classified) {
+        const bucket = buckets[classified.category] ?? { matches: [] };
+        bucket.matches.push(classified.match);
+        buckets[classified.category] = bucket;
       }
 
       clientMap.set(name, {
@@ -3648,7 +3871,7 @@ export default function Home() {
         overdueCount:
           (existing?.overdueCount || 0) +
           (row.daysToTarget !== null && row.daysToTarget < 0 ? 1 : 0),
-        reason: existing?.reason || reason,
+        buckets,
       });
     }
 
@@ -3666,6 +3889,33 @@ export default function Home() {
           c.clientName !== "Unknown" &&
           c.clientName.length > 0,
       )
+      .map((entry) => {
+        let winningCategory: OverviewAttentionReasonCategory | null = null;
+        let bestSeverity = Number.POSITIVE_INFINITY;
+        for (const category of Object.keys(entry.buckets) as OverviewAttentionReasonCategory[]) {
+          const severity = OVERVIEW_ATTENTION_REASON_SEVERITY[category];
+          if (severity < bestSeverity) {
+            bestSeverity = severity;
+            winningCategory = category;
+          }
+        }
+
+        const winningMatches =
+          winningCategory != null ? (entry.buckets[winningCategory]?.matches ?? []) : [];
+        const reason =
+          winningCategory != null
+            ? buildOverviewAttentionReason(winningCategory, winningMatches)
+            : "";
+
+        return {
+          clientName: entry.clientName,
+          worstRag: entry.worstRag,
+          openCount: entry.openCount,
+          overdueCount: entry.overdueCount,
+          reason,
+          affectedItemNames: winningMatches.map((m) => m.name),
+        };
+      })
       .sort((a, b) => sortOrder[b.worstRag] - sortOrder[a.worstRag])
       .slice(0, 6);
   }, [overviewHealthRows]);
@@ -3674,6 +3924,7 @@ export default function Home() {
     if (mainView !== "overview") return;
     if (!haloConnected && !cwConnected) return;
     if (!userEmail) return;
+    if (!hasProAccess) return;
     if (overviewHealthRows.length > 0) return;
 
     setOverviewHealthLoading(true);
@@ -3684,52 +3935,7 @@ export default function Home() {
       })
       .catch(() => {})
       .finally(() => setOverviewHealthLoading(false));
-  }, [mainView, haloConnected, cwConnected, userEmail, overviewHealthRows.length]);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (!userEmail) {
-      setMonthlyStats(null);
-      setMonthlyStatsLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setMonthlyStatsLoading(true);
-    void (async () => {
-      try {
-        const res = await fetch("/api/stats/monthly", { credentials: "same-origin" });
-        if (!res.ok) {
-          if (!cancelled) setMonthlyStats(null);
-          return;
-        }
-        const data = (await res.json()) as {
-          this_month?: unknown;
-          last_month?: unknown;
-        };
-        if (cancelled) return;
-        setMonthlyStats({
-          this_month:
-            typeof data.this_month === "number" && Number.isFinite(data.this_month)
-              ? data.this_month
-              : 0,
-          last_month:
-            typeof data.last_month === "number" && Number.isFinite(data.last_month)
-              ? data.last_month
-              : 0,
-        });
-      } catch {
-        if (!cancelled) setMonthlyStats(null);
-      } finally {
-        if (!cancelled) setMonthlyStatsLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [userEmail]);
+  }, [mainView, haloConnected, cwConnected, userEmail, hasProAccess, overviewHealthRows.length]);
 
   useEffect(() => {
     if (!userEmail || campaigns.length > 0) return;
@@ -3775,82 +3981,38 @@ export default function Home() {
   }, [mounted, userEmail, userFirstName]);
 
   useEffect(() => {
-    if (userEmail && authChecked) {
-      document.body.setAttribute("data-app-shell", "true");
-    } else {
-      document.body.removeAttribute("data-app-shell");
-    }
+    if (!authChecked || !userEmail || !profileDbPlan || hasProAccess) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch("/onboarding/scan/status?claimed=1", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!cancelled && response.ok) {
+          const data = (await response.json()) as { status?: string };
+          if (data.status === "claimed") {
+            router.replace("/onboarding/results");
+            return;
+          }
+        }
+      } catch {
+        // Fall through to the new-scan destination.
+      }
+      if (!cancelled) router.replace("/onboarding/connect");
+    })();
     return () => {
-      document.body.removeAttribute("data-app-shell");
+      cancelled = true;
     };
-  }, [userEmail, authChecked]);
-
-  useEffect(() => {
-    if (!authChecked || !userEmail) return;
-    if (profileDbPlan === "free" && !trialEndsAt) {
-      router.push("/welcome");
-    }
-  }, [authChecked, userEmail, profileDbPlan, trialEndsAt, router]);
-
-  useEffect(() => {
-    const supabase = createClient();
-    void refreshUsage();
-    void refreshTemplates();
-    void fetchProjects();
-    void refreshCollections();
-    setIntegrationsBootstrapping(true);
-    const integrationsBootstrapDone = { current: false };
-    const finishIntegrationsBootstrap = () => {
-      if (integrationsBootstrapDone.current) return;
-      integrationsBootstrapDone.current = true;
-      setIntegrationsBootstrapping(false);
-    };
-    window.setTimeout(finishIntegrationsBootstrap, 12_000);
-    void Promise.all([refreshHaloConnection(), refreshCwConnection()])
-      .catch((error) => {
-        console.log("[integrations] load error:", error);
-      })
-      .finally(finishIntegrationsBootstrap);
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(() => {
-      void refreshUsage();
-      void refreshTemplates();
-      void fetchProjects();
-      void refreshCollections();
-      setIntegrationsBootstrapping(true);
-      const authBootstrapDone = { current: false };
-      const finishAuthBootstrap = () => {
-        if (authBootstrapDone.current) return;
-        authBootstrapDone.current = true;
-        setIntegrationsBootstrapping(false);
-      };
-      window.setTimeout(finishAuthBootstrap, 12_000);
-      void Promise.all([refreshHaloConnection(), refreshCwConnection()])
-        .catch((error) => {
-          console.log("[integrations] load error:", error);
-        })
-        .finally(finishAuthBootstrap);
-    });
-
-    return () => subscription.unsubscribe();
-  }, [
-    refreshUsage,
-    refreshTemplates,
-    fetchProjects,
-    refreshCollections,
-    refreshHaloConnection,
-    refreshCwConnection,
-  ]);
+  }, [authChecked, userEmail, profileDbPlan, hasProAccess, router]);
 
   useEffect(() => {
     const onReload = () => {
-      void refreshUsage();
+      void refreshShellData();
     };
     window.addEventListener("handover:profile-reload", onReload);
     return () => window.removeEventListener("handover:profile-reload", onReload);
-  }, [refreshUsage]);
+  }, [refreshShellData]);
 
   useEffect(() => {
     if (!isGenerating) {
@@ -3860,6 +4022,12 @@ export default function Home() {
     const t = window.setTimeout(() => setGenerationLongWait(true), 5000);
     return () => clearTimeout(t);
   }, [isGenerating]);
+
+  useEffect(() => {
+    return () => {
+      if (genProgressRef.current) clearInterval(genProgressRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isGenerating) {
@@ -4011,15 +4179,9 @@ export default function Home() {
 
       window.localStorage.removeItem("handover-pending-profile");
       toast({ message: "Profile saved. Welcome to Handover!", durationMs: 4000 });
+      await refreshShellData();
     })();
-  }, [toast, userEmail]);
-
-  useEffect(() => {
-    const saved = window.localStorage.getItem("handover-theme");
-    const initial = saved === "light" ? "light" : "dark";
-    setTheme(initial);
-    document.documentElement.classList.toggle("dark", initial === "dark");
-  }, []);
+  }, [refreshShellData, toast, userEmail]);
 
   useEffect(() => {
     if (!npsOpen || npsPhase !== "thanks") return;
@@ -4061,15 +4223,6 @@ export default function Home() {
   }, [generationToastOpen]);
 
   useEffect(() => {
-    if (!settingsOpen) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSettingsOpen(false);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [settingsOpen]);
-
-  useEffect(() => {
     if (exportSubPanel === "actions") {
       setExportActionCols(loadExportActionsColumns());
     } else if (exportSubPanel === "risks") {
@@ -4092,10 +4245,14 @@ export default function Home() {
       try {
         const decoded = decodeURIComponent(demoInputParam);
         if (decoded.trim()) {
-          setInput(decoded);
+          const reportTypeLabel = reportTypeParam?.trim() ?? "";
+          const inputWithReportType = reportTypeLabel
+            ? `Report type: ${reportTypeLabel}\n\n${decoded}`
+            : decoded;
+          setInput(inputWithReportType);
           setMainView("generate");
           setSessionUsesDemoData(true);
-          window.sessionStorage.setItem(SS_DEMO_INPUT, decoded);
+          window.sessionStorage.setItem(SS_DEMO_INPUT, inputWithReportType);
         }
       } catch {
         /* ignore */
@@ -4111,16 +4268,33 @@ export default function Home() {
         }
       }
       if (params.get("onboarding") === "complete") {
-        void refreshUsage();
+        void refreshShellData();
+        const clientParam = params.get("client")?.trim() ?? "";
+        if (clientParam === "Northwood Manufacturing") {
+          setStagedGenerationReady(true);
+          if (params.get("startTour") === "1") {
+            setShouldAutoStartTour(true);
+          }
+        }
       }
-      router.replace("/", { scroll: false });
+      router.replace(homePathPreservingViewParam(), { scroll: false });
       return undefined;
     }
 
     const openSettingsValue = params.get("openSettings");
     if (openSettingsValue) {
       setSettingsOpen(true);
-      if (openSettingsValue === "referrals") {
+      const settingsTabParam = params.get("tab");
+      if (
+        settingsTabParam === "profile" ||
+        settingsTabParam === "billing" ||
+        settingsTabParam === "preferences" ||
+        settingsTabParam === "appearance" ||
+        settingsTabParam === "privacy" ||
+        settingsTabParam === "referrals"
+      ) {
+        setSettingsTab(settingsTabParam);
+      } else if (openSettingsValue === "referrals") {
         setSettingsTab("referrals");
       }
       if (openSettingsValue === "integrations") {
@@ -4128,34 +4302,26 @@ export default function Home() {
           params.get("cw") === "1" ? { initialDetail: "connectwise" } : undefined,
         );
       }
-      router.replace("/", { scroll: false });
+      router.replace(homePathPreservingViewParam(), { scroll: false });
       return undefined;
     }
     if (params.get("openHaloImport") === "1") {
       void (async () => {
-        const supabase = createClient();
-        const {
-          data: { user: u },
-        } = await supabase.auth.getUser();
-        if (u) {
-          const prof = await getUserPlan(supabase, u.id);
-          if (hasProTierAccess(prof))
-            setHaloImportOpen(true);
-          else setHaloProModalOpen(true);
-        }
-        router.replace("/", { scroll: false });
+        if (hasProAccess) setHaloImportOpen(true);
+        else if (userEmail) setHaloProModalOpen(true);
+        router.replace(homePathPreservingViewParam(), { scroll: false });
       })();
       return undefined;
     }
     if (params.get("success") === "true") {
       setShowSuccessBanner(true);
-      router.replace("/", { scroll: false });
-      void refreshUsage();
-      const t = window.setTimeout(() => void refreshUsage(), 2500);
+      router.replace(homePathPreservingViewParam(), { scroll: false });
+      void refreshShellData();
+      const t = window.setTimeout(() => void refreshShellData(), 2500);
       return () => window.clearTimeout(t);
     }
     return undefined;
-  }, [router, refreshUsage, onboardingRedirectPending]);
+  }, [hasProAccess, refreshShellData, router, userEmail, onboardingRedirectPending]);
 
   useEffect(() => {
     if (!userEmail) return;
@@ -4183,41 +4349,6 @@ export default function Home() {
       cancelled = true;
     };
   }, [userEmail]);
-
-  const handleSignOut = async () => {
-    if (isSigningOut) return;
-    setIsSigningOut(true);
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    setUserEmail(null);
-    setUserFirstName(null);
-    setPlan(null);
-    setProfileDbPlan(null);
-    setPlanBadgeReady(false);
-    setUserTeamId(null);
-    setShowTeamDashboardLink(false);
-    setMonthCount(null);
-    setMonthlyStats(null);
-    setMonthlyStatsLoading(false);
-    setTotalGenerationCount(null);
-    setGenerationStreak(0);
-    setProjects([]);
-    setOverviewHealthRows([]);
-    setProjectsOffset(0);
-    setHasMoreProjects(false);
-    setResult(null);
-    setInput("");
-    setProjectName("");
-    setUserCreatedAt(null);
-    setMainView("generate");
-    setSelectedProjectId(null);
-    try {
-      window.localStorage.removeItem("handover-pending-profile");
-    } catch {
-      /* ignore */
-    }
-    window.location.href = "/";
-  };
 
   const copyWithFeedback = useCallback(
     async (key: string, text: string) => {
@@ -4652,6 +4783,7 @@ export default function Home() {
       const titlesForExport = extractTicketTitlesFromGenerationInput(
         (input.trim() || lastInput.trim()).trim(),
       );
+      const { exportToExcel } = await import("@/lib/export-excel");
       await exportToExcel(safeResult, safeProjectName, {
         selectedTabs: selectedTabsForExport,
         actionColumns: exportFullActionCols ?? [],
@@ -4663,7 +4795,11 @@ export default function Home() {
         brandSecondaryColor: brandSecondaryColour || null,
         brandLogoUrl: logoForExport,
         whiteLabelMode: partnerWhiteLabelActive({
-          plan: plan ?? "free",
+          plan: profileDbPlan,
+          team_id: userTeamId,
+          trial_ends_at: trialEndsAt,
+          trial_plan: profileTrialPlan,
+          subscription_status: profileSubscriptionStatus,
           white_label_mode: whiteLabelMode,
           brand_name: brandName,
         }),
@@ -4719,7 +4855,11 @@ export default function Home() {
     brandSecondaryColour,
     brandLogoUrl,
     whiteLabelMode,
-    plan,
+    profileDbPlan,
+    userTeamId,
+    trialEndsAt,
+    profileTrialPlan,
+    profileSubscriptionStatus,
     isLogoUrlAccessible,
     toast,
     tryOpenProFeatureGate,
@@ -4737,6 +4877,7 @@ export default function Home() {
       return;
     }
     if (!hasProAccess) {
+      const { exportActionsCSV } = await import("@/lib/export-excel");
       exportActionsCSV(
         result.actions,
         projectName,
@@ -4829,7 +4970,22 @@ export default function Home() {
       const canon = p === "pro" ? "professional" : p;
 
       if (canon === "professional_trial" || canon === "team_trial") {
-        router.push("/pricing?upgrade=true");
+        try {
+          const res = await fetch("/api/stripe/portal", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ returnPath: "/" }),
+            credentials: "include",
+          });
+          const data = (await res.json()) as { url?: string };
+          if (res.ok && data.url) {
+            window.location.href = data.url;
+            return;
+          }
+          router.push("/pricing?upgrade=true");
+        } catch {
+          router.push("/pricing?upgrade=true");
+        }
         return;
       }
       if (canon === "free" || canon === "basic") {
@@ -4852,7 +5008,7 @@ export default function Home() {
     try {
       const gateRes = await fetch("/api/stripe/has-billing-customer", { credentials: "include" });
       const gate = (await gateRes.json()) as { hasStripeCustomer?: boolean };
-      if (gate.hasStripeCustomer && !checkoutHasActiveSoloTrial) {
+      if (gate.hasStripeCustomer) {
         await openBillingPortal("/");
         return;
       }
@@ -4860,10 +5016,7 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          priceId,
-          ...(checkoutHasActiveSoloTrial ? { hasActiveTrial: true } : {}),
-        }),
+        body: JSON.stringify({ priceId }),
       });
       const data = (await res.json()) as { url?: string; error?: string };
       if (!res.ok || !data.url) {
@@ -5090,114 +5243,27 @@ export default function Home() {
       });
   }, [demoModeActive, scheduleLoading, allClients, projectClientSearch, allProjects]);
 
-  const upcomingRuns = useMemo(() => {
-    return [...campaigns]
-      .filter((c) => c.enabled && !!c.next_run_at)
-      .sort((a, b) => {
-        const at = Date.parse(a.next_run_at ?? "");
-        const bt = Date.parse(b.next_run_at ?? "");
-        return at - bt;
-      })
-      .slice(0, 8);
-  }, [campaigns]);
+  const scheduledHistoryActive = mainView === "scheduled" && Boolean(userEmail);
+  const psaScheduledHistory = useScheduledHistory("psa", scheduledHistoryActive);
+  const ciScheduledHistory = useScheduledHistory("ci", scheduledHistoryActive);
+  const digestScheduledHistory = useScheduledHistory("digest", scheduledHistoryActive);
 
-  const scheduledPageStats = useMemo(() => {
-    const active = campaigns.filter((c) => c.enabled !== false).length;
-    const withNext = campaigns.filter((c) => c.enabled !== false && c.next_run_at);
-    let nextSend = "Not scheduled";
-    if (withNext.length > 0) {
-      const sorted = [...withNext].sort(
-        (a, b) =>
-          Date.parse(a.next_run_at ?? "") - Date.parse(b.next_run_at ?? ""),
-      );
-      nextSend = formatShortGmtDate(sorted[0]!.next_run_at);
-    }
-    const now = new Date();
-    const monthStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
-    const sentThisMonth = reportHistory.filter((h) => {
-      const t = new Date(h.sent_at).getTime();
-      if (Number.isNaN(t) || t < monthStart) return false;
-      return (h.status ?? "").toLowerCase() !== "failed";
-    }).length;
-    return { active, nextSend, sentThisMonth };
-  }, [campaigns, reportHistory]);
+  const isCiSchedule = useCallback(
+    (c: (typeof campaigns)[number]) =>
+      c.report_type === "ci_qbr" ||
+      (typeof c.ci_qbr_client_name === "string" &&
+        c.ci_qbr_client_name.trim().length > 0),
+    [],
+  );
 
-  const scheduleRecentReportsCard = useMemo(
-    () => (
-      <div className="sticky top-4 overflow-visible rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
-        <div className="flex min-w-0 items-center justify-between gap-2">
-          <h2 className="min-w-0 truncate text-[15px] font-semibold text-[var(--text-primary)]">
-            Recent reports
-          </h2>
-          <span className="shrink-0 rounded-full bg-[var(--bg-secondary)] px-2 py-0.5 text-[11px] tabular-nums text-[var(--text-muted)]">
-            {reportHistory.length}
-          </span>
-        </div>
-        <p className="mt-1 text-[13px] text-[var(--text-secondary)]">Last 5 sent reports</p>
-        {reportHistoryLoading ? (
-          <ul className="mt-4 space-y-2" aria-busy>
-            {[0, 1, 2, 3].map((i) => (
-              <li
-                key={i}
-                className="animate-pulse rounded-[var(--radius)] border border-[var(--border)] p-2.5"
-              >
-                <div className="h-4 w-48 rounded bg-[var(--bg-secondary)]" />
-                <div className="mt-2 h-3 w-32 rounded bg-[var(--bg-secondary)]" />
-                <div className="mt-2 h-5 w-16 rounded-full bg-[var(--bg-secondary)]" />
-              </li>
-            ))}
-          </ul>
-        ) : reportHistory.length === 0 ? (
-          <div className="mt-4 text-sm text-[var(--text-secondary)]">
-            <p>No reports sent yet.</p>
-            <p className="mt-1">Your schedules are set up and ready to run.</p>
-          </div>
-        ) : (
-          <ul className="mt-4 space-y-2">
-            {reportHistory.slice(0, 5).map((h, idx) => (
-              <li
-                key={h.id}
-                className={cn(
-                  "rounded-[var(--radius)] border border-[var(--border)] p-2.5",
-                  idx % 2 ? "bg-[var(--bg-secondary)]/30" : "",
-                )}
-              >
-                <p className="text-sm font-semibold text-[var(--text-primary)]">
-                  {formatScheduleHistorySent(h.sent_at)}
-                </p>
-                <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
-                  {h.tickets_processed ?? 0} tickets · {h.clients_covered?.length ?? 0} clients
-                </p>
-                <span
-                  className={cn(
-                    "mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium",
-                    h.status === "failed"
-                      ? "bg-red-500/10 text-red-500"
-                      : "bg-emerald-500/10 text-emerald-500",
-                  )}
-                >
-                  {h.status === "failed" ? "Failed" : "Sent"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+  const psaCampaigns = useMemo(
+    () => campaigns.filter((c) => !isCiSchedule(c)),
+    [campaigns, isCiSchedule],
+  );
 
-        <h3 className="mt-5 text-[13px] font-semibold text-[var(--text-primary)]">Upcoming runs</h3>
-        {upcomingRuns.length === 0 ? (
-          <p className="mt-2 text-xs text-[var(--text-secondary)]">No upcoming runs.</p>
-        ) : (
-          <ul className="mt-2 space-y-1.5 text-xs text-[var(--text-secondary)]">
-            {upcomingRuns.map((c, idx) => (
-              <li key={c.id ?? idx}>
-                {formatScheduleTs(c.next_run_at)} - {c.name?.trim() || "Weekly Report"}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    ),
-    [reportHistory, reportHistoryLoading, upcomingRuns],
+  const ciCampaigns = useMemo(
+    () => campaigns.filter(isCiSchedule),
+    [campaigns, isCiSchedule],
   );
 
   useEffect(() => {
@@ -5765,38 +5831,6 @@ export default function Home() {
 
   useEffect(() => {
     if (mainView !== "scheduled" || !userEmail) return;
-    let cancelled = false;
-    setReportHistoryLoading(true);
-    void (async () => {
-      try {
-        const res = await fetch("/api/scheduled-report-history");
-        const data = (await res.json()) as {
-          history?: {
-            id: string;
-            sent_at: string;
-            email_to: string | null;
-            tickets_processed: number | null;
-            clients_covered: string[] | null;
-            status: string | null;
-            error_message: string | null;
-          }[];
-        };
-        if (!cancelled) {
-          setReportHistory(Array.isArray(data.history) ? data.history : []);
-        }
-      } catch {
-        if (!cancelled) setReportHistory([]);
-      } finally {
-        if (!cancelled) setReportHistoryLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [mainView, userEmail]);
-
-  useEffect(() => {
-    if (mainView !== "scheduled" || !userEmail) return;
     if (haloClientsForSchedule.length === 0) {
       setScheduleClientCounts({});
       return;
@@ -5882,7 +5916,7 @@ export default function Home() {
     setSchCampaignEditorTab(0);
     setSchCampaignId(null);
     setSchName("Weekly Report");
-    setSchBrandName("");
+    setSchBrandName(profileCompanyName.trim());
     setSchEmailTone("professional");
     setSchReportType("external");
     setSchIncludeTickets(false);
@@ -5911,6 +5945,7 @@ export default function Home() {
     setSchAttachExcel(hasProAccess);
     setSchExcelOptional([...SCHEDULE_EXCEL_CORE_KEYS, ...SCHEDULE_EXCEL_OPTIONAL_TAB_KEYS]);
     setSchPushToHalo(false);
+    setSchHoldForReview(false);
     setSchHaloPushOutputs(["client_email", "actions", "risks"]);
     setSchHaloPushExcel(false);
     setSchHaloPushExcelTabs([]);
@@ -5918,7 +5953,7 @@ export default function Home() {
     setSchPostConsolidated(false);
     postTicketSelectionTouchedRef.current = false;
     setScheduleEditorOpen(true);
-  }, [userEmail, hasProAccess]);
+  }, [userEmail, hasProAccess, profileCompanyName]);
 
   const toggleExcelTab = useCallback((tab: string) => {
     setSchExcelOptional((prev) =>
@@ -5997,9 +6032,14 @@ export default function Home() {
     setSchEmailPrefs(normalizePrefsFromApi(c.email_content_prefs));
     setSchAttachExcel(c.attach_excel !== false);
     setSchExcelOptional(selectedExcelKeysFromRow(c.excel_tabs));
-    setSchBrandName(typeof c.brand_name === "string" ? c.brand_name : "");
+    setSchBrandName(
+      typeof c.brand_name === "string" && c.brand_name.trim()
+        ? c.brand_name
+        : profileCompanyName.trim(),
+    );
     setSchEmailTone(normalizeSchEmailTone(c.email_tone));
     setSchPushToHalo(c.push_to_halo === true);
+    setSchHoldForReview(c.hold_for_review === true);
     setSchHaloPushOutputs(
       Array.isArray(c.halo_push_outputs) && c.halo_push_outputs.length > 0
         ? c.halo_push_outputs
@@ -6026,7 +6066,52 @@ export default function Home() {
     setScheduleEmailPreviewGeneratedAt(null);
   };
 
+  const openCiScheduleEdit = (c: (typeof campaigns)[number]) => {
+    const isQbr = c.report_type === "ci_qbr";
+    setNewCiScheduleType(isQbr ? "qbr" : "service_review");
+    const clientName =
+      c.ci_qbr_client_name?.trim() || c.name?.split(" — ")[0]?.trim() || "";
+    setNewCiScheduleClient(clientName);
+    setNewCiScheduleEmail(c.email_to ?? "");
+    setNewCiScheduleDay(c.schedule_day ?? "monday");
+    const loadRef = new Date();
+    const rawStoredTime =
+      typeof c.schedule_time === "string" && c.schedule_time.trim()
+        ? c.schedule_time.trim()
+        : "08:00";
+    if (c.id) {
+      setNewCiScheduleTime(c.schedule_time ?? "08:00");
+      void (async () => {
+        const supabase = createClient();
+        const { data } = await supabase
+          .from("scheduled_reports")
+          .select("schedule_time")
+          .eq("id", c.id)
+          .maybeSingle();
+        const rawUtc =
+          typeof data?.schedule_time === "string" && data.schedule_time.trim()
+            ? data.schedule_time.trim()
+            : rawStoredTime;
+        setNewCiScheduleTime(utcStoredScheduleTimeToLondonWall(rawUtc, loadRef));
+      })();
+    } else {
+      setNewCiScheduleTime("08:00");
+    }
+    setNewCiHoldForReview(c.hold_for_review === true);
+    if (!isQbr) {
+      if (c.date_range === "last_7_days") setNewCiFrequency("weekly");
+      else if (c.date_range === "last_14_days") setNewCiFrequency("fortnightly");
+      else setNewCiFrequency("monthly");
+    }
+    setEditingCiScheduleId(c.id ?? null);
+    setScheduledCiOpen(true);
+  };
+
   const openEditScheduleEditor = (c: (typeof campaigns)[number]) => {
+    if (c.report_type === "ci_qbr" || c.ci_qbr_client_name) {
+      openCiScheduleEdit(c);
+      return;
+    }
     loadCampaignIntoEditor(c);
     setScheduleEditorIsNew(false);
     setScheduleEditorOpen(true);
@@ -6062,7 +6147,7 @@ export default function Home() {
   const buildSchedulePatchPayload = useCallback(
     (
       c: (typeof campaigns)[number],
-      overrides?: { enabled?: boolean },
+      overrides?: { enabled?: boolean; hold_for_review?: boolean },
     ) => ({
       schedule_id: c.id,
       enabled: overrides?.enabled !== undefined ? overrides.enabled : c.enabled,
@@ -6094,6 +6179,10 @@ export default function Home() {
       selected_project_ids: Array.isArray(c.selected_project_ids) ? c.selected_project_ids : [],
       email_tone: c.email_tone ?? "professional",
       push_to_halo: c.push_to_halo === true,
+      hold_for_review:
+        overrides?.hold_for_review !== undefined
+          ? overrides.hold_for_review === true
+          : c.hold_for_review === true,
       halo_push_outputs: Array.isArray(c.halo_push_outputs) ? c.halo_push_outputs : [],
       halo_push_excel: c.halo_push_excel === true,
       halo_push_excel_tabs: Array.isArray(c.halo_push_excel_tabs) ? c.halo_push_excel_tabs : [],
@@ -6141,6 +6230,56 @@ export default function Home() {
       }
       toast({
         message: "Failed to update schedule status",
+        variant: "error",
+        durationMs: 4000,
+      });
+    } finally {
+      setScheduleSaving(false);
+    }
+  };
+
+  const toggleHoldForReview = async (
+    c: (typeof campaigns)[number],
+    holdForReview: boolean,
+  ) => {
+    if (!userEmail) return;
+    if (!c.id) return;
+    const previousHold = c.hold_for_review === true;
+    setCampaigns((prev) =>
+      prev.map((row) =>
+        row.id === c.id ? { ...row, hold_for_review: holdForReview } : row,
+      ),
+    );
+    if (selectedSchedule?.id === c.id || schCampaignId === c.id) {
+      setSchHoldForReview(holdForReview);
+    }
+    if (editingCiScheduleId === c.id) {
+      setNewCiHoldForReview(holdForReview);
+    }
+    setScheduleSaving(true);
+    try {
+      const res = await fetch("/api/scheduled-reports", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildSchedulePatchPayload(c, { hold_for_review: holdForReview })),
+      });
+      const data = (await res.json()) as { schedule?: typeof c; error?: string };
+      if (!res.ok) throw new Error(data.error || "Could not update schedule");
+      void refreshCampaigns();
+    } catch {
+      setCampaigns((prev) =>
+        prev.map((row) =>
+          row.id === c.id ? { ...row, hold_for_review: previousHold } : row,
+        ),
+      );
+      if (selectedSchedule?.id === c.id || schCampaignId === c.id) {
+        setSchHoldForReview(previousHold);
+      }
+      if (editingCiScheduleId === c.id) {
+        setNewCiHoldForReview(previousHold);
+      }
+      toast({
+        message: "Failed to update hold for review",
         variant: "error",
         durationMs: 4000,
       });
@@ -6209,9 +6348,9 @@ export default function Home() {
     if (mainView !== "scheduled") return;
     if (!userEmail) return;
     let cancelled = false;
-    (async () => {
+
+    void (async () => {
       setScheduleLoading(true);
-      setHaloClientsScheduleLoading(true);
       setTicketClientSearch("");
       setProjectClientSearch("");
       try {
@@ -6246,6 +6385,7 @@ export default function Home() {
             email_format?: string | null;
             email_tone?: string | null;
             push_to_halo?: boolean | null;
+            hold_for_review?: boolean | null;
             halo_push_outputs?: string[] | null;
             halo_push_excel?: boolean | null;
             halo_push_excel_tabs?: string[] | null;
@@ -6282,6 +6422,7 @@ export default function Home() {
             email_format?: string | null;
             email_tone?: string | null;
             push_to_halo?: boolean | null;
+            hold_for_review?: boolean | null;
             halo_push_outputs?: string[] | null;
             halo_push_excel?: boolean | null;
             halo_push_excel_tabs?: string[] | null;
@@ -6366,9 +6507,14 @@ export default function Home() {
           setSchEmailPrefs(normalizePrefsFromApi(row.email_content_prefs));
           setSchAttachExcel(row.attach_excel !== false);
           setSchExcelOptional(selectedExcelKeysFromRow(row.excel_tabs));
-          setSchBrandName(typeof row.brand_name === "string" ? row.brand_name : "");
+          setSchBrandName(
+            typeof row.brand_name === "string" && row.brand_name.trim()
+              ? row.brand_name
+              : profileCompanyName.trim(),
+          );
           setSchEmailTone(normalizeSchEmailTone(row.email_tone));
           setSchPushToHalo(row.push_to_halo === true);
+          setSchHoldForReview(row.hold_for_review === true);
           setSchHaloPushOutputs(
             Array.isArray(row.halo_push_outputs) && row.halo_push_outputs.length > 0
               ? row.halo_push_outputs
@@ -6418,9 +6564,10 @@ export default function Home() {
           setSchEmailPrefs({ ...DEFAULT_EMAIL_CONTENT_PREFS });
           setSchAttachExcel(true);
           setSchExcelOptional([...SCHEDULE_EXCEL_CORE_KEYS, ...SCHEDULE_EXCEL_OPTIONAL_TAB_KEYS]);
-          setSchBrandName("");
+          setSchBrandName(profileCompanyName.trim());
           setSchEmailTone("professional");
           setSchPushToHalo(false);
+          setSchHoldForReview(false);
           setSchHaloPushOutputs(["client_email", "actions", "risks"]);
           setSchHaloPushExcel(false);
           setSchHaloPushExcelTabs([]);
@@ -6428,31 +6575,199 @@ export default function Home() {
           setSchPostConsolidated(false);
           postTicketSelectionTouchedRef.current = false;
         }
+      } catch {
+        /* schedules fetch — table shows empty/stale until retry */
+      } finally {
+        if (!cancelled) setScheduleLoading(false);
+      }
+    })();
 
-        try {
-          const cres = await fetch("/api/halo/clients?all_pages=1&page_size=1000");
-          const cj = (await cres.json()) as {
-            clients?: { id: number; name: string }[];
-            error?: string;
-          };
-          const allClients = !cancelled && cres.ok && Array.isArray(cj.clients) ? cj.clients : [];
-          if (!cancelled) setHaloClientsForSchedule(allClients);
-        } catch {
-          if (!cancelled) setHaloClientsForSchedule([]);
+    void (async () => {
+      setDigestLoading(true);
+      try {
+        const digestRes = await fetch("/api/digest/settings", {
+          credentials: "same-origin",
+        });
+        const digestData = (await digestRes.json()) as {
+          settings: typeof digestSettings;
+        };
+        if (!cancelled) {
+          setDigestSettings(
+            digestData.settings ?? {
+              enabled: false,
+              frequency: "weekly",
+              send_day: "monday",
+              send_time: "08:00",
+              delivery_email: true,
+              delivery_slack: false,
+              delivery_teams: false,
+              email_to: userEmail ?? "",
+            },
+          );
         }
+      } catch {
+        /* digest panel can render with null settings until loaded */
+      } finally {
+        if (!cancelled) setDigestLoading(false);
+      }
+    })();
+
+    void (async () => {
+      setHaloClientsScheduleLoading(true);
+      try {
+        const cres = await fetch("/api/halo/clients?all_pages=1&page_size=1000");
+        const cj = (await cres.json()) as {
+          clients?: { id: number; name: string }[];
+          error?: string;
+        };
+        const allClients = !cancelled && cres.ok && Array.isArray(cj.clients) ? cj.clients : [];
+        if (!cancelled) setHaloClientsForSchedule(allClients);
       } catch {
         if (!cancelled) setHaloClientsForSchedule([]);
       } finally {
-        if (!cancelled) {
-          setScheduleLoading(false);
-          setHaloClientsScheduleLoading(false);
+        if (!cancelled) setHaloClientsScheduleLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mainView, userEmail, flushAchievementToasts]);
+
+  const saveDigestSettings = useCallback(
+    async (updates: Partial<NonNullable<typeof digestSettings>>) => {
+      if (!digestSettings) return;
+      setDigestSaving(true);
+      const merged = {
+        ...digestSettings,
+        ...updates,
+      };
+      setDigestSettings(merged);
+      try {
+        await fetch("/api/digest/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify(merged),
+        });
+      } catch (e) {
+        console.error("[digest save]", e);
+      } finally {
+        setDigestSaving(false);
+      }
+    },
+    [digestSettings],
+  );
+
+  const saveNewCiSchedule = useCallback(async () => {
+    if (!newCiScheduleClient || !newCiScheduleEmail) return;
+    setSavingCiSchedule(true);
+    try {
+      const isQbr = newCiScheduleType === "qbr";
+      const dateRangeMap = {
+        weekly: "last_7_days",
+        fortnightly: "last_14_days",
+        monthly: "last_30_days",
+      } as const;
+      const date_range = isQbr ? "last_90_days" : dateRangeMap[newCiFrequency];
+      const now = new Date();
+      const scheduleTimeLondon = newCiScheduleTime.trim() || "08:00";
+      const schedule_time = londonWallScheduleTimeToUtcStored(
+        scheduleTimeLondon,
+        now,
+      );
+      const nextRun = computeNextRunUtc(newCiScheduleDay, schedule_time, now);
+
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const fields = {
+        name: `${newCiScheduleClient} — ${isQbr ? "Quarterly QBR" : "Monthly Service Review"}`,
+        report_type: isQbr ? "ci_qbr" : "external",
+        ci_qbr_client_name: newCiScheduleClient,
+        email_to: newCiScheduleEmail,
+        schedule_day: newCiScheduleDay,
+        schedule_time,
+        date_range,
+        next_run_at: nextRun.toISOString(),
+        include_tickets: !isQbr,
+        include_projects: !isQbr,
+        hold_for_review: newCiHoldForReview === true,
+      };
+
+      const wasEditing = !!editingCiScheduleId;
+
+      if (editingCiScheduleId) {
+        await supabase
+          .from("scheduled_reports")
+          .update(fields)
+          .eq("id", editingCiScheduleId);
+      } else {
+        await supabase.from("scheduled_reports").insert({
+          user_id: user.id,
+          enabled: true,
+          ...fields,
+        });
+      }
+
+      setEditingCiScheduleId(null);
+      setScheduledCiOpen(false);
+      setNewCiScheduleClient("");
+      setNewCiScheduleEmail("");
+      setNewCiHoldForReview(false);
+
+      void refreshCampaigns();
+      toast({
+        message: wasEditing ? "Schedule updated" : "Schedule created",
+        variant: "success",
+        durationMs: 3000,
+      });
+    } catch (e) {
+      console.error("[ci-schedule save]", e);
+      toast({
+        message: editingCiScheduleId
+          ? "Could not update schedule"
+          : "Could not create schedule",
+        variant: "error",
+        durationMs: 4000,
+      });
+    } finally {
+      setSavingCiSchedule(false);
+    }
+  }, [
+    newCiScheduleClient,
+    newCiScheduleEmail,
+    newCiScheduleType,
+    newCiFrequency,
+    newCiScheduleDay,
+    newCiScheduleTime,
+    newCiHoldForReview,
+    editingCiScheduleId,
+    campaigns,
+    toast,
+  ]);
+
+  useEffect(() => {
+    if (mainView !== "scheduled") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/client-intelligence/clients");
+        const data = (await res.json()) as { clients?: Array<{ name: string }> };
+        if (!cancelled && Array.isArray(data.clients)) {
+          setCiClients(data.clients.map((c) => ({ name: c.name })));
         }
+      } catch (e) {
+        console.error("[ci-clients]", e);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [mainView, userEmail, flushAchievementToasts]);
+  }, [mainView]);
 
   useEffect(() => {
     if (mainView !== "scheduled") return;
@@ -6464,11 +6779,32 @@ export default function Home() {
   const saveScheduledReport = async () => {
     console.log("[saveScheduledReport] demoModeActive:", demoModeActive, "psaStatus:", psaStatus, "demoForceEnabled:", demoForceEnabled, "demoDisabled:", demoDisabled);
     if (!userEmail) return;
-    if (demoModeActive) {
-      toast({ message: "Demo mode — connect your PSA to save scheduled reports", variant: "info" });
-      setScheduleEditorOpen(false);
-      return;
+
+    const existingScheduleIdForCap =
+      schCampaignId ?? selectedSchedule?.id ?? scheduleRow?.id ?? null;
+    if (noPsaConnected && !existingScheduleIdForCap) {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const uid = user?.id ?? authUserId;
+      if (uid) {
+        const { count } = await supabase
+          .from("scheduled_reports")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", uid);
+        if ((count ?? 0) >= 3) {
+          toast({
+            message:
+              "You can save up to 3 scheduled reports in demo mode. Connect your PSA to unlock unlimited scheduling.",
+            variant: "error",
+            durationMs: 5000,
+          });
+          return;
+        }
+      }
     }
+
     if (!schIncludeTickets && !schIncludeProjects) {
       toast({
         message: "Enable tickets or projects to continue.",
@@ -6617,6 +6953,7 @@ export default function Home() {
         attach_excel: schAttachExcel,
         excel_tabs,
         push_to_halo: schPushToHalo,
+        hold_for_review: schHoldForReview === true,
         halo_push_outputs: schHaloPushOutputs,
         halo_push_excel: schHaloPushExcel,
         halo_push_excel_tabs: schHaloPushExcelTabs,
@@ -6672,17 +7009,7 @@ export default function Home() {
         durationMs: 2500,
       });
       setScheduleEditorOpen(false);
-      void (async () => {
-        try {
-          const hres = await fetch("/api/scheduled-report-history");
-          const hd = (await hres.json()) as {
-            history?: typeof reportHistory;
-          };
-          if (Array.isArray(hd.history)) setReportHistory(hd.history);
-        } catch {
-          /* ignore */
-        }
-      })();
+      void psaScheduledHistory.refetch();
     } catch (e) {
       toast({
         message:
@@ -6849,34 +7176,64 @@ export default function Home() {
     }
   };
 
-  const triggerScheduleNow = async (scheduleId: string) => {
+  const triggerScheduleNow = async (
+    scheduleId: string,
+    reportType?: string | null,
+    ciClientName?: string | null,
+  ) => {
     setSendingNowId(scheduleId);
     setScheduleSaving(true);
     try {
-      const res = await fetch("/api/cron/trigger-now", {
+      const endpoint =
+        reportType === "ci_qbr"
+          ? "/api/cron/trigger-ci-qbr-now"
+          : ciClientName
+            ? "/api/cron/trigger-ci-service-review-now"
+            : "/api/cron/trigger-now";
+
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ scheduleId }),
       });
       const data = (await res.json()) as {
         error?: string;
-        results?: Array<{ success: boolean; error?: string }>;
+        results?: Array<{ success: boolean; held?: boolean; error?: string }>;
       };
       if (!res.ok) throw new Error(data.error || "Could not trigger schedule");
       const first = data.results?.[0];
-      if (first?.success) {
+        if (first?.held) {
+        toast({
+          message: "Report generated and is awaiting your approval",
+          durationMs: 3500,
+        });
+        void fetch("/api/pending-approvals/count")
+          .then((r) => r.json())
+          .then((d: { count?: number }) => {
+            if (typeof d.count === "number") setPendingApprovalsCount(d.count);
+          })
+          .catch(() => undefined);
+      } else if (first?.success) {
         toast({ message: "Report sent successfully", durationMs: 2500 });
       } else {
+        const reason = first?.error;
+        const friendlyMessage =
+          reason === "no_connection"
+            ? "No PSA connected - connect HaloPSA or ConnectWise first"
+            : reason === "HTTP 200"
+              ? "This client has no PSA data yet - connect a PSA or use Client Intelligence reports instead"
+              : "Failed to send report - please try again";
+
         toast({
-          message: "Failed to send report — please try again",
+          message: friendlyMessage,
           variant: "error",
-          durationMs: 4500,
+          durationMs: 4000,
         });
       }
       await refreshCampaigns();
     } catch (e) {
       toast({
-        message: "Failed to send report — please try again",
+        message: "Failed to send report - please try again",
         variant: "error",
         durationMs: 4000,
       });
@@ -6885,6 +7242,122 @@ export default function Home() {
       setSendingNowId(null);
     }
   };
+
+  const fetchPendingApprovalsCount = useCallback(async () => {
+    if (!userEmail) return;
+    try {
+      const res = await fetch("/api/pending-approvals/count");
+      const data = (await res.json()) as { count?: number };
+      if (res.ok && typeof data.count === "number") {
+        setPendingApprovalsCount(data.count);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [userEmail]);
+
+  const loadPendingApprovals = useCallback(async () => {
+    if (!userEmail) return;
+    setPendingApprovalsLoading(true);
+    try {
+      const res = await fetch("/api/pending-approvals");
+      const data = (await res.json()) as {
+        approvals?: Array<{
+          id: string;
+          schedule_id: string | null;
+          source: string;
+          created_at: string;
+          schedule_name: string | null;
+          client_label: string | null;
+          subject: string | null;
+          text: string | null;
+          html: string | null;
+        }>;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error || "Could not load approvals");
+      const list = Array.isArray(data.approvals) ? data.approvals : [];
+      setPendingApprovals(list);
+      setPendingApprovalsCount(list.length);
+    } catch (e) {
+      toast({
+        message: e instanceof Error ? e.message : "Could not load approvals",
+        variant: "error",
+        durationMs: 4000,
+      });
+      setPendingApprovals([]);
+    } finally {
+      setPendingApprovalsLoading(false);
+    }
+  }, [userEmail, toast]);
+
+  const runApprovalAction = useCallback(
+    async (
+      approvalId: string,
+      action: "approve" | "reject" | "approve_and_stop",
+    ) => {
+      setApprovalActionId(approvalId);
+      try {
+        const res = await fetch(`/api/pending-approvals/${approvalId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        });
+        const data = (await res.json()) as { error?: string; success?: boolean };
+        if (!res.ok) throw new Error(data.error || "Action failed");
+
+        setPendingApprovals((prev) => prev.filter((row) => row.id !== approvalId));
+        setPendingApprovalsCount((prev) => Math.max(0, prev - 1));
+        setRejectConfirmApprovalId(null);
+        setExpandedApprovalIds((prev) => {
+          const next = new Set(prev);
+          next.delete(approvalId);
+          return next;
+        });
+
+        if (action === "reject") {
+          toast({ message: "Report rejected", durationMs: 3000 });
+        } else if (action === "approve_and_stop") {
+          toast({
+            message:
+              "Report sent — future reports from this schedule will send automatically",
+            durationMs: 4000,
+          });
+          void refreshCampaigns();
+        } else {
+          toast({ message: "Report sent", durationMs: 3000 });
+          void refreshCampaigns();
+        }
+      } catch (e) {
+        toast({
+          message: e instanceof Error ? e.message : "Could not complete action",
+          variant: "error",
+          durationMs: 4000,
+        });
+      } finally {
+        setApprovalActionId(null);
+      }
+    },
+    [toast, refreshCampaigns],
+  );
+
+  useEffect(() => {
+    if (!userEmail) return;
+    void fetchPendingApprovalsCount();
+    const timer = window.setInterval(() => {
+      void fetchPendingApprovalsCount();
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [userEmail, fetchPendingApprovalsCount]);
+
+  useEffect(() => {
+    if (!userEmail) return;
+    if (mainView === "approvals") {
+      void loadPendingApprovals();
+      return;
+    }
+    void fetchPendingApprovalsCount();
+  }, [mainView, userEmail, loadPendingApprovals, fetchPendingApprovalsCount]);
 
   const handleSelectProject = useCallback(
     (project: ProjectItem) => {
@@ -6903,6 +7376,8 @@ export default function Home() {
       if (project.output_json) {
         setResult(parseApiGenerateResult(project.output_json));
       }
+      setSavedGenerationId(project.id);
+      setGenerationRating(null);
       setLastGeneratedTone(GENERATION_EMAIL_TONE);
       setSidebarOpenMobile(false);
       const haloRows = Array.isArray(cachedHaloTickets?.tickets)
@@ -6912,7 +7387,7 @@ export default function Home() {
       const restoredLabel =
         typeof project.project_name === "string" ? project.project_name.trim() : "";
       toast({
-        message: restoredLabel ? `Restored — ${restoredLabel}` : "History restored",
+        message: restoredLabel ? `Restored - ${restoredLabel}` : "History restored",
         durationMs: 3000,
       });
     },
@@ -6935,6 +7410,67 @@ export default function Home() {
     setLastImportedHaloItems(next);
   }, [selectedProjectId, projects, cachedHaloTickets?.tickets, lastImportedHaloItems.length]);
 
+  const rateGeneration = useCallback(
+    async (generationId: string, rating: "positive" | "negative") => {
+      setGenerationRating(rating);
+      try {
+        await fetch(`/api/generations/${generationId}/rate`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rating }),
+          credentials: "same-origin",
+        });
+      } catch {
+        // Non-blocking — rating failure should not affect UX
+      }
+    },
+    [],
+  );
+
+  const loadCompare = useCallback(async () => {
+    if (!savedGenerationId) return;
+
+    const clientNameForCompare =
+      projectName.trim() ||
+      (() => {
+        const m = input.match(/^Client:\s*(.+)$/im);
+        return m?.[1]?.trim() ?? "";
+      })();
+
+    if (!clientNameForCompare) return;
+
+    setCompareLoading(true);
+    setCompareResult(null);
+    setCompareNoPrevious(false);
+
+    try {
+      const res = await fetch("/api/client-intelligence/compare", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          currentGenerationId: savedGenerationId,
+          clientName: clientNameForCompare,
+        }),
+      });
+      const data = (await res.json()) as {
+        comparison?: typeof compareResult;
+        noPrevious?: boolean;
+      };
+      if (data.noPrevious) {
+        setCompareNoPrevious(true);
+      } else {
+        setCompareResult(data.comparison ?? null);
+      }
+    } catch (e) {
+      console.error("[compare]", e);
+    } finally {
+      setCompareLoading(false);
+    }
+  }, [savedGenerationId, projectName, input]);
+
   const resetGenerateToEmpty = useCallback(() => {
     setMainView("generate");
     setSelectedProjectId(null);
@@ -6944,6 +7480,8 @@ export default function Home() {
     setClientContactEmail("");
     setGenerationMailtoEmail(null);
     setResult(null);
+    setSavedGenerationId(null);
+    setGenerationRating(null);
     setError(null);
     setEditingField(null);
     setEditingActionRow(null);
@@ -6953,10 +7491,16 @@ export default function Home() {
     setLastGeneratedTone(GENERATION_EMAIL_TONE);
     setLastSessionRestoreBannerProject(null);
     setLastImportedHaloItems([]);
+    setLastInputQuality(null);
     setLastImportSourcePsa(null);
     setIsInputCollapsed(false);
+    setGenerateManualExpanded(false);
     setImportedFileName(null);
     setImportedFileTypeLabel(null);
+    setStagedGenerationReady(false);
+    setCompareResult(null);
+    setHasPreviousReport(false);
+    setStagedCompareExample(false);
   }, []);
 
   const handleNewGeneration = () => {
@@ -6970,21 +7514,60 @@ export default function Home() {
     } = await supabase.auth.getUser();
     if (!user) return;
     await supabase.from("profiles").update({ onboarding_completed: true }).eq("id", user.id);
+    await refreshShellData();
     setOnboardingRequiredExplicit(false);
     setOnboardingOverlayOpen(false);
-  }, []);
+  }, [refreshShellData]);
+
+  const markTourCompleted = useCallback(async () => {
+    setTourCompleted(true);
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+      const { error } = await supabase
+        .from("profiles")
+        .update({ tour_completed: true })
+        .eq("id", user.id);
+      if (error) return;
+      await refreshShellData();
+      if (tourCompletionCelebrationFiredRef.current) return;
+      tourCompletionCelebrationFiredRef.current = true;
+      const confetti = (await import("canvas-confetti")).default;
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ["#38bdf8", "#1e3a5f", "#ffffff", "#7dd3fc"],
+      });
+      toast({
+        variant: "achievement",
+        message: "Achievement Unlocked 🏆",
+        subtitle: "You've completed the Handover tour — you're ready to go.",
+        durationMs: 5000,
+      });
+    } catch {
+      /* ignore */
+    }
+  }, [refreshShellData, toast]);
 
   const saveOnboardingProfileStep = useCallback(async (): Promise<boolean> => {
+    const fn = profileFirstName.trim();
+    const ln = profileLastName.trim();
+    const displayFromNames = fn && ln ? `${fn} ${ln}` : null;
     const res = await fetch("/api/profile/update", {
       method: "PATCH",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        first_name: profileFirstName.trim() || null,
-        last_name: profileLastName.trim() || null,
-        display_name: profileDisplayName.trim() || null,
+        first_name: fn || null,
+        last_name: ln || null,
+        display_name: profileDisplayName.trim() || displayFromNames,
         job_title: profileJobTitle.trim() || null,
         company_name: profileCompanyName.trim() || null,
+        output_language: profileOutputLanguage.trim() || "English",
         signature_override: signatureOverride.trim() || null,
       }),
     });
@@ -6992,6 +7575,7 @@ export default function Home() {
       toast({ message: "Could not save profile", variant: "error", durationMs: 4000 });
       return false;
     }
+    await refreshShellData();
     return true;
   }, [
     profileFirstName,
@@ -6999,7 +7583,9 @@ export default function Home() {
     profileDisplayName,
     profileJobTitle,
     profileCompanyName,
+    profileOutputLanguage,
     signatureOverride,
+    refreshShellData,
     toast,
   ]);
 
@@ -7050,7 +7636,7 @@ export default function Home() {
       console.error("[branding] save failed:", { status: res.status, payload });
       if (res.status === 403) {
         toast({
-          message: payload.error ?? "White label requires Enterprise.",
+          message: payload.error ?? "White label mode is included with Handover.",
           variant: "error",
           durationMs: 5000,
         });
@@ -7075,7 +7661,7 @@ export default function Home() {
     await mutate("/api/profile");
     await mutate("/api/profile/branding");
     window.dispatchEvent(new Event("handover:profile-reload"));
-    await refreshUsage();
+    await refreshShellData();
   };
 
   const uploadBrandLogo = async (file: File | null) => {
@@ -7122,6 +7708,7 @@ export default function Home() {
       if (upsertErr) {
         throw new Error(upsertErr.message);
       }
+      await refreshShellData();
       toast({ message: "Logo uploaded", durationMs: 2000 });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to upload logo.");
@@ -7173,7 +7760,7 @@ export default function Home() {
       logoFileInputRef.current.value = "";
     }
     toast({ message: "Logo removed", durationMs: 2000 });
-    await refreshUsage();
+    await refreshShellData();
   };
 
   const resetBrandPrimaryColour = async () => {
@@ -7208,7 +7795,7 @@ export default function Home() {
     setBrandColour(HANDOVER_BRAND_PRIMARY_HEX);
     setBrandColourError("");
     toast({ message: "Primary colour reset to Handover default", durationMs: 2000 });
-    await refreshUsage();
+    await refreshShellData();
   };
 
   const resetBrandSecondaryColour = async () => {
@@ -7243,7 +7830,7 @@ export default function Home() {
     setBrandSecondaryColour(HANDOVER_BRAND_SECONDARY_HEX);
     setBrandSecondaryColourError("");
     toast({ message: "Accent colour reset to Handover default", durationMs: 2000 });
-    await refreshUsage();
+    await refreshShellData();
   };
 
   const saveSettings = async () => {
@@ -7277,7 +7864,7 @@ export default function Home() {
       return;
     }
     toast({ message: "Settings saved", durationMs: 2000 });
-    void refreshUsage();
+    await refreshShellData();
   };
 
   const savePortalSlug = useCallback(async (overrideSlug?: string): Promise<boolean> => {
@@ -7346,7 +7933,7 @@ export default function Home() {
     saveOutputPrefs(outputPrefs);
     saveExtendedOutputPrefs(extendedOutputPrefs);
     toast({ message: "Output preferences saved", durationMs: 2000 });
-    void refreshUsage();
+    await refreshShellData();
   };
 
   const toggleTheme = () => {
@@ -7372,6 +7959,7 @@ export default function Home() {
       setError("Failed to save signature.");
       return;
     }
+    await refreshShellData();
     toast({ message: "Settings saved", durationMs: 2000 });
   };
 
@@ -7396,6 +7984,7 @@ export default function Home() {
       return;
     }
     setWritingStyle(trimmed);
+    await refreshShellData();
     toast({ message: "Settings saved", durationMs: 2000 });
   };
 
@@ -7408,7 +7997,7 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          haloUrl: haloUrl.trim(),
+          haloUrl: normalizeHaloUrlForSubmit(haloUrl),
           tenant: haloTenant.trim() || null,
           clientId: haloClientId.trim(),
           clientSecret: haloClientSecret,
@@ -7434,7 +8023,6 @@ export default function Home() {
         });
         return;
       }
-      setHaloConnected(true);
       setHaloReconnectRecommended(false);
       setHaloPermissionWarning(
         Array.isArray(data.warnings) && data.warnings.length > 0
@@ -7443,7 +8031,7 @@ export default function Home() {
       );
       setHaloClientSecret("");
       toast({ message: "HaloPSA connected", durationMs: 3000 });
-      void refreshHaloConnection();
+      await refreshShellData();
     } catch {
       setHaloError("Connection failed - check your credentials");
       toast({
@@ -7472,11 +8060,11 @@ export default function Home() {
         toast({ message: err, variant: "error", durationMs: 5000 });
         return;
       }
-      setHaloConnected(false);
       setHaloReconnectRecommended(false);
       setHaloClientSecret("");
       setHaloPermissionWarning(null);
       setHaloAutoClosureSummary(false);
+      await refreshShellData();
       toast({ message: "HaloPSA disconnected", durationMs: 3000 });
     } catch {
       setHaloError("Failed to disconnect HaloPSA.");
@@ -7501,6 +8089,7 @@ export default function Home() {
         throw new Error(data.error ?? "Connection test failed.");
       }
       toast({ message: "Connection successful", durationMs: 3000 });
+      await refreshShellData();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Connection test failed.";
       setHaloError(msg);
@@ -7537,7 +8126,10 @@ export default function Home() {
     setSlackNotificationsEnabled(enabled);
     const ok = await patchNotificationWebhooks({ slack_notifications_enabled: enabled });
     if (!ok) setSlackNotificationsEnabled(prev);
-    else toast({ message: "Slack notifications updated", durationMs: 2000 });
+    else {
+      await refreshShellData();
+      toast({ message: "Slack notifications updated", durationMs: 2000 });
+    }
   };
 
   const handleTeamsNotificationsToggle = async (enabled: boolean) => {
@@ -7545,7 +8137,10 @@ export default function Home() {
     setTeamsNotificationsEnabled(enabled);
     const ok = await patchNotificationWebhooks({ teams_notifications_enabled: enabled });
     if (!ok) setTeamsNotificationsEnabled(prev);
-    else toast({ message: "Teams notifications updated", durationMs: 2000 });
+    else {
+      await refreshShellData();
+      toast({ message: "Teams notifications updated", durationMs: 2000 });
+    }
   };
 
   const handleSaveSlackWebhook = async () => {
@@ -7553,7 +8148,10 @@ export default function Home() {
     setSlackWebhookSaveLoading(true);
     try {
       const ok = await patchNotificationWebhooks({ slack_webhook_url: slackWebhookUrl.trim() });
-      if (ok) toast({ message: "Slack webhook saved", durationMs: 2000 });
+      if (ok) {
+        await refreshShellData();
+        toast({ message: "Slack webhook saved", durationMs: 2000 });
+      }
     } finally {
       setSlackWebhookSaveLoading(false);
     }
@@ -7564,7 +8162,10 @@ export default function Home() {
     setTeamsWebhookSaveLoading(true);
     try {
       const ok = await patchNotificationWebhooks({ teams_webhook_url: teamsWebhookUrl.trim() });
-      if (ok) toast({ message: "Teams webhook saved", durationMs: 2000 });
+      if (ok) {
+        await refreshShellData();
+        toast({ message: "Teams webhook saved", durationMs: 2000 });
+      }
     } finally {
       setTeamsWebhookSaveLoading(false);
     }
@@ -7578,6 +8179,7 @@ export default function Home() {
     if (ok) {
       setSlackWebhookUrl("");
       setSlackNotificationsEnabled(false);
+      await refreshShellData();
       toast({ message: "Slack disconnected", durationMs: 2000 });
     }
   };
@@ -7590,6 +8192,7 @@ export default function Home() {
     if (ok) {
       setTeamsWebhookUrl("");
       setTeamsNotificationsEnabled(false);
+      await refreshShellData();
       toast({ message: "Teams disconnected", durationMs: 2000 });
     }
   };
@@ -7686,7 +8289,7 @@ export default function Home() {
       setCwPrivateKeyInput("");
       setCwConfigOpen(false);
       toast({ message: "ConnectWise connected", durationMs: 3000 });
-      void refreshCwConnection();
+      await refreshShellData();
     } catch {
       const err = "Failed to save ConnectWise connection.";
       setCwError(err);
@@ -7714,11 +8317,9 @@ export default function Home() {
         toast({ message: err, variant: "error", durationMs: 5000 });
         return;
       }
-      setCwConnected(false);
-      setCwSiteUrl("");
       setCwPrivateKeyInput("");
       toast({ message: "ConnectWise disconnected", durationMs: 3000 });
-      void refreshCwConnection();
+      await refreshShellData();
     } catch {
       setCwError("Failed to disconnect ConnectWise.");
       toast({
@@ -7870,7 +8471,7 @@ export default function Home() {
       }
       if (showPro100Warning) {
         toast({
-          message: "You’ve reached your monthly limit. Upgrade to Team to continue generating.",
+          message: "You’ve reached your monthly limit. Move to Handover to continue generating.",
           variant: "error",
           durationMs: 5000,
         });
@@ -7886,9 +8487,119 @@ export default function Home() {
         return;
       }
 
+      if (stagedGenerationReady) {
+        void executeStagedOnboardingGenerate(outputPrefs);
+        return;
+      }
+
       void executeGenerate(outputPrefs);
     } finally {
       setIsCheckingAuthForGenerate(false);
+    }
+  };
+
+  const executeStagedOnboardingGenerate = async (
+    selection: Record<ModalOutputKey, boolean>,
+  ) => {
+    const trimmed = input.trim();
+    const effectiveInput = trimmed || lastInput.trim();
+    if (isGenerating) return;
+    if (!effectiveInput || effectiveInput.length < 10) {
+      toast({
+        message:
+          "Add a bit more detail and try again - the more context you give, the better your report will be.",
+        variant: "error",
+        durationMs: 4000,
+      });
+      return;
+    }
+
+    const selectedOutputs = MODAL_OUTPUT_KEYS.filter((k) => selection[k]);
+    if (selectedOutputs.length === 0) return;
+
+    const extendedOutputKeys = EXTENDED_PM_TAB_KEYS.filter((k) => extendedOutputPrefs[k]);
+
+    setShowTimeSaved(false);
+    setLastGenDurationMs(null);
+    setResult(null);
+    setIsInputCollapsed(
+      lastImportedHaloItems.length > 0 || input.length > 500,
+    );
+    setSavedGenerationId(null);
+    setCompareResult(null);
+    setCompareLoading(false);
+    setCompareNoPrevious(false);
+    setHasPreviousReport(false);
+    setStagedCompareExample(false);
+    setGenerationRating(null);
+    setOutputMainTab("actions");
+    setActiveClientEmailIndex(0);
+    setEditingActionRow(null);
+    setEditingDueDateRow(null);
+    setEditingRiskRow(null);
+    setEditingField(null);
+    setFollowUpModalOpen(false);
+    setFollowUpModalBody("");
+    setFollowUpModalSubject("");
+    setSmartActionEmailBody(null);
+    setSmartActionEmailTo(null);
+
+    setIsGenerating(true);
+    genStartTime.current = Date.now();
+    setGenProgress(0);
+    if (genProgressRef.current) clearInterval(genProgressRef.current);
+    genProgressRef.current = setInterval(() => {
+      setGenProgress((prev) => {
+        if (prev < 40) return prev + 2.5;
+        if (prev < 85) return prev + 0.4;
+        return prev;
+      });
+    }, 150);
+    setError(null);
+    setShowSignUpBanner(false);
+    setGenerationPhase("generating");
+
+    try {
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 2750);
+      });
+
+      const coreScope = selectedOutputs.filter((k): k is ModalOutputKey =>
+        (MODAL_OUTPUT_KEYS as readonly string[]).includes(k),
+      );
+      const nextResult: GenerateResult = {
+        ...ONBOARDING_STAGED_RESULT(),
+        _uiTabScope: {
+          core: coreScope.length > 0 ? coreScope : [...MODAL_OUTPUT_KEYS],
+          extended: extendedOutputKeys,
+        },
+      };
+      setResult(nextResult);
+      setExportFullTabs(exportPickerTabIdsForResult(nextResult));
+      setIsInputCollapsed(true);
+      genStartTime.current = null;
+      setStagedGenerationReady(false);
+      setHasPreviousReport(true);
+      setCompareResult(ONBOARDING_STAGED_COMPARE_RESULT);
+      setStagedCompareExample(true);
+      void advanceHandoverTourAfterGeneration();
+    } catch (e) {
+      console.error(e);
+      setError("Network error. Please try again.");
+      toast({
+        message: "Generation failed - please try again",
+        variant: "error",
+        durationMs: 5000,
+      });
+    } finally {
+      setGenerationPhase("idle");
+      setGenProgress(100);
+      if (genProgressRef.current) {
+        clearInterval(genProgressRef.current);
+        genProgressRef.current = null;
+      }
+      genStartTime.current = null;
+      setIsGenerating(false);
     }
   };
 
@@ -7898,7 +8609,8 @@ export default function Home() {
     if (isGenerating) return;
     if (!effectiveInput || effectiveInput.length < 10) {
       toast({
-        message: "Please add some content before generating",
+        message:
+          "Add a bit more detail and try again - the more context you give, the better your report will be.",
         variant: "error",
         durationMs: 4000,
       });
@@ -7925,7 +8637,7 @@ export default function Home() {
     }
     if (showPro100Warning) {
       toast({
-        message: "You’ve reached your monthly limit. Upgrade to Team to continue generating.",
+        message: "You’ve reached your monthly limit. Move to Handover to continue generating.",
         variant: "error",
         durationMs: 5000,
       });
@@ -7948,7 +8660,18 @@ export default function Home() {
       ? clientContactEmail.trim() || null
       : null;
 
+    setShowTimeSaved(false);
+    setLastGenDurationMs(null);
     setResult(null);
+    setIsInputCollapsed(
+      lastImportedHaloItems.length > 0 || input.length > 500,
+    );
+    setSavedGenerationId(null);
+    setCompareResult(null);
+    setCompareLoading(false);
+    setCompareNoPrevious(false);
+    setHasPreviousReport(false);
+    setGenerationRating(null);
     setOutputMainTab("actions");
     setActiveClientEmailIndex(0);
     setEditingActionRow(null);
@@ -7964,6 +8687,16 @@ export default function Home() {
     const supabase = createClient();
     const totalGensBeforeRun = totalGenerationCount ?? 0;
     setIsGenerating(true);
+    genStartTime.current = Date.now();
+    setGenProgress(0);
+    if (genProgressRef.current) clearInterval(genProgressRef.current);
+    genProgressRef.current = setInterval(() => {
+      setGenProgress((prev) => {
+        if (prev < 40) return prev + 2.5;
+        if (prev < 85) return prev + 0.4;
+        return prev;
+      });
+    }, 150);
     setError(null);
     setShowSignUpBanner(false);
 
@@ -7990,6 +8723,7 @@ export default function Home() {
         privacyMode,
         clientContactName: clientContactNameForApi,
         clientContactEmail: clientContactEmailForApi,
+        inputQualityScore: lastInputQuality?.score ?? null,
       };
       console.log("[generate][audit] client → POST /api/generate", {
         extendedOutputKeys: generateRequestBody.extendedOutputKeys,
@@ -8141,6 +8875,47 @@ export default function Home() {
         },
       };
       setResult(nextResult);
+      setIsInputCollapsed(true);
+      const genDurationMs = genStartTime.current
+        ? Date.now() - genStartTime.current
+        : null;
+      genStartTime.current = null;
+      if (genDurationMs && genDurationMs > 15000) {
+        if (Math.random() < 0.3) {
+          setLastGenDurationMs(genDurationMs);
+          setShowTimeSaved(true);
+          window.setTimeout(() => setShowTimeSaved(false), 8000);
+        }
+      }
+      setSavedGenerationId(savedGenId);
+      const clientNameForCompare =
+        projectName.trim() ||
+        (() => {
+          const m = input.match(/^Client:\s*(.+)$/im);
+          return m?.[1]?.trim() ?? "";
+        })();
+      if (savedGenId && clientNameForCompare) {
+        void fetch("/api/client-intelligence/compare", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            currentGenerationId: savedGenId,
+            clientName: clientNameForCompare,
+            checkOnly: true,
+          }),
+        })
+          .then((r) => r.json())
+          .then((data: { noPrevious?: boolean }) => {
+            setHasPreviousReport(!data.noPrevious);
+          })
+          .catch(() => {
+            setHasPreviousReport(false);
+          });
+      }
+      setGenerationRating(null);
       setFollowUpModalOpen(false);
       setFollowUpModalBody("");
       setReportQualityTipsOpen(false);
@@ -8148,9 +8923,7 @@ export default function Home() {
         const coreVis = visibleCoreTabsForResult(nextResult);
         const extVis = visibleExtendedTabsForResult(nextResult);
         let preferredTab: string;
-        if (selection.client_email && coreVis.includes("client_email")) {
-          preferredTab = "client_email";
-        } else if (coreVis.includes("actions")) {
+        if (coreVis.includes("actions")) {
           preferredTab = "actions";
         } else if (coreVis[0]) {
           preferredTab = coreVis[0];
@@ -8191,10 +8964,14 @@ export default function Home() {
         selection.client_email ? clientContactEmail.trim() || null : null,
       );
 
-      const outputSubtitle = MODAL_OUTPUT_KEYS.filter((k) => selection[k])
-        .map((k) => OUTPUT_KEY_LABELS[k])
-        .join(", ");
-      setGenerationToastSubtitle(outputSubtitle);
+      const isQbrReport =
+        effectiveInput.trim().startsWith("QBR CONTEXT:") ||
+        effectiveInput.trim().startsWith("QBR:");
+      setGenerationToastSubtitle(
+        isQbrReport
+          ? "QBR pack ready - PowerPoint and Excel included."
+          : "Actions, risks, summary and client email - ready to send.",
+      );
       setGenerationToastOpen(true);
       setLastInput(effectiveInput);
       setLastGeneratedTone(toneAtRun);
@@ -8229,7 +9006,7 @@ export default function Home() {
       } = await supabase.auth.getUser();
       if (!authedUser) return;
       setShowSignUpBanner(false);
-      const newTotal = await refreshUsage();
+      const newTotal = await refreshShellData();
       const achievementIds: string[] = [];
       if (totalGensBeforeRun < 1 && (newTotal ?? 0) >= 1) achievementIds.push("first_generation");
       if (totalGensBeforeRun < 10 && (newTotal ?? 0) >= 10) achievementIds.push("total_generations_10");
@@ -8269,6 +9046,12 @@ export default function Home() {
       });
     } finally {
       setGenerationPhase("idle");
+      setGenProgress(100);
+      if (genProgressRef.current) {
+        clearInterval(genProgressRef.current);
+        genProgressRef.current = null;
+      }
+      genStartTime.current = null;
       setIsGenerating(false);
     }
   };
@@ -8318,11 +9101,12 @@ export default function Home() {
   useEffect(() => {
     if (!result) return;
     const all: string[] = [...visibleCoreTabsList, ...outputTabStripExtendedKeys];
+    if (hasPreviousReport) all.push("compare");
     if (all.length === 0) return;
     if (!all.includes(outputMainTab)) {
       setOutputMainTab(all[0]!);
     }
-  }, [result, visibleCoreTabsList, outputTabStripExtendedKeys, outputMainTab]);
+  }, [result, visibleCoreTabsList, outputTabStripExtendedKeys, outputMainTab, hasPreviousReport]);
 
   const filteredHistoryProjects = useMemo(() => {
     let filtered = projects;
@@ -8333,16 +9117,102 @@ export default function Home() {
   }, [projects, selectedHistoryCollectionId]);
 
   const showGenerateEmptyLayout = Boolean(userEmail && !result && !isGenerating);
+  const generateStartingDataLoaded =
+    showGenerateEmptyLayout &&
+    (lastImportedHaloItems.length > 0 ||
+      input.trim().length > 0 ||
+      Boolean(importedFileName) ||
+      generateManualExpanded);
   const bothPsasConnected = haloConnected && cwConnected;
   const generateHasInput = input.trim().length > 0;
-  const generateButtonMuted = !generateHasInput && noPsaConnected;
+  const generateButtonMuted = !generateHasInput;
+  const generateSelectedOutputLabels = useMemo(
+    () =>
+      MODAL_OUTPUT_KEYS.filter((k) => outputPrefs[k]).map((k) => OUTPUT_TAB_TRIGGER_LABELS[k]),
+    [outputPrefs],
+  );
+
+  useEffect(() => {
+    if (!shouldAutoStartTour || tourAutoStartAttemptedRef.current) return;
+    if (onboardingRedirectPending || !userEmail || mainView !== "generate") return;
+    if (hasHandoverTourStartedThisSession()) {
+      setShouldAutoStartTour(false);
+      return;
+    }
+
+    const attemptStart = () => {
+      const generateBtn = document.getElementById("handover-generate-outputs-btn");
+      if (!generateBtn) return false;
+      tourAutoStartAttemptedRef.current = true;
+      setShouldAutoStartTour(false);
+      registerHandoverTourCompletionHandler(() => {
+        void markTourCompleted();
+      });
+      startHandoverProductTour({ includeGenerateStep: true, includeOutputSteps: true });
+      return true;
+    };
+
+    if (attemptStart()) return undefined;
+
+    let attempts = 0;
+    const intervalId = window.setInterval(() => {
+      attempts += 1;
+      if (attemptStart() || attempts >= 40) {
+        window.clearInterval(intervalId);
+        if (attempts >= 40) {
+          setShouldAutoStartTour(false);
+        }
+      }
+    }, 50);
+
+    return () => window.clearInterval(intervalId);
+  }, [
+    shouldAutoStartTour,
+    onboardingRedirectPending,
+    userEmail,
+    mainView,
+    generateStartingDataLoaded,
+    markTourCompleted,
+  ]);
+
+  const startProductTourReplay = useCallback(async () => {
+    setMainView("generate");
+    setSettingsOpen(false);
+    setSidebarOpenMobile(false);
+    registerHandoverTourCompletionHandler(() => {
+      void markTourCompleted();
+    });
+
+    await waitForHandoverTourElement(
+      "#handover-generate-outputs-btn",
+      HANDOVER_TOUR_ELEMENT_WAIT_MS,
+    );
+    if (result) {
+      await waitForHandoverTourElement(
+        '[data-tour="output-tabs-region"]',
+        HANDOVER_TOUR_ELEMENT_WAIT_MS,
+      );
+    }
+    const hasOutput =
+      Boolean(result) &&
+      Boolean(document.querySelector('[data-tour="output-tabs-region"]'));
+
+    startHandoverProductTour({
+      includeGenerateStep: false,
+      includeOutputSteps: hasOutput,
+    });
+  }, [markTourCompleted, result]);
 
   const generatePsaLiveTicketCount = useMemo(() => {
     if (haloConnected && Array.isArray(cachedHaloTickets?.tickets)) {
-      return cachedHaloTickets.tickets.length;
+      return (cachedHaloTickets.tickets as Array<Record<string, unknown>>).filter(
+        (t) => !t.is_project && !t.is_project_task,
+      ).length;
     }
     if (cwConnected && Array.isArray(cachedCwTickets?.tickets)) {
-      return cachedCwTickets.tickets.length;
+      return (cachedCwTickets.tickets as Array<Record<string, unknown>>).filter(
+        (t) => !t.cwProjectId || Number(t.cwProjectId) <= 0,
+      ).length;
     }
     return null;
   }, [haloConnected, cwConnected, cachedHaloTickets?.tickets, cachedCwTickets?.tickets]);
@@ -8410,66 +9280,41 @@ export default function Home() {
     psaConnections.primary,
   ]);
 
+  const onGeneratePsaImportCardClick = useCallback(() => {
+    if (!hasProAccess && !demoModeActive) {
+      setHaloProModalOpen(true);
+      return;
+    }
+    if (psaConnections.multiple) {
+      return;
+    }
+    openPsaImportFromGenerate();
+  }, [demoModeActive, hasProAccess, openPsaImportFromGenerate, psaConnections.multiple]);
+
+  const onGenerateConnectPsaCardClick = useCallback(() => {
+    openIntegrationsInConfiguration();
+    setSettingsOpen(false);
+    setSidebarOpenMobile(false);
+  }, [openIntegrationsInConfiguration]);
+
+  const onGenerateDemoImportCardClick = useCallback(() => {
+    if (!hasProAccess && !demoModeActive) {
+      setHaloProModalOpen(true);
+      return;
+    }
+    setHaloImportOpen(true);
+  }, [demoModeActive, hasProAccess]);
+
+  const onGenerateManualStart = useCallback(() => {
+    setGenerateManualExpanded(true);
+    setIsInputCollapsed(false);
+    window.requestAnimationFrame(() => generateInputRef.current?.focus());
+  }, []);
+
   const hasEnabledSchedule = useMemo(
     () => campaigns.some((c) => c.enabled === true),
     [campaigns],
   );
-
-  const isTeamPlan = plan === "team";
-
-  useEffect(() => {
-    if (!userEmail || !isTeamPlan || !userTeamId) {
-      setTeamMemberCount(null);
-      setTeamMemberRole(null);
-      setTeamDashboardPermission("full");
-      return;
-    }
-    const sb = createClient();
-    void (async () => {
-      const {
-        data: { user },
-      } = await sb.auth.getUser();
-      if (!user?.id) {
-        setTeamMemberCount(null);
-        setTeamMemberRole(null);
-        setTeamDashboardPermission("full");
-        return;
-      }
-      const [countRes, memRes] = await Promise.all([
-        sb
-          .from("team_members")
-          .select("*", { count: "exact", head: true })
-          .eq("team_id", userTeamId),
-        sb
-          .from("team_members")
-          .select("role, dashboard_permission")
-          .eq("team_id", userTeamId)
-          .eq("user_id", user.id)
-          .maybeSingle(),
-      ]);
-      if (!countRes.error) setTeamMemberCount(countRes.count ?? 0);
-      const r = memRes.data?.role;
-      setTeamMemberRole(typeof r === "string" ? r : null);
-      if (typeof r === "string" && (r === "owner" || r === "admin")) {
-        setTeamDashboardPermission("full");
-      } else if (r === "member") {
-        setTeamDashboardPermission(
-          normalizeTeamDashboardPermission(memRes.data?.dashboard_permission),
-        );
-      } else {
-        setTeamDashboardPermission("full");
-      }
-    })();
-  }, [userEmail, isTeamPlan, userTeamId]);
-
-  const deliveryDashboardAccess = useMemo((): TeamDashboardPermission => {
-    if (!isTeamPlan || !userTeamId) return "full";
-    if (teamMemberRole === "owner" || teamMemberRole === "admin") return "full";
-    if (teamMemberRole === "member") {
-      return normalizeTeamDashboardPermission(teamDashboardPermission);
-    }
-    return "full";
-  }, [isTeamPlan, userTeamId, teamMemberRole, teamDashboardPermission]);
 
   useEffect(() => {
     if (mainView !== "delivery") return;
@@ -8660,18 +9505,72 @@ export default function Home() {
     [activeClientEmailBody, lastInput, input, result, toast],
   );
 
+  const onQuickEmailClient = useCallback((): boolean | Promise<boolean> => {
+    if (!result) {
+      setMainView("generate");
+      setSidebarOpenMobile(false);
+      toast({
+        message: "Generate a report first, then you can send it to your client",
+        variant: "info",
+        durationMs: 4500,
+      });
+      return false;
+    }
+    setMainView("generate");
+    setSidebarOpenMobile(false);
+    setOutputMainTab("client_email");
+
+    const runScrollHighlight = () => {
+      outputRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document
+        .getElementById("handover-send-client-email-btn")
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setSendEmailButtonHighlight(true);
+    };
+
+    return new Promise<boolean>((resolve) => {
+      let attempts = 0;
+      const tryFindSendButton = () => {
+        const btn = document.getElementById("handover-send-client-email-btn");
+        if (btn) {
+          runScrollHighlight();
+          resolve(true);
+          return;
+        }
+        attempts += 1;
+        if (attempts >= 10) {
+          toast({
+            message: "Could not locate your report - try scrolling down manually",
+            variant: "info",
+            durationMs: 4500,
+          });
+          resolve(false);
+          return;
+        }
+        window.setTimeout(tryFindSendButton, 50);
+      };
+      tryFindSendButton();
+    });
+  }, [result, toast]);
+
   const checklistSteps: ChecklistStepDef[] = useMemo(() => {
     const profileDone =
       profileJobTitle.trim().length > 0 && profileCompanyName.trim().length > 0;
     const firstGenDone = (totalGenerationCount ?? 0) >= 1;
-    const basicExportDone = basicOnboardingActionExportDone || hasExportedExcel;
+    const psaConnected =
+      psaStatus.halo || psaStatus.connectwise || haloConnected || cwConnected;
+    const hasScheduledReport = hasEnabledSchedule;
+    const hasGeneratedQbr = projects.some(
+      (g) => g.report_type === "qbr" || g.reportType === "qbr",
+    );
 
     if (!hasProAccess) {
       return [
         {
           id: "profile",
           label: "Complete your profile",
-          description: "Add your signature to client emails",
+          description:
+            "Add your name, job title, and company so your reports are personalised.",
           cta: "Set up →",
           onCta: () => {
             setSettingsOpen(true);
@@ -8681,61 +9580,66 @@ export default function Home() {
           done: profileDone,
         },
         {
+          id: "product_tour",
+          label: tourCompleted ? "Replay the tour" : "Take the tour",
+          description: "A 5-step walkthrough of what Handover can do for you",
+          cta: tourCompleted ? "Replay" : "Start",
+          onCta: () => {
+            void startProductTourReplay();
+          },
+          done: tourCompleted,
+        },
+        {
           id: "first_generation",
           label: "Generate your first report",
-          description: "See what Handover can do",
+          description:
+            "Connect your PSA or use demo mode to see your first AI-generated client report.",
           cta: "Generate →",
           onCta: scrollToGenerate,
           done: firstGenDone,
         },
         {
-          id: "explore_tabs",
-          label: "Try a different output tab (Actions, Risks, Client Email)",
-          description: "Explore Risks, Client Email, Summary, or Status report",
-          cta: "Try it →",
+          id: "send_client_email",
+          label: "Send a report to a client",
+          description:
+            "Use one-click send to email a report directly to a client from Handover.",
+          cta: "Send →",
+          onCta: onQuickEmailClient,
+          done: basicOnboardingActionExportDone,
+        },
+        {
+          id: "explore_qbr",
+          label: "Generate a QBR pack",
+          description:
+            "Try the QBR generator and download your first quarterly business review pack.",
+          cta: "QBR →",
           onCta: () => {
-            setMainView("generate");
+            setMainView("reports");
             setSettingsOpen(false);
             setSidebarOpenMobile(false);
-            setOutputMainTab("client_email");
-            window.requestAnimationFrame(() => {
-              outputRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-            });
           },
-          done: onboardingTabsExplored,
+          done: false,
         },
         {
-          id: "export_actions_basic",
-          label: "Export your action log",
-          description: "Download your actions as a CSV file",
-          cta: "Export →",
-          onCta: () => {
-            void runFirstGenExcelFromCelebration();
-          },
-          done: basicExportDone,
-        },
-        {
-          id: "upgrade_learn_pro",
-          label: "Upgrade to Pro to unlock HaloPSA push-back and scheduled reports →",
-          description: "Automation, PSA push-back, and the full delivery dashboard",
-          cta: "Pricing →",
+          id: "upgrade_pro",
+          label: "Move to Handover",
+          description:
+            "Unlock the complete Handover workspace, automation, and client-ready outputs.",
+          cta: "View pricing →",
           onCta: () => {
             router.push("/pricing");
           },
-          done: hasProAccess,
+          done: false,
         },
       ];
     }
 
-    const showInviteStep = isTeamPlan && teamMemberRole === "owner";
-    const lastStepDone = showInviteStep
-      ? (teamMemberCount ?? 0) > 1
-      : hasProAccess;
     return [
       {
         id: "profile",
         label: "Complete your profile",
-        description: "Add your signature to client emails",
+        description:
+          "Add your name, job title, and company so your reports are personalised.",
         cta: "Set up →",
         onCta: () => {
           setSettingsOpen(true);
@@ -8745,91 +9649,91 @@ export default function Home() {
         done: profileDone,
       },
       {
+        id: "product_tour",
+        label: tourCompleted ? "Replay the tour" : "Take the tour",
+        description: "A 5-step walkthrough of what Handover can do for you",
+        cta: tourCompleted ? "Replay" : "Start",
+        onCta: () => {
+          void startProductTourReplay();
+        },
+        done: tourCompleted,
+      },
+      {
         id: "first_generation",
         label: "Generate your first report",
-        description: "See what Handover can do",
+        description:
+          "Connect your PSA or use demo mode to see your first AI-generated client report.",
         cta: "Generate →",
         onCta: scrollToGenerate,
         done: firstGenDone,
       },
       {
+        id: "connect_psa",
+        label: "Connect your PSA",
+        description:
+          "Link HaloPSA or ConnectWise to generate reports from your live data.",
+        cta: "Connect →",
+        onCta: () => {
+          setMainView("configuration");
+          setSettingsOpen(false);
+          setSidebarOpenMobile(false);
+        },
+        done: psaConnected,
+      },
+      {
+        id: "send_client_email",
+        label: "Send a report to a client",
+        description:
+          "Send your first AI-generated client update directly from Handover.",
+        cta: "Send →",
+        onCta: onQuickEmailClient,
+        done: basicOnboardingActionExportDone,
+      },
+      {
         id: "scheduled_report",
         label: "Set up a scheduled report",
-        description: "Automate your weekly reporting",
+        description:
+          "Automate your weekly client updates - set up once, Handover handles the rest.",
         cta: "Set up →",
         onCta: () => {
-          if (!hasProAccess) {
-            setHaloProModalOpen(true);
-            return;
-          }
           setMainView("scheduled");
           setSettingsOpen(false);
           setSidebarOpenMobile(false);
         },
-        done: hasEnabledSchedule,
+        done: hasScheduledReport,
       },
       {
-        id: "excel_export",
-        label: "Export to Excel",
-        description: "Download your action log and risk register",
-        cta: "Generate & export →",
-        onCta: scrollToGenerate,
-        done: hasExportedExcel,
+        id: "qbr_pack",
+        label: "Generate a QBR pack",
+        description:
+          "Create your first quarterly business review pack from live PSA data.",
+        cta: "QBR →",
+        onCta: () => {
+          setMainView("reports");
+          setSettingsOpen(false);
+          setSidebarOpenMobile(false);
+        },
+        done: hasGeneratedQbr,
       },
-      showInviteStep
-        ? {
-            id: "invite_member",
-            label: "Invite a team member",
-            description: "Collaborate with your delivery team",
-            cta: "Invite →",
-            onCta: () => {
-              window.location.href = "/dashboard/team";
-            },
-            done: lastStepDone,
-          }
-        : {
-            id: "upgrade",
-            label: "Upgrade to Pro",
-            description: "Unlock 200 generations/month, HaloPSA, and automation",
-            cta: "Upgrade →",
-            onCta: () => {
-              router.push("/pricing");
-            },
-            done: lastStepDone,
-          },
     ];
   }, [
     profileJobTitle,
     profileCompanyName,
     totalGenerationCount,
     hasEnabledSchedule,
-    hasExportedExcel,
     hasProAccess,
-    isTeamPlan,
-    teamMemberCount,
-    teamMemberRole,
-    plan,
+    psaStatus.halo,
+    psaStatus.connectwise,
+    haloConnected,
+    cwConnected,
+    projects,
     scrollToGenerate,
     router,
-    tryOpenProFeatureGate,
-    setHaloProModalOpen,
-    onboardingTabsExplored,
+    onQuickEmailClient,
     basicOnboardingActionExportDone,
-    runFirstGenExcelFromCelebration,
+    tourCompleted,
+    startProductTourReplay,
   ]);
-
-  const onQuickEmailClient = useCallback(() => {
-    setOutputMainTab("client_email");
-    window.requestAnimationFrame(() => {
-      outputRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      window.requestAnimationFrame(() => {
-        document
-          .getElementById("handover-send-client-email-btn")
-          ?.scrollIntoView({ behavior: "smooth", block: "center" });
-        setSendEmailButtonHighlight(true);
-      });
-    });
-  }, []);
 
   const onQuickPushToPsa = useCallback(() => {
     openPushModal();
@@ -8872,7 +9776,7 @@ export default function Home() {
       }
       if (showPro100Warning) {
         toast({
-          message: "You’ve reached your monthly limit. Upgrade to Team to continue generating.",
+          message: "You’ve reached your monthly limit. Move to Handover to continue generating.",
           variant: "error",
           durationMs: 5000,
         });
@@ -8911,7 +9815,7 @@ export default function Home() {
         const data: unknown = await res.json();
         if (!res.ok) {
           toast({
-            message: "Could not generate follow-up — try again",
+            message: "Could not generate follow-up - try again",
             variant: "error",
             durationMs: 5000,
           });
@@ -8921,7 +9825,7 @@ export default function Home() {
         const body = (parsed.client_email ?? "").trim();
         if (!body) {
           toast({
-            message: "Could not generate follow-up — try again",
+            message: "Could not generate follow-up - try again",
             variant: "error",
             durationMs: 5000,
           });
@@ -8939,10 +9843,10 @@ export default function Home() {
         if (options?.openModal !== false) {
           setFollowUpModalOpen(true);
         }
-        void refreshUsage();
+        void refreshShellData();
       } catch {
         toast({
-          message: "Could not generate follow-up — try again",
+          message: "Could not generate follow-up - try again",
           variant: "error",
           durationMs: 5000,
         });
@@ -8962,7 +9866,7 @@ export default function Home() {
       clientContactName,
       clientContactEmail,
       toast,
-      refreshUsage,
+      refreshShellData,
     ],
   );
 
@@ -9065,50 +9969,46 @@ export default function Home() {
       ? `${(signedOutInputSnapshot || input || "").trim().slice(0, 60)}...`
       : (signedOutInputSnapshot || input || "").trim();
 
-  /** Paid solo tiers: never show trial banner even if `trial_ends_at` is still set. */
-  const canonicalPlanForTrialBanner = canonicalPlanId(profileDbPlan ?? "");
-  const isPaidProfileTierForTrialBanner =
-    canonicalPlanForTrialBanner === "professional" ||
-    canonicalPlanForTrialBanner === "team" ||
-    canonicalPlanForTrialBanner === "enterprise";
-  const isPaidPlan = ["professional", "team", "enterprise"].includes(
+  const isPaidPlan = ["professional", "handover", "starter_programme", "team", "enterprise"].includes(
     normalizePlanLabel(profileDbPlan ?? ""),
   );
-
-  const normalizedPlanForTrialBanner = normalizePlanLabel(profileDbPlan ?? "");
-  const planLabelIndicatesInAppTrial = normalizedPlanForTrialBanner.includes("trial");
-  const trialEndIsFutureForBanner =
-    typeof trialEndsAt === "string" &&
-    trialEndsAt.trim().length > 0 &&
-    !Number.isNaN(Date.parse(trialEndsAt)) &&
-    new Date(trialEndsAt) > new Date();
-
-  const trialBannerDaysLeft =
-    trialEndsAt && !Number.isNaN(Date.parse(trialEndsAt))
-      ? Math.max(
-          0,
-          Math.ceil((new Date(trialEndsAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)),
-        )
-      : null;
-  const trialBannerExpired = trialEndsAt ? new Date(trialEndsAt) <= new Date() : false;
-
-  const isSoloAppTrialPlanRow =
-    Boolean(trialEndsAt) &&
-    (profileDbPlan === "professional_trial" ||
-      profileDbPlan === "team_trial" ||
-      (normalizePlanLabel(profileDbPlan ?? "") === "free" && Boolean(profileTrialPlan?.trim())));
-
-  const showStickyTrialBanner =
-    Boolean(userEmail) &&
-    !isPaidProfileTierForTrialBanner &&
-    planLabelIndicatesInAppTrial &&
-    trialEndIsFutureForBanner;
-
-  const showTrialUpgradeProminentCard =
-    Boolean(userEmail) &&
-    !userTeamId &&
-    !hasProAccess &&
-    !isSoloAppTrialPlanRow;
+  const billingProfileFields = useMemo(
+    () =>
+      planFieldsFromProfileRow({
+        plan: profileDbPlan,
+        team_id: userTeamId,
+        trial_ends_at: trialEndsAt,
+        trial_plan: profileTrialPlan,
+        subscription_status: profileSubscriptionStatus,
+      }),
+    [
+      profileDbPlan,
+      userTeamId,
+      trialEndsAt,
+      profileTrialPlan,
+      profileSubscriptionStatus,
+    ],
+  );
+  const billingTier = useMemo(
+    () => getPlanTierFromFields(billingProfileFields),
+    [billingProfileFields],
+  );
+  const billingGenerationLimit = useMemo(() => {
+    if (generationLimitOverride != null) return generationLimitOverride;
+    if (billingTier >= 3) return null;
+    if (billingTier >= 2) return GROWTH_MONTHLY_GENERATION_LIMIT;
+    if (billingTier >= 1) return STARTER_MONTHLY_GENERATION_LIMIT;
+    return FREE_MONTHLY_GENERATION_LIMIT;
+  }, [billingTier, generationLimitOverride]);
+  const billingReportLimit = useMemo(() => {
+    if (billingTier >= 2) return null;
+    if (billingTier >= 1) return STARTER_MONTHLY_REPORT_LIMIT;
+    return 0;
+  }, [billingTier]);
+  const isBillingGrowthOrAbove = billingTier >= 2;
+  const fixedPanelTopBelowChrome = paymentPastDue
+    ? "var(--app-fixed-panel-top-past-due)"
+    : "var(--app-fixed-panel-top)";
 
   const configurationBrandingSection = !hasProAccess ? null : (
 
@@ -9122,11 +10022,12 @@ export default function Home() {
                         <label
                           className="flex cursor-pointer items-start gap-2 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-3"
                           onClick={(e) => {
-                            if (plan !== "enterprise") {
+                            if (billingTier < 2) {
                               e.preventDefault();
-                              router.push("/contact?plan=enterprise");
+                              router.push("/pricing?upgrade=true");
                               toast({
-                                message: "White label mode is available on Enterprise. Upgrade to Enterprise to enable it.",
+                                message:
+                                  "White label mode is included with Handover. Upgrade to enable it.",
                                 variant: "error",
                                 durationMs: 5000,
                               });
@@ -9137,9 +10038,9 @@ export default function Home() {
                             type="checkbox"
                             className={cn("mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)]", focusRing)}
                             checked={whiteLabelMode}
-                            disabled={plan !== "enterprise"}
+                            disabled={billingTier < 2}
                             onChange={(e) => {
-                              if (plan === "enterprise") {
+                              if (billingTier >= 2) {
                                 setWhiteLabelMode(e.target.checked);
                               }
                             }}
@@ -9151,15 +10052,15 @@ export default function Home() {
                               - remove all Handover branding from scheduled emails, client send, Excel exports, and
                               Halo ticket notes (requires a brand name above).
                             </span>
-                            {plan !== "enterprise" ? (
+                            {billingTier < 2 ? (
                               <span className="mt-2 block text-[11px] text-[var(--text-muted)]">
-                                Enterprise only.{" "}
+                                Growth and above.{" "}
                                 <Link
-                                  href="/contact?plan=enterprise"
+                                  href="/pricing?upgrade=true"
                                   className="font-medium text-[var(--accent)] underline-offset-2 hover:underline"
                                   onClick={(e) => e.stopPropagation()}
                                 >
-                                  Upgrade to Enterprise
+                                  Upgrade on pricing
                                 </Link>
                               </span>
                             ) : null}
@@ -9437,78 +10338,43 @@ export default function Home() {
 
   return (
     <motion.div
-      className={cn("min-h-full bg-transparent", userEmail && "relative app-shell-bg")}
+      className={cn(
+        userEmail && result && mainView === "generate"
+          ? "relative min-h-[100dvh] bg-transparent app-shell-bg md:min-h-0 md:h-screen md:overflow-hidden"
+          : "min-h-full bg-transparent",
+        userEmail && !(result && mainView === "generate") && "relative app-shell-bg",
+      )}
       suppressHydrationWarning
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
     >
-      {showStickyTrialBanner && !trialBannerDismissed ? (
-        <div
-          className={cn(
-            "relative z-[100] flex w-full items-center justify-between gap-2 border-b px-3 py-1.5 text-[11px] leading-snug shadow-sm sm:gap-3 sm:px-4 sm:py-2 sm:text-xs",
-            showLeftSidebar && "md:ml-[280px]",
-            trialBannerExpired
-              ? "border-red-500/35 bg-red-950/25 text-red-100"
-              : trialBannerDaysLeft !== null && trialBannerDaysLeft <= 3
-                ? "border-rose-500/35 bg-rose-950/20 text-[var(--text-primary)]"
-                : trialBannerDaysLeft !== null && trialBannerDaysLeft <= 7
-                  ? "border-amber-500/30 bg-amber-500/[0.09] text-[var(--text-primary)]"
-                  : "border-sky-500/20 bg-sky-500/[0.06] text-[var(--text-primary)] dark:bg-sky-950/25",
-          )}
-        >
-          <p className="min-w-0 flex-1 font-medium">
-            {trialBannerExpired
-              ? "Your trial has ended. Upgrade to continue."
-              : `Your free trial ends in ${trialBannerDaysLeft ?? 0} day${trialBannerDaysLeft === 1 ? "" : "s"}. Upgrade to keep access.`}
-          </p>
-          <Link
-            href="/pricing"
-            className="shrink-0 rounded-[var(--radius)] bg-[var(--accent)] px-3 py-1 text-[12px] font-semibold text-white transition hover:bg-[var(--accent-hover)]"
-          >
-            Upgrade now
-          </Link>
-          <button
-            type="button"
-            onClick={() => setTrialBannerDismissed(true)}
-            className="shrink-0 rounded p-1 text-[var(--text-primary)]/70 transition-colors hover:text-[var(--text-primary)]"
-            aria-label="Dismiss"
-          >
-            <X className="size-3.5" />
-          </button>
-        </div>
-      ) : null}
-      {showTrialUpgradeProminentCard ? (
-        <div className="border-b border-[var(--border)] bg-[var(--bg-secondary)] px-4 py-5">
-          <div className="mx-auto flex max-w-3xl flex-col gap-3 rounded-[var(--radius-lg)] border border-[var(--accent)]/35 bg-[var(--bg-primary)] p-5 shadow-sm">
-            <div className="flex flex-wrap items-start gap-2">
-              <Gift className="mt-0.5 size-5 shrink-0 text-[var(--accent)]" aria-hidden />
-              <div className="min-w-0 flex-1">
-                <h2 className="text-base font-semibold text-[var(--text-primary)]">
-                  Start your 14-day free trial
-                </h2>
-                <p className="mt-1 text-sm leading-relaxed text-[var(--text-secondary)]">
-                  Full Professional or Team features. Open pricing and start your trial in one click.
-                </p>
-              </div>
+      <Dialog
+        open={lightboxImage !== null}
+        onOpenChange={(open) => !open && setLightboxImage(null)}
+      >
+        <DialogContent className="max-w-[90vw] overflow-hidden p-4 sm:max-w-[90vw]" showCloseButton>
+          {lightboxImage ? (
+            <div className="flex flex-col items-center gap-3">
+              <img
+                src={lightboxImage.src}
+                alt={lightboxImage.alt}
+                style={{
+                  maxWidth: "90vw",
+                  maxHeight: "85vh",
+                  objectFit: "contain",
+                  width: "auto",
+                  height: "auto",
+                  display: "block",
+                }}
+              />
+              <p className="text-center text-sm text-[var(--text-secondary)]">
+                {lightboxImage.alt}
+              </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Link
-                href="/welcome"
-                className="inline-flex min-h-10 items-center justify-center rounded-[var(--radius)] bg-[var(--accent)] px-4 text-sm font-semibold text-white transition hover:bg-[var(--accent-hover)]"
-              >
-                Professional — 14-day trial
-              </Link>
-              <Link
-                href="/welcome"
-                className="inline-flex min-h-10 items-center justify-center rounded-[var(--radius)] border border-[var(--border)] bg-transparent px-4 text-sm font-semibold text-[var(--text-primary)] transition hover:bg-[var(--bg-secondary)]"
-              >
-                Team — 14-day trial
-              </Link>
-            </div>
-          </div>
-        </div>
-      ) : null}
+          ) : null}
+        </DialogContent>
+      </Dialog>
       {generationToastOpen ? (
         <div
           className="fixed right-4 top-4 z-[120] animate-in fade-in slide-in-from-right-4 duration-200 rounded-lg border border-emerald-700/30 bg-emerald-600 px-4 py-3 text-white shadow-lg"
@@ -9583,7 +10449,7 @@ export default function Home() {
               </div>
             </div>
             <div className="flex min-h-0 flex-1 flex-col">
-            <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-5 lg:grid-cols-3">
+            <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto overscroll-contain p-5 lg:grid-cols-3 md:overscroll-auto">
               <div
                 className={cn(
                   "rounded-[var(--radius)] border border-[var(--border)] p-4",
@@ -9877,10 +10743,11 @@ export default function Home() {
           openIntegrationsInConfiguration({ initialDetail: "halo" });
           setHaloConfigOpen(true);
         }}
-        onImport={({ formatted, count, selectedClientName, dataType, importedItems, fromDemo }) => {
+        onImport={({ formatted, count, selectedClientName, dataType, importedItems, fromDemo, inputQuality }) => {
           setInput(formatted);
           setSessionUsesDemoData(Boolean(fromDemo));
           setLastImportedHaloItems(importedItems);
+          setLastInputQuality(inputQuality ?? null);
           setLastImportSourcePsa("halopsa");
           setPushTargetPsa("halopsa");
           setIsInputCollapsed(importedItems.length > 0);
@@ -9914,10 +10781,11 @@ export default function Home() {
         forceDemoMode={demoModeActive}
         demoModeActive={demoModeActive}
         onOpenChange={setCwImportOpen}
-        onImport={({ formatted, count, selectedClientName, dataType, importedItems, fromDemo }) => {
+        onImport={({ formatted, count, selectedClientName, dataType, importedItems, fromDemo, inputQuality }) => {
           setInput(formatted);
           setSessionUsesDemoData(Boolean(fromDemo));
           setLastImportedHaloItems(importedItems);
+          setLastInputQuality(inputQuality ?? null);
           setIsInputCollapsed(importedItems.length > 0);
           setCwImportedCount((prev) => prev + count);
           setLastImportSourcePsa("connectwise");
@@ -10093,7 +10961,7 @@ export default function Home() {
                 Create a free account to see your action list, risk log, client
                 email and status report.
               </p>
-              <Link href="/auth?tab=signup&returnTo=/welcome" className="mt-6 block">
+              <Link href="/onboarding/connect" className="mt-6 block">
                 <Button className="w-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]">
                   Create free account
                 </Button>
@@ -10105,7 +10973,7 @@ export default function Home() {
                 Sign in
               </Link>
               <p className="mt-4 text-[12px] text-[var(--text-muted)]">
-                14-day free trial.
+                Run the free PSA scan before you buy.
               </p>
             </div>
           </div>
@@ -10132,7 +11000,7 @@ export default function Home() {
               own notes.
             </p>
             <div className="flex flex-wrap items-center gap-2">
-              <Link href="/auth?tab=signup&returnTo=/welcome">
+              <Link href="/onboarding/connect">
                 <Button
                   type="button"
                   className="bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
@@ -10327,9 +11195,9 @@ export default function Home() {
           <div className="pt-2">
             <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] px-4 py-4">
               <p className="text-sm text-[var(--text-secondary)]">
-                14-day free trial
+                Free PSA scan
               </p>
-              <Link href="/auth?tab=signup&returnTo=/welcome" className="mt-3 inline-flex w-full">
+              <Link href="/onboarding/connect" className="mt-3 inline-flex w-full">
                 <Button
                   type="button"
                   className="w-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
@@ -10363,6 +11231,7 @@ export default function Home() {
           }
         }}
         featureName={proFeatureGate ?? "This feature"}
+        upgradePlan={proFeatureGate === "Client Intelligence" ? "growth" : "starter"}
         checkoutLoadingPriceId={checkoutLoadingPriceId}
         onCheckout={(id) => {
           markUpgradePromptConsumed();
@@ -10380,9 +11249,9 @@ export default function Home() {
       >
         <DialogContent className="sm:max-w-lg" showCloseButton>
           <DialogHeader>
-            <DialogTitle>Scheduled Reports is available on Pro</DialogTitle>
+            <DialogTitle>Scheduled Reports is included with Handover</DialogTitle>
             <DialogDescription>
-              Upgrade to unlock automated weekly reporting — save schedules, run on your PSA data, and email clients on
+              Upgrade to unlock automated weekly reporting - save schedules, run on your PSA data, and email clients on
               autopilot.
             </DialogDescription>
           </DialogHeader>
@@ -10408,13 +11277,13 @@ export default function Home() {
       <Dialog open={proExportModalOpen} onOpenChange={setProExportModalOpen}>
         <DialogContent className="sm:max-w-lg" showCloseButton>
           <DialogHeader>
-            <DialogTitle>Upgrade to Pro</DialogTitle>
+            <DialogTitle>Move to Handover</DialogTitle>
             <DialogDescription>
               Export a full report pack with action log, risk log, client email and status report in one formatted Excel
               file.
             </DialogDescription>
             <p className="mt-2 text-[13px] font-medium text-[var(--accent)]">
-              From £25/month. Cancel anytime.
+              £499/month or £4,990/year. Cancel anytime.
             </p>
           </DialogHeader>
           <UpgradePlanCards
@@ -10435,7 +11304,7 @@ export default function Home() {
               href="/pricing"
               className="text-[13px] font-medium text-[var(--text-secondary)] hover:text-white"
             >
-              See all Pro features
+              See all features
             </Link>
           </div>
         </DialogContent>
@@ -10449,7 +11318,7 @@ export default function Home() {
       >
         <DialogContent className="max-h-[min(90dvh,720px)] overflow-y-auto sm:max-w-2xl" showCloseButton>
           <DialogHeader>
-            <DialogTitle>Export Excel — sheets</DialogTitle>
+            <DialogTitle>Export Excel - sheets</DialogTitle>
             <DialogDescription>
               Choose which workbook tabs to include. Your selection is remembered on this device.
             </DialogDescription>
@@ -10470,7 +11339,7 @@ export default function Home() {
                   Select all
                 </button>
               </div>
-              <div className="max-h-[min(70vh,500px)] space-y-0 overflow-y-auto rounded-[var(--radius)] border border-[var(--border)]">
+              <div className="max-h-none space-y-0 overflow-visible rounded-[var(--radius)] border border-[var(--border)] md:max-h-[min(70vh,500px)] md:overflow-y-auto">
                 {fullReportExcelSheetPickerOptions.map((row) => {
                   const checked = exportFullTabs.includes(row.id);
                   return (
@@ -10524,12 +11393,12 @@ export default function Home() {
       <Dialog open={haloProModalOpen} onOpenChange={setHaloProModalOpen}>
         <DialogContent className="sm:max-w-lg" showCloseButton>
           <DialogHeader>
-            <DialogTitle>Upgrade to Pro</DialogTitle>
+            <DialogTitle>Move to Handover</DialogTitle>
             <DialogDescription>
               Connect HaloPSA to pull tickets directly into Handover. No more copy pasting.
             </DialogDescription>
             <p className="mt-2 text-[13px] font-medium text-[var(--accent)]">
-              From £25/month. Cancel anytime.
+              £499/month or £4,990/year. Cancel anytime.
             </p>
           </DialogHeader>
           <UpgradePlanCards
@@ -10550,7 +11419,7 @@ export default function Home() {
               href="/pricing"
               className="text-[13px] font-medium text-[var(--text-secondary)] hover:text-white"
             >
-              See all Pro features
+              See all features
             </Link>
           </div>
         </DialogContent>
@@ -10559,10 +11428,10 @@ export default function Home() {
       <Dialog open={headerUpgradeOpen} onOpenChange={setHeaderUpgradeOpen}>
         <DialogContent className="sm:max-w-lg" showCloseButton>
           <DialogHeader>
-            <DialogTitle>Upgrade to Handover Pro</DialogTitle>
+            <DialogTitle>Move to Handover</DialogTitle>
             <DialogDescription>
-              Unlimited generations, HaloPSA import, full Excel reports, and priority support. £29/month or £25/month
-              when billed annually (£300/year).
+              Unlimited generations, HaloPSA import, full Excel reports, PowerPoint exports, and priority support.
+              £499/month or £4,990/year.
             </DialogDescription>
           </DialogHeader>
           <UpgradePlanCards
@@ -10828,564 +11697,8 @@ export default function Home() {
         </div>
       ) : null}
       {(!userEmail || !onboardingRedirectPending) ? (
-        <>
-      {showLeftSidebar ? (
-        <>
-      {sidebarOpenMobile ? (
-        <button
-          type="button"
-          className="fixed inset-0 z-30 md:hidden"
-          style={{ background: "rgba(0,0,0,0.4)" }}
-          onClick={() => setSidebarOpenMobile(false)}
-          aria-label="Close sidebar overlay"
-        />
-      ) : null}
-
-      <aside
-        id="app-sidebar-nav"
-        className={cn(
-          "group fixed top-0 left-0 z-40 flex h-screen min-h-0 w-[280px] flex-col border-r bg-gradient-to-b from-[#1a2540] to-[#141d32] text-[14px]",
-          "border-[var(--sidebar-border)]",
-          "transition-transform md:translate-x-0 md:transition-all md:duration-150 md:ease-out",
-          sidebarExpanded ? "md:w-[280px]" : "md:w-[56px]",
-          sidebarOpenMobile ? "translate-x-0" : "-translate-x-full",
-        )}
-        onMouseEnter={() => setSidebarHovered(true)}
-        onMouseLeave={() => setSidebarHovered(false)}
-      >
-        <button
-          type="button"
-          onClick={toggleSidebarPinned}
-          className={cn(
-            "absolute top-3 right-3 z-10 hidden cursor-pointer text-[var(--text-secondary)] transition-colors hover:text-white md:block",
-            sidebarPinned ? "opacity-100" : "opacity-0 group-hover:opacity-100",
-          )}
-          aria-label={sidebarPinned ? "Unpin sidebar" : "Pin sidebar"}
-        >
-          {sidebarPinned ? (
-            <PinOff className="size-3.5" aria-hidden />
-          ) : (
-            <Pin className="size-3.5" aria-hidden />
-          )}
-        </button>
-        <div
-          className={cn(
-            "flex shrink-0 items-center justify-between border-b border-[var(--sidebar-border)] py-4",
-            sidebarExpanded ? "px-4 max-md:px-4 md:px-4" : "px-2 max-md:px-4 md:px-2",
-          )}
-        >
-          <a
-            href="/"
-            className="inline-flex min-w-0 flex-1 items-center gap-2 no-underline"
-          >
-            {whiteLabelMode && brandLogoUrl.trim() ? (
-              <img
-                src={brandLogoUrl.trim()}
-                alt=""
-                className="block max-h-8 w-auto shrink-0 object-contain"
-              />
-            ) : (
-              <img
-                src="/icon2.png"
-                alt=""
-                className="block size-7 shrink-0 object-contain drop-shadow-[0_0_8px_rgba(14,165,233,0.3)]"
-              />
-            )}
-            <span
-              className={cn(
-                "truncate font-bold text-[16px] text-white tracking-[-0.02em] transition-opacity duration-150",
-                sidebarExpanded
-                  ? "max-md:opacity-100 md:opacity-100"
-                  : "max-md:opacity-100 md:w-0 md:overflow-hidden md:opacity-0",
-              )}
-            >
-              {whiteLabelMode && brandName.trim() ? brandName.trim() : "Handover"}
-            </span>
-          </a>
-          <button
-            type="button"
-            className="text-[var(--sidebar-text)] md:hidden"
-            onClick={() => setSidebarOpenMobile(false)}
-            aria-label="Close sidebar"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
-
-        <div className="sidebar-scroll min-h-0 flex-1 overflow-y-auto p-3">
-          {userEmail ? (
-            <nav className="mb-4 flex flex-col gap-2" aria-label="Main navigation">
-              <div className="space-y-0.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMainView("overview");
-                    setSettingsOpen(false);
-                    setSidebarOpenMobile(false);
-                  }}
-                  className={sidebarNavItemClass(
-                    mainView === "overview" && !settingsOpen,
-                  )}
-                >
-                  <HomeIcon className="size-[14px] shrink-0" aria-hidden />
-                  <span className={sidebarNavLabelClass}>Overview</span>
-                </button>
-                <button
-                  id="handover-new-generation-btn"
-                  type="button"
-                  onClick={() => {
-                    setMainView("generate");
-                    setSettingsOpen(false);
-                    setSidebarOpenMobile(false);
-                  }}
-                  className={cn(
-                    sidebarNavItemClass(mainView === "generate" && !settingsOpen),
-                    postOnboardingNewGenHighlight &&
-                      "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[#1a2540] animate-pulse",
-                  )}
-                >
-                  <Zap className="size-[14px] shrink-0" aria-hidden />
-                  <span className={sidebarNavLabelClass}>Generate</span>
-                </button>
-                {hasProAccess && deliveryDashboardAccess !== "none" ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMainView("delivery");
-                      setSettingsOpen(false);
-                      setSidebarOpenMobile(false);
-                    }}
-                    className={sidebarNavItemClass(
-                      mainView === "delivery" && !settingsOpen,
-                    )}
-                  >
-                    <BarChart3 className="size-[14px] shrink-0" aria-hidden />
-                    <span className={cn(sidebarNavLabelClass, "min-w-0 truncate")}>
-                      Delivery Health
-                    </span>
-                  </button>
-                ) : null}
-              </div>
-              <div>
-                <div className={sidebarSectionLabelClass}>WORKSPACE</div>
-                <div className="space-y-0.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSettingsOpen(false);
-                      setSidebarOpenMobile(false);
-                      if (!hasProAccess) {
-                        setScheduledReportsProPaywallOpen(true);
-                        return;
-                      }
-                      setMainView("scheduled");
-                    }}
-                    className={sidebarNavItemClass(
-                      mainView === "scheduled" && !settingsOpen,
-                    )}
-                  >
-                    <Calendar className="size-[14px] shrink-0" aria-hidden />
-                    <span className={cn(sidebarNavLabelClass, "min-w-0 truncate")}>
-                      Scheduled
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="QBR Builder"
-                    onClick={() => {
-                      setMainView("reports");
-                      setSettingsOpen(false);
-                      setSidebarOpenMobile(false);
-                    }}
-                    className={sidebarNavItemClass(
-                      mainView === "reports" && !settingsOpen,
-                    )}
-                  >
-                    <LayoutTemplate className="size-[14px] shrink-0" aria-hidden />
-                    <span className={sidebarNavLabelClass}>QBR Builder</span>
-                  </button>
-                  {userEmail && hasProAccess && isEnterprisePlanUser ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMainView("organisation");
-                        setSettingsOpen(false);
-                        setSidebarOpenMobile(false);
-                      }}
-                      className={sidebarNavItemClass(
-                        mainView === "organisation" && !settingsOpen,
-                      )}
-                    >
-                      <Building2 className="size-[14px] shrink-0" aria-hidden />
-                      <span className={cn(sidebarNavLabelClass, "min-w-0 truncate")}>
-                        Organisation
-                      </span>
-                    </button>
-                  ) : null}
-                  {showTeamDashboardLink ? (
-                    <Link
-                      href="/dashboard/team"
-                      onClick={() => setSidebarOpenMobile(false)}
-                      className={cn(
-                        "relative flex h-8 w-full items-center rounded-[var(--radius)] border-l-2 border-transparent text-[12px] text-[var(--text-secondary)] transition-all duration-[120ms] ease-in-out hover:bg-white/5 hover:text-white",
-                        sidebarExpanded
-                          ? "gap-1.5 px-2.5 max-md:gap-1.5 max-md:px-2.5 md:gap-1.5 md:px-2.5"
-                          : "max-md:gap-1.5 max-md:px-2.5 md:justify-center md:gap-0 md:px-0",
-                      )}
-                    >
-                      <Users className="size-[14px] shrink-0" aria-hidden />
-                      <span className={sidebarNavLabelClass}>Team</span>
-                    </Link>
-                  ) : null}
-                </div>
-              </div>
-              <div>
-                <div className={sidebarSectionLabelClass}>SETTINGS</div>
-                <div className="space-y-0.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMainView("configuration");
-                      setSettingsOpen(false);
-                      setSidebarOpenMobile(false);
-                    }}
-                    className={sidebarNavItemClass(
-                      mainView === "configuration" && !settingsOpen,
-                    )}
-                  >
-                    <Settings className="size-[14px] shrink-0" aria-hidden />
-                    <span className={cn(sidebarNavLabelClass, "min-w-0 truncate")}>
-                      Configuration
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`History — ${totalGenerationCount ?? 0} generations`}
-                    onClick={() => {
-                      setChatsModalOpen(true);
-                      setSidebarOpenMobile(false);
-                    }}
-                    className={sidebarNavItemClass(chatsModalOpen)}
-                  >
-                    <History className="size-[14px] shrink-0" aria-hidden />
-                    <span className={cn(sidebarNavLabelClass, "min-w-0 truncate")}>
-                      History
-                    </span>
-                  </button>
-                </div>
-              </div>
-            </nav>
-          ) : null}
-
-          {userEmail && freeGenUsage && !hasProAccess ? (
-            <div
-              className={cn(
-                "mb-3 rounded-[var(--radius)] border border-[var(--sidebar-border)] bg-[rgba(255,255,255,0.04)] px-2.5 py-2",
-                !sidebarExpanded && "max-md:block md:hidden",
-              )}
-              aria-label="Basic plan generation usage"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-[rgba(255,255,255,0.4)]">
-                  Basic plan
-                </span>
-                <span className="text-[11px] font-medium tabular-nums text-[rgba(255,255,255,0.85)]">
-                  {freeGenUsage.used}/{freeGenUsage.cap}
-                </span>
-              </div>
-              <p className="mt-0.5 text-[11px] text-[var(--sidebar-text)]">Generations used</p>
-              <div
-                className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[rgba(255,255,255,0.08)]"
-                role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={freeGenUsage.cap}
-                aria-valuenow={freeGenUsage.used}
-              >
-                <div
-                  className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-300"
-                  style={{
-                    width: `${Math.min(100, Math.round((freeGenUsage.used / freeGenUsage.cap) * 100))}%`,
-                  }}
-                />
-              </div>
-            </div>
-          ) : null}
-
-          {!userEmail ? (
-            <div className="mt-6 rounded-[var(--radius)] px-3 py-3" style={{ backgroundColor: "rgba(56,189,248,0.05)", border: "1px solid rgba(56,189,248,0.15)" }}>
-              <p className="text-[13px] font-medium text-white">Save your work</p>
-              <p className="mt-1 text-[12px] text-[var(--sidebar-text)]">
-                Sign in to save every generation and access your project history.
-              </p>
-              <Link href="/auth?tab=signin" className="mt-2 block">
-                <Button className="w-full rounded-[var(--radius)] bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]">
-                  Sign in
-                </Button>
-              </Link>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="shrink-0 border-t border-[rgba(255,255,255,0.08)] p-2.5">
-          <div className="mb-2 space-y-0.5">
-            <button
-              type="button"
-              onClick={() => {
-                setMainView("changelog");
-                setSettingsOpen(false);
-                setSidebarOpenMobile(false);
-              }}
-              className={sidebarNavItemClass(
-                mainView === "changelog" && !settingsOpen,
-              )}
-            >
-              <Sparkles className="size-3.5 shrink-0" aria-hidden />
-              <span className={sidebarNavLabelClass}>What&apos;s new</span>
-            </button>
-          </div>
-          {userEmail ? (
-            <>
-              {(haloConnected || cwConnected) && sidebarExpanded ? (
-                <div className="mb-2 flex items-center gap-1.5 rounded-md border border-white/[0.06] bg-white/[0.04] px-2.5 py-1.5 text-[11px]">
-                  <span
-                    className={cn(
-                      "size-1.5 shrink-0 rounded-full",
-                      haloConnected ? "bg-[#22c55e]" : "bg-[#f59e0b]",
-                    )}
-                  />
-                  <span className="truncate text-white/60">
-                    {haloConnected ? "HaloPSA" : "ConnectWise"} · {psaSidebarSyncLabel}
-                  </span>
-                </div>
-              ) : null}
-              <button
-                type="button"
-                className={cn(
-                  "mb-2 flex w-full items-center rounded-[var(--radius)] transition-colors duration-[120ms] hover:bg-[rgba(255,255,255,0.06)]",
-                  sidebarExpanded
-                    ? "gap-2 p-2.5 max-md:gap-2 max-md:p-2.5 md:gap-2 md:p-2.5"
-                    : "justify-center p-2 max-md:gap-2 max-md:p-2.5 md:justify-center md:p-2",
-                )}
-                onClick={() => setSettingsOpen(true)}
-              >
-                <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-[11px] font-semibold text-white">
-                  {userFirstName?.[0]?.toUpperCase() || userEmail?.[0]?.toUpperCase() || "U"}
-                </div>
-                <div
-                  className={cn(
-                    "min-w-0 flex-1 text-left transition-opacity duration-150",
-                    sidebarExpanded
-                      ? "max-md:block md:block"
-                      : "max-md:block md:hidden",
-                  )}
-                >
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="truncate text-[12px] font-medium text-white">
-                      {userFirstName || "Account"}
-                    </span>
-                    {(() => {
-                      if (!planBadgeReady) {
-                        return (
-                          <span
-                            className="inline-block h-3.5 w-12 animate-pulse rounded-full bg-white/10"
-                            aria-hidden
-                          />
-                        );
-                      }
-                      const planLabel = getPlanLabel(profileDbPlan ?? "free", userTeamId, {
-                        trial_ends_at: trialEndsAt,
-                        trial_plan: profileTrialPlan,
-                      });
-                      if (planLabel === "Team") {
-                        return (
-                          <span
-                            className="rounded-full px-1.5 py-px text-[9px] font-medium"
-                            style={{
-                              background: "rgba(167,139,250,0.25)",
-                              color: "#c4b5fd",
-                            }}
-                          >
-                            Team
-                          </span>
-                        );
-                      }
-                      if (planLabel === "Professional trial") {
-                        return (
-                          <span
-                            className="rounded-full px-1.5 py-px text-[9px] font-medium"
-                            style={{
-                              background: "rgba(56,189,248,0.2)",
-                              color: "var(--accent)",
-                            }}
-                          >
-                            Professional Trial
-                          </span>
-                        );
-                      }
-                      if (planLabel === "Team trial") {
-                        return (
-                          <span
-                            className="rounded-full px-1.5 py-px text-[9px] font-medium"
-                            style={{
-                              background: "rgba(167,139,250,0.25)",
-                              color: "#c4b5fd",
-                            }}
-                          >
-                            Team Trial
-                          </span>
-                        );
-                      }
-                      if (planLabel === "Professional") {
-                        return (
-                          <span
-                            className="rounded-full px-1.5 py-px text-[9px] font-medium"
-                            style={{
-                              background: "rgba(56,189,248,0.2)",
-                              color: "var(--accent)",
-                            }}
-                          >
-                            Professional
-                          </span>
-                        );
-                      }
-                      if (planLabel === "Enterprise") {
-                        return (
-                          <span
-                            className="rounded-full px-1.5 py-px text-[9px] font-semibold"
-                            style={{
-                              background: "rgba(201,168,76,0.2)",
-                              color: "#C9A84C",
-                            }}
-                          >
-                            Enterprise
-                          </span>
-                        );
-                      }
-                      return (
-                        <span
-                          className="rounded-full px-1.5 py-px text-[9px] font-medium"
-                          style={{
-                            background: "rgba(255,255,255,0.1)",
-                            color: "rgba(255,255,255,0.5)",
-                          }}
-                        >
-                          Basic
-                        </span>
-                      );
-                    })()}
-                    {generationStreak >= 1 ? (
-                      <span
-                        className="inline-flex items-center gap-0.5 rounded-full border border-[var(--accent)]/25 bg-[var(--accent)]/15 px-1.5 py-px text-[9px] font-semibold tabular-nums text-[var(--accent)]"
-                        title={`You've generated reports ${generationStreak} days in a row. Keep it up!`}
-                      >
-                        <span
-                          className={cn(
-                            "inline-block leading-none",
-                            streakFlameBurst ? "streak-flame-milestone-celebration" : "",
-                          )}
-                          aria-hidden
-                        >
-                          🔥
-                        </span>
-                        {generationStreak}
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="truncate text-[10px] text-[rgba(255,255,255,0.35)]">{userEmail}</p>
-                </div>
-                <Settings
-                  className={cn(
-                    "size-[14px] shrink-0 text-[rgba(255,255,255,0.3)] transition-colors hover:text-[rgba(255,255,255,0.7)]",
-                    sidebarExpanded ? "ml-auto max-md:ml-auto md:ml-auto" : "max-md:ml-auto md:hidden",
-                  )}
-                />
-              </button>
-              {!hasProAccess ? (
-                <button
-                  type="button"
-                  className={cn(
-                    "mb-2 flex w-full items-center justify-center rounded-[var(--radius)] border border-[var(--accent)] px-3 py-2 text-[12px] font-medium text-[var(--accent)] transition-colors hover:bg-[rgba(255,255,255,0.06)]",
-                    !sidebarExpanded && "max-md:flex md:hidden",
-                  )}
-                  onClick={() => {
-                    setHeaderUpgradeOpen(true);
-                    setSidebarOpenMobile(false);
-                  }}
-                >
-                  Upgrade plan
-                </button>
-              ) : null}
-            </>
-          ) : (
-            <Link
-              href="/auth?tab=signup&returnTo=/welcome"
-              className="block text-center text-sm text-[var(--sidebar-text)] underline-offset-4 hover:text-white hover:underline"
-            >
-              Create free account
-            </Link>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              setMainView("changelog");
-              setSidebarOpenMobile(false);
-              setSettingsOpen(false);
-            }}
-            className="pt-1 text-[10px] text-white/15 tabular-nums transition-colors hover:text-white/40 select-none"
-          >
-            v{APP_VERSION}
-          </button>
-        </div>
-      </aside>
-      {userEmail && authChecked && showLeftSidebar && (
-        <div
-          className="fixed top-0 z-30 flex h-[52px] items-center justify-between px-4 max-md:!left-0 transition-[left] duration-150 ease-out"
-          style={{
-            left: `${sidebarMainOffsetPx}px`,
-            right: "0px",
-            top: "0px",
-            width: "auto",
-            background: SIGNED_IN_SHELL_BACKGROUND,
-          }}
-        >
-          <span className="text-[14px] font-medium text-white">{shellPageTitle}</span>
-
-          <div className="flex items-center">
-          {/* Theme toggle */}
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="flex size-7 items-center justify-center rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/[0.06] transition-colors"
-            aria-label="Toggle theme"
-          >
-            {theme === "dark" ? <Sun className="size-[14px]" /> : <Moon className="size-[14px]" />}
-          </button>
-
-          {/* Avatar */}
-          <button
-            type="button"
-            className="flex size-7 items-center justify-center rounded-full bg-[var(--accent)] text-[10px] font-semibold text-white ml-1"
-            onClick={() => setSettingsOpen(true)}
-            aria-label="Open settings"
-          >
-            {userFirstName?.[0]?.toUpperCase() || userEmail?.[0]?.toUpperCase() || "U"}
-          </button>
-
-          {/* Settings cog */}
-          <button
-            type="button"
-            className="flex size-7 items-center justify-center rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/[0.06] transition-colors ml-1"
-            onClick={() => setSettingsOpen(true)}
-            aria-label="Open settings"
-          >
-            <Settings className="size-[14px]" />
-          </button>
-          </div>
-        </div>
-      )}
-        </>
-      ) : null}
-
+        <div>
+        <div className="app-shell-geometry">
       {userEmail ? (
         <ChatsModal
           open={chatsModalOpen}
@@ -11439,7 +11752,7 @@ export default function Home() {
               if (selectedProjectId === id) handleNewGeneration();
               void refreshHistory();
               void refreshCollections();
-              void refreshUsage();
+              void refreshShellData();
             }
           }}
           onCreateCollection={async (name, color) => {
@@ -11480,13 +11793,13 @@ export default function Home() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-[13px] font-semibold text-[var(--text-primary)]">
-                      Upgrade to Pro
+                      Move to Handover
                     </p>
                     <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-secondary)]">
                       Access your complete generation history. Never lose a report again.
                     </p>
                     <p className="mt-2 text-[13px] font-medium text-[var(--accent)]">
-                      From £25/month. Cancel anytime.
+                      £499/month or £4,990/year. Cancel anytime.
                     </p>
                     <Button
                       type="button"
@@ -11497,13 +11810,13 @@ export default function Home() {
                         checkoutLoadingPriceId !== null
                       }
                     >
-                      Upgrade to Pro
+                      Move to Handover
                     </Button>
                     <Link
                       href="/pricing"
                       className="mt-2 block text-[13px] font-medium text-[var(--accent)] hover:underline"
                     >
-                      See all Pro features
+                      See all features
                     </Link>
                   </div>
                 </div>
@@ -11634,7 +11947,7 @@ export default function Home() {
               </div>
             </div>
           ) : null}
-          <div className="max-h-[min(50dvh,320px)] min-h-[8rem] overflow-y-auto whitespace-pre-wrap rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)]/40 p-3 text-[13px] leading-relaxed text-[var(--text-primary)]">
+          <div className="max-h-[min(50dvh,320px)] min-h-[8rem] overflow-y-auto overscroll-contain whitespace-pre-wrap rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)]/40 p-3 text-[13px] leading-relaxed text-[var(--text-primary)] md:overscroll-auto">
             {followUpLoading && !followUpModalBody.trim() ? (
               <span className="text-[var(--text-muted)]">Generating...</span>
             ) : (
@@ -11679,6 +11992,7 @@ export default function Home() {
           onClose={() => setSmartActionsOpen(false)}
           focusRing={focusRing}
           reportContext={smartActionsReportContext}
+          generationId={savedGenerationId}
           resultSnapshot={smartActionsResultSnapshot}
           projectName={projectName}
           onDoEmail={handleSmartActionEmail}
@@ -11696,368 +12010,400 @@ export default function Home() {
         />
       ) : null}
 
-      {settingsOpen ? (
-        <div
-          className="fixed inset-0 z-50 flex justify-end bg-black/30"
-          role="presentation"
-          onClick={() => setSettingsOpen(false)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="settings-panel-title"
-            tabIndex={-1}
-            className="relative flex h-screen w-full max-w-[580px] border-l border-[var(--border)] bg-[var(--bg-primary)] shadow-xl outline-none"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDownCapture={(e) => {
-              if (e.key === "Escape") {
-                e.stopPropagation();
-                setSettingsOpen(false);
-              }
-            }}
-          >
-            <div className="flex h-full min-h-0 w-full flex-col">
-              <div className="relative flex shrink-0 items-center border-b border-[var(--border)] bg-[var(--sidebar-bg)] px-4 py-3.5 sm:px-6">
-                <h2
-                  id="settings-panel-title"
-                  className="min-w-0 flex-1 text-[15px] font-semibold text-white sm:text-[16px]"
-                >
-                  Settings
-                </h2>
-              </div>
-              <div className="shrink-0 border-b border-[var(--border)] bg-[var(--bg-primary)] px-6 py-3">
-                {!isPaidProfileTierForTrialBanner ? (
-                  <TrialBanner
-                    className="relative w-full mb-2"
-                    plan={profileTrialPlan ?? profileDbPlan ?? undefined}
-                  />
-                ) : null}
-              </div>
-              <div className="flex min-h-0 flex-1">
-                <nav
-                  className="w-[180px] shrink-0 border-r border-[var(--border)] bg-[var(--sidebar-bg)] p-2"
-                  aria-label="Settings sections"
-                >
-                  {(
-                    [
-                      { id: "profile" as const, label: "Profile", Icon: User },
-                      { id: "preferences" as const, label: "Preferences", Icon: PenLine },
-                      { id: "referrals" as const, label: "Referrals", Icon: Gift },
-                    ] as const
-                  ).map(({ id, label, Icon }) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setSettingsTab(id)}
-                      className={cn(
-                        "mb-0.5 flex h-8 w-full items-center gap-1.5 rounded-[var(--radius)] px-2.5 text-left text-[12px] transition-colors duration-[120ms]",
-                        settingsTab === id
-                          ? "bg-[rgba(255,255,255,0.1)] font-medium text-white"
-                          : "text-[var(--sidebar-text)] hover:bg-[rgba(255,255,255,0.06)]",
-                      )}
-                    >
-                      <Icon className="size-[14px] shrink-0 opacity-90" aria-hidden />
-                      <span className="min-w-0 truncate">{label}</span>
-                    </button>
-                  ))}
-                </nav>
-                <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--bg-primary)]">
-                <div className="sticky top-4 z-[60] flex justify-end border-b border-[var(--border)] bg-[var(--bg-primary)] px-3 py-3 backdrop-blur-sm supports-[backdrop-filter]:bg-[var(--bg-primary)]/90">
-                  <button
-                    type="button"
-                    className={cn(
-                      "flex size-9 items-center justify-center rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-sm transition-colors hover:bg-[var(--bg-primary)]",
-                      focusRing,
-                    )}
-                    onClick={() => setSettingsOpen(false)}
-                    aria-label="Close settings"
-                  >
-                    <X className="size-5 shrink-0" aria-hidden />
-                  </button>
-                </div>
-                <div className="p-6">
+      <SettingsBodyPortal>                <div className="mx-auto max-w-2xl px-6 py-8">
                 {settingsTab === "profile" ? (
-                  <div className="space-y-4">
-                <div>
-                  <h3 className="mb-2 text-[13px] font-semibold text-[var(--text-primary)]">Profile</h3>
-                  <p className="mb-3 text-[12px] text-[var(--text-muted)]">
-                    First and last name are used for the app greeting. Job title and company feed the default client-email sign-off when you do not use a custom signature.
-                  </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <Input value={profileFirstName} onChange={(e) => setProfileFirstName(e.target.value)} placeholder="First name" className={cn("rounded-[var(--radius)] border-[var(--border)]", focusRing)} />
-                  <Input value={profileLastName} onChange={(e) => setProfileLastName(e.target.value)} placeholder="Last name" className={cn("rounded-[var(--radius)] border-[var(--border)]", focusRing)} />
-                </div>
-                <div className="mt-2">
-                  <Input
-                    value={profileDisplayName}
-                    onChange={(e) => setProfileDisplayName(e.target.value)}
-                    placeholder="Display name on client emails (optional)"
-                    className={cn("rounded-[var(--radius)] border-[var(--border)]", focusRing)}
-                  />
-                  <p className="mt-1.5 text-[11px] leading-snug text-[var(--text-muted)]">
-                    If set, this line appears in the generated email sign-off. It is never taken from ticket data. Leave blank to sign with company name only (no personal name).
-                  </p>
-                </div>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <Input value={profileJobTitle} onChange={(e) => setProfileJobTitle(e.target.value)} placeholder="Job title" className={cn("rounded-[var(--radius)] border-[var(--border)]", focusRing)} />
-                  <Input value={profileCompanyName} onChange={(e) => setProfileCompanyName(e.target.value)} placeholder="Company name" className={cn("rounded-[var(--radius)] border-[var(--border)]", focusRing)} />
-                </div>
-                </div>
-                <div className="flex justify-end">
-                <Button type="button" className={cn("bg-[var(--accent)] text-[13px] text-white hover:bg-[var(--accent-hover)]", focusRing)} onClick={() => void saveSettings()}>
-                  Save
-                </Button>
-                </div>
-                {hasProAccess ? (
-                  <>
-                  <div
-                    style={{
-                      borderTop: "1px solid var(--border)",
-                      paddingTop: "1rem",
-                      marginTop: "1rem",
-                    }}
-                  >
-                    <p
-                      style={{
-                        fontSize: "13px",
-                        fontWeight: 600,
-                        color: "var(--text-primary)",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      Subscription
-                    </p>
-                    <p
-                      style={{
-                        fontSize: "12px",
-                        color: "var(--text-muted)",
-                        marginBottom: "12px",
-                      }}
-                    >
-                      Manage your Pro subscription, update payment details, or cancel your plan.
-                    </p>
-                    <button
-                      type="button"
-                      disabled={manageSubscriptionLoading}
-                      onClick={() => void handleManageSubscription()}
-                      style={{
-                        padding: "8px 16px",
-                        background: "transparent",
-                        border: "1px solid var(--border)",
-                        borderRadius: "var(--radius)",
-                        color: "var(--text-primary)",
-                        fontSize: "13px",
-                        cursor: manageSubscriptionLoading ? "wait" : "pointer",
-                        width: "100%",
-                        opacity: manageSubscriptionLoading ? 0.85 : 1,
-                      }}
-                    >
-                      {manageSubscriptionLoading ? (
-                        <span className="inline-flex items-center justify-center gap-2">
-                          <Loader2 className="size-4 animate-spin" aria-hidden />
-                          Checking subscription…
-                        </span>
-                      ) : (
-                        "Manage subscription →"
-                      )}
-                    </button>
+                  <div className="space-y-8">
+                    <div className="space-y-2">
+                      <h3 className="text-[14px] font-medium text-white">Personal details</h3>
+                      <p className="text-[12px] text-[var(--text-muted)]">
+                        Your name and job title appear in client email sign-offs when no custom signature is set.
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          value={profileFirstName}
+                          onChange={(e) => setProfileFirstName(e.target.value)}
+                          placeholder="First name"
+                          className={cn("rounded-[var(--radius)] border-[var(--border)]", focusRing)}
+                        />
+                        <Input
+                          value={profileLastName}
+                          onChange={(e) => setProfileLastName(e.target.value)}
+                          placeholder="Last name"
+                          className={cn("rounded-[var(--radius)] border-[var(--border)]", focusRing)}
+                        />
+                      </div>
+                      <Input
+                        value={profileDisplayName}
+                        onChange={(e) => setProfileDisplayName(e.target.value)}
+                        placeholder="Display name on client emails (optional)"
+                        className={cn("rounded-[var(--radius)] border-[var(--border)]", focusRing)}
+                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          value={profileJobTitle}
+                          onChange={(e) => setProfileJobTitle(e.target.value)}
+                          placeholder="Job title"
+                          className={cn("rounded-[var(--radius)] border-[var(--border)]", focusRing)}
+                        />
+                        <Input
+                          value={profileCompanyName}
+                          onChange={(e) => setProfileCompanyName(e.target.value)}
+                          placeholder="Company name"
+                          className={cn("rounded-[var(--radius)] border-[var(--border)]", focusRing)}
+                        />
+                      </div>
+                      <div className="flex justify-end pt-1">
+                        <Button
+                          type="button"
+                          className={cn(
+                            "bg-[var(--accent)] text-[13px] text-white hover:bg-[var(--accent-hover)]",
+                            focusRing,
+                          )}
+                          onClick={() => void saveSettings()}
+                        >
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      <h3 className="text-[14px] font-medium text-white">Signature</h3>
+                      <p className="text-[12px] text-[var(--text-muted)]">
+                        Optional full sign-off. When empty, generated emails use your profile display name, job title, and company (see Profile). The model is instructed not to substitute names from tickets.
+                      </p>
+                      <Textarea
+                        value={signatureOverride}
+                        onChange={(e) => setSignatureOverride(e.target.value)}
+                        placeholder={"Kind regards,\nAlex Taylor\nTechnical Project Manager\nHarbour IT Group"}
+                        rows={6}
+                        className={cn("min-h-36 rounded-[var(--radius)] border-[var(--border)]", focusRing)}
+                      />
+                      <div className="space-y-2">
+                        <p className="text-[13px] font-semibold text-[var(--text-primary)]">Effective sign-off</p>
+                        <p className="text-[11px] text-[var(--text-muted)]">
+                          What generation uses when the box above is empty.
+                        </p>
+                        <div className="whitespace-pre-wrap rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-3 text-sm">
+                          {signaturePreview}
+                        </div>
+                      </div>
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          className={cn("bg-[var(--accent)] text-[13px] text-white hover:bg-[var(--accent-hover)]", focusRing)}
+                          onClick={() => void saveSignatureOverride()}
+                        >
+                          Save signature
+                        </Button>
+                      </div>
+                    </div>
                   </div>
-                  </>
                 ) : null}
-              </div>
+
+                {settingsTab === "billing" ? (
+                  <div className="space-y-5">
+                    <div className="space-y-4">
+                      {/* Reports meter — QBR packs + service reviews (hidden on free tier) */}
+                      {billingReportLimit !== 0 ? (
+                      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-1)] p-4">
+                        <div className="mb-3 flex items-center justify-between">
+                          <div>
+                            <p className="text-[13px] font-semibold text-white/80">
+                              Reports this month
+                            </p>
+                            <p className="mt-0.5 text-[11px] text-white/40">
+                              Client reports, service reviews, QBR packs
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <p className="text-[12px] tabular-nums text-white/40">
+                              {qbrMonthCount ?? 0}
+                              {billingReportLimit !== null ? ` / ${billingReportLimit}` : ""}
+                            </p>
+                            {billingReportLimit === null ? (
+                              <span className="rounded-full bg-[var(--accent)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--accent)]">
+                                Unlimited
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                        {billingReportLimit !== null && billingReportLimit > 0 ? (
+                          <>
+                            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
+                              <div
+                                className={cn(
+                                  "h-full rounded-full transition-all duration-500",
+                                  (qbrMonthCount ?? 0) >= billingReportLimit
+                                    ? "bg-red-400"
+                                    : (qbrMonthCount ?? 0) >= billingReportLimit * 0.9
+                                      ? "bg-amber-400"
+                                      : "bg-gradient-to-r from-[var(--accent)] to-[#7dd3fc]",
+                                )}
+                                style={{
+                                  width: `${Math.min(
+                                    100,
+                                    ((qbrMonthCount ?? 0) / billingReportLimit) * 100,
+                                  )}%`,
+                                }}
+                              />
+                            </div>
+                            {(qbrMonthCount ?? 0) >= billingReportLimit * 0.7 ? (
+                              <div className="mt-3 flex items-center justify-between">
+                                <p
+                                  className={cn(
+                                    "text-[12px]",
+                                    (qbrMonthCount ?? 0) >= billingReportLimit
+                                      ? "text-red-300"
+                                      : "text-amber-300",
+                                  )}
+                                >
+                                  {(qbrMonthCount ?? 0) >= billingReportLimit
+                                    ? "Monthly report limit reached"
+                                    : "Approaching report limit"}
+                                </p>
+                                <Link
+                                  href="/pricing"
+                                  onClick={() => setSettingsOpen(false)}
+                                  className="text-[12px] font-semibold text-[var(--accent)] transition-colors hover:text-white"
+                                >
+                                  Move to Handover →
+                                </Link>
+                              </div>
+                            ) : null}
+                          </>
+                        ) : null}
+                        <p className="mt-2 text-[11px] text-white/30">Resets 1st of each month</p>
+                      </div>
+                      ) : null}
+
+                      {/* Generations meter */}
+                      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-1)] p-4">
+                        <div className="mb-3 flex items-center justify-between">
+                          <div>
+                            <p className="text-[13px] font-semibold text-white/80">
+                              Generations this month
+                            </p>
+                            <p className="mt-0.5 text-[11px] text-white/40">
+                              Manual reports, PSA imports, scheduled runs
+                            </p>
+                          </div>
+                          <p className="text-[12px] tabular-nums text-white/40">
+                            {monthCount ?? 0}
+                            {billingGenerationLimit === null
+                              ? " / ∞"
+                              : ` / ${billingGenerationLimit}`}
+                          </p>
+                        </div>
+                        {billingGenerationLimit !== null ? (
+                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
+                            <div
+                              className={cn(
+                                "h-full rounded-full transition-all duration-500",
+                                (() => {
+                                  const pct =
+                                    (monthCount ?? 0) / billingGenerationLimit;
+                                  return pct >= 0.9
+                                    ? "bg-red-400"
+                                    : pct >= 0.75
+                                      ? "bg-amber-400"
+                                      : "bg-gradient-to-r from-[var(--accent)] to-[#7dd3fc]";
+                                })(),
+                              )}
+                              style={{
+                                width: `${Math.min(
+                                  100,
+                                  ((monthCount ?? 0) / billingGenerationLimit) * 100,
+                                )}%`,
+                              }}
+                            />
+                          </div>
+                        ) : null}
+                        {billingGenerationLimit !== null &&
+                          (() => {
+                            const pct = (monthCount ?? 0) / billingGenerationLimit;
+                            if (pct >= 0.75) {
+                              return (
+                                <div className="mt-3 flex items-center justify-between">
+                                  <p
+                                    className={cn(
+                                      "text-[12px]",
+                                      pct >= 1
+                                        ? "text-red-300"
+                                        : pct >= 0.9
+                                          ? "text-red-300"
+                                          : "text-amber-300",
+                                    )}
+                                  >
+                                    {pct >= 1
+                                      ? "Monthly limit reached"
+                                      : pct >= 0.9
+                                        ? "Almost at limit"
+                                        : "Approaching limit"}
+                                  </p>
+                                  {!isBillingGrowthOrAbove ? (
+                                    <Link
+                                      href="/pricing"
+                                      onClick={() => setSettingsOpen(false)}
+                                      className="text-[12px] font-semibold text-[var(--accent)] transition-colors hover:text-white"
+                                    >
+                                      Move to Handover →
+                                    </Link>
+                                  ) : null}
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
+                        <p className="mt-2 text-[11px] text-white/30">
+                          Resets 1st of each month ·
+                          {profile?.generation_limit_override ? " Grandfathered limit" : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-1)] p-4">
+                      <p className="mb-1 text-[13px] font-semibold text-white/80">Current plan</p>
+                      <p className="mb-4 text-[13px] text-white/50">
+                        {getPlanLabel(profileDbPlan ?? "free", userTeamId, {
+                          trial_ends_at: trialEndsAt,
+                          trial_plan: profileTrialPlan,
+                        }) || "Free"}
+                        {trialEndsAt && new Date(trialEndsAt) > new Date()
+                          ? ` · Trial ends ${new Date(trialEndsAt).toLocaleDateString("en-GB", {
+                              day: "numeric",
+                              month: "short",
+                            })}`
+                          : ""}
+                      </p>
+                      {hasProAccess ? (
+                        <button
+                          type="button"
+                          disabled={manageSubscriptionLoading}
+                          onClick={() => void handleManageSubscription()}
+                          className="w-full cursor-pointer rounded-[var(--radius)] border border-[var(--border)] bg-transparent px-4 py-2 text-[13px] text-[var(--text-primary)] transition-colors hover:border-white/30 disabled:cursor-wait disabled:opacity-60"
+                        >
+                          {manageSubscriptionLoading ? (
+                            <span className="inline-flex items-center justify-center gap-2">
+                              <Loader2 className="size-4 animate-spin" aria-hidden />
+                              Checking subscription…
+                            </span>
+                          ) : (
+                            "Manage subscription →"
+                          )}
+                        </button>
+                      ) : (
+                        <Link
+                          href="/pricing"
+                          onClick={() => setSettingsOpen(false)}
+                          className="inline-flex w-full items-center justify-center rounded-[var(--radius)] bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] px-4 py-2 text-[13px] font-semibold text-[#0f172a] transition-all hover:scale-[1.01]"
+                        >
+                          Move to Handover →
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+
+                {settingsTab === "referrals" ? (
+                  <div className="space-y-5">
+{isPaidPlan ? (
+                    <ReferralsSettingsPanel
+                      hasProAccess={hasProAccess}
+                      onStartCheckout={(id) => void startCheckout(id)}
+                      checkoutLoading={checkoutLoadingPriceId !== null}
+                      focusRing={focusRing}
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center gap-4 py-12 text-center">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#0EA5E9]/10">
+                        <Lock className="text-[#0EA5E9]" size={20} />
+                      </div>
+                      <h3 className="text-lg font-semibold text-white">Referrals are available on paid plans</h3>
+                      <p className="max-w-sm text-sm text-slate-400">
+                        Move to Handover to access your referral link and earn referral credit for every MSP you refer.
+                      </p>
+                      <button
+                        onClick={() => setSettingsTab("billing")}
+                        className="rounded-lg bg-[#0EA5E9] px-4 py-2 text-sm font-medium text-white transition-colors duration-200 hover:bg-[#0284C7]"
+                      >
+                        View plans
+                      </button>
+                    </div>
+                  )}
+                </div>
                 ) : null}
 
                 {settingsTab === "preferences" ? (
-                  <div className="space-y-1">
-                <div>
-                  <h3 className="mb-3 text-[13px] font-semibold text-[var(--text-primary)]">Preferences</h3>
-                </div>
-                <button
-                  type="button"
-                  className="flex w-full cursor-pointer items-center justify-between border-b border-[var(--border)] py-3 text-left text-[14px] font-medium text-white transition-colors hover:text-[var(--accent)]"
-                  onClick={() => togglePrefsAccordion("signature")}
-                  aria-expanded={Boolean(prefsAccordionOpen.signature)}
-                >
-                  <span>Signature</span>
-                  <ChevronDown
-                    className={cn(
-                      "h-4 w-4 shrink-0 transition-transform duration-200",
-                      prefsAccordionOpen.signature && "rotate-180",
-                    )}
-                    aria-hidden
-                  />
-                </button>
-                <div
-                  className={cn(
-                    "overflow-hidden transition-all duration-200",
-                    prefsAccordionOpen.signature ? "max-h-[1200px] opacity-100" : "max-h-0 opacity-0",
-                  )}
-                >
-                  <div className="space-y-4 pb-4 pt-1">
-                  <p className="mb-3 text-[12px] text-[var(--text-muted)]">
-                    Optional full sign-off. When empty, generated emails use your profile display name, job title, and company (see Profile). The model is instructed not to substitute names from tickets.
-                  </p>
-                <Textarea
-                  value={signatureOverride}
-                  onChange={(e) => setSignatureOverride(e.target.value)}
-                  placeholder={`Kind regards,\nAlex Taylor\nTechnical Project Manager\nHarbour IT Group`}
-                  rows={6}
-                  className={cn("min-h-36 rounded-[var(--radius)] border-[var(--border)]", focusRing)}
-                />
-                <div className="mt-3 space-y-2">
-                  <p className="text-[13px] font-semibold text-[var(--text-primary)]">Effective sign-off</p>
-                  <p className="text-[11px] text-[var(--text-muted)]">
-                    What generation uses when the box above is empty.
-                  </p>
-                  <div className="whitespace-pre-wrap rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-3 text-sm">
-                    {signaturePreview}
-                  </div>
-                </div>
-                <div className="flex justify-end">
-                <Button type="button" className={cn("bg-[var(--accent)] text-[13px] text-white hover:bg-[var(--accent-hover)]", focusRing)} onClick={() => void saveSignatureOverride()}>
-                  Save signature
-                </Button>
-                </div>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  className="flex w-full cursor-pointer items-center justify-between border-b border-[var(--border)] py-3 text-left text-[14px] font-medium text-white transition-colors hover:text-[var(--accent)]"
-                  onClick={() => togglePrefsAccordion("appearance")}
-                  aria-expanded={Boolean(prefsAccordionOpen.appearance)}
-                >
-                  <span>Appearance</span>
-                  <ChevronDown
-                    className={cn(
-                      "h-4 w-4 shrink-0 transition-transform duration-200",
-                      prefsAccordionOpen.appearance && "rotate-180",
-                    )}
-                    aria-hidden
-                  />
-                </button>
-                <div
-                  className={cn(
-                    "overflow-hidden transition-all duration-200",
-                    prefsAccordionOpen.appearance ? "max-h-[1200px] opacity-100" : "max-h-0 opacity-0",
-                  )}
-                >
-                  <div className="space-y-4 pb-4 pt-1">
-                <p className="text-[12px] text-[var(--text-muted)]">Theme and layout preferences for this device.</p>
-                <label className="flex items-center justify-between rounded-[var(--radius)] border border-[var(--border)] p-3 text-sm">
-                  <span className="flex items-center gap-2 text-[var(--text-secondary)]">
-                    {theme === "dark" ? <Moon className="size-4" /> : <Sun className="size-4" />}
-                    Dark mode
-                  </span>
-                  <input type="checkbox" checked={theme === "dark"} onChange={toggleTheme} className={focusRing} />
-                </label>
-                <label className="flex items-center justify-between rounded-[var(--radius)] border border-[var(--border)] p-3 text-sm">
-                  <span>Compact mode</span>
-                  <input type="checkbox" checked={compactMode} onChange={(e) => setCompactMode(e.target.checked)} className={focusRing} />
-                </label>
-                <label className="flex items-center justify-between rounded-[var(--radius)] border border-[var(--border)] p-3 text-sm">
-                  <span>Show character count</span>
-                  <input type="checkbox" checked={showCharacterCount} onChange={(e) => setShowCharacterCount(e.target.checked)} className={focusRing} />
-                </label>
-                <div className="rounded-[var(--radius)] border border-[var(--border)] p-4">
-                  <h4 className="text-[13px] font-semibold text-[var(--text-primary)]">Getting started checklist</h4>
-                  <p className="mt-1.5 text-[12px] leading-snug text-[var(--text-muted)]">
-                    If you dismissed the corner checklist, restore it here. This applies on this browser only.
-                  </p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className={cn("mt-3 text-[13px]", focusRing)}
-                    onClick={() => {
-                      if (!userEmail) return;
-                      clearGettingStartedChecklistStorage(userEmail);
-                      setGettingStartedChecklistMountKey((k) => k + 1);
-                    }}
-                  >
-                    Show getting started checklist
-                  </Button>
-                </div>
-                <div className="flex justify-end">
-                <Button type="button" className={cn("bg-[var(--accent)] text-[13px] text-white hover:bg-[var(--accent-hover)]", focusRing)} onClick={() => void saveSettings()}>
-                  Save
-                </Button>
-                </div>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  className="flex w-full cursor-pointer items-center justify-between border-b border-[var(--border)] py-3 text-left text-[14px] font-medium text-white transition-colors hover:text-[var(--accent)]"
-                  onClick={() => togglePrefsAccordion("privacy")}
-                  aria-expanded={Boolean(prefsAccordionOpen.privacy)}
-                >
-                  <span>Privacy</span>
-                  <ChevronDown
-                    className={cn(
-                      "h-4 w-4 shrink-0 transition-transform duration-200",
-                      prefsAccordionOpen.privacy && "rotate-180",
-                    )}
-                    aria-hidden
-                  />
-                </button>
-                <div
-                  className={cn(
-                    "overflow-hidden transition-all duration-200",
-                    prefsAccordionOpen.privacy ? "max-h-[800px] opacity-100" : "max-h-0 opacity-0",
-                  )}
-                >
-                  <div className="space-y-4 pb-4 pt-1">
+                  <div className="space-y-8">
+                    <div className="space-y-4">
+                      <h3 className="text-[14px] font-medium text-white">Output Tabs</h3>
                       <p className="text-[12px] text-[var(--text-muted)]">
-                        Control whether generations are saved to your account history.
+                        Choose what appears in the generate dialog and what is produced on each run. Core outputs are on by default; optional PM tabs add RAID logs, meeting notes, and more.
                       </p>
-                      <label className="flex items-start justify-between gap-4 rounded-[var(--radius)] border border-[var(--border)] p-3">
-                        <div className="min-w-0">
-                          <p className="text-sm text-[var(--text-primary)]">Don&apos;t save generation history</p>
-                          <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-muted)]">
-                            When enabled, generations are processed but not stored. Useful for sensitive client data.
-                          </p>
+                      <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
+                        Core outputs
+                      </p>
+                      <div className="space-y-2 rounded-[var(--radius)] border border-[var(--border)] p-3">
+                        {MODAL_OUTPUT_KEYS.map((key) => (
+                          <label
+                            key={key}
+                            className="flex cursor-pointer items-center justify-between gap-3 text-[13px] text-[var(--text-primary)]"
+                          >
+                            <span>{OUTPUT_KEY_LABELS[key]}</span>
+                            <input
+                              type="checkbox"
+                              className={cn("size-4 shrink-0 rounded border-[var(--border)]", focusRing)}
+                              checked={outputPrefs[key]}
+                              onChange={(e) =>
+                                setOutputPrefs((prev) => ({
+                                  ...prev,
+                                  [key]: e.target.checked,
+                                }))
+                              }
+                            />
+                          </label>
+                        ))}
+                      </div>
+                      <div>
+                        <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
+                          Optional PM deliverables
+                        </p>
+                        <div className="max-h-none space-y-2 overflow-visible rounded-[var(--radius)] border border-[var(--border)] p-3 md:max-h-[min(40vh,22rem)] md:overflow-y-auto">
+                          {EXTENDED_PM_TAB_KEYS.map((key) => (
+                            <label
+                              key={key}
+                              className="flex cursor-pointer items-center justify-between gap-3 text-[13px] text-[var(--text-primary)]"
+                            >
+                              <span className="min-w-0">{EXTENDED_PM_TAB_LABELS[key]}</span>
+                              <input
+                                type="checkbox"
+                                className={cn("size-4 shrink-0 rounded border-[var(--border)]", focusRing)}
+                                checked={extendedOutputPrefs[key]}
+                                onChange={(e) =>
+                                  setExtendedOutputPrefs((prev) => ({
+                                    ...prev,
+                                    [key]: e.target.checked,
+                                  }))
+                                }
+                              />
+                            </label>
+                          ))}
                         </div>
-                        <input
-                          type="checkbox"
-                          className={cn("mt-1 shrink-0", focusRing)}
-                          checked={privacyMode}
-                          onChange={(e) => setPrivacyMode(e.target.checked)}
-                        />
-                      </label>
-                    <div className="flex justify-end">
-                      <Button
-                        type="button"
-                        className={cn("bg-[var(--accent)] text-[13px] text-white hover:bg-[var(--accent-hover)]", focusRing)}
-                        onClick={() => void saveSettings()}
-                      >
-                        Save
-                      </Button>
+                      </div>
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          className={cn(
+                            "bg-[var(--accent)] text-[13px] text-white hover:bg-[var(--accent-hover)]",
+                            focusRing,
+                          )}
+                          onClick={() => void saveOutputTabPreferences()}
+                          disabled={!userEmail}
+                        >
+                          Save output preferences
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  className="flex w-full cursor-pointer items-center justify-between border-b border-[var(--border)] py-3 text-left text-[14px] font-medium text-white transition-colors hover:text-[var(--accent)]"
-                  onClick={() => togglePrefsAccordion("writing")}
-                  aria-expanded={Boolean(prefsAccordionOpen.writing)}
-                >
-                  <span>Writing Style</span>
-                  <ChevronDown
-                    className={cn(
-                      "h-4 w-4 shrink-0 transition-transform duration-200",
-                      prefsAccordionOpen.writing && "rotate-180",
-                    )}
-                    aria-hidden
-                  />
-                </button>
-                <div
-                  className={cn(
-                    "overflow-hidden transition-all duration-200",
-                    prefsAccordionOpen.writing ? "max-h-[1200px] opacity-100" : "max-h-0 opacity-0",
-                  )}
-                >
-                  <div className="space-y-4 pb-4 pt-1">
+                    <div className="space-y-4">
+                      <h3 className="text-[14px] font-medium text-white">Writing Style</h3>
                       <p className="text-[12px] text-[var(--text-muted)]">
                         Optional. Train Handover to match how you write for clients.
                       </p>
@@ -12065,7 +12411,7 @@ export default function Home() {
                         <div
                           className="rounded-[var(--radius)] border border-[var(--border)] bg-[rgba(56,189,248,0.03)] p-3"
                           role="region"
-                          aria-label="Upgrade to Pro for writing style"
+                          aria-label="Upgrade to Starter for writing style"
                         >
                           <div className="flex items-start gap-3">
                             <div className="flex size-8 items-center justify-center rounded-full bg-[var(--accent)]/15 text-[var(--accent)]">
@@ -12073,13 +12419,13 @@ export default function Home() {
                             </div>
                             <div className="min-w-0 flex-1">
                               <p className="text-[13px] font-semibold text-[var(--text-primary)]">
-                                Upgrade to Pro
+                                Move to Handover
                               </p>
                               <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-secondary)]">
                                 Train Handover to write in your style. Every output sounds like you wrote it.
                               </p>
                               <p className="mt-2 text-[13px] font-medium text-[var(--accent)]">
-                                From £25/month. Cancel anytime.
+                                £499/month or £4,990/year. Cancel anytime.
                               </p>
                               <Button
                                 type="button"
@@ -12093,13 +12439,13 @@ export default function Home() {
                                   checkoutLoadingPriceId !== null
                                 }
                               >
-                                Upgrade to Pro
+                                Move to Handover
                               </Button>
                               <Link
                                 href="/pricing"
                                 className="mt-2 block text-center text-[13px] font-medium text-[var(--text-secondary)] hover:text-white"
                               >
-                                See all Pro features
+                                See all features
                               </Link>
                             </div>
                           </div>
@@ -12131,176 +12477,103 @@ export default function Home() {
                           </div>
                         </>
                       )}
+                    </div>
                   </div>
-                </div>
+                ) : null}
 
-                <button
-                  type="button"
-                  className="flex w-full cursor-pointer items-center justify-between border-b border-[var(--border)] py-3 text-left text-[14px] font-medium text-white transition-colors hover:text-[var(--accent)]"
-                  onClick={() => togglePrefsAccordion("outputs")}
-                  aria-expanded={Boolean(prefsAccordionOpen.outputs)}
-                >
-                  <span>Output Tabs</span>
-                  <ChevronDown
-                    className={cn(
-                      "h-4 w-4 shrink-0 transition-transform duration-200",
-                      prefsAccordionOpen.outputs && "rotate-180",
-                    )}
-                    aria-hidden
-                  />
-                </button>
-                <div
-                  className={cn(
-                    "overflow-hidden transition-all duration-200",
-                    prefsAccordionOpen.outputs ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0",
-                  )}
-                >
-                  <div className="space-y-6 pb-4 pt-1">
-                      <p className="text-[12px] text-[var(--text-muted)]">
-                        Choose what appears in the generate dialog and what is produced on each run. Core outputs are on by default; optional PM tabs add RAID logs, meeting notes, and more.
+                {settingsTab === "appearance" ? (
+                  <div className="space-y-4">
+                    <p className="text-[12px] text-[var(--text-muted)]">Theme and layout preferences for this device.</p>
+                    <label className="flex items-center justify-between rounded-[var(--radius)] border border-[var(--border)] p-3 text-sm">
+                      <span className="flex items-center gap-2 text-[var(--text-secondary)]">
+                        {theme === "dark" ? <Moon className="size-4" /> : <Sun className="size-4" />}
+                        Dark mode
+                      </span>
+                      <input type="checkbox" checked={theme === "dark"} onChange={toggleTheme} className={focusRing} />
+                    </label>
+                    <label className="flex items-center justify-between rounded-[var(--radius)] border border-[var(--border)] p-3 text-sm">
+                      <span>Compact mode</span>
+                      <input type="checkbox" checked={compactMode} onChange={(e) => setCompactMode(e.target.checked)} className={focusRing} />
+                    </label>
+                    <label className="flex items-center justify-between rounded-[var(--radius)] border border-[var(--border)] p-3 text-sm">
+                      <span>Show character count</span>
+                      <input type="checkbox" checked={showCharacterCount} onChange={(e) => setShowCharacterCount(e.target.checked)} className={focusRing} />
+                    </label>
+                    <div className="rounded-[var(--radius)] border border-[var(--border)] p-4">
+                      <h4 className="text-[13px] font-semibold text-[var(--text-primary)]">Getting started checklist</h4>
+                      <p className="mt-1.5 text-[12px] leading-snug text-[var(--text-muted)]">
+                        If you dismissed the corner checklist, restore it here. This applies on this browser only.
                       </p>
-                      <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
-                        Core outputs
-                      </p>
-                      <div className="space-y-2 rounded-[var(--radius)] border border-[var(--border)] p-3">
-                        {MODAL_OUTPUT_KEYS.map((key) => (
-                          <label
-                            key={key}
-                            className="flex cursor-pointer items-center justify-between gap-3 text-[13px] text-[var(--text-primary)]"
-                          >
-                            <span>{OUTPUT_KEY_LABELS[key]}</span>
-                            <input
-                              type="checkbox"
-                              className={cn("size-4 shrink-0 rounded border-[var(--border)]", focusRing)}
-                              checked={outputPrefs[key]}
-                              onChange={(e) =>
-                                setOutputPrefs((prev) => ({
-                                  ...prev,
-                                  [key]: e.target.checked,
-                                }))
-                              }
-                            />
-                          </label>
-                        ))}
-                      </div>
-                    <div>
-                      <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
-                        Optional PM deliverables
-                      </p>
-                      <div className="max-h-[min(40vh,22rem)] space-y-2 overflow-y-auto rounded-[var(--radius)] border border-[var(--border)] p-3">
-                        {EXTENDED_PM_TAB_KEYS.map((key) => (
-                          <label
-                            key={key}
-                            className="flex cursor-pointer items-center justify-between gap-3 text-[13px] text-[var(--text-primary)]"
-                          >
-                            <span className="min-w-0">{EXTENDED_PM_TAB_LABELS[key]}</span>
-                            <input
-                              type="checkbox"
-                              className={cn("size-4 shrink-0 rounded border-[var(--border)]", focusRing)}
-                              checked={extendedOutputPrefs[key]}
-                              onChange={(e) =>
-                                setExtendedOutputPrefs((prev) => ({
-                                  ...prev,
-                                  [key]: e.target.checked,
-                                }))
-                              }
-                            />
-                          </label>
-                        ))}
-                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={cn("mt-3 text-[13px]", focusRing)}
+                        onClick={() => {
+                          if (!userEmail) return;
+                          clearGettingStartedChecklistStorage(userEmail);
+                          setGettingStartedChecklistMountKey((k) => k + 1);
+                        }}
+                      >
+                        Show getting started checklist
+                      </Button>
                     </div>
                     <div className="flex justify-end">
                       <Button
                         type="button"
-                        className={cn(
-                          "bg-[var(--accent)] text-[13px] text-white hover:bg-[var(--accent-hover)]",
-                          focusRing,
-                        )}
-                        onClick={() => void saveOutputTabPreferences()}
-                        disabled={!userEmail}
+                        className={cn("bg-[var(--accent)] text-[13px] text-white hover:bg-[var(--accent-hover)]", focusRing)}
+                        onClick={() => void saveSettings()}
                       >
-                        Save output preferences
+                        Save
                       </Button>
                     </div>
                   </div>
-                </div>
-              </div>
                 ) : null}
 
-                {settingsTab === "referrals" ? (
-                  isPaidPlan ? (
-                    <ReferralsSettingsPanel
-                      hasProAccess={hasProAccess}
-                      onStartCheckout={(id) => void startCheckout(id)}
-                      checkoutLoading={checkoutLoadingPriceId !== null}
-                      focusRing={focusRing}
-                    />
-                  ) : (
-                    <div className="flex flex-col items-center justify-center gap-4 py-12 text-center">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#0EA5E9]/10">
-                        <Lock className="text-[#0EA5E9]" size={20} />
-                      </div>
-                      <h3 className="text-lg font-semibold text-white">Referrals are available on paid plans</h3>
-                      <p className="max-w-sm text-sm text-slate-400">
-                        Upgrade to Professional or Team to access your referral link and earn £87 for every
-                        MSP you refer.
+                {settingsTab === "privacy" ? (
+                  <div className="space-y-5">
+                    <div className="space-y-4">
+                      <p className="text-[12px] text-[var(--text-muted)]">
+                        Control whether generations are saved to your account history.
                       </p>
-                      <button
-                        onClick={() => setSettingsTab("profile")}
-                        className="rounded-lg bg-[#0EA5E9] px-4 py-2 text-sm font-medium text-white transition-colors duration-200 hover:bg-[#0284C7]"
-                      >
-                        View plans
-                      </button>
+                      <label className="flex items-start justify-between gap-4 rounded-[var(--radius)] border border-[var(--border)] p-3">
+                        <div className="min-w-0">
+                          <p className="text-sm text-[var(--text-primary)]">Don&apos;t save generation history</p>
+                          <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-muted)]">
+                            When enabled, generations are processed but not stored. Useful for sensitive client data.
+                          </p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          className={cn("mt-1 shrink-0", focusRing)}
+                          checked={privacyMode}
+                          onChange={(e) => setPrivacyMode(e.target.checked)}
+                        />
+                      </label>
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          className={cn("bg-[var(--accent)] text-[13px] text-white hover:bg-[var(--accent-hover)]", focusRing)}
+                          onClick={() => void saveSettings()}
+                        >
+                          Save
+                        </Button>
+                      </div>
                     </div>
-                  )
+                  </div>
                 ) : null}
 
-                <div className="mt-8 border-t border-[var(--border)] pt-4">
-              {!confirmSignOut ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-secondary)]"
-                  onClick={() => setConfirmSignOut(true)}
-                  disabled={!userEmail}
-                >
-                  Sign out
-                </Button>
-              ) : (
-                <div className="space-y-2 rounded-[var(--radius)] border border-[var(--danger)] p-3">
-                  <p className="text-sm text-[var(--danger)]">Are you sure?</p>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="bg-[var(--danger)] text-white hover:bg-red-600"
-                      onClick={handleSignOut}
-                      disabled={isSigningOut}
-                    >
-                      Yes
-                    </Button>
-                    <Button type="button" size="sm" variant="outline" onClick={() => setConfirmSignOut(false)}>
-                      No
-                    </Button>
-                  </div>
                 </div>
-              )}
-                </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        </div>
-      ) : null}
+      </SettingsBodyPortal>
 
       <div
         className={cn(
-          "relative ml-0 overflow-x-hidden",
-          !userEmail ? "bg-transparent" : "",
-          showLeftSidebar &&
-            (sidebarExpanded ? "md:ml-[280px]" : "md:ml-[56px]"),
-          showLeftSidebar && "md:transition-[margin] md:duration-150 md:ease-out",
+          "relative ml-0",
+          userEmail && result && mainView === "generate"
+            ? "flex min-h-[100dvh] flex-col md:min-h-0 md:h-screen md:overflow-hidden"
+            : userEmail
+              ? "overflow-x-hidden"
+              : "overflow-visible",
+          !userEmail ? "border-0 bg-transparent shadow-none ring-0 outline-none" : "",
         )}
         style={userEmail ? { background: SIGNED_IN_SHELL_BACKGROUND } : undefined}
       >
@@ -12309,8 +12582,8 @@ export default function Home() {
             className="animate-in fade-in duration-200 max-md:!left-0 transition-[left] duration-150 ease-out"
             style={{
               position: "fixed",
-              top: "52px",
-              left: `${sidebarMainOffsetPx}px`,
+              top: fixedPanelTopBelowChrome,
+            left: sidebarMainOffset,
               right: 0,
               bottom: 0,
               overflow: "hidden",
@@ -12321,7 +12594,11 @@ export default function Home() {
               userEmail={userEmail}
               plan={plan}
               hasProAccess={hasProAccess}
+              hasPortalPlanAccess={hasPortalPlanAccess || demoModeActive}
               demoModeActive={demoModeActive}
+              demoEnabled={demoToggleChecked}
+              demoForceEnabled={demoForceEnabled}
+              psaConnected={psaConnected}
               brandingSection={configurationBrandingSection}
               integrationsSection={
                 <IntegrationsPanel
@@ -12332,6 +12609,8 @@ export default function Home() {
                   onConsumedInitialOpenDetail={() => setIntegrationsInitialDetail(null)}
                   haloConnected={haloConnected}
                   haloUrl={haloUrl}
+                  haloClientIdMasked={haloClientIdMasked}
+                  haloClientIdLength={haloClientIdLength}
                   haloUpdatedAt={haloUpdatedAt}
                   haloImportedCount={haloImportedCount}
                   haloConfigOpen={haloConfigOpen}
@@ -12421,16 +12700,15 @@ export default function Home() {
                     setDemoDisabled(false);
                   } else {
                     window.localStorage.removeItem("handover_demo_force_enabled");
-                    window.localStorage.removeItem("handover_demo_disabled");
-                    setDemoDisabled(false);
+                    window.localStorage.setItem("handover_demo_disabled", "true");
+                    setDemoDisabled(true);
                     setDemoForceEnabled(false);
                     setSessionUsesDemoData(false);
-                    invalidatePsaConnectionsCache();
-                    invalidatePSAStatusCache();
-                    toast({ message: "Demo mode disabled — reloading your data", durationMs: 2500 });
+                    toast({ message: "Demo mode disabled - reloading your data", durationMs: 2500 });
                     if (activeMainView === "generate") {
                       setInput("");
                       setResult(null);
+                      setIsInputCollapsed(false);
                     }
                     if (activeMainView === "delivery") {
                       const deliveryHealthKey = buildDeliveryHealthSwrKey(
@@ -12440,11 +12718,12 @@ export default function Home() {
                       );
                       if (deliveryHealthKey) void mutate(deliveryHealthKey);
                     }
-                    void Promise.all([refreshHaloConnection(), refreshCwConnection()]);
+                    void refreshShellData();
                   }
                 } catch {
-                  setDemoDisabled(false);
                   setDemoForceEnabled(enabled);
+                  if (!enabled) setDemoDisabled(true);
+                  else setDemoDisabled(false);
                 }
               }}
             />
@@ -12460,8 +12739,8 @@ export default function Home() {
             className="animate-in fade-in duration-200 max-md:!left-0 h-full min-h-0 transition-[left] duration-150 ease-out"
             style={{
               position: "fixed",
-              top: "52px",
-              left: `${sidebarMainOffsetPx}px`,
+              top: fixedPanelTopBelowChrome,
+            left: sidebarMainOffset,
               right: 0,
               bottom: 0,
               overflow: "hidden",
@@ -12512,36 +12791,25 @@ export default function Home() {
             />
           </div>
         ) : null}
-        {showLeftSidebar ? (
-          <div
-            className={cn(
-              "sticky top-0 z-20 flex h-[52px] shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-secondary)] px-3 hidden",
-            )}
-          >
-            <button
-              type="button"
-              className={cn(
-                "inline-flex size-10 items-center justify-center rounded-[var(--radius)] border border-[var(--border)] text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-primary)]",
-                sidebarOpenMobile && "invisible pointer-events-none",
-              )}
-              aria-expanded={sidebarOpenMobile}
-              aria-controls="app-sidebar-nav"
-              aria-label={sidebarOpenMobile ? "Menu open" : "Open menu"}
-              onClick={() => setSidebarOpenMobile(true)}
-            >
-              <Menu className="size-5" />
-            </button>
-          </div>
-        ) : null}
-        {userEmail && !isPaidProfileTierForTrialBanner ? <TrialBanner /> : null}
         <div
           className={cn(
-            "flex w-full flex-col overflow-x-hidden",
-            compactMode
-              ? "gap-4 px-3 py-4"
-              : !userEmail
-                ? "gap-6 px-4 py-4 md:px-8 md:py-6"
-        : "w-full gap-4 px-4 py-4 md:px-6 md:py-5",
+            "flex w-full flex-col",
+            userEmail && mainView === "generate" && (result || isGenerating)
+              ? cn(
+                  "min-h-0 flex-1 gap-4 overflow-hidden px-4 pb-0 md:px-6",
+                  paymentPastDue
+                    ? "pt-[var(--app-fixed-panel-top-past-due)]"
+                    : "pt-[var(--app-fixed-panel-top)]",
+                )
+              : userEmail
+                ? cn(
+                    "w-full gap-4 overflow-x-hidden px-4 pb-4 md:px-6 md:pb-5",
+                    paymentPastDue
+                      ? "pt-[var(--app-content-top-mobile-past-due)] md:pt-[var(--app-content-top-desktop-past-due)]"
+                      : "pt-[var(--app-content-top-mobile)] md:pt-[var(--app-content-top-desktop)]",
+                  )
+                : "gap-6 overflow-visible px-4 py-4 md:px-8 md:py-6",
+            !userEmail && "border-0 shadow-none ring-0 outline-none",
           )}
         >
         {showSuccessBanner ? (
@@ -12551,7 +12819,7 @@ export default function Home() {
             role="status"
           >
             <span className="text-foreground">
-              Welcome to Handover Pro - your subscription is active.
+              Welcome to Handover. Your subscription is active.
             </span>
             <Button
               type="button"
@@ -12568,19 +12836,19 @@ export default function Home() {
         {!userEmail ? (!signedOutCompactMode ? (
           <>
             <section
-              className="relative flex flex-col overflow-x-hidden overflow-y-visible bg-transparent animate-in fade-in slide-in-from-bottom-4 duration-300"
+              className="relative flex flex-col overflow-visible lg:overflow-hidden border-0 bg-transparent pt-[var(--app-header-height)] shadow-none ring-0 outline-none animate-in fade-in slide-in-from-bottom-4 duration-300"
             >
               <style
                 dangerouslySetInnerHTML={{
                   __html: `@keyframes homeHeroAmbientPulse{0%,100%{opacity:.14;transform:scale(1)}50%{opacity:.22;transform:scale(1.06)}}`,
                 }}
               />
-              <div className="home-hero-drift-layer" aria-hidden>
+              <div className="home-hero-drift-layer border-0 outline-none shadow-none" aria-hidden>
                 <div className="home-hero-drift-orb--a" />
                 <div className="home-hero-drift-orb--b" />
               </div>
-              <div className="home-hero-dot-overlay" aria-hidden />
-              <div className="pointer-events-none absolute inset-0 z-[1] overflow-hidden">
+              <div className="home-hero-dot-overlay border-0 outline-none shadow-none" aria-hidden />
+              <div className="pointer-events-none absolute inset-0 z-[1] overflow-visible border-0 outline-none shadow-none">
                 <div
                   className="absolute -top-40 -right-40 h-[600px] w-[600px] rounded-full opacity-20"
                   style={{
@@ -12589,176 +12857,376 @@ export default function Home() {
                   }}
                 />
               </div>
-              <div className="relative z-10 grid w-full min-h-0 flex-1 grid-cols-1 gap-6 px-4 pt-12 pb-4 md:px-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:items-center lg:gap-8 lg:px-8 lg:pb-6">
+              <div className="relative z-10 grid w-full min-h-0 flex-1 grid-cols-1 gap-6 overflow-visible lg:overflow-hidden px-4 pt-2 pb-3 md:px-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:items-center lg:gap-6 lg:px-8 lg:pb-4">
                 <div className="flex min-w-0 flex-col justify-center overflow-x-hidden overflow-y-visible pr-0 md:pr-8">
                   <div className="max-w-full md:max-w-[520px]">
-                  <motion.div
-                    className="inline-flex w-fit items-center gap-2 rounded-full px-3 py-1 text-[12px] font-medium"
-                    style={{
-                      backgroundColor: "rgba(56, 189, 248, 0.1)",
-                      border: "1px solid rgba(56, 189, 248, 0.3)",
-                      color: "var(--accent)",
-                    }}
-                    initial={{ opacity: 0, y: 16 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.7, ease: [0.25, 0.46, 0.45, 0.94] }}
-                  >
-                    <span
-                      className="handover-pulse inline-block size-2 rounded-full bg-[#22c55e]"
-                      aria-hidden
-                    />
-                    Built for MSPs who are done wasting time.
-                  </motion.div>
-
                   <motion.h1
-                    className="mt-5 text-5xl font-semibold tracking-tight text-white leading-[0.95] lg:text-7xl"
+                    className="mt-3 text-2xl font-semibold leading-[0.95] tracking-tight text-white sm:text-3xl md:text-5xl lg:text-6xl"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.7, delay: 0.15, ease: [0.25, 0.46, 0.45, 0.94] }}
+                    transition={{ duration: 0.5, delay: 0.08, ease: [0.25, 0.46, 0.45, 0.94] }}
                   >
-                    Your engineers spend hours on reports that should take{" "}
-                    <span className="text-cyan-400">minutes.</span>
+                    Know which clients need your attention, and why.
                   </motion.h1>
 
                   <motion.p
-                    className="mt-4 text-[15px] leading-relaxed text-[var(--text-secondary)] md:text-[18px] md:leading-normal"
+                    className="mt-2.5 text-sm leading-relaxed text-[var(--text-secondary)] md:text-base md:leading-normal"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.7, delay: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
+                    transition={{ duration: 0.5, delay: 0.16, ease: [0.25, 0.46, 0.45, 0.94] }}
                   >
-                    Connect HaloPSA or ConnectWise and generate your first client report in 30 seconds — nothing to configure.
+                    Handover connects to HaloPSA or ConnectWise and finds the
+                    client accounts where commercial, service or relationship
+                    behaviour has materially changed, with the evidence
+                    before your next conversation.
                   </motion.p>
-                  <p className="mt-2 text-[13px] leading-relaxed text-white/60 md:text-[15px] md:leading-normal">
-                    14-day free trial — cancel anytime.
-                  </p>
+                  <motion.p
+                    className="mt-1.5 text-[13px] leading-relaxed text-white/60 md:text-[15px] md:leading-normal"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: 0.2, ease: [0.25, 0.46, 0.45, 0.94] }}
+                  >
+                    Run the free PSA scan first. Handover is £499/month or £4,990/year.
+                  </motion.p>
 
                   <motion.div
-                    className="mt-6 flex w-full max-w-full flex-col gap-3 md:max-w-none md:flex-row md:flex-wrap"
+                    className="mt-4 flex w-full max-w-full flex-col gap-3 sm:flex-row md:max-w-none md:flex-wrap"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.7, delay: 0.45, ease: [0.25, 0.46, 0.45, 0.94] }}
+                    transition={{ duration: 0.5, delay: 0.24, ease: [0.25, 0.46, 0.45, 0.94] }}
                   >
                     <Link
-                      href="/auth?tab=signup&returnTo=/welcome"
+                      href="/onboarding/connect"
                       className="bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] hover:from-[var(--accent-hover)] hover:to-[var(--accent)] text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-[color-mix(in_srgb,var(--accent)_25%,transparent)] hover:shadow-[color-mix(in_srgb,var(--accent)_35%,transparent)] transition-all duration-300 transform hover:scale-[1.02] inline-flex w-full items-center justify-center text-sm active:scale-[0.99] md:w-auto"
                     >
-                      Start free trial
+                      See what&apos;s in your client base
                     </Link>
                     <Link
                       href="/demo"
                       className="bg-white/[0.05] backdrop-blur-sm border border-white/[0.15] hover:bg-white/[0.08] text-white font-medium px-6 py-3 rounded-xl transition-all duration-300 inline-flex w-full items-center justify-center text-sm md:w-auto"
                     >
-                      Book a demo →
+                      Book a walkthrough
                     </Link>
                   </motion.div>
-
-                  <div className="mt-5 w-full min-w-0 overflow-x-hidden border-t border-[var(--border)] pt-5" data-nosnippet>
-                    <div className="flex w-full min-w-0 flex-col items-center gap-6 md:flex-row md:flex-nowrap md:items-start md:justify-center md:gap-3">
-                      <ScrollRevealItem
-                        index={0}
-                        className="flex w-full min-w-0 max-w-md flex-1 flex-col items-center border-b border-[var(--border)] px-3 pb-6 text-center md:max-w-none md:border-b-0 md:pb-0 md:items-center"
-                      >
-                        <div className="flex min-w-0 flex-wrap items-baseline justify-center gap-1">
-                          <div className="tabular whitespace-nowrap text-[clamp(1.2rem,2.5vw,2rem)] font-bold leading-none tracking-tight text-[var(--accent)]">
-                            <span>2-4</span>
-                            <span className="ml-1">hours</span>
-                          </div>
-                        </div>
-                        <div
-                          className="mt-2 w-full whitespace-nowrap text-xs text-[var(--text-secondary)]"
-                          style={{ lineHeight: 1.4 }}
-                          title="saved per client per week"
-                        >
-                          saved per client per week
-                        </div>
-                      </ScrollRevealItem>
-                      <ScrollRevealItem
-                        index={1}
-                        className="flex w-full min-w-0 max-w-md flex-1 flex-col items-center border-b border-[var(--border)] px-3 py-6 text-center md:max-w-none md:border-x md:border-y-0 md:border-b-0 md:py-0"
-                      >
-                        <div className="flex min-w-0 flex-wrap items-baseline justify-center gap-1">
-                          <div className="tabular whitespace-nowrap text-[clamp(1.2rem,2.5vw,2rem)] font-bold leading-none tracking-tight text-[var(--accent)]">
-                            <CountUp target={1400} prefix="£" suffix="+" />
-                          </div>
-                        </div>
-                        <div
-                          className="mt-2 w-full whitespace-nowrap text-xs text-[var(--text-secondary)]"
-                          style={{ lineHeight: 1.4 }}
-                          title="saved per PM per month"
-                        >
-                          saved per PM per month
-                        </div>
-                      </ScrollRevealItem>
-                      <ScrollRevealItem
-                        index={2}
-                        className="flex w-full min-w-0 max-w-md flex-1 flex-col items-center px-3 text-center md:max-w-none"
-                      >
-                        <div className="flex min-w-0 flex-wrap items-baseline justify-center gap-1">
-                          <div className="tabular whitespace-nowrap text-[clamp(1.2rem,2.5vw,2rem)] font-bold leading-none tracking-tight text-[var(--accent)]">
-                            <CountUp target={30} suffix="s" />
-                          </div>
-                        </div>
-                        <div
-                          className="mt-2 w-full whitespace-nowrap text-xs text-[var(--text-secondary)]"
-                          style={{ lineHeight: 1.4 }}
-                          title="PSA to client-ready"
-                        >
-                          PSA to client-ready
-                        </div>
-                      </ScrollRevealItem>
-                    </div>
-                  </div>
                   </div>
                 </div>
 
                 <motion.div
-                  className="relative hidden min-w-0 w-full max-w-full flex-col items-center justify-center overflow-visible sm:flex"
+                  className="relative hidden min-w-0 w-full max-w-full flex-col items-center justify-center overflow-visible lg:overflow-hidden pointer-events-none lg:flex"
+                  style={{ marginTop: "0px" }}
                   initial={{ opacity: 0, x: 40 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
                 >
                   <div
-                    className="pointer-events-none absolute z-0 hidden size-[400px] rounded-full lg:block"
+                    className="home-hero-screenshot-cluster"
                     style={{
-                      background:
-                        "radial-gradient(circle, rgba(56,189,248,0.07) 0%, transparent 70%)",
+                      position: "relative",
+                      flexShrink: 0,
+                      pointerEvents: "none",
+                      background: "none",
+                      border: "none",
+                      outline: "none",
                     }}
-                    aria-hidden
-                  />
-                  <section className="relative z-10 w-full min-w-0 max-w-full">
-                    <div className="relative w-full min-w-0 max-w-full overflow-visible">
-                      {/* Glow behind screenshot — not a frame; no border/shadow on wrappers */}
-                      <div className="pointer-events-none absolute -inset-4 z-0 bg-gradient-to-r from-cyan-500/20 via-blue-500/10 to-transparent blur-2xl" />
-
-                      {/* Float + 3D: float on outer so transform does not fight perspective on inner */}
-                      <div
-                        className="relative overflow-visible"
+                  >
+                    {/* Shot 3 — dashboard2 — back layer, bottom right */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        right: "0px",
+                        top: "325px",
+                        width: "460px",
+                        zIndex: featuredShot === 3 ? 40 : 10,
+                        transition: "all 700ms cubic-bezier(0.4,0,0.2,1)",
+                        opacity: featuredShot === 3 ? 1 : 0.45,
+                        transform: featuredShot === 3
+                          ? "scale(1.04) translateY(-20px) translateX(-160px)"
+                          : "scale(0.97) translateY(0px) translateX(0px)",
+                        borderRadius: "10px",
+                        boxShadow: featuredShot === 3
+                          ? "0 0 40px rgba(56,189,248,0.25), 0 20px 60px rgba(0,0,0,0.7)"
+                          : "0 4px 24px rgba(0,0,0,0.5)",
+                        pointerEvents: "none",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <img
+                        src="/dashboard2.png"
+                        alt="Delivery dashboard"
                         style={{
-                          animation: "float 8s ease-in-out infinite",
+                          width: "100%",
+                          display: "block",
+                          borderRadius: "9px",
+                          cursor: "pointer",
+                          pointerEvents: "auto",
                         }}
-                      >
-                        <div
-                          className="relative overflow-visible rounded-xl transition-transform duration-500"
-                          style={{
-                            transform: heroDashboard3dHovered
-                              ? "perspective(1200px) rotateY(-2deg) rotateX(0deg)"
-                              : "perspective(1200px) rotateY(-6deg) rotateX(2deg)",
-                            boxShadow: "-24px 24px 80px rgba(0,0,0,0.6)",
-                          }}
-                          onMouseEnter={() => setHeroDashboard3dHovered(true)}
-                          onMouseLeave={() => setHeroDashboard3dHovered(false)}
-                        >
-                          <img
-                            src="/dashboard.png"
-                            alt="Handover delivery health dashboard"
-                            className="block h-auto w-full max-w-full rounded-xl"
-                            style={{ display: "block" }}
-                          />
-                        </div>
-                      </div>
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setLightboxImage({ src: "/dashboard2.png", alt: "Delivery dashboard" });
+                        }}
+                      />
                     </div>
-                  </section>
+
+                    {/* Shot 2 — exceldoc — back layer, bottom left */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: "0px",
+                        top: "330px",
+                        width: "440px",
+                        zIndex: featuredShot === 2 ? 40 : 11,
+                        transition: "all 700ms cubic-bezier(0.4,0,0.2,1)",
+                        opacity: featuredShot === 2 ? 1 : 0.45,
+                        transform: featuredShot === 2
+                          ? "scale(1.04) translateY(-20px) translateX(160px)"
+                          : "scale(0.97) translateY(0px) translateX(0px)",
+                        borderRadius: "10px",
+                        boxShadow: featuredShot === 2
+                          ? "0 0 40px rgba(56,189,248,0.25), 0 20px 60px rgba(0,0,0,0.7)"
+                          : "0 4px 24px rgba(0,0,0,0.5)",
+                        pointerEvents: "none",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <img
+                        src="/exceldoc.png"
+                        alt="Excel export"
+                        style={{
+                          width: "100%",
+                          display: "block",
+                          borderRadius: "9px",
+                          cursor: "pointer",
+                          pointerEvents: "auto",
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setLightboxImage({ src: "/exceldoc.png", alt: "Excel export" });
+                        }}
+                      />
+                    </div>
+
+                    {/* Shot 4 — scheduled2 — mid layer, centre */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: "120px",
+                        top: "160px",
+                        width: "440px",
+                        zIndex: featuredShot === 4 ? 40 : 20,
+                        transition: "all 700ms cubic-bezier(0.4,0,0.2,1)",
+                        opacity: featuredShot === 4 ? 1 : 0.75,
+                        transform: featuredShot === 4
+                          ? "scale(1.04) translateY(-20px) translateX(20px)"
+                          : "scale(0.97) translateY(0px) translateX(0px)",
+                        borderRadius: "10px",
+                        boxShadow: featuredShot === 4
+                          ? "0 0 40px rgba(56,189,248,0.25), 0 20px 60px rgba(0,0,0,0.7)"
+                          : "0 8px 32px rgba(0,0,0,0.55)",
+                        pointerEvents: "none",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <img
+                        src="/scheduled2.png"
+                        alt="Scheduled reports"
+                        style={{
+                          width: "100%",
+                          display: "block",
+                          borderRadius: "9px",
+                          cursor: "pointer",
+                          pointerEvents: "auto",
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setLightboxImage({ src: "/scheduled2.png", alt: "Scheduled reports" });
+                        }}
+                      />
+                    </div>
+
+                    {/* Shot 5 — clientintel — mid layer, mid right */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        right: "0px",
+                        top: "190px",
+                        width: "480px",
+                        zIndex: featuredShot === 5 ? 40 : 16,
+                        transition: "all 700ms cubic-bezier(0.4,0,0.2,1)",
+                        opacity: featuredShot === 5 ? 1 : 0.5,
+                        transform: featuredShot === 5
+                          ? "scale(1.04) translateY(-18px) translateX(-150px)"
+                          : "scale(0.97) translateY(0px) translateX(0px)",
+                        borderRadius: "10px",
+                        boxShadow: featuredShot === 5
+                          ? "0 0 40px rgba(56,189,248,0.25), 0 20px 60px rgba(0,0,0,0.7)"
+                          : "0 8px 32px rgba(0,0,0,0.55)",
+                        pointerEvents: "none",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <img
+                        src="/clientintel.png"
+                        alt="Client Intelligence"
+                        style={{
+                          width: "100%",
+                          display: "block",
+                          borderRadius: "9px",
+                          cursor: "pointer",
+                          pointerEvents: "auto",
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setLightboxImage({ src: "/clientintel.png", alt: "Client Intelligence" });
+                        }}
+                      />
+                    </div>
+
+                    {/* Shot 0 — qbrpowerpoint — front layer, top right, largest */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        right: "0px",
+                        top: "0px",
+                        width: "560px",
+                        zIndex: featuredShot === 0 ? 40 : 30,
+                        transition: "all 700ms cubic-bezier(0.4,0,0.2,1)",
+                        opacity: featuredShot === 0 ? 1 : 0.7,
+                        transform: featuredShot === 0
+                          ? "scale(1.04) translateY(-16px) translateX(-180px)"
+                          : "scale(0.97) translateY(0px) translateX(0px)",
+                        borderRadius: "10px",
+                        boxShadow: featuredShot === 0
+                          ? "0 0 40px rgba(56,189,248,0.25), 0 20px 60px rgba(0,0,0,0.7)"
+                          : "0 12px 48px rgba(0,0,0,0.65)",
+                        pointerEvents: "none",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <img
+                        src="/qbrpowerpoint.png"
+                        alt="QBR pack"
+                        style={{
+                          width: "100%",
+                          display: "block",
+                          borderRadius: "9px",
+                          cursor: "pointer",
+                          pointerEvents: "auto",
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setLightboxImage({ src: "/qbrpowerpoint.png", alt: "QBR pack" });
+                        }}
+                      />
+                    </div>
+
+                    {/* Shot 1 — generate2 — front layer, top left */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: "0px",
+                        top: "10px",
+                        width: "480px",
+                        zIndex: featuredShot === 1 ? 40 : 12,
+                        transition: "all 700ms cubic-bezier(0.4,0,0.2,1)",
+                        opacity: featuredShot === 1 ? 1 : 0.55,
+                        transform: featuredShot === 1
+                          ? "scale(1.04) translateY(-16px) translateX(140px)"
+                          : "scale(0.97) translateY(0px) translateX(0px)",
+                        borderRadius: "10px",
+                        boxShadow: featuredShot === 1
+                          ? "0 0 40px rgba(56,189,248,0.25), 0 20px 60px rgba(0,0,0,0.7)"
+                          : "0 8px 40px rgba(0,0,0,0.6)",
+                        pointerEvents: "none",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <img
+                        src="/generate2.png"
+                        alt="Report generation"
+                        style={{
+                          width: "100%",
+                          display: "block",
+                          borderRadius: "9px",
+                          cursor: "pointer",
+                          pointerEvents: "auto",
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setLightboxImage({ src: "/generate2.png", alt: "Report generation" });
+                        }}
+                      />
+                    </div>
+                  </div>
                 </motion.div>
+              </div>
+
+              <div
+                className="relative z-10 w-full px-4 md:px-6 lg:px-8"
+                aria-label="Trusted organisations"
+              >
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+                  <a
+                    href="https://www.g2.com/products/handover"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 transition-colors hover:border-white/20"
+                  >
+                    <span className="text-[13px] leading-none text-yellow-400">★★★★★</span>
+                    <span className="text-[12px] text-white/60">5.0 on G2</span>
+                  </a>
+
+                  <span className="hidden text-white/15 sm:block">·</span>
+
+                  <a
+                    href="https://usehalo.com/integration/handover-integration/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 transition-opacity hover:opacity-80"
+                  >
+                    <img
+                      src="/halopsa.png"
+                      alt="HaloPSA"
+                      width={20}
+                      height={20}
+                      className="h-5 w-auto object-contain opacity-60"
+                    />
+                    <span className="text-[11px] font-medium uppercase tracking-wide text-white/40">
+                      HaloPSA Marketplace
+                    </span>
+                  </a>
+
+                  <span className="hidden text-white/15 sm:block">·</span>
+
+                  <a
+                    href="https://marketplace.connectwise.com/handover"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 transition-opacity hover:opacity-80"
+                  >
+                    <img
+                      src="/connectwise.jpeg"
+                      alt="ConnectWise"
+                      width={20}
+                      height={20}
+                      className="h-5 w-auto rounded-sm object-contain opacity-60"
+                      style={{ background: "white", padding: "2px" }}
+                    />
+                    <span className="text-[11px] font-medium uppercase tracking-wide text-white/40">
+                      ConnectWise Marketplace
+                    </span>
+                  </a>
+
+                  <span className="hidden text-white/15 sm:block">·</span>
+
+                  <a
+                    href="/blog/pitchit-2026-handover-msp-accelerator"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] font-medium uppercase tracking-wide text-white/40 transition-colors hover:text-white/60"
+                  >
+                    PitchIT 2026
+                  </a>
+                </div>
               </div>
 
               <button
@@ -12786,97 +13254,169 @@ export default function Home() {
               </button>
             </section>
 
-            <section
-              className="bg-transparent px-4 py-3 md:px-6"
-              aria-label="Trusted organisations"
-            >
-              <div className="flex items-center justify-center gap-6 whitespace-nowrap">
-                <span className="flex items-center gap-2 opacity-90">
-                  <span className="text-[11px] text-white/60 uppercase tracking-wide">Listed on</span>
-                  <a
-                    href="/partners/halopsa"
-                    className="inline-flex items-center"
-                    aria-label="Listed on HaloPSA marketplace"
-                  >
-                    <img
-                      src="/halo.png"
-                      alt="HaloPSA"
-                      className="h-6 object-contain brightness-125 opacity-90 transition-all duration-200"
-                    />
-                  </a>
-                </span>
+            <section ref={mockupSectionRef} className="px-4 py-10 md:px-8 md:py-16">
+              <div className="mx-auto max-w-[1000px]">
+                <div className="mb-10 text-center">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#38bdf8]">
+                    Why it matters
+                  </p>
+                  <h2 className="text-2xl font-semibold text-white md:text-3xl">
+                    Know which accounts moved before the call
+                  </h2>
+                  <p className="mx-auto mt-3 max-w-[520px] text-[14px] text-white/50">
+                    Commercial, service and relationship signals, measured against each client&apos;s normal.
+                  </p>
+                </div>
 
-                <div className="h-6 w-px bg-white/10" />
-
-                <span className="flex items-center gap-2 opacity-90">
-                  <span className="text-[11px] text-white/60 uppercase tracking-wide">Listed on</span>
-                  <a
-                    href="/partners/connectwise"
-                    className="inline-flex items-center"
-                    aria-label="Listed on ConnectWise marketplace"
-                  >
-                    <img
-                      src="/connectwise.png"
-                      alt="ConnectWise"
-                      className="h-7 object-contain brightness-125 opacity-90 transition-all duration-200"
-                    />
-                  </a>
-                </span>
-
-                <div className="h-6 w-px bg-white/10" />
-
-                <a
-                  href="/blog/pitchit-2026-handover-msp-accelerator"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 opacity-90 transition-opacity hover:opacity-80 cursor-pointer"
-                >
-                  <span className="text-[11px] text-white/60 uppercase tracking-wide">Accepted into</span>
-                  <span className="text-[12px] font-medium text-white/60">PitchIT 2026</span>
-                </a>
+                <div className="grid gap-4 md:grid-cols-3">
+                  {[
+                    {
+                      title: "Service load vs baseline",
+                      body: "Ticket volume, reopen rates and priority mix that have moved materially against that client's own history, not a portfolio average.",
+                    },
+                    {
+                      title: "Commercial activity change",
+                      body: "Quotes, projects and billing signals that suggest expansion, contraction or stalled work before it shows up in a QBR slide.",
+                    },
+                    {
+                      title: "Relationship risk",
+                      body: "Sentiment, escalation patterns and silence that mark an account drifting, with the evidence attached for the next conversation.",
+                    },
+                  ].map((card) => (
+                    <div
+                      key={card.title}
+                      className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-6"
+                    >
+                      <p className="text-[14px] font-semibold text-white">{card.title}</p>
+                      <p className="mt-2 text-[13px] leading-relaxed text-white/50">{card.body}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </section>
 
-            <HandoverDemoSection
-              onStartTrial={() => {
-                const el = document.getElementById("pricing");
-                if (el) el.scrollIntoView({ behavior: "smooth" });
-                else window.location.href = "/auth?tab=signup";
-              }}
-            />
+            <section className="px-4 py-10 md:px-8 md:py-16">
+              <div className="mx-auto max-w-[1000px]">
+                <div className="mb-10 text-center">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#38bdf8]">
+                    Client retention
+                  </p>
+                  <h2 className="text-2xl font-semibold text-white md:text-3xl">
+                    Poor communication costs MSPs clients
+                  </h2>
+                  <p className="mx-auto mt-3 max-w-[520px] text-[14px] leading-relaxed text-white/50">
+                    Knowing who is drifting before they leave is the other half of the job.
+                  </p>
+                </div>
 
-            <motion.section
-              initial={{ opacity: 0, y: 40 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="mx-auto w-full max-w-7xl px-6 py-24"
-            >
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="rounded-2xl border border-red-500/20 bg-red-500/[0.04] p-6">
+                    <p className="mb-3 text-[42px] font-bold leading-none text-red-400">23%</p>
+                    <p className="mb-2 text-[13px] font-semibold text-white">
+                      of SMEs left their MSP due to poor customer service or account management
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.04] p-6">
+                    <p className="mb-3 text-[42px] font-bold leading-none text-amber-400">67%</p>
+                    <p className="mb-2 text-[13px] font-semibold text-white">
+                      of SMEs plan to increase their MSP investment over the next 12 months
+                    </p>
+                    <p className="text-[11px] leading-relaxed text-white/30">
+                      The market is growing. The MSPs who communicate best will capture it.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-[#38bdf8]/20 bg-[#38bdf8]/[0.04] p-6">
+                    <p className="mb-3 text-[42px] font-bold leading-none text-[#38bdf8]">76%</p>
+                    <p className="mb-2 text-[13px] font-semibold text-white">
+                      of SMEs rely on an MSP for at least some IT functions
+                    </p>
+                    <p className="text-[11px] leading-relaxed text-white/30">
+                      Every one of them forms an opinion about their MSP based on how well they communicate.
+                    </p>
+                  </div>
+                </div>
+
+                <p className="mt-3 text-center text-[11px] text-white/30">
+                  Source:{" "}
+                  <a
+                    href="https://jumpcloud.com/resources/your-route-to-positive-client-interactions"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-white/45 underline-offset-2 hover:text-white/70 hover:underline"
+                  >
+                    JumpCloud SME IT Trends Report 2024
+                  </a>
+                  , 612 respondents
+                </p>
+
+                <div className="mt-6 rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
+                  <p className="mx-auto max-w-[680px] text-center text-[13px] leading-relaxed text-white/60">
+                    Client Intelligence surfaces deteriorating accounts before they become a churn conversation, with
+                    the evidence attached.
+                  </p>
+                </div>
+
+                <p className="mt-6 text-center">
+                  <Link
+                    href="/blog/why-msp-clients-leave"
+                    className="text-[13px] font-medium text-[#38bdf8] underline-offset-4 hover:underline"
+                  >
+                    Why MSP clients leave, and how communication fixes it →
+                  </Link>
+                </p>
+              </div>
+            </section>
+
+            <section className="bg-transparent">
+              <motion.div
+                className="w-full bg-transparent px-4 pt-8 pb-6 md:px-8"
+                initial={{ opacity: 0, y: 24 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-60px" }}
+                transition={{ duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94] }}
+              >
+                <h2 className="mx-auto max-w-[1000px] text-2xl font-semibold leading-snug text-white md:text-3xl">
+                  Clients don&apos;t leave MSPs because of bad technical work.{" "}
+                  <span className="text-[var(--accent)]">
+                    They leave because they stopped feeling informed.
+                  </span>
+                </h2>
+              </motion.div>
+
+              <motion.section
+                initial={{ opacity: 0, y: 40 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6 }}
+                className="mx-auto w-full max-w-7xl bg-transparent px-4 py-12 md:px-6 md:py-24"
+              >
               <div className="mb-16 text-center">
                 <h2 className="text-3xl font-bold text-white sm:text-4xl">
                   Three things happen when MSPs use Handover
                 </h2>
                 <p className="mx-auto mt-4 max-w-2xl text-[16px] text-[#94a3b8]">
-                  Your team gets hours back. Your clients see more value. Your delivery looks more professional.
+                  You know which clients need attention, you walk in with evidence, and reporting stays available when you&apos;re ready to act.
                 </p>
               </div>
               <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
                 {(
                   [
                     {
-                      title: "Engineers do engineering.",
-                      body: "The average MSP engineer spends 2–4 hours a day writing updates that should be automatic. Handover turns that into 30 seconds. Your team stops translating ticket notes and starts closing tickets.",
-                      punchline: "Less admin. More delivery.",
+                      title: "Know who needs you this week.",
+                      body: "Handover connects to HaloPSA or ConnectWise and finds the accounts where commercial, service or relationship behaviour has materially changed, so your week starts with a clear attention list, not a blank inbox.",
+                      punchline: "Attention with a reason attached.",
                     },
                     {
-                      title: "Clients see the value you're already delivering.",
-                      body: "Most MSP clients don't know how much work happens on their account. Handover turns your PSA data into professional updates they actually read — action logs, risk registers, status reports — automatically.",
-                      punchline: "Invisible work becomes visible.",
+                      title: "Walk in with evidence, not a black-box score.",
+                      body: "Every flag comes with the signals behind it: what moved, against that client's own baseline. No opaque health score. Just the evidence you need before the next conversation.",
+                      punchline: "Evidence, not a black-box score.",
                     },
                     {
-                      title: "Your delivery scales without your headcount.",
-                      body: "Whether you manage 5 clients or 50, Handover generates consistent, professional outputs across your entire portfolio. Same quality. No extra resource.",
-                      punchline: "More clients. Same team.",
+                      title: "Keep the reporting you already trust.",
+                      body: "Client updates, QBR packs, and scheduled reviews stay in the product as the follow-through once you know who needs you, not as the only reason to open Handover.",
+                      punchline: "Intelligence first. Reporting when you're ready.",
                     },
                   ] as const
                 ).map((card, i) => (
@@ -12886,9 +13426,9 @@ export default function Home() {
                       whileInView={{ opacity: 1, y: 0 }}
                       viewport={{ once: true }}
                       transition={{ duration: 0.5, delay: i * 0.1 }}
-                      whileHover={{ y: -4 }}
+                      whileHover={{ y: -6 }}
                       className={cn(
-                        "group rounded-2xl border border-white/[0.08] border-t border-t-[color-mix(in_srgb,var(--accent)_30%,transparent)] bg-white/[0.04] p-8 backdrop-blur-sm transition-all duration-300 hover:border-[color-mix(in_srgb,var(--accent)_20%,transparent)] hover:bg-white/[0.06]",
+                        "group min-w-0 w-full rounded-2xl border border-white/[0.08] border-t border-t-[color-mix(in_srgb,var(--accent)_30%,transparent)] bg-white/[0.04] p-8 backdrop-blur-sm transition-all duration-300 hover:border-[color-mix(in_srgb,var(--accent)_20%,transparent)] hover:bg-white/[0.08] hover:shadow-[0_0_40px_-8px_color-mix(in_srgb,var(--accent)_18%,transparent)]",
                         i === 1 && "bg-[rgba(56,189,248,0.03)] border-[rgba(56,189,248,0.15)]",
                       )}
                     >
@@ -12903,7 +13443,8 @@ export default function Home() {
                     </motion.div>
                   ))}
               </div>
-            </motion.section>
+              </motion.section>
+            </section>
 
             <motion.section
               className="bg-transparent py-12 md:py-14 lg:py-20"
@@ -12930,6 +13471,16 @@ export default function Home() {
               </div>
             </motion.section>
 
+            <p className="px-4 pb-2 text-center text-sm text-[var(--text-secondary)] md:px-6">
+              Want to see the output side?{" "}
+              <Link
+                href="/solutions/qbr-and-reporting"
+                className="font-semibold text-[var(--accent)] underline-offset-4 hover:underline"
+              >
+                See QBR and reporting.
+              </Link>
+            </p>
+
             <motion.section
               className="mx-auto max-w-[1100px] overflow-x-hidden bg-transparent px-4 pt-8 md:pt-10"
               aria-label="How it works"
@@ -12940,7 +13491,7 @@ export default function Home() {
             >
               <ScrollRevealItem index={0} className="text-center">
                 <h2 className="text-xl font-semibold tracking-tight text-white md:text-3xl">
-                  How it <span className="text-cyan-400">works</span>
+                  From PSA to knowing who needs you in three <span className="text-cyan-400">steps.</span>
                 </h2>
               </ScrollRevealItem>
 
@@ -12949,28 +13500,27 @@ export default function Home() {
                   <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-sm">
                     <Plug className="size-[22px] shrink-0 text-[var(--accent)]" strokeWidth={1.75} aria-hidden />
                   </span>
-                  <p className="mt-4 font-bold text-[var(--text-primary)]">Connect or paste</p>
+                  <p className="mt-4 font-bold text-[var(--text-primary)]">Connect your PSA once.</p>
                   <p className="mt-2 text-sm text-[var(--text-secondary)]">
-                    Connect HaloPSA or paste your meeting notes directly
+                    Link HaloPSA or ConnectWise in under a minute. Handover pulls your live tickets, projects, and client data automatically - no exports, no copy-pasting.
                   </p>
                 </ScrollRevealItem>
                 <ScrollRevealItem index={2} className="flex w-full max-w-md flex-col items-center text-center">
                   <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-sm">
                     <Sparkles className="size-[22px] shrink-0 text-[var(--accent)]" strokeWidth={1.75} aria-hidden />
                   </span>
-                  <p className="mt-4 font-bold text-[var(--text-primary)]">Generate in 30 seconds</p>
+                  <p className="mt-4 font-bold text-[var(--text-primary)]">See what changed across the base.</p>
                   <p className="mt-2 text-sm text-[var(--text-secondary)]">
-                    Handover reads your data and generates 5 professional outputs simultaneously
+                    Handover scores commercial, service and relationship signals against each client&apos;s own baseline and surfaces the accounts that moved.
                   </p>
                 </ScrollRevealItem>
                 <ScrollRevealItem index={3} className="flex w-full max-w-md flex-col items-center text-center">
                   <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-sm">
                     <Send className="size-[22px] shrink-0 text-[var(--accent)]" strokeWidth={1.75} aria-hidden />
                   </span>
-                  <p className="mt-4 font-bold text-[var(--text-primary)]">Send or push back</p>
+                  <p className="mt-4 font-bold text-[var(--text-primary)]">Act with evidence.</p>
                   <p className="mt-2 text-sm text-[var(--text-secondary)]">
-                    Send the client email, export to Excel, or push back to HaloPSA or ConnectWise
-                    automatically
+                    Open the brief, generate a QBR, or schedule the update with the reason for attention attached.
                   </p>
                 </ScrollRevealItem>
               </div>
@@ -12983,9 +13533,9 @@ export default function Home() {
                   <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-sm">
                     <Plug className="size-[22px] shrink-0 text-[var(--accent)]" strokeWidth={1.75} aria-hidden />
                   </span>
-                  <p className="mt-4 font-bold text-[var(--text-primary)]">Connect or paste</p>
+                  <p className="mt-4 font-bold text-[var(--text-primary)]">Connect your PSA once.</p>
                   <p className="mt-1 flex-1 text-sm text-[var(--text-secondary)]">
-                    Connect HaloPSA or paste your meeting notes directly
+                    Link HaloPSA or ConnectWise in under a minute. Handover pulls your live tickets, projects, and client data automatically - no exports, no copy-pasting.
                   </p>
                 </ScrollRevealItem>
                 <div
@@ -13000,9 +13550,9 @@ export default function Home() {
                   <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-sm">
                     <Sparkles className="size-[22px] shrink-0 text-[var(--accent)]" strokeWidth={1.75} aria-hidden />
                   </span>
-                  <p className="mt-4 font-bold text-[var(--text-primary)]">Generate in 30 seconds</p>
+                  <p className="mt-4 font-bold text-[var(--text-primary)]">See what changed across the base.</p>
                   <p className="mt-1 flex-1 text-sm text-[var(--text-secondary)]">
-                    Handover reads your data and generates 5 professional outputs simultaneously
+                    Handover scores commercial, service and relationship signals against each client&apos;s own baseline and surfaces the accounts that moved.
                   </p>
                 </ScrollRevealItem>
                 <div
@@ -13017,86 +13567,24 @@ export default function Home() {
                   <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-sm">
                     <Send className="size-[22px] shrink-0 text-[var(--accent)]" strokeWidth={1.75} aria-hidden />
                   </span>
-                  <p className="mt-4 font-bold text-[var(--text-primary)]">Send or push back</p>
+                  <p className="mt-4 font-bold text-[var(--text-primary)]">Act with evidence.</p>
                   <p className="mt-1 flex-1 text-sm text-[var(--text-secondary)]">
-                    Send the client email, export to Excel, or push back to HaloPSA or ConnectWise
-                    automatically
+                    Open the brief, generate a QBR, or schedule the update with the reason for attention attached.
                   </p>
                 </ScrollRevealItem>
               </div>
             </motion.section>
 
             <motion.section
-              ref={mockupSectionRef}
-              className="overflow-x-hidden bg-transparent px-4 pt-10 md:px-0 md:pt-14"
-              initial={{ opacity: 0, y: 24 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-80px" }}
-              transition={{ duration: 0.5, ease: "easeOut" }}
-            >
-              <ScrollRevealItem index={0} className="text-center">
-                <h3 className="text-xl font-semibold text-[var(--text-primary)] md:text-2xl">
-                  See exactly what you get
-                </h3>
-                <p className="mt-2 text-sm text-[var(--text-secondary)] md:text-base">
-                  From one paste to five professional outputs
-                </p>
-              </ScrollRevealItem>
-
-              <div className="relative mx-auto mt-10 w-full min-w-0 max-w-[960px] overflow-x-hidden rounded-2xl border border-white/[0.06] bg-white/[0.03] p-4 backdrop-blur-md md:overflow-visible md:p-6">
-                <HeroProductMockup variant="full" className="relative z-10 mt-0" />
-                <div
-                  className="home-mockup-float-badge--1 pointer-events-none absolute z-20 hidden items-center gap-2 rounded-[8px] border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm px-3 py-2 text-[13px] font-medium text-white md:flex"
-                  style={{ top: 16, right: 16 }}
-                  aria-hidden
-                >
-                  <Zap className="size-4 shrink-0 text-cyan-400" strokeWidth={2} aria-hidden />
-                  Generated in 28 seconds
-                </div>
-                <div
-                  className="home-mockup-float-badge--2 pointer-events-none absolute z-20 hidden items-center gap-2 rounded-[8px] border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm px-3 py-2 text-[13px] font-medium text-[var(--text-primary)] md:flex"
-                  style={{ bottom: 16, left: 16 }}
-                  aria-hidden
-                >
-                  <Check className="size-4 shrink-0 text-emerald-400" strokeWidth={2.5} aria-hidden />
-                  Pushed to HaloPSA / ConnectWise
-                </div>
-                <div
-                  className="home-mockup-float-badge--3 pointer-events-none absolute z-20 hidden items-center gap-2 rounded-[8px] border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm px-3 py-2 text-[13px] font-medium text-white md:flex"
-                  style={{ bottom: 56, left: 16 }}
-                  aria-hidden
-                >
-                  <Mail className="size-4 shrink-0 text-cyan-400" strokeWidth={2} aria-hidden />
-                  Sent to client
-                </div>
-              </div>
-
-              <ScrollRevealItem index={1} className="mt-6 text-center">
-                <p className="text-sm text-[var(--text-muted)]">
-                  Real outputs from real MSP ticket data
-                </p>
-              </ScrollRevealItem>
-
-            </motion.section>
-
-            <motion.section
-              className="bg-transparent px-4 py-10 md:px-6 md:py-12 lg:py-16"
-              initial={{ opacity: 0, y: 24 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-80px" }}
-              transition={{ duration: 0.5, ease: "easeOut" }}
-            >
-              <div className="mx-auto flex min-w-0 max-w-[720px] justify-center rounded-2xl border border-white/[0.06] bg-white/[0.03] px-3 py-4 backdrop-blur-md sm:px-2 md:px-4 md:py-5">
-                <HomeRoiCalculator variant="full" className="mt-0" />
-              </div>
-            </motion.section>
-
-            <section
               className="w-full px-4 py-12 md:px-6 md:py-14 lg:py-16"
               style={{
                 background: "transparent",
               }}
-              aria-label="Sign up to generate reports"
+              aria-label="See what's in your client base"
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-60px" }}
+              transition={{ duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94] }}
             >
               <div
                 className="mx-auto max-w-[720px] rounded-2xl border border-white/[0.06] bg-white/[0.03] p-5 shadow-xl backdrop-blur-md sm:p-8 md:p-10"
@@ -13107,71 +13595,206 @@ export default function Home() {
                 }}
               >
                 <h2 className="text-xl font-semibold text-white md:text-[28px]">
-                  Ready to send client-ready updates automatically?
+                  Know which clients need your attention.
                 </h2>
                 <p className="mt-3 text-sm leading-relaxed text-white/75 md:text-base">
-                  Connect HaloPSA or ConnectWise once. Generate client-ready reports, QBR packs, and delivery updates automatically. 14-day free trial, 14-day free trial — cancel anytime.
+                  Connect HaloPSA or ConnectWise and see where commercial, service or relationship behaviour has materially changed, with the evidence.
                 </p>
                 <div className="mt-8 flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
                   <Link
-                    href="/auth?tab=signup&returnTo=/welcome"
+                    href="/onboarding/connect"
                     className="bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] hover:from-[var(--accent-hover)] hover:to-[var(--accent)] text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-[color-mix(in_srgb,var(--accent)_25%,transparent)] hover:shadow-[color-mix(in_srgb,var(--accent)_35%,transparent)] transition-all duration-300 transform hover:scale-[1.02] inline-flex w-full flex-1 items-center justify-center text-sm active:scale-[0.98] md:w-auto"
                   >
-                    Start free trial →
+                    See what&apos;s in your client base
                   </Link>
                   <Link
                     href="/pricing"
                     className="bg-white/[0.05] backdrop-blur-sm border border-white/[0.15] hover:bg-white/[0.08] text-white font-medium px-6 py-3 rounded-xl transition-all duration-300 py-1 text-center text-sm md:px-4"
                   >
-                    Compare plans and pricing →
+                    See pricing →
                   </Link>
                 </div>
               </div>
-            </section>
+            </motion.section>
           </>
         ) : null) : (
-          userEmail && mainView === "scheduled" ? (
+          userEmail && mainView === "approvals" ? (
+            <div key="approvals" className="min-h-full bg-[var(--bg-secondary)] animate-in fade-in duration-300">
+              <div className="w-full px-6 py-6">
+                <PageHeader
+                  title="Approvals"
+                  description="Reports waiting for your review before they're sent."
+                />
+
+                {pendingApprovalsLoading ? (
+                  <div className="flex items-center justify-center py-16">
+                    <Loader2 className="size-6 animate-spin text-[var(--accent)]" aria-hidden />
+                  </div>
+                ) : pendingApprovals.length === 0 ? (
+                  <div className="rounded-xl border border-white/[0.06] bg-[var(--surface-1)] px-6 py-12 text-center [box-shadow:var(--shadow-sm),var(--shadow-inset)]">
+                    <p className="text-[14px] text-[var(--text-secondary)]">
+                      Nothing waiting for approval. Reports from schedules with review enabled
+                      will appear here.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {pendingApprovals.map((approval) => {
+                      const title =
+                        approval.client_label?.trim() ||
+                        approval.schedule_name?.trim() ||
+                        "Scheduled report";
+                      const previewText = (approval.text ?? "").replace(/\s+/g, " ").trim();
+                      const previewSnippet =
+                        previewText.length > 200
+                          ? `${previewText.slice(0, 200)}…`
+                          : previewText;
+                      const expanded = expandedApprovalIds.has(approval.id);
+                      const acting = approvalActionId === approval.id;
+                      const rejectConfirm = rejectConfirmApprovalId === approval.id;
+
+                      return (
+                        <div
+                          key={approval.id}
+                          className="rounded-xl border border-white/[0.06] bg-[var(--surface-1)] p-5 [box-shadow:var(--shadow-sm),var(--shadow-inset)]"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">
+                                {title}
+                              </h2>
+                              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                                <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                                  {approvalSourceLabel(approval.source)}
+                                </span>
+                                <span className="text-[12px] text-[var(--text-muted)]">
+                                  {formatRelativeTimeAgo(approval.created_at)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 space-y-2">
+                            {approval.subject ? (
+                              <p className="text-[13px] font-medium text-[var(--text-primary)]">
+                                {approval.subject}
+                              </p>
+                            ) : null}
+                            <p className="text-[13px] leading-relaxed text-[var(--text-secondary)]">
+                              {previewSnippet || "No preview text available."}
+                            </p>
+                            {approval.html ? (
+                              <button
+                                type="button"
+                                className="text-[12px] font-medium text-[var(--accent)] hover:underline"
+                                onClick={() => {
+                                  setExpandedApprovalIds((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(approval.id)) next.delete(approval.id);
+                                    else next.add(approval.id);
+                                    return next;
+                                  });
+                                }}
+                              >
+                                {expanded ? "Collapse" : "Expand"}
+                              </button>
+                            ) : null}
+                            {expanded && approval.html ? (
+                              <div className="max-h-80 overflow-auto rounded-[var(--radius)] border border-[var(--border)] bg-white">
+                                <iframe
+                                  sandbox=""
+                                  title={`Preview: ${title}`}
+                                  srcDoc={approval.html}
+                                  className="min-h-[240px] w-full border-0"
+                                />
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <div className="mt-5 flex flex-wrap items-center gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                              disabled={acting}
+                              onClick={() => void runApprovalAction(approval.id, "approve")}
+                            >
+                              {acting ? (
+                                <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                              ) : null}
+                              Approve &amp; Send
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="gap-1.5 border-[var(--border)]"
+                              disabled={acting || !approval.schedule_id}
+                              onClick={() =>
+                                void runApprovalAction(approval.id, "approve_and_stop")
+                              }
+                            >
+                              Approve &amp; Stop Asking
+                              <InfoHoverTooltip
+                                text="Also turns off review for this schedule"
+                                ariaLabel="Approve and stop asking explanation"
+                              />
+                            </Button>
+                            {!rejectConfirm ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="text-[var(--text-muted)] hover:text-[var(--danger)]"
+                                disabled={acting}
+                                onClick={() => setRejectConfirmApprovalId(approval.id)}
+                              >
+                                Reject
+                              </Button>
+                            ) : (
+                              <div className="flex flex-wrap items-center gap-2 rounded-[var(--radius)] border border-[var(--danger)]/40 bg-[var(--danger)]/5 px-3 py-2">
+                                <span className="text-[12px] text-[var(--danger)]">
+                                  Reject this report?
+                                </span>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="bg-[var(--danger)] text-white hover:bg-red-600"
+                                  disabled={acting}
+                                  onClick={() => void runApprovalAction(approval.id, "reject")}
+                                >
+                                  Yes, reject
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={acting}
+                                  onClick={() => setRejectConfirmApprovalId(null)}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : userEmail && mainView === "scheduled" ? (
             <div className="min-h-full bg-[var(--bg-secondary)] animate-in fade-in duration-300">
               <div className="w-full px-6 py-6">
                 <PageHeader
                   eyebrow="AUTOMATED · REPORTS"
                   title="Scheduled"
                   description="Reports that send automatically on your chosen cadence."
-                  actions={
-                    <div className="flex flex-col items-stretch gap-2 sm:items-end">
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={scheduledReportsMasterEnabled}
-                        aria-label={
-                          scheduledReportsMasterEnabled
-                            ? "Scheduled reports enabled"
-                            : "Scheduled reports disabled"
-                        }
-                        onClick={() => void toggleAllCampaignsEnabled(!scheduledReportsMasterEnabled)}
-                        disabled={campaigns.length === 0 || scheduleSaving}
-                        className={cn(
-                          "min-w-[132px] shrink-0 rounded-full border-2 px-5 py-2 text-[12px] font-semibold transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-60",
-                          scheduledReportsMasterEnabled
-                            ? "border-emerald-500/60 bg-emerald-600/35 text-emerald-100 shadow-[0_0_20px_rgba(34,197,94,0.2)]"
-                            : "border-slate-500/50 bg-slate-600/25 text-slate-300",
-                        )}
-                      >
-                        {scheduledReportsMasterEnabled ? "Enabled" : "Disabled"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => createNewSchedule()}
-                        className="flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] px-4 py-2 text-[13px] font-semibold text-[#0f172a] transition-all hover:scale-[1.02]"
-                      >
-                        + New schedule
-                      </button>
-                    </div>
-                  }
                 />
 
                 {isExpiredTrial || soloGenerationLocked ? (
-                  <UpgradeWall message="Your trial has ended — Scheduled Reports require an active plan." />
+                  <UpgradeWall message="Your trial has ended - Scheduled Reports require an active plan." />
                 ) : (
                 <>
                 {showDemoDataBanner ? (
@@ -13188,238 +13811,612 @@ export default function Home() {
 
                 {!hasProAccess ? (
                   <div className="mb-4 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] px-4 py-3 text-[13px] text-[var(--text-secondary)]">
-                    <span className="font-medium text-[var(--text-primary)]">Basic:</span> walk through the schedule
-                    wizard and preview your setup. Upgrade to Pro to save and run automated weekly reports.
+                    <span className="font-medium text-[var(--text-primary)]">Preview:</span> walk through the schedule
+                    wizard and preview your setup. Move to Handover to save and run automated weekly reports.
                   </div>
                 ) : null}
-                {scheduleLoading ? (
-                  <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-4" aria-busy>
-                    <div className="space-y-0">
-                      {[0, 1, 2].map((i) => (
-                        <div
-                          key={i}
-                          className={cn(
-                            "flex animate-pulse items-center gap-3 border-[var(--border)] py-3",
-                            i < 2 && "border-b",
-                          )}
-                        >
-                          <div className="h-4 min-w-0 flex-1 rounded bg-[var(--bg-secondary)]" />
-                          <div className="h-4 w-[12%] shrink-0 rounded bg-[var(--bg-secondary)]" />
-                          <div className="h-4 w-[8%] shrink-0 rounded bg-[var(--bg-secondary)]" />
-                          <div className="h-4 w-[12%] shrink-0 rounded bg-[var(--bg-secondary)]" />
-                          <div className="h-4 w-[18%] shrink-0 rounded bg-[var(--bg-secondary)]" />
-                          <div className="h-4 w-[10%] shrink-0 rounded bg-[var(--bg-secondary)]" />
-                          <div className="h-4 w-[18%] shrink-0 rounded bg-[var(--bg-secondary)]" />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                  {campaigns.length === 0 ? (
-                    <>
-                    <div className="mb-6 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-10 text-center">
-                        <div className="mx-auto mb-4 size-12 rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] flex items-center justify-center">
-                          <Calendar className="size-5 text-[var(--accent)]" />
-                        </div>
-                        <h3 className="text-xl font-semibold text-[var(--text-primary)]">No scheduled reports yet</h3>
-                        <p className="mt-2 text-[var(--text-secondary)]">
-                          Set up your first automated report to save hours every week.
-                        </p>
-                        <p className="mt-1 text-[13px] text-[var(--text-secondary)]">
-                          Most MSPs set this up right after sending their first client report.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => createNewSchedule()}
-                          className="mt-5 inline-flex items-center justify-center rounded-full bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-white hover:brightness-110"
-                        >
-                          Create your first schedule →
-                        </button>
-                    </div>
-                    <div className="w-full">{scheduleRecentReportsCard}</div>
-                    </>
-                  ) : (
-                    <>
-                    <div className="mb-6 flex flex-wrap gap-4">
-                      <span className="tabular rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1 text-[12px] text-[var(--text-secondary)]">
-                        {scheduledPageStats.active} active schedule
-                        {scheduledPageStats.active === 1 ? "" : "s"}
-                      </span>
-                      <span className="tabular rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1 text-[12px] text-[var(--text-secondary)]">
-                        Next send: {scheduledPageStats.nextSend}
-                      </span>
-                      <span className="tabular rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1 text-[12px] text-[var(--text-secondary)]">
-                        {scheduledPageStats.sentThisMonth} report
-                        {scheduledPageStats.sentThisMonth === 1 ? "" : "s"} sent this month
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                      <div className="min-w-0 lg:col-span-2">
-                      <div className="w-full rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)]">
-                        <div className="hidden w-full overflow-x-hidden md:block">
-                          <table className="w-full table-fixed border-collapse text-left text-sm">
-                            <thead>
-                              <tr className="border-b border-[var(--border)]">
-                                <th style={{ width: "22%" }} className="sticky top-0 z-10 bg-[var(--bg-secondary)] px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] shadow-[0_1px_0_var(--border)]">Schedule name</th>
-                                <th style={{ width: "12%", minWidth: "100px" }} className="sticky top-0 z-10 bg-[var(--bg-secondary)] px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] shadow-[0_1px_0_var(--border)]">PSA source</th>
-                                <th style={{ width: "9%" }} className="sticky top-0 z-10 bg-[var(--bg-secondary)] px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] shadow-[0_1px_0_var(--border)]">Freq.</th>
-                                <th style={{ width: "13%" }} className="sticky top-0 z-10 bg-[var(--bg-secondary)] px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] shadow-[0_1px_0_var(--border)]">Next send</th>
-                                <th style={{ width: "18%" }} className="sticky top-0 z-10 bg-[var(--bg-secondary)] px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] shadow-[0_1px_0_var(--border)]">Recipients</th>
-                                <th style={{ width: "10%" }} className="sticky top-0 z-10 bg-[var(--bg-secondary)] px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] shadow-[0_1px_0_var(--border)]">Status</th>
-                                <th style={{ width: "18%" }} className="sticky top-0 z-10 bg-[var(--bg-secondary)] px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] shadow-[0_1px_0_var(--border)]">Actions</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {campaigns.map((c, idx) => {
-                                const frequency =
-                                  c.date_range === "last_14_days"
-                                    ? "Fortnightly"
-                                    : c.date_range === "last_30_days"
-                                      ? "Monthly"
-                                      : "Weekly";
-                                const recipients = [c.email_to, c.email_cc, c.email_bcc]
-                                  .filter((v) => typeof v === "string" && v.trim())
-                                  .join(", ");
-                                const psaSourceLabel =
-                                  (c as { source?: string | null }).source === "connectwise"
-                                    ? "ConnectWise"
-                                    : "HaloPSA";
-                                return (
-                                  <tr
-                                    key={c.id ?? idx}
-                                    className="border-b border-[var(--border)]/70 transition-colors duration-150 hover:bg-[var(--bg-secondary)]/45"
-                                  >
-                                    <td className="px-3 py-3 text-[var(--text-primary)]">
-                                      <p className="truncate font-semibold" title={c.name?.trim() || "Weekly Report"}>{c.name?.trim() || "Weekly Report"}</p>
-                                    </td>
-                                    <td className="min-w-[100px] px-3 py-3 whitespace-nowrap text-[var(--text-secondary)]">
-                                      <span className="block">{psaSourceLabel}</span>
-                                    </td>
-                                    <td className="px-3 py-3 whitespace-nowrap text-[var(--text-secondary)]">{frequency}</td>
-                                    <td className="tabular px-3 py-3 whitespace-nowrap text-[var(--text-secondary)]">
-                                      {c.next_run_at ? formatShortGmtDate(c.next_run_at) : "Not scheduled"}
-                                    </td>
-                                    <td className="px-3 py-3 text-[var(--text-secondary)]">
-                                      <span className="block truncate" title={recipients || "Not set"}>{recipients || "Not set"}</span>
-                                    </td>
-                                    <td className="px-3 py-3">
-                                      <button
-                                        type="button"
-                                        onClick={() => void toggleCampaignEnabled(c, !c.enabled)}
-                                        className={cn(
-                                          "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap transition-colors",
-                                          c.enabled
-                                            ? "border-[#4E9C6F]/30 bg-[#4E9C6F]/15 text-[#4E9C6F] hover:bg-[#4E9C6F]/25"
-                                            : "border-white/[0.08] bg-white/[0.04] text-white/40 hover:border-white/16 hover:text-white/55",
-                                        )}
-                                        aria-label={c.enabled ? "Pause schedule" : "Resume schedule"}
-                                        title={c.enabled ? "Click to pause" : "Click to activate"}
-                                      >
-                                        {c.enabled ? "Active" : "Paused"}
-                                      </button>
-                                    </td>
-                                    <td className="px-3 py-3">
-                                      <div className="flex items-center gap-1 text-xs">
-                                        <button
-                                          type="button"
-                                          title="Edit schedule"
-                                          aria-label="Edit schedule"
-                                          className="inline-flex size-7 items-center justify-center rounded-[var(--radius)] border border-[var(--border)] text-[var(--accent)] hover:bg-[var(--bg-secondary)]"
-                                          onClick={() => openEditScheduleEditor(c)}
-                                        >
-                                          <Edit2 className="size-3.5" />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          title="Send now"
-                                          aria-label="Send now"
-                                          disabled={!c.id || (scheduleSaving && sendingNowId === c.id)}
-                                          className="inline-flex size-7 items-center justify-center rounded-[var(--radius)] border border-[var(--border)] text-teal-600 hover:bg-teal-50 disabled:opacity-60"
-                                          onClick={() => {
-                                            if (!c.id) return;
-                                            void triggerScheduleNow(c.id);
-                                          }}
-                                        >
-                                          {scheduleSaving && sendingNowId === c.id ? (
-                                            <Loader2 className="size-3.5 animate-spin" />
-                                          ) : (
-                                            <Play className="size-3.5" />
-                                          )}
-                                        </button>
-                                        <button
-                                          type="button"
-                                          title="Delete schedule"
-                                          aria-label="Delete schedule"
-                                          disabled={!c.id}
-                                          className="inline-flex size-7 items-center justify-center rounded-[var(--radius)] border border-[var(--border)] text-red-500 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-60"
-                                          onClick={() => {
-                                            if (!c.id) return;
-                                            setDeleteConfirmScheduleId(c.id);
-                                          }}
-                                        >
-                                          <Trash2 className="size-3.5" />
-                                        </button>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
 
-                        <div className="space-y-3 p-4 md:hidden">
-                          {campaigns.map((c, idx) => {
-                            const frequency =
-                              c.date_range === "last_14_days"
-                                ? "Fortnightly"
-                                : c.date_range === "last_30_days"
-                                  ? "Monthly"
-                                  : "Weekly";
-                            return (
-                              <div
-                                key={c.id ?? idx}
-                                className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-4 transition-colors duration-150 hover:bg-white/[0.02]"
+                {campaigns.length > 0 ? (
+                  <div className="mb-4 flex justify-end">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={scheduledReportsMasterEnabled}
+                      aria-label={
+                        scheduledReportsMasterEnabled
+                          ? "Scheduled reports enabled"
+                          : "Scheduled reports disabled"
+                      }
+                      onClick={() => void toggleAllCampaignsEnabled(!scheduledReportsMasterEnabled)}
+                      disabled={scheduleSaving}
+                      className={cn(
+                        "min-w-[132px] shrink-0 rounded-full border-2 px-5 py-2 text-[12px] font-semibold transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-60",
+                        scheduledReportsMasterEnabled
+                          ? "border-emerald-500/60 bg-emerald-600/35 text-emerald-100 shadow-[0_0_20px_rgba(34,197,94,0.2)]"
+                          : "border-slate-500/50 bg-slate-600/25 text-slate-300",
+                      )}
+                    >
+                      {scheduledReportsMasterEnabled ? "Enabled" : "Disabled"}
+                    </button>
+                  </div>
+                ) : null}
+
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                  {/* Card 1: PSA Scheduled Reports */}
+                  <div className="rounded-xl border border-white/[0.06] bg-[var(--surface-1)] p-5 [box-shadow:var(--shadow-sm),var(--shadow-inset)]">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">
+                          Scheduled Reports
+                        </h2>
+                        <p className="mt-1 text-[11px] leading-snug text-[var(--text-muted)]">
+                          Weekly, fortnightly, or monthly reports from your PSA ticket data, sent
+                          automatically.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => createNewSchedule()}
+                        className="shrink-0 rounded-lg bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] px-3 py-1.5 text-[11px] font-semibold text-[#0f172a] transition-all hover:scale-[1.02]"
+                      >
+                        + New schedule
+                      </button>
+                    </div>
+
+                    <div className="mt-4">
+                      {scheduleLoading ? (
+                        <ul className="space-y-2" aria-busy>
+                          {[0, 1, 2].map((i) => (
+                            <li
+                              key={i}
+                              className="animate-pulse rounded-lg border border-white/[0.06] px-3 py-2.5"
+                            >
+                              <div className="h-3 w-32 rounded bg-[var(--bg-secondary)]" />
+                              <div className="mt-1.5 h-2.5 w-24 rounded bg-[var(--bg-secondary)]" />
+                            </li>
+                          ))}
+                        </ul>
+                      ) : psaCampaigns.length === 0 ? (
+                        <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-4 text-center">
+                          <p className="text-[12px] font-medium text-[var(--text-primary)]">
+                            No scheduled reports yet
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => createNewSchedule()}
+                            className="mt-3 rounded-lg bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] px-3 py-1.5 text-[11px] font-semibold text-[#0f172a]"
+                          >
+                            + New schedule
+                          </button>
+                        </div>
+                      ) : (
+                        <ul className="divide-y divide-white/[0.06]">
+                          {psaCampaigns.map((c, idx) => (
+                            <li
+                              key={c.id ?? idx}
+                              className="flex items-center gap-2 py-2.5 first:pt-0 last:pb-0"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p
+                                  className="truncate text-[12px] font-semibold text-[var(--text-primary)]"
+                                  title={c.name?.trim() || "Weekly Report"}
+                                >
+                                  {c.name?.trim() || "Weekly Report"}
+                                </p>
+                                <p className="tabular text-[10px] text-[var(--text-muted)]">
+                                  <span className="inline-flex flex-wrap items-center gap-1.5">
+                                    <span>
+                                      Next:{" "}
+                                      {c.next_run_at
+                                        ? formatShortGmtDate(c.next_run_at)
+                                        : "Not scheduled"}
+                                    </span>
+                                    {c.hold_for_review === true ? (
+                                      <HoldForReviewRequiredBadge />
+                                    ) : null}
+                                  </span>
+                                </p>
+                              </div>
+                              <HoldForReviewRowToggle
+                                active={c.hold_for_review === true}
+                                disabled={scheduleSaving}
+                                onToggle={() =>
+                                  void toggleHoldForReview(c, !(c.hold_for_review === true))
+                                }
+                              />
+                              <button
+                                type="button"
+                                onClick={() => void toggleCampaignEnabled(c, !c.enabled)}
+                                className={cn(
+                                  "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium whitespace-nowrap transition-colors",
+                                  c.enabled
+                                    ? "border-[#4E9C6F]/30 bg-[#4E9C6F]/15 text-[#4E9C6F]"
+                                    : "border-white/[0.08] bg-white/[0.04] text-white/40",
+                                )}
+                                aria-label={c.enabled ? "Pause schedule" : "Resume schedule"}
                               >
-                                <p className="font-semibold text-[var(--text-primary)]">{c.name?.trim() || "Weekly Report"}</p>
-                                <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                                  {frequency} · Next: {c.next_run_at ? formatShortGmtDate(c.next_run_at) : "Not scheduled"}
-                                </p>
-                                <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                                  Recipients: {c.email_to || "Not set"}
-                                </p>
-                                <div className="mt-3 flex items-center gap-2 text-xs">
-                                  <button type="button" className="text-[var(--accent)]" onClick={() => openEditScheduleEditor(c)}>
-                                    Edit
-                                  </button>
-                                  <span className="text-[var(--text-muted)]">·</span>
-                                  <button type="button" className="text-[var(--text-secondary)]" onClick={() => void toggleCampaignEnabled(c, !c.enabled)}>
-                                    {c.enabled ? "Pause" : "Resume"}
-                                  </button>
-                                  {c.id ? (
-                                    <>
-                                      <span className="text-[var(--text-muted)]">·</span>
-                                      <button type="button" className="text-[var(--accent)]" onClick={() => void triggerScheduleNow(c.id!)}>
-                                        Send now
-                                      </button>
-                                      <span className="text-[var(--text-muted)]">·</span>
-                                      <button type="button" className="text-red-500" onClick={() => void deleteSchedule(c.id!)}>
-                                        Delete
-                                      </button>
-                                    </>
-                                  ) : null}
+                                {c.enabled ? "Active" : "Paused"}
+                              </button>
+                              <button
+                                type="button"
+                                title="Edit schedule"
+                                aria-label="Edit schedule"
+                                className="inline-flex size-7 shrink-0 items-center justify-center rounded-[var(--radius)] border border-[var(--border)] text-[var(--accent)] hover:bg-[var(--bg-secondary)]"
+                                onClick={() => openEditScheduleEditor(c)}
+                              >
+                                <Edit2 className="size-3.5" />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    <ScheduledRecentSends
+                      history={psaScheduledHistory.history}
+                      loading={psaScheduledHistory.loading}
+                    />
+                  </div>
+
+                  {/* Card 2: Portfolio Intelligence Digest */}
+                  <div className="rounded-xl border border-white/[0.06] bg-[var(--surface-1)] p-5 [box-shadow:var(--shadow-sm),var(--shadow-inset)]">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">
+                          Portfolio Intelligence Digest
+                        </h2>
+                        <p className="mt-1 text-[11px] leading-snug text-[var(--text-muted)]">
+                          A weekly AI summary of what needs attention across your portfolio,
+                          delivered to your inbox.
+                        </p>
+                      </div>
+                      <label className="relative inline-flex shrink-0 cursor-pointer items-center">
+                        <input
+                          type="checkbox"
+                          className="peer sr-only"
+                          checked={digestSettings?.enabled ?? false}
+                          disabled={digestLoading || !digestSettings}
+                          onChange={(e) =>
+                            void saveDigestSettings({
+                              enabled: e.target.checked,
+                            })
+                          }
+                        />
+                        <div className="h-5 w-9 rounded-full bg-white/[0.08] after:absolute after:left-[2px] after:top-[2px] after:size-4 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-[var(--accent)] peer-checked:after:translate-x-full" />
+                      </label>
+                    </div>
+
+                    <div className="mt-4">
+                      {digestSettings?.enabled ? (
+                        <div className="space-y-2">
+                          <p className="text-[11px] text-white/70">
+                            {digestSettings.frequency.charAt(0).toUpperCase() +
+                              digestSettings.frequency.slice(1)}{" "}
+                            on{" "}
+                            {digestSettings.send_day.charAt(0).toUpperCase() +
+                              digestSettings.send_day.slice(1)}{" "}
+                            at{" "}
+                            {SCHEDULE_TIME_OPTIONS.find(
+                              (t) => t.value === digestSettings.send_time,
+                            )?.label ?? digestSettings.send_time}{" "}
+                            GMT
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setDigestSettingsExpanded(!digestSettingsExpanded)}
+                            className="text-[11px] font-semibold text-[var(--accent)] hover:underline"
+                          >
+                            {digestSettingsExpanded ? "Hide settings" : "Configure"}
+                          </button>
+                          {digestSettingsExpanded ? (
+                            <div className="space-y-3 border-t border-white/[0.06] pt-3">
+                              <div className="flex flex-col gap-1">
+                                <label className="text-[10px] font-medium text-[var(--text-muted)]">
+                                  Frequency
+                                </label>
+                                <select
+                                  value={digestSettings.frequency}
+                                  onChange={(e) =>
+                                    void saveDigestSettings({
+                                      frequency: e.target.value,
+                                    })
+                                  }
+                                  className="max-w-xs rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[11px] text-[var(--text-primary)] focus:outline-none"
+                                >
+                                  <option value="weekly">Weekly</option>
+                                  <option value="fortnightly">Fortnightly</option>
+                                  <option value="monthly">Monthly</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="mb-2 block text-[10px] font-medium text-[var(--text-muted)]">
+                                  Day
+                                </label>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {SCHEDULE_DAY_OPTIONS.map((day) => (
+                                    <button
+                                      key={day}
+                                      type="button"
+                                      onClick={() =>
+                                        void saveDigestSettings({
+                                          send_day: day,
+                                        })
+                                      }
+                                      className={cn(
+                                        "rounded-lg px-2.5 py-1 text-[11px] capitalize transition-colors",
+                                        digestSettings.send_day === day
+                                          ? "bg-[var(--accent)]/15 text-[var(--accent)]"
+                                          : "bg-white/[0.04] text-white/50 hover:bg-white/[0.08]",
+                                      )}
+                                    >
+                                      {day.slice(0, 3)}
+                                    </button>
+                                  ))}
                                 </div>
                               </div>
+                              <div className="flex flex-col gap-1">
+                                <label className="text-[10px] font-medium text-[var(--text-muted)]">
+                                  Time
+                                </label>
+                                <select
+                                  value={digestSettings.send_time}
+                                  onChange={(e) =>
+                                    void saveDigestSettings({
+                                      send_time: e.target.value,
+                                    })
+                                  }
+                                  className="max-w-xs rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[11px] text-[var(--text-primary)] focus:outline-none"
+                                  style={{ colorScheme: "dark" }}
+                                >
+                                  {SCHEDULE_TIME_OPTIONS.map((t) => (
+                                    <option
+                                      key={t.value}
+                                      value={t.value}
+                                      style={{
+                                        backgroundColor: "#0A0F1E",
+                                        color: "#FFFFFF",
+                                      }}
+                                    >
+                                      {t.label} GMT
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="flex flex-col gap-1">
+                                <label className="text-[10px] font-medium text-[var(--text-muted)]">
+                                  Deliver to
+                                </label>
+                                <input
+                                  type="email"
+                                  value={digestSettings.email_to}
+                                  onChange={(e) =>
+                                    setDigestSettings((prev) =>
+                                      prev
+                                        ? {
+                                            ...prev,
+                                            email_to: e.target.value,
+                                          }
+                                        : prev,
+                                    )
+                                  }
+                                  onBlur={() =>
+                                    void saveDigestSettings({
+                                      email_to: digestSettings.email_to,
+                                    })
+                                  }
+                                  placeholder={userEmail ?? "your@email.com"}
+                                  className="max-w-xs rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
+                                />
+                              </div>
+                              {digestSaving && (
+                                <p className="flex items-center gap-1 text-[10px] text-[var(--text-muted)]">
+                                  <Loader2 className="size-2.5 animate-spin" />
+                                  Saving...
+                                </p>
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-[var(--text-muted)]">
+                          Enable to receive a weekly portfolio health summary automatically.
+                        </p>
+                      )}
+                    </div>
+
+                    <ScheduledRecentSends
+                      history={digestScheduledHistory.history}
+                      loading={digestScheduledHistory.loading}
+                    />
+                  </div>
+
+                  {/* Card 3: Service Reviews & QBRs (CI) */}
+                  <div className="rounded-xl border border-white/[0.06] bg-[var(--surface-1)] p-5 [box-shadow:var(--shadow-sm),var(--shadow-inset)]">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">
+                          Service Reviews & QBRs
+                        </h2>
+                        <p className="mt-1 text-[11px] leading-snug text-[var(--text-muted)]">
+                          Per-client service reviews and QBR packs from Client Intelligence, sent on a
+                          schedule.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (scheduledCiOpen) {
+                            setScheduledCiOpen(false);
+                            setEditingCiScheduleId(null);
+                            setNewCiScheduleClient("");
+                            setNewCiScheduleEmail("");
+                            setNewCiHoldForReview(false);
+                          } else {
+                            setEditingCiScheduleId(null);
+                            setNewCiScheduleClient("");
+                            setNewCiScheduleEmail("");
+                            setNewCiHoldForReview(false);
+                            setScheduledCiOpen(true);
+                          }
+                        }}
+                        className="shrink-0 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-primary)] transition-colors hover:text-[var(--accent)]"
+                      >
+                        {scheduledCiOpen ? "Cancel" : "+ Add"}
+                      </button>
+                    </div>
+
+                    <div className="mt-4">
+                      {ciCampaigns.length === 0 ? (
+                        <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-4 text-center">
+                          <p className="text-[12px] font-medium text-[var(--text-primary)]">
+                            No service reviews or QBRs scheduled yet
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingCiScheduleId(null);
+                              setNewCiScheduleClient("");
+                              setNewCiScheduleEmail("");
+                              setNewCiHoldForReview(false);
+                              setScheduledCiOpen(true);
+                            }}
+                            className="mt-3 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-primary)] hover:text-[var(--accent)]"
+                          >
+                            + Add
+                          </button>
+                        </div>
+                      ) : (
+                        <ul className="divide-y divide-white/[0.06]">
+                          {ciCampaigns.map((c, idx) => {
+                            const clientName =
+                              c.ci_qbr_client_name?.trim() ||
+                              c.name?.split(" — ")[0]?.trim() ||
+                              "Client";
+                            const typeLabel =
+                              c.report_type === "ci_qbr" ? "QBR" : "Service Review";
+                            return (
+                              <li
+                                key={c.id ?? idx}
+                                className="flex items-center gap-2 py-2.5 first:pt-0 last:pb-0"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <p
+                                    className="truncate text-[12px] font-semibold text-[var(--text-primary)]"
+                                    title={clientName}
+                                  >
+                                    {clientName}
+                                  </p>
+                                  <p className="text-[10px] text-[var(--text-muted)]">
+                                    <span className="inline-flex flex-wrap items-center gap-1.5">
+                                      <span>
+                                        {typeLabel} · Next:{" "}
+                                        {c.next_run_at
+                                          ? formatShortGmtDate(c.next_run_at)
+                                          : "Not scheduled"}
+                                      </span>
+                                      {c.hold_for_review === true ? (
+                                        <HoldForReviewRequiredBadge />
+                                      ) : null}
+                                    </span>
+                                  </p>
+                                </div>
+                                <HoldForReviewRowToggle
+                                  active={c.hold_for_review === true}
+                                  disabled={scheduleSaving}
+                                  onToggle={() =>
+                                    void toggleHoldForReview(c, !(c.hold_for_review === true))
+                                  }
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => void toggleCampaignEnabled(c, !c.enabled)}
+                                  className={cn(
+                                    "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium whitespace-nowrap transition-colors",
+                                    c.enabled
+                                      ? "border-[#4E9C6F]/30 bg-[#4E9C6F]/15 text-[#4E9C6F]"
+                                      : "border-white/[0.08] bg-white/[0.04] text-white/40",
+                                  )}
+                                  aria-label={c.enabled ? "Pause schedule" : "Resume schedule"}
+                                >
+                                  {c.enabled ? "Active" : "Paused"}
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Edit schedule"
+                                  aria-label="Edit schedule"
+                                  className="inline-flex size-7 shrink-0 items-center justify-center rounded-[var(--radius)] border border-[var(--border)] text-[var(--accent)] hover:bg-[var(--bg-secondary)]"
+                                  onClick={() => openEditScheduleEditor(c)}
+                                >
+                                  <Edit2 className="size-3.5" />
+                                </button>
+                              </li>
                             );
                           })}
-                        </div>
-                      </div>
-                      </div>
-                      <div className="min-w-0 overflow-visible">{scheduleRecentReportsCard}</div>
+                        </ul>
+                      )}
                     </div>
-                  </>
-                  )}
+
+                    {scheduledCiOpen && (
+                      <div className="mt-4 space-y-3 border-t border-white/[0.06] pt-4">
+                        {newCiScheduleType === "service_review" ? (
+                          <div>
+                            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/30">
+                              Frequency
+                            </p>
+                            <div className="flex gap-1.5">
+                              {(["weekly", "fortnightly", "monthly"] as const).map((f) => (
+                                <button
+                                  key={f}
+                                  type="button"
+                                  onClick={() => setNewCiFrequency(f)}
+                                  className={cn(
+                                    "rounded-lg px-2.5 py-1.5 text-[11px] capitalize transition-colors",
+                                    newCiFrequency === f
+                                      ? "bg-[var(--accent)]/15 text-[var(--accent)]"
+                                      : "bg-white/[0.04] text-white/50 hover:bg-white/[0.08]",
+                                  )}
+                                >
+                                  {f}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setNewCiScheduleType("service_review")}
+                            className={cn(
+                              "rounded-lg border p-2.5 text-left transition-all",
+                              newCiScheduleType === "service_review"
+                                ? "border-[var(--accent)]/40 bg-[var(--accent)]/10"
+                                : "border-[var(--border)] hover:border-white/20",
+                            )}
+                          >
+                            <p className="mb-0.5 text-[11px] font-semibold text-[var(--text-primary)]">
+                              Service Review
+                            </p>
+                            <p className="text-[10px] text-[var(--text-muted)]">Monthly · PSA-powered</p>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setNewCiScheduleType("qbr")}
+                            className={cn(
+                              "rounded-lg border p-2.5 text-left transition-all",
+                              newCiScheduleType === "qbr"
+                                ? "border-[var(--accent)]/40 bg-[var(--accent)]/10"
+                                : "border-[var(--border)] hover:border-white/20",
+                            )}
+                          >
+                            <div className="mb-0.5 flex items-center gap-1.5">
+                              <p className="text-[11px] font-semibold text-[var(--text-primary)]">QBR</p>
+                              <span className="rounded-full bg-[var(--accent)]/10 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide text-[var(--accent)]">
+                                Beta
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-[var(--text-muted)]">Quarterly · CI-powered</p>
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] font-medium text-[var(--text-muted)]">Client</label>
+                            <select
+                              value={newCiScheduleClient}
+                              onChange={(e) => setNewCiScheduleClient(e.target.value)}
+                              className="rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[11px] text-[var(--text-primary)] focus:outline-none"
+                            >
+                              <option value="">Select client...</option>
+                              {ciClients.map((c) => (
+                                <option key={c.name} value={c.name}>
+                                  {c.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] font-medium text-[var(--text-muted)]">Deliver to</label>
+                            <input
+                              type="email"
+                              value={newCiScheduleEmail}
+                              onChange={(e) => setNewCiScheduleEmail(e.target.value)}
+                              placeholder={userEmail ?? "email@msp.com"}
+                              className="rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/30">
+                            Timing
+                          </p>
+                          <div className="mb-2 flex flex-wrap gap-1.5">
+                            {SCHEDULE_DAY_OPTIONS.map((day) => (
+                              <button
+                                key={day}
+                                type="button"
+                                onClick={() => setNewCiScheduleDay(day)}
+                                className={cn(
+                                  "rounded-lg px-2.5 py-1 text-[11px] capitalize transition-colors",
+                                  newCiScheduleDay === day
+                                    ? "bg-[var(--accent)]/15 text-[var(--accent)]"
+                                    : "bg-white/[0.04] text-white/50 hover:bg-white/[0.08]",
+                                )}
+                              >
+                                {day.slice(0, 3)}
+                              </button>
+                            ))}
+                          </div>
+                          <select
+                            value={newCiScheduleTime}
+                            onChange={(e) => setNewCiScheduleTime(e.target.value)}
+                            className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[12px] text-white"
+                            style={{ colorScheme: "dark" }}
+                          >
+                            {SCHEDULE_TIME_OPTIONS.map((t) => (
+                              <option
+                                key={t.value}
+                                value={t.value}
+                                style={{
+                                  backgroundColor: "#0A0F1E",
+                                  color: "#FFFFFF",
+                                }}
+                              >
+                                {t.label} GMT
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <ScheduleHoldForReviewField
+                          checked={newCiHoldForReview}
+                          onChange={setNewCiHoldForReview}
+                          disabled={savingCiSchedule}
+                        />
+
+                        <button
+                          type="button"
+                          disabled={!newCiScheduleClient || !newCiScheduleEmail || savingCiSchedule}
+                          onClick={() => void saveNewCiSchedule()}
+                          className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-1.5 text-[11px] font-semibold text-[#06091a] transition-all hover:scale-[1.02] disabled:scale-100 disabled:opacity-50"
+                        >
+                          {savingCiSchedule ? (
+                            <Loader2 className="size-3 animate-spin" />
+                          ) : (
+                            <Calendar className="size-3" />
+                          )}
+                          Schedule {newCiScheduleType === "qbr" ? "quarterly QBR" : "monthly review"}
+                        </button>
+                      </div>
+                    )}
+
+                    <ScheduledRecentSends
+                      history={ciScheduledHistory.history}
+                      loading={ciScheduledHistory.loading}
+                    />
+                  </div>
+                </div>
+
                   {scheduleEditorOpen ? (
                     <div className="fixed inset-0 z-[100] flex min-h-0 flex-col overflow-hidden bg-[var(--bg-secondary)]">
                         <style jsx global>{`
@@ -13467,7 +14464,7 @@ export default function Home() {
                         </div>
 
                         <div
-                          className="min-h-0 flex-1 overflow-y-auto [webkit-overflow-scrolling:touch]"
+                          className="min-h-0 flex-1 overflow-y-auto overscroll-contain [webkit-overflow-scrolling:touch] md:overscroll-auto"
                         >
                         <div
                           className="w-full"
@@ -13576,7 +14573,7 @@ export default function Home() {
                                         placeholder="e.g. John"
                                       />
                                       <p className="mt-1 text-xs text-[var(--text-muted)]">
-                                        The email will start with &quot;Hi [name],&quot; — leave blank for generic greeting
+                                        The email will start with &quot;Hi [name],&quot; - leave blank for generic greeting
                                       </p>
                                     </div>
                                     <div>
@@ -13696,10 +14693,18 @@ export default function Home() {
                                         <select
                                           value={schTime}
                                           onChange={(e) => setSchTime(e.target.value)}
-                                          className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 text-sm"
+                                          className="h-10 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 text-sm text-[var(--text-primary)]"
+                                          style={{ colorScheme: "dark" }}
                                         >
                                           {SCHEDULE_TIME_OPTIONS.map((t) => (
-                                            <option key={t.value} value={t.value}>
+                                            <option
+                                              key={t.value}
+                                              value={t.value}
+                                              style={{
+                                                backgroundColor: "#0A0F1E",
+                                                color: "#FFFFFF",
+                                              }}
+                                            >
                                               {t.label}
                                             </option>
                                           ))}
@@ -13782,7 +14787,7 @@ export default function Home() {
                                           {ticketClientMode === "selected" ? (
                                             <>
                                               <Input className="h-10" placeholder="Search ticket clients..." value={ticketClientSearch} onChange={(e) => setTicketClientSearch(e.target.value)} />
-                                              <div className="max-h-[500px] space-y-0 overflow-y-auto rounded-[var(--radius)] border border-[var(--border)]">
+                                              <div className="max-h-none space-y-0 overflow-visible rounded-[var(--radius)] border border-[var(--border)] md:max-h-[500px] md:overflow-y-auto">
                                                 {ticketClientOptions.map((client) => {
                                                   const expanded = expandedTicketClients.has(client.id);
                                                   const clientTickets = scheduleTicketsForClientRow(
@@ -13902,7 +14907,7 @@ export default function Home() {
                                       {projectClientMode === "selected" ? (
                                         <>
                                           <Input className="h-10" placeholder="Search project clients..." value={projectClientSearch} onChange={(e) => setProjectClientSearch(e.target.value)} />
-                                          <div className="max-h-[500px] space-y-0 overflow-y-auto rounded-[var(--radius)] border border-[var(--border)]">
+                                          <div className="max-h-none space-y-0 overflow-visible rounded-[var(--radius)] border border-[var(--border)] md:max-h-[500px] md:overflow-y-auto">
                                             {projectClientOptions.map((client) => {
                                               const expanded = expandedProjectClients.has(client.id);
                                               const clientProjects = allProjects.filter((t) => Number(t.clientId ?? t.client_id) === client.id);
@@ -14077,6 +15082,11 @@ export default function Home() {
                                   </div>
                                 ) : null}
                               </div>
+                              <ScheduleHoldForReviewField
+                                checked={schHoldForReview}
+                                onChange={setSchHoldForReview}
+                                disabled={scheduleSaving}
+                              />
                               <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6">
                                 <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent)]">
                                   {psaConnections.multiple ? "PSA" : pushPsaLabel}
@@ -14256,7 +15266,7 @@ export default function Home() {
                                           Configure the Data tab and load HaloPSA data to list tickets and projects here.
                                         </p>
                                       ) : (
-                                        <div className="grid max-h-[280px] grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
+                                        <div className="grid max-h-none grid-cols-1 gap-2 overflow-visible sm:grid-cols-2 md:max-h-[280px] md:overflow-y-auto">
                                           {haloPushProjectRows.length > 0 && haloPushSupportRows.length > 0 ? (
                                             <>
                                               <p className="col-span-full text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
@@ -14472,7 +15482,7 @@ export default function Home() {
                                   </div>
                                 </div>
                                 <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6">
-                                  <p className="text-[13px] font-semibold text-[var(--text-primary)]">What you'll receive</p>
+                                  <p className="text-[13px] font-semibold text-[var(--text-primary)]">What you&apos;ll receive</p>
                                   <button
                                     type="button"
                                     className="mt-2 text-xs text-[var(--accent)]"
@@ -14573,8 +15583,6 @@ export default function Home() {
                         </div>
                       </div>
                   ) : null}
-                  </>
-                )}
                 </>
                 )}
               </div>
@@ -14584,7 +15592,7 @@ export default function Home() {
             deliveryDashboardAccess !== "none" ? (
             <div key="delivery" className="relative animate-in fade-in duration-200">
               {isExpiredTrial || soloGenerationLocked ? (
-                <UpgradeWall message="Your trial has ended — Delivery Health requires an active plan." />
+                <UpgradeWall message="Your trial has ended - Delivery Health requires an active plan." />
               ) : (
               <>
               <div
@@ -14600,6 +15608,8 @@ export default function Home() {
                   viewMode={dashboardViewMode}
                   demoMode={demoModeActive}
                   initialClientFilter={deliveryHealthPresetClient}
+                  initialClientReason={deliveryHealthPresetReason}
+                  initialAffectedItemNames={deliveryHealthPresetAffectedItems}
                   onOpenIntegrations={() => {
                     openIntegrationsInConfiguration();
                     setSettingsOpen(false);
@@ -14640,7 +15650,7 @@ export default function Home() {
                       Unlock the Delivery Health Dashboard
                     </h2>
                     <p className="mt-2 text-[13px] leading-relaxed text-[var(--text-secondary)]">
-                      Connect HaloPSA and get real-time RAG status across all your projects. Available on Pro.
+                      Connect HaloPSA and get real-time RAG status across all your projects. Available on Growth and above.
                     </p>
                     <Button
                       type="button"
@@ -14651,7 +15661,7 @@ export default function Home() {
                       }
                       onClick={() => setHeaderUpgradeOpen(true)}
                     >
-                      Upgrade to Pro
+                      Move to Handover
                     </Button>
                     <Link
                       href="/pricing"
@@ -14669,6 +15679,52 @@ export default function Home() {
           <>
             {userEmail && mainView === "overview" ? (
               <div key="overview" className="animate-in fade-in duration-200">
+                {monthCount === 0 && projectsBootstrapped ? (
+                  <div className="mb-6 mx-4 rounded-xl border border-[var(--accent)]/20 bg-[var(--accent)]/[0.04] p-6 md:mx-6">
+                    <p className="mb-2 text-[13px] font-semibold text-white">Welcome to Handover</p>
+                    <p className="mb-4 text-[12px] leading-relaxed text-white/55">
+                      Generate your first report to start building your account intelligence. Connect your PSA or paste
+                      notes directly - your first report takes under 30 seconds.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setMainView("generate")}
+                      className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2 text-[12px] font-semibold text-[#06091a] transition-all hover:scale-[1.02]"
+                    >
+                      Generate first report
+                    </button>
+                  </div>
+                ) : null}
+                {hasProAccess && (
+                  <div className="px-4 pt-4 md:px-6">
+                    <ClientIntelligenceAlerts
+                      onGoToGenerate={(clientName) => {
+                        setProjectName(clientName);
+                        setMainView("generate");
+                        window.requestAnimationFrame(() => {
+                          generateInputRef.current?.focus();
+                          inputSectionRef.current?.scrollIntoView({
+                            behavior: "smooth",
+                            block: "start",
+                          });
+                        });
+                      }}
+                      onGoToClientIntelligence={(clientName, context) => {
+                        setClientIntelligencePresetClient(clientName);
+                        setClientIntelligencePresetTab(
+                          context.type === "overdue" ? "history" : "summary",
+                        );
+                        setClientIntelligencePresetHighlight(
+                          context.type === "risks",
+                        );
+                        setMainView("client-intelligence");
+                      }}
+                      onGoToReports={() => {
+                        setMainView("reports");
+                      }}
+                    />
+                  </div>
+                )}
                 <OverviewHomeView
                   isTrialExpired={isExpiredTrial || soloGenerationLocked}
                   userFirstName={userFirstName}
@@ -14702,8 +15758,10 @@ export default function Home() {
                       tryOpenProFeatureGate("Delivery Health Dashboard");
                     }
                   }}
-                  onGoToDeliveryForClient={(clientName) => {
+                  onGoToDeliveryForClient={(clientName, reason, affectedItemNames) => {
                     setDeliveryHealthPresetClient(clientName);
+                    setDeliveryHealthPresetReason(reason?.trim() ?? "");
+                    setDeliveryHealthPresetAffectedItems(affectedItemNames ?? []);
                     if (hasProAccess && deliveryDashboardAccess !== "none") {
                       setMainView("delivery");
                     } else {
@@ -14714,74 +15772,183 @@ export default function Home() {
               </div>
             ) : null}
             {userEmail && mainView === "reports" ? (
-              <>
-                <div className="mb-6 w-full rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-4 shadow-[0_1px_3px_rgba(0,0,0,0.06)] md:p-6">
-                <PageHeader
-                  eyebrow="QUARTERLY · BUSINESS REVIEW"
-                  title="QBR Builder"
-                  description="Generate a client-ready quarterly business review pack from your PSA data."
-                />
-                <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-                  <div className="min-w-0 lg:col-span-2">
-                  {noPsaConnected && !demoModeActive ? (
-                    <PSAEmptyState
-                      title="No PSA connected"
-                      description="Connect your PSA to import tickets and generate reports."
-                    />
-                  ) : psaStatus.loading && !demoModeActive ? (
-                    <div className="space-y-4" aria-busy>
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        {[0, 1, 2].map((i) => (
-                          <div
-                            key={i}
-                            className="h-24 rounded-[var(--radius-lg)] border border-[var(--border)] bg-white/5 animate-pulse"
-                          />
-                        ))}
-                      </div>
-                      <div className="h-48 rounded-[var(--radius-lg)] border border-[var(--border)] bg-white/5 animate-pulse" />
-                      <div className="h-12 w-40 rounded-[var(--radius)] bg-white/5 animate-pulse" />
-                    </div>
-                  ) : isExpiredTrial || soloGenerationLocked ? (
-                    <UpgradeWall message="Your trial has ended — QBR Builder requires an active plan." />
-                  ) : (
-                    <div className="mx-auto w-full max-w-3xl">
-                      <QbrPackBuilder
-                        embedded
-                        demoMode={demoModeActive}
-                        hasProAccess={hasProAccess}
-                        defaultBrandName={brandName.trim() || "Handover"}
-                        defaultBrandColor={brandColour || "#38bdf8"}
-                        brandLogoUrl={brandLogoUrl.trim() || null}
-                        usageHint={qbrUsageHint}
-                      />
-                    </div>
-                  )}
+              <div className="flex h-full min-h-0 flex-col animate-in fade-in duration-200">
+                <div className="flex flex-shrink-0 items-center gap-6 border-b border-[var(--border)] px-6 py-4">
+                  <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">
+                    Reports
+                  </h2>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setReportsSubView("service-review")}
+                      className={cn(
+                        "rounded-lg border px-3 py-1.5 text-[12px] font-medium transition-all duration-150",
+                        reportsSubView === "service-review"
+                          ? "border-[var(--accent)]/20 bg-[var(--accent)]/10 text-[var(--accent)]"
+                          : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]",
+                      )}
+                    >
+                      Service Review
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReportsSubView("qbr")}
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-medium transition-all duration-150",
+                        reportsSubView === "qbr"
+                          ? "border-[var(--accent)]/20 bg-[var(--accent)]/10 text-[var(--accent)]"
+                          : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]",
+                      )}
+                    >
+                      Quarterly Business Review
+                      <span className="rounded-full bg-[var(--accent)]/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[var(--accent)]">
+                        Beta
+                      </span>
+                    </button>
                   </div>
-                  <aside className="hidden lg:col-span-1 lg:block">
-                    <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">
-                      What&apos;s included
-                    </h2>
-                    <ul className="mt-4 space-y-3 text-[13px] text-[var(--text-secondary)]">
-                      {[
-                        "PDF summary",
-                        "Excel data pack",
-                        "Action log",
-                        "Risk register",
-                        "Client email template",
-                      ].map((item) => (
-                        <li key={item} className="flex items-start gap-2">
-                          <Check
-                            className="mt-0.5 size-4 shrink-0 text-[var(--accent)]"
-                            aria-hidden
+                </div>
+
+                <div className="flex min-h-0 flex-1 overflow-hidden">
+                  {reportsSubView === "qbr" ? (
+                    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                      <div className="flex flex-shrink-0 items-center justify-between border-b border-[var(--border)] px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">
+                            Quarterly Business Review
+                          </h2>
+                          <span className="rounded-full bg-[var(--accent)]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-[var(--accent)]">
+                            Beta
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mx-6 mt-4 rounded-xl border border-[var(--accent)]/15 bg-[var(--accent)]/[0.04] p-4">
+                        <p className="text-[12px] leading-relaxed text-[var(--text-secondary)]">
+                          Generate a QBR pack from your Client Intelligence history. Includes account narrative, recurring
+                          issues, open risks, key achievements, and strategic talking points.
+                        </p>
+                        <p className="mt-3 text-[11px] leading-relaxed text-[var(--text-muted)]">
+                          Beta: Financial data integration (budget tracking, time entries, invoice history) is on the
+                          roadmap and will further enrich this output.
+                        </p>
+                      </div>
+
+                      <div className="min-h-0 flex-1 overflow-visible p-6 md:overflow-y-auto">
+                        <CiQbrBuilder
+                          userId={authUserId ?? ""}
+                          hasProAccess={hasProAccess}
+                          defaultBrandName={
+                            brandName.trim() || profileCompanyName.trim() || "Handover"
+                          }
+                          defaultBrandColor={brandColour || "#38bdf8"}
+                          brandLogoUrl={brandLogoUrl.trim() || null}
+                          onNavigateToCI={() => setMainView("client-intelligence")}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {noPsaConnected && !demoModeActive ? (
+                        <div className="flex flex-1 items-center justify-center p-8">
+                          <PSAEmptyState
+                            title="No PSA connected"
+                            description="Connect your PSA to import tickets and generate reports."
                           />
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </aside>
+                        </div>
+                      ) : psaStatus.loading && !demoModeActive ? (
+                        <div className="flex-1 space-y-4 p-6" aria-busy>
+                          <div className="grid gap-3 sm:grid-cols-3">
+                            {[0, 1, 2].map((i) => (
+                              <div
+                                key={i}
+                                className="h-24 rounded-[var(--radius-lg)] border border-[var(--border)] bg-white/5 animate-pulse"
+                              />
+                            ))}
+                          </div>
+                          <div className="h-48 rounded-[var(--radius-lg)] border border-[var(--border)] bg-white/5 animate-pulse" />
+                          <div className="h-12 w-40 rounded-[var(--radius)] bg-white/5 animate-pulse" />
+                        </div>
+                      ) : isExpiredTrial || soloGenerationLocked ? (
+                        <div className="flex flex-1 items-center justify-center p-8">
+                          <UpgradeWall message="Your trial has ended - QBR Builder requires an active plan." />
+                        </div>
+                      ) : (
+                        <div className="min-h-0 flex-1 overflow-visible md:overflow-y-auto">
+                          <div className="mx-auto w-full max-w-3xl p-6">
+                            <QbrPackBuilder
+                              embedded
+                              demoMode={demoModeActive}
+                              hasProAccess={hasProAccess}
+                              defaultBrandName={
+                                brandName.trim() ||
+                                profileCompanyName.trim() ||
+                                "Handover"
+                              }
+                              defaultBrandColor={brandColour || "#38bdf8"}
+                              brandLogoUrl={brandLogoUrl.trim() || null}
+                              usageHint={qbrUsageHint}
+                              intelligenceContext={qbrIntelligenceContext}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
+              </div>
+            ) : null}
+            {userEmail && mainView === "client-intelligence" ? (
+              <div
+                key="client-intelligence"
+                className="animate-in fade-in duration-200 flex h-full min-h-0 flex-col overflow-hidden"
+              >
+                {!isBillingGrowthOrAbove ? (
+                  <div className="mx-4 mb-4 mt-4 flex items-center gap-3 rounded-xl border border-[var(--accent)]/20 bg-[var(--accent)]/5 px-4 py-3 md:mx-6">
+                    <span className="text-[12px] font-semibold uppercase tracking-wide text-[var(--accent)]">
+                      Handover feature
+                    </span>
+                    <span className="text-[12px] text-white/60">
+                      Client Intelligence is included with Handover. You&apos;re viewing a demo —
+                      move to Handover to use it on your real client data.
+                    </span>
+                    <Link
+                      href="/pricing"
+                      className="ml-auto whitespace-nowrap text-[12px] font-medium text-[var(--accent)] hover:underline"
+                    >
+                      Move to Handover →
+                    </Link>
+                  </div>
+                ) : null}
+                <div className="min-h-0 flex-1">
+                  <ClientIntelligenceView
+                    userId={authUserId ?? ""}
+                    userEmail={userEmail ?? null}
+                    initialClientName={clientIntelligencePresetClient}
+                    initialTab={clientIntelligencePresetTab ?? undefined}
+                    initialHighlightRisks={clientIntelligencePresetHighlight}
+                    demoMode={demoModeActive || !isBillingGrowthOrAbove}
+                    onNavigateToGenerate={() => setMainView("generate")}
+                    onGenerateQbr={(clientName, summary) => {
+                      setMainView("reports");
+                      setReportsSubView("service-review");
+                      setQbrIntelligenceContext({
+                        clientName,
+                        accountNarrative: summary.account_narrative,
+                        keyAchievements: summary.key_achievements,
+                        openRisks: summary.open_risks,
+                        qbrTalkingPoints: summary.qbr_talking_points,
+                        relationshipHealth: summary.relationship_health,
+                      });
+                      toast({
+                        message:
+                          "Building your QBR pack using Account Intelligence data",
+                        variant: "info",
+                        durationMs: 4500,
+                      });
+                    }}
+                  />
                 </div>
-              </>
+              </div>
             ) : null}
             {(!userEmail || mainView === "generate") ? (
             userEmail && (soloGenerationLocked || isExpiredTrial) ? (
@@ -14803,7 +15970,7 @@ export default function Home() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="inline-flex items-center gap-2 text-[13px] text-amber-100">
                     <AlertTriangle className="size-4 shrink-0" />
-                    Connect your PSA to unlock imports, ticket tracking, and AI-powered reporting.
+                    Connect HaloPSA or ConnectWise to import live tickets and generate reports automatically.
                   </p>
                   <Button
                     type="button"
@@ -14815,21 +15982,38 @@ export default function Home() {
                       setSidebarOpenMobile(false);
                     }}
                   >
-                    Connect now
+                    Connect HaloPSA or ConnectWise →
                   </Button>
                 </div>
               </div>
             ) : null}
-            <div className="relative w-full">
+            <div className={cn("relative w-full", result && "flex-shrink-0")}>
             <section
               ref={inputSectionRef}
               className={cn(
                 "relative z-10 overflow-hidden rounded-[var(--radius-lg)] bg-[var(--bg-primary)] shadow-[0_1px_3px_rgba(0,0,0,0.05)]",
+                result && "flex-shrink-0",
+                showGenerateEmptyLayout && "flex min-h-[75vh] flex-col",
+                isGenerating &&
+                  !(
+                    userEmail &&
+                    (mainView === "overview" ||
+                      mainView === "changelog" ||
+                      mainView === "configuration" ||
+                      mainView === "scheduled" ||
+                      mainView === "delivery" ||
+                      mainView === "reports" ||
+                      mainView === "organisation" ||
+                      mainView === "client-intelligence" ||
+                      mainView === "approvals")
+                  ) &&
+                  "flex min-h-[75vh] flex-col",
                 !input.trim()
                   ? "border border-[var(--accent)]/15 shadow-[0_0_20px_rgba(14,165,233,0.06)]"
                   : "border border-[var(--accent)]/30 shadow-[0_0_25px_rgba(14,165,233,0.10)]",
               )}
             >
+              {!(result && isInputCollapsed) && !showGenerateEmptyLayout && !isGenerating ? (
               <div
                 className="flex flex-wrap items-center justify-end gap-2 border-b border-[var(--border)] bg-[var(--bg-secondary)] px-[14px] py-2.5"
                 style={{ borderRadius: "var(--radius-lg) var(--radius-lg) 0 0" }}
@@ -14949,7 +16133,7 @@ export default function Home() {
                     <Button
                       type="button"
                       variant="outline"
-                      title="Connect a PSA - available on Pro plan"
+                      title="Connect a PSA - included with Handover"
                       className={cn(
                         "h-9 gap-1.5 border-[var(--border)] bg-[var(--bg-primary)] px-3 text-[12px] font-medium text-[var(--text-secondary)] transition-all duration-[120ms] ease-in-out hover:bg-[color-mix(in_srgb,var(--bg-secondary)_65%,var(--bg-primary))]",
                         focusRing,
@@ -14959,7 +16143,7 @@ export default function Home() {
                       <Database className="size-4 shrink-0" aria-hidden />
                       <span>Import from PSA</span>
                       <span className="rounded-full bg-[var(--accent)] px-1.5 py-px text-[9px] font-semibold text-white">
-                        Pro
+                        Handover
                       </span>
                     </Button>
                   ) : null}
@@ -14977,72 +16161,574 @@ export default function Home() {
                     Import file
                   </Button>
               </div>
+              ) : null}
 
-              <div className="space-y-3 p-[14px]">
-                {showGenerateEmptyLayout && !noPsaConnected ? (
-                  <div className="mb-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface-1)] p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="mb-1 text-[13px] font-medium text-white/90">
-                          {importPsaLabel} connected
-                        </div>
-                        <div className="text-[12px] text-white/50">{generatePsaCardSubLabel}</div>
-                      </div>
-                      {bothPsasConnected ? (
-                        <div className="flex shrink-0 gap-2">
-                          <button
-                            type="button"
-                            className="flex items-center gap-1.5 rounded-lg border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-3 py-1.5 text-[12px] font-medium text-[var(--accent)] transition-all hover:bg-[var(--accent)]/20"
-                            onClick={() => {
-                              if (!hasProAccess && !demoModeActive) {
-                                setHaloProModalOpen(true);
-                                return;
-                              }
-                              setHaloImportOpen(true);
-                            }}
-                          >
-                            HaloPSA →
-                          </button>
-                          <button
-                            type="button"
-                            className="flex items-center gap-1.5 rounded-lg border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-3 py-1.5 text-[12px] font-medium text-[var(--accent)] transition-all hover:bg-[var(--accent)]/20"
-                            onClick={() => {
-                              if (!hasProAccess && !demoModeActive) {
-                                setHaloProModalOpen(true);
-                                return;
-                              }
-                              setCwImportOpen(true);
-                            }}
-                          >
-                            ConnectWise →
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          className="shrink-0 rounded-lg bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-white transition-all duration-150 hover:bg-[var(--accent-hover)]"
-                          onClick={openPsaImportFromGenerate}
-                        >
-                          Import →
-                        </button>
-                      )}
+              <div
+                className={cn(
+                  showGenerateEmptyLayout || isGenerating
+                    ? "flex min-h-0 flex-1 flex-col gap-4 p-4 md:p-6"
+                    : "space-y-3 p-[14px]",
+                )}
+              >
+                {isGenerating &&
+                !(userEmail &&
+                  (mainView === "overview" ||
+                    mainView === "changelog" ||
+                    mainView === "configuration" ||
+                    mainView === "scheduled" ||
+                    mainView === "delivery" ||
+                    mainView === "reports" ||
+                    mainView === "organisation" ||
+                    mainView === "client-intelligence" ||
+                    mainView === "approvals")) ? (
+                  <div className="flex flex-1 flex-col items-center justify-center py-6 md:py-10">
+                    <p className="max-w-md text-center text-[length:var(--t-h4)] font-medium text-[var(--text-secondary)]">
+                      {generationPhase === "compacting"
+                        ? lastImportSourcePsa != null || lastImportedHaloItems.length > 0
+                          ? "Reading your PSA data…"
+                          : "Processing your notes…"
+                        : genProgress < 40
+                          ? "Analysing tickets and projects…"
+                          : genProgress < 70
+                            ? "Identifying actions and risks…"
+                            : genProgress < 85
+                              ? "Writing your report…"
+                              : "Finalising outputs…"}
+                    </p>
+                    <p className="mt-2 text-center text-[length:var(--t-body-sm)] tabular-nums text-[var(--text-muted)]">
+                      {Math.round(genProgress)}%
+                    </p>
+                    <div className="mt-5 h-1 w-full max-w-md overflow-hidden rounded-full bg-white/[0.06]">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-[var(--accent)] to-[#7dd3fc] transition-all duration-300 ease-out"
+                        style={{ width: `${genProgress}%` }}
+                      />
+                    </div>
+                    <div className="mt-8 w-full max-w-2xl">
+                      <ResultsSkeleton />
                     </div>
                   </div>
-                ) : null}
-                {showGenerateEmptyLayout ? (
-                  <div className="mb-3 flex flex-wrap gap-1.5">
-                    {["Actions", "Risks", "Summary", "Status Report", "Client Email"].map(
-                      (label) => (
-                        <span
-                          key={label}
-                          className="rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[11px] text-white/40"
+                ) : showGenerateEmptyLayout ? (
+                  <>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".csv,.xlsx,.xls,.docx"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] ?? null;
+                        void handleImportFile(file);
+                        e.currentTarget.value = "";
+                      }}
+                    />
+                    {!generateStartingDataLoaded ? (
+                      <div className="animate-in fade-in duration-500 flex flex-1 flex-col items-center justify-center py-6 md:py-10">
+                        <h2
+                          className="mb-2 text-center font-semibold tracking-tight text-[var(--text-primary)]"
+                          style={{ fontSize: "var(--t-h1)" }}
                         >
-                          {label}
-                        </span>
-                      ),
+                          How would you like to start?
+                        </h2>
+                        <p className="animate-in fade-in duration-500 mx-auto mb-2 max-w-xl text-center text-[length:var(--t-body-sm)] text-[var(--text-secondary)]">
+                          Connect your PSA, paste notes, or try a demo — takes under a minute.
+                        </p>
+                        <div
+                          data-tour="generate-chooser"
+                          className="grid w-full max-w-4xl grid-cols-1 gap-4 md:grid-cols-3"
+                        >
+                          {!noPsaConnected ? (
+                            bothPsasConnected ? (
+                              <div className="flex flex-col rounded-xl border border-white/[0.06] bg-[var(--surface-1)] p-5 text-left [box-shadow:var(--shadow-sm),var(--shadow-inset)] md:p-6">
+                                <div className="mb-4 flex items-center gap-2">
+                                  <Database className="size-7 shrink-0 text-[var(--accent)]" aria-hidden />
+                                  <span className="inline-block size-1.5 rounded-full bg-emerald-500" aria-hidden />
+                                </div>
+                                <p className="text-[length:var(--t-h4)] font-semibold text-[var(--text-primary)]">
+                                  Import from PSA
+                                </p>
+                                <p className="mt-1.5 text-[length:var(--t-body-sm)] leading-relaxed text-[var(--text-secondary)]">
+                                  Pull live tickets and projects automatically
+                                </p>
+                                <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+                                  <button
+                                    type="button"
+                                    className={cn(
+                                      "flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-3 py-2 text-[12px] font-medium text-[var(--accent)] transition-all hover:bg-[var(--accent)]/20",
+                                      focusRing,
+                                    )}
+                                    onClick={() => {
+                                      if (!hasProAccess && !demoModeActive) {
+                                        setHaloProModalOpen(true);
+                                        return;
+                                      }
+                                      setHaloImportOpen(true);
+                                    }}
+                                  >
+                                    HaloPSA
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={cn(
+                                      "flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-3 py-2 text-[12px] font-medium text-[var(--accent)] transition-all hover:bg-[var(--accent)]/20",
+                                      focusRing,
+                                    )}
+                                    onClick={() => {
+                                      if (!hasProAccess && !demoModeActive) {
+                                        setHaloProModalOpen(true);
+                                        return;
+                                      }
+                                      setCwImportOpen(true);
+                                    }}
+                                  >
+                                    ConnectWise
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                className={cn(
+                                  "flex flex-col rounded-xl border border-white/[0.06] bg-[var(--surface-1)] p-5 text-left transition-colors [box-shadow:var(--shadow-sm),var(--shadow-inset)] hover:border-[var(--accent)]/25 md:p-6",
+                                  focusRing,
+                                )}
+                                onClick={onGeneratePsaImportCardClick}
+                              >
+                                <div className="mb-4 flex items-center gap-2">
+                                  <Database className="size-7 shrink-0 text-[var(--accent)]" aria-hidden />
+                                  <span className="inline-block size-1.5 rounded-full bg-emerald-500" aria-hidden />
+                                </div>
+                                <p className="text-[length:var(--t-h4)] font-semibold text-[var(--text-primary)]">
+                                  {`Import from ${importPsaLabel}`}
+                                </p>
+                                <p className="mt-1.5 text-[length:var(--t-body-sm)] leading-relaxed text-[var(--text-secondary)]">
+                                  Pull live tickets and projects automatically
+                                </p>
+                              </button>
+                            )
+                          ) : (
+                            <button
+                              type="button"
+                              className={cn(
+                                "flex flex-col rounded-xl border border-white/[0.06] bg-[var(--surface-1)] p-5 text-left transition-colors [box-shadow:var(--shadow-sm),var(--shadow-inset)] hover:border-[var(--accent)]/25 md:p-6",
+                                focusRing,
+                              )}
+                              onClick={onGenerateConnectPsaCardClick}
+                            >
+                              <div className="relative mb-4 w-fit">
+                                <Database className="size-7 shrink-0 text-[var(--accent)]" aria-hidden />
+                                <Lock
+                                  className="absolute -bottom-0.5 -right-1 size-3.5 rounded-full bg-[var(--surface-1)] text-[var(--text-secondary)]"
+                                  aria-hidden
+                                />
+                              </div>
+                              <p className="text-[length:var(--t-h4)] font-semibold text-[var(--text-primary)]">
+                                Connect HaloPSA or ConnectWise
+                              </p>
+                              <p className="mt-1.5 text-[length:var(--t-body-sm)] leading-relaxed text-[var(--text-secondary)]">
+                                Connect your PSA to import tickets automatically
+                              </p>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            data-tour="generate-manual-card"
+                            className={cn(
+                              "flex flex-col rounded-xl border border-white/[0.06] bg-[var(--surface-1)] p-5 text-left transition-colors [box-shadow:var(--shadow-sm),var(--shadow-inset)] hover:border-[var(--accent)]/25 md:p-6",
+                              focusRing,
+                            )}
+                            onClick={onGenerateManualStart}
+                          >
+                            <Pencil className="mb-4 size-7 shrink-0 text-[var(--accent)]" aria-hidden />
+                            <p className="text-[length:var(--t-h4)] font-semibold text-[var(--text-primary)]">
+                              Add manually
+                            </p>
+                            <p className="mt-1.5 text-[length:var(--t-body-sm)] leading-relaxed text-[var(--text-secondary)]">
+                              Type or paste your own ticket notes
+                            </p>
+                          </button>
+                          <button
+                            type="button"
+                            className={cn(
+                              "flex flex-col rounded-xl border border-white/[0.06] bg-[var(--surface-1)] p-4 text-left transition-colors [box-shadow:var(--shadow-sm),var(--shadow-inset)] hover:border-[var(--accent)]/20 md:col-span-1 md:p-5",
+                              focusRing,
+                            )}
+                            onClick={onGenerateDemoImportCardClick}
+                          >
+                            <Sparkles className="mb-3 size-6 shrink-0 text-[var(--text-muted)]" aria-hidden />
+                            <p className="text-[length:var(--t-body)] font-medium text-[var(--text-secondary)]">
+                              Try demo data
+                            </p>
+                            <p className="mt-1 text-[length:var(--t-caption)] leading-relaxed text-[var(--text-muted)]">
+                              See Handover in action with sample data
+                            </p>
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          className={cn(
+                            "mt-6 text-[length:var(--t-caption)] font-medium text-[var(--text-muted)] underline-offset-2 transition-colors hover:text-[var(--accent)] hover:underline",
+                            focusRing,
+                          )}
+                          onClick={() => fileInputRef.current?.click()}
+                        >
+                          or import a file (CSV, Excel, Word) →
+                        </button>
+                        <div className="mt-8 w-full max-w-md border-b border-[var(--border)]/60 pb-1.5">
+                          <Input
+                            value={projectName}
+                            onChange={(e) => setProjectName(e.target.value)}
+                            placeholder="Project name (optional)"
+                            disabled={isGenerating}
+                            aria-label="Project name (optional)"
+                            className={cn(
+                              "h-8 rounded-none border-0 bg-transparent px-0 text-[length:var(--t-caption)] font-normal placeholder:text-[var(--text-muted)] focus-visible:ring-0",
+                              focusRing,
+                            )}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="animate-in fade-in duration-500 flex min-h-0 flex-1 flex-col gap-4">
+                        {isInputCollapsed &&
+                        (lastImportedHaloItems.length > 0 || input.length > 500) ? (
+                          <>
+                            <div className="rounded-xl border border-white/[0.06] bg-[var(--surface-1)] p-4 md:p-5 [box-shadow:var(--shadow-sm),var(--shadow-inset)]">
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="flex min-w-0 flex-1 items-start gap-3">
+                                  <ClipboardList
+                                    className="mt-0.5 size-5 shrink-0 text-[var(--accent)]"
+                                    aria-hidden
+                                  />
+                                  <div className="min-w-0">
+                                    <p className="text-[length:var(--t-h4)] font-semibold text-[var(--text-primary)]">
+                                      {lastImportedHaloItems.length > 0
+                                        ? `${importPsaLabel} data imported`
+                                        : "Long notes loaded"}
+                                    </p>
+                                    <p className="mt-1 text-[length:var(--t-body-sm)] text-[var(--text-secondary)]">
+                                      {lastImportedHaloItems.length > 0
+                                        ? `${lastImportedHaloItems.length} ${lastImportedHaloItems.length === 1 ? "item" : "items"}`
+                                        : null}
+                                      {lastImportedHaloItems.length > 0 &&
+                                      lastImportedHaloItems[0]?.clientName?.trim()
+                                        ? ` · ${lastImportedHaloItems[0].clientName.trim()}`
+                                        : null}
+                                    </p>
+                                  </div>
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className={cn("h-9 shrink-0 px-4 text-[13px] font-semibold", focusRing)}
+                                  onClick={() => setIsInputCollapsed(false)}
+                                >
+                                  Edit
+                                </Button>
+                              </div>
+                              {lastInputQuality ? (
+                                lastInputQuality.score === 100 ? (
+                                  <p className="mt-3 flex items-center gap-2 border-t border-[var(--border)] pt-3 text-[12px] font-medium text-green-400">
+                                    ✓ Input quality: Excellent
+                                    <InfoHoverTooltip
+                                      text={INPUT_QUALITY_TOOLTIP_TEXT}
+                                      ariaLabel="About input quality"
+                                    />
+                                  </p>
+                                ) : (
+                                  <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-[var(--border)] pt-3">
+                                    <span
+                                      className={cn(
+                                        "inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium",
+                                        lastInputQuality.score >= 80
+                                          ? "bg-green-500/15 text-green-400"
+                                          : lastInputQuality.score >= 60
+                                            ? "bg-amber-500/15 text-amber-400"
+                                            : "bg-red-500/15 text-red-400",
+                                      )}
+                                    >
+                                      Input quality: {lastInputQuality.score}/100
+                                      <InfoHoverTooltip
+                                        text={INPUT_QUALITY_TOOLTIP_TEXT}
+                                        ariaLabel="About input quality"
+                                      />
+                                    </span>
+                                    {lastInputQuality.reasons.length > 0 ? (
+                                      <span className="min-w-0 flex-1 text-[12px] text-[var(--text-secondary)]">
+                                        {lastInputQuality.reasons.join(" · ")}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                )
+                              ) : null}
+                            </div>
+                            {lastImportedHaloItems.length > 0 ? (
+                              <div className="animate-in fade-in duration-500 my-auto flex min-h-0 flex-1 flex-col items-center justify-center border-t border-b border-white/[0.04] px-2 py-4">
+                                <p className="mb-3 text-[length:var(--t-caption)] font-medium uppercase tracking-wide text-[var(--text-muted)]">
+                                  What happens next
+                                </p>
+                                <div className="flex flex-wrap items-center justify-center gap-3">
+                                  {generateSelectedOutputLabels.map((label) => (
+                                    <span
+                                      key={label}
+                                      className="inline-flex items-center gap-1.5 text-[length:var(--t-body-sm)] text-[var(--text-secondary)]"
+                                    >
+                                      <Check className="size-3.5 shrink-0 text-[var(--accent)]" aria-hidden />
+                                      {label}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+                          </>
+                        ) : (
+                          <div className="relative flex min-h-0 flex-1 flex-col">
+                            {generateManualExpanded ? (
+                              <button
+                                type="button"
+                                className={cn(
+                                  "mb-2 inline-flex items-center gap-1 self-start text-[length:var(--t-body-sm)] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]",
+                                  focusRing,
+                                )}
+                                onClick={() => resetGenerateToEmpty()}
+                              >
+                                <ChevronLeft className="size-3.5 shrink-0" aria-hidden />
+                                Back
+                              </button>
+                            ) : null}
+                            <Textarea
+                              ref={generateInputRef}
+                              value={input}
+                              onChange={(e) => setInput(e.target.value)}
+                              placeholder="Paste ticket notes, project updates, or meeting notes here. Then click Generate Outputs."
+                              rows={16}
+                              maxLength={GENERATION_INPUT_CHAR_LIMIT}
+                              className={cn(
+                                "min-h-[400px] flex-1 resize-y border border-[var(--border)] bg-[var(--bg-secondary)] px-4 py-3 pr-14 pb-8 text-[14px] placeholder:text-[var(--text-muted)] focus-visible:ring-1 focus-visible:ring-[var(--accent)]",
+                                focusRing,
+                              )}
+                              disabled={isGenerating}
+                              aria-label="Project notes input"
+                              onKeyDown={(e) => {
+                                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                                  e.preventDefault();
+                                  void requestFullGeneration();
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              className={cn(
+                                "absolute top-3 right-3 cursor-pointer rounded p-1 text-[var(--text-secondary)] transition-colors hover:bg-white/10 hover:text-white",
+                                input.trim().length > 0
+                                  ? "opacity-100"
+                                  : "pointer-events-none opacity-0",
+                              )}
+                              aria-label="Clear input"
+                              onClick={() => resetGenerateToEmpty()}
+                            >
+                              <X className="size-3.5" aria-hidden />
+                            </button>
+                            <span className="pointer-events-none absolute bottom-2 right-3 text-[11px] text-[var(--text-secondary)] tabular-nums">
+                              {charCount.toLocaleString()} / {GENERATION_INPUT_CHAR_LIMIT.toLocaleString()}
+                            </span>
+                          </div>
+                        )}
+                        <div className="rounded-xl border border-white/[0.06] bg-[var(--surface-1)] p-3">
+                          <label
+                            htmlFor="generate-project-name"
+                            className="mb-1.5 block text-[length:var(--t-label)] font-medium uppercase tracking-wide text-[var(--text-muted)]"
+                          >
+                            Project / Client
+                          </label>
+                          <Input
+                            id="generate-project-name"
+                            value={projectName}
+                            onChange={(e) => setProjectName(e.target.value)}
+                            placeholder="Project name..."
+                            disabled={isGenerating}
+                            aria-label="Project name (optional)"
+                            className={cn(
+                              "h-auto rounded-none border-0 bg-transparent px-0 text-[length:var(--t-body-sm)] font-medium placeholder:text-[var(--text-muted)] focus-visible:ring-0",
+                              focusRing,
+                            )}
+                          />
+                        </div>
+                        {importedFileName ? (
+                          <p className="-mt-2 text-xs text-[var(--text-muted)]">
+                            Imported:{" "}
+                            <span className="font-medium text-[var(--text-secondary)]">{importedFileName}</span>
+                            {importedFileTypeLabel ? (
+                              <>
+                                {" "}
+                                <span className="text-[var(--text-muted)]">({importedFileTypeLabel})</span>
+                              </>
+                            ) : null}
+                          </p>
+                        ) : null}
+                      </div>
                     )}
-                  </div>
+                    {showFirstGenOnboardingTip ? (
+                      <div
+                        className="flex flex-col gap-2 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2.5 text-[13px] sm:flex-row sm:items-start sm:justify-between sm:gap-3"
+                        role="status"
+                      >
+                        <p className="text-[var(--text-secondary)]">
+                          <span className="font-medium text-[var(--text-primary)]">Tip:</span> the more detail in your
+                          notes, the better the output. Include ticket names, owner names, blockers, and any recent
+                          updates for best results.
+                        </p>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 shrink-0 self-end text-[12px] text-[var(--text-muted)] hover:text-[var(--text-primary)] sm:self-start"
+                          onClick={() => {
+                            try {
+                              window.localStorage.setItem(LS_FIRST_GEN_TIP_DISMISSED, "true");
+                            } catch {
+                              /* ignore */
+                            }
+                            setFirstGenTipDismissed(true);
+                          }}
+                        >
+                          Dismiss
+                        </Button>
+                      </div>
+                    ) : null}
+                    {showDemoDataBanner ? (
+                      <DemoBanner
+                        className={
+                          lastInputQuality
+                            ? "border border-amber-500/20 bg-transparent px-3 py-1.5"
+                            : undefined
+                        }
+                        onConnectPSA={() => {
+                          openIntegrationsInConfiguration();
+                          setSettingsOpen(false);
+                          setSidebarOpenMobile(false);
+                        }}
+                      />
+                    ) : null}
+                    {showPro75Warning ? (
+                      <div className="flex items-start justify-between gap-3 rounded-[var(--radius)] border border-amber-500/35 bg-amber-500/10 px-3 py-2.5 text-[13px] text-amber-100">
+                        <p>You&apos;ve used {proMonthlyUsage} of your 200 monthly generations.</p>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 shrink-0 px-2 text-[11px] text-amber-200 hover:bg-amber-500/15 hover:text-amber-100"
+                          onClick={dismissPro75Warning}
+                        >
+                          Dismiss
+                        </Button>
+                      </div>
+                    ) : null}
+                    {showPro90Warning ? (
+                      <div className="flex flex-col gap-2 rounded-[var(--radius)] border border-amber-500/45 bg-amber-500/12 px-3 py-2.5 text-[13px] text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+                        <p>
+                          You&apos;re nearly out of generations this month. Move to Handover for the complete workspace.
+                        </p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-7 shrink-0 bg-amber-500 px-2.5 text-[11px] font-semibold text-white hover:bg-amber-400"
+                          onClick={() => void startCheckout(STRIPE_PRO_MONTHLY_PRICE_ID)}
+                        >
+                          Move to Handover
+                        </Button>
+                      </div>
+                    ) : null}
+                    {showPro100Warning ? (
+                      <div className="flex flex-col gap-2 rounded-[var(--radius)] border border-red-500/45 bg-red-500/12 px-3 py-2.5 text-[13px] text-red-100 sm:flex-row sm:items-center sm:justify-between">
+                        <p>You&apos;ve reached your monthly limit. Move to Handover to continue generating.</p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-7 shrink-0 bg-red-500 px-2.5 text-[11px] font-semibold text-white hover:bg-red-400"
+                          onClick={() => void startCheckout(STRIPE_PRO_MONTHLY_PRICE_ID)}
+                        >
+                          Move to Handover
+                        </Button>
+                      </div>
+                    ) : null}
+                    {privacyMode ? (
+                      <div
+                        className="flex items-center gap-1.5 rounded-[var(--radius)] border border-[rgba(56,189,248,0.2)] px-2.5 py-1.5 text-[11px] text-[var(--accent)]"
+                        style={{ backgroundColor: "rgba(56,189,248,0.06)" }}
+                      >
+                        <Shield className="size-3.5 shrink-0" aria-hidden />
+                        <span>Privacy mode on - generations are not saved to your history.</span>
+                      </div>
+                    ) : null}
+                    {charCount > GENERATION_INPUT_WARN_CHARS && charCount < GENERATION_INPUT_CHAR_LIMIT ? (
+                      <p className="text-[12px] text-[#BA7517]">
+                        Large inputs may reduce output quality. Consider selecting fewer tickets.
+                      </p>
+                    ) : null}
+                    {charCount >= GENERATION_INPUT_CHAR_LIMIT ? (
+                      <p className="text-[12px] text-[#BA7517]">
+                        Large input detected - content will be intelligently compacted before generation. You can still
+                        generate.
+                      </p>
+                    ) : null}
+                    {(generateStartingDataLoaded || generateHasInput || isGenerating) ? (
+                    <div
+                      className={cn(
+                        "mt-auto flex flex-col gap-2 border-t border-[var(--border)] pt-4",
+                        !generateStartingDataLoaded && "mt-6",
+                      )}
+                    >
+                      <Button
+                        id="handover-generate-outputs-btn"
+                        type="button"
+                        size="lg"
+                        className={cn(
+                          "w-full gap-2 rounded-[var(--radius)] bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] px-5 font-semibold text-[#0f172a] transition-all duration-[120ms] ease-in-out",
+                          generateStartingDataLoaded ? "h-12 py-3 text-[14px]" : "py-2.5 text-[13px]",
+                          generateButtonMuted &&
+                            !(isGenerating || isCheckingAuthForGenerate) &&
+                            "cursor-not-allowed opacity-50",
+                          (isGenerating || isCheckingAuthForGenerate) && "opacity-80",
+                          !generateButtonMuted &&
+                            !(isGenerating || isCheckingAuthForGenerate) &&
+                            "hover:brightness-110",
+                          focusRing,
+                        )}
+                        disabled={isGenerating || isCheckingAuthForGenerate}
+                        onClick={() => void requestFullGeneration()}
+                      >
+                        {isCheckingAuthForGenerate ? (
+                          <>
+                            <svg className="size-4 animate-spin" viewBox="0 0 24 24" aria-hidden>
+                              <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="3" fill="none" opacity="0.35" />
+                              <path d="M22 12a10 10 0 0 1-10 10" stroke="white" strokeWidth="3" fill="none" />
+                            </svg>
+                            Checking…
+                          </>
+                        ) : isGenerating ? (
+                          <>
+                            <svg className="size-4 animate-spin" viewBox="0 0 24 24" aria-hidden>
+                              <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="3" fill="none" opacity="0.35" />
+                              <path d="M22 12a10 10 0 0 1-10 10" stroke="white" strokeWidth="3" fill="none" />
+                            </svg>
+                            {generationProgressLabel}
+                          </>
+                        ) : (
+                          <>
+                            <LightningBoltIcon className="text-[#0f172a]" />
+                            Generate Outputs
+                          </>
+                        )}
+                      </Button>
+                      <p className="hidden text-center text-[11px] text-[var(--text-muted)] md:block">
+                        ⌘ + Enter to generate
+                      </p>
+                    </div>
+                    ) : null}
+                  </>
                 ) : null}
+                {!isGenerating && !showGenerateEmptyLayout && !(result && isInputCollapsed) ? (
+                <>
                 {templates.length > 0 ? (
                   <div className="grid gap-2">
                     <label className="text-xs text-muted-foreground">My templates</label>
@@ -15192,35 +16878,35 @@ export default function Home() {
                 {showPro90Warning ? (
                   <div className="flex flex-col gap-2 rounded-[var(--radius)] border border-amber-500/45 bg-amber-500/12 px-3 py-2.5 text-[13px] text-amber-100 sm:flex-row sm:items-center sm:justify-between">
                     <p>
-                      You&apos;re nearly out of generations this month. Upgrade to Team for unlimited generations.
+                      You&apos;re nearly out of generations this month. Move to Handover for the complete workspace.
                     </p>
                     <Button
                       type="button"
                       size="sm"
                       className="h-7 shrink-0 bg-amber-500 px-2.5 text-[11px] font-semibold text-white hover:bg-amber-400"
-                      onClick={() => void startCheckout(STRIPE_TEAM_MONTHLY_PRICE_ID)}
+                      onClick={() => void startCheckout(STRIPE_PRO_MONTHLY_PRICE_ID)}
                     >
-                      Upgrade to Team
+                      Move to Handover
                     </Button>
                   </div>
                 ) : null}
                 {showPro100Warning ? (
                   <div className="flex flex-col gap-2 rounded-[var(--radius)] border border-red-500/45 bg-red-500/12 px-3 py-2.5 text-[13px] text-red-100 sm:flex-row sm:items-center sm:justify-between">
-                    <p>You&apos;ve reached your monthly limit. Upgrade to Team to continue generating.</p>
+                    <p>You&apos;ve reached your monthly limit. Move to Handover to continue generating.</p>
                     <Button
                       type="button"
                       size="sm"
                       className="h-7 shrink-0 bg-red-500 px-2.5 text-[11px] font-semibold text-white hover:bg-red-400"
-                      onClick={() => void startCheckout(STRIPE_TEAM_MONTHLY_PRICE_ID)}
+                      onClick={() => void startCheckout(STRIPE_PRO_MONTHLY_PRICE_ID)}
                     >
-                      Upgrade to Team
+                      Move to Handover
                     </Button>
                   </div>
                 ) : null}
                 {showProTeamRecommendation ? (
                   <div className="flex flex-col gap-2 rounded-[var(--radius)] border border-amber-500/35 bg-amber-500/10 px-3 py-2.5 text-[13px] text-amber-100 sm:flex-row sm:items-center sm:justify-between">
                     <p>
-                      Based on your usage, Team plan would save you hitting limits.
+                      Based on your usage, Growth plan would save you hitting limits.
                     </p>
                     <Button
                       type="button"
@@ -15229,10 +16915,10 @@ export default function Home() {
                       className="h-7 shrink-0 px-2 text-[11px] font-semibold text-amber-200 hover:bg-amber-500/15 hover:text-amber-100"
                       onClick={() => {
                         setShowProTeamRecommendation(false);
-                        void startCheckout(STRIPE_TEAM_MONTHLY_PRICE_ID);
+                        void startCheckout(STRIPE_PRO_MONTHLY_PRICE_ID);
                       }}
                     >
-                      See Team plan →
+                      See Growth plan →
                     </Button>
                   </div>
                 ) : null}
@@ -15251,44 +16937,115 @@ export default function Home() {
                     style={{ backgroundColor: "rgba(56,189,248,0.06)" }}
                   >
                     <Shield className="size-3.5 shrink-0" aria-hidden />
-                    <span>Privacy mode on — generations are not saved to your history.</span>
+                    <span>Privacy mode on - generations are not saved to your history.</span>
                   </div>
                 ) : null}
-                {(lastImportedHaloItems.length > 0 || input.length > 500) && isInputCollapsed ? (
-                  <div className="flex h-14 items-center justify-between gap-3 rounded-[var(--radius)] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-secondary)_70%,var(--bg-primary))] px-3 py-2">
-                    <div className="flex min-w-0 flex-1 items-center gap-2 text-[13px] text-[var(--text-primary)]">
-                      <ClipboardList className="size-4 shrink-0 text-[var(--accent)]" aria-hidden />
+                </>
+                ) : null}
+                {!isGenerating &&
+                !showGenerateEmptyLayout &&
+                (isInputCollapsed &&
+                (result ||
+                  isGenerating ||
+                  lastImportedHaloItems.length > 0 ||
+                  input.length > 500) ? (
+                  <div
+                    className={cn(
+                      "flex items-center justify-between gap-3 rounded-[var(--radius)] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-secondary)_70%,var(--bg-primary))] px-3",
+                      result ? "h-11 py-1" : "h-14 py-2",
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "flex min-w-0 flex-1 items-center gap-2 text-[var(--text-primary)]",
+                        result ? "text-[12px]" : "text-[13px]",
+                      )}
+                    >
+                      <ClipboardList
+                        className={cn("shrink-0 text-[var(--accent)]", result ? "size-3.5" : "size-4")}
+                        aria-hidden
+                      />
                       <span className="min-w-0 truncate">
                         {lastImportedHaloItems.length > 0
-                          ? `${importPsaLabel} data imported — ${lastImportedHaloItems.length} ${lastImportedHaloItems.length === 1 ? "item" : "items"}`
+                          ? `${importPsaLabel} data imported - ${lastImportedHaloItems.length} ${lastImportedHaloItems.length === 1 ? "item" : "items"}`
                           : "Long notes loaded"}{" "}
                         {lastImportedHaloItems.length > 0 && lastImportedHaloItems[0]?.clientName?.trim()
                           ? `· ${lastImportedHaloItems[0].clientName.trim()}`
                           : null}
                       </span>
                     </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className={cn("h-8 shrink-0 px-3", focusRing)}
-                      onClick={() => setIsInputCollapsed(false)}
-                    >
-                      Edit
-                    </Button>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {result ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className={cn(
+                            "h-8 shrink-0 gap-1.5 border-[var(--border)] px-3 text-[13px] font-semibold",
+                            focusRing,
+                          )}
+                          onClick={() => handleNewGeneration()}
+                        >
+                          <Plus className="size-3.5 shrink-0" aria-hidden />
+                          New generation
+                        </Button>
+                      ) : null}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className={cn("h-8 shrink-0 px-3", focusRing)}
+                        onClick={() => setIsInputCollapsed(false)}
+                      >
+                        Edit
+                      </Button>
+                    </div>
                   </div>
                 ) : (
+                  <>
+                    {result ? (
+                      <div className="mb-2 flex justify-end">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className={cn(
+                            "h-9 shrink-0 gap-1.5 border-[var(--border)] px-3 text-[13px] font-semibold",
+                            focusRing,
+                          )}
+                          onClick={() => handleNewGeneration()}
+                        >
+                          <Plus className="size-3.5 shrink-0" aria-hidden />
+                          New generation
+                        </Button>
+                      </div>
+                    ) : null}
+                    {!result && !isGenerating && !input.trim() ? (
+                      <div className="mb-3 flex items-start gap-3 rounded-xl border border-[var(--accent)]/15 bg-[var(--accent)]/[0.04] px-4 py-3">
+                        <div className="mt-0.5 flex size-5 flex-shrink-0 items-center justify-center rounded-full bg-[var(--accent)]/20 text-[10px] font-bold text-[var(--accent)]">
+                          1
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-[12px] font-medium text-white/70">
+                            Import your PSA data or paste notes
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-white/40">
+                            Use the HaloPSA or ConnectWise import buttons above, or paste ticket notes directly into the
+                            box below. Then click Generate.
+                          </p>
+                        </div>
+                      </div>
+                    ) : null}
                   <div className="relative">
                     <Textarea
                       ref={generateInputRef}
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
-                      placeholder="What are you reporting on today? Paste notes or import from your PSA..."
-                      rows={showGenerateEmptyLayout ? 5 : 6}
+                      placeholder="Import your PSA tickets using the buttons above, or paste notes directly. Then select your output types and generate."
+                      rows={6}
                       maxLength={GENERATION_INPUT_CHAR_LIMIT}
                       className={cn(
                         "resize-y border-0 bg-transparent px-0 py-1 pr-14 pb-7 text-[14px] placeholder:text-[var(--text-muted)] focus-visible:ring-0",
-                        showGenerateEmptyLayout ? "min-h-[140px]" : "min-h-[200px]",
+                        "min-h-[200px]",
                         focusRing,
                       )}
                       disabled={isGenerating}
@@ -15317,7 +17074,10 @@ export default function Home() {
                       {charCount.toLocaleString()} / {GENERATION_INPUT_CHAR_LIMIT.toLocaleString()}
                     </span>
                   </div>
-                )}
+                  </>
+                ))}
+                {!isGenerating && !showGenerateEmptyLayout && !(result && isInputCollapsed) ? (
+                <>
                 {charCount > GENERATION_INPUT_WARN_CHARS && charCount < GENERATION_INPUT_CHAR_LIMIT ? (
                   <p className="text-[12px] text-[#BA7517]">
                     Large inputs may reduce output quality. Consider selecting fewer tickets.
@@ -15328,30 +17088,6 @@ export default function Home() {
                     Large input detected - content will be intelligently compacted before generation. You can still
                     generate.
                   </p>
-                ) : null}
-                {Boolean(userEmail) && !hasProAccess && trialInfo?.active ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[12px] text-[var(--text-muted)]">
-                      Trial: {trialInfo.used}/10
-                    </span>
-                    <div
-                      className="h-[3px] min-w-[120px] flex-1 overflow-hidden rounded-full bg-[var(--border)] sm:max-w-[200px]"
-                      aria-hidden
-                    >
-                      <div
-                        className="h-full rounded-full transition-all duration-300"
-                        style={{
-                          width: `${Math.min(100, (trialInfo.used / 10) * 100)}%`,
-                          background:
-                            trialInfo.used >= 9
-                              ? "#D85A30"
-                              : trialInfo.used >= 7
-                                ? "#BA7517"
-                                : "var(--accent)",
-                        }}
-                      />
-                    </div>
-                  </div>
                 ) : null}
                 <div className="mt-1 flex flex-col gap-2 border-t border-[var(--border)] pt-3">
                   <Button
@@ -15388,7 +17124,10 @@ export default function Home() {
                         {generationProgressLabel}
                       </>
                     ) : (
-                      "Generate Outputs"
+                      <>
+                        <LightningBoltIcon className="text-[#0f172a]" />
+                        Generate Outputs
+                      </>
                     )}
                   </Button>
                   <p className="hidden text-center text-[11px] text-[var(--text-muted)] md:block">
@@ -15405,38 +17144,8 @@ export default function Home() {
                     </Link>
                   </span>
                 </div>
-                {Boolean(userEmail) && !hasProAccess && trialInfo?.active ? (
-                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--text-muted)]">
-                    <span className="tabular">
-                      Trial ends{" "}
-                      {new Date(trialInfo.endsAt).toLocaleDateString("en-GB", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })}{" "}
-                      · After trial: Basic plan limits apply
-                    </span>
-                    <button
-                      type="button"
-                      className={cn("text-[var(--accent)] transition-colors hover:underline", focusRing)}
-                      onClick={() => setHeaderUpgradeOpen(true)}
-                    >
-                      Upgrade for unlimited →
-                    </button>
-                  </div>
-                ) : null}
                 {Boolean(userEmail) &&
                 !hasProAccess &&
-                trialInfo?.active &&
-                trialInfo.remaining <= 2 ? (
-                  <p className="tabular text-[12px] font-medium text-[#D85A30]">
-                    Only {trialInfo.remaining} trial generation
-                    {trialInfo.remaining === 1 ? "" : "s"} left
-                  </p>
-                ) : null}
-                {Boolean(userEmail) &&
-                !hasProAccess &&
-                !trialInfo &&
                 monthCount !== null &&
                 freeGenUsage ? (
                   <div
@@ -15502,7 +17211,8 @@ export default function Home() {
                           Generation failed
                         </p>
                         <p className="text-sm text-[var(--danger)]/90">
-                          Something went wrong. Please try again.
+                          This is usually a temporary issue - your input has been saved. Try again
+                          and it should work.
                         </p>
                         <Button
                           type="button"
@@ -15517,6 +17227,8 @@ export default function Home() {
                     </div>
                   </div>
                 ) : null}
+                </>
+                ) : null}
               </div>
           </section>
             </div>
@@ -15527,18 +17239,6 @@ export default function Home() {
         )
         )}
 
-        {isGenerating &&
-        !(userEmail &&
-          (mainView === "overview" ||
-            mainView === "changelog" ||
-            mainView === "configuration" ||
-            mainView === "scheduled" ||
-            mainView === "delivery" ||
-            mainView === "reports" ||
-            mainView === "organisation")) ? (
-          <ResultsSkeleton />
-        ) : null}
-
         {!isGenerating &&
         result &&
         !(userEmail &&
@@ -15548,20 +17248,22 @@ export default function Home() {
             mainView === "scheduled" ||
             mainView === "delivery" ||
             mainView === "reports" ||
-            mainView === "organisation")) ? (
+            mainView === "organisation" ||
+            mainView === "client-intelligence" ||
+            mainView === "approvals")) ? (
           <div
             ref={outputRef}
             className={cn(
-              signedOutCompactMode ? "mt-0 animate-in fade-in slide-in-from-right-4 duration-300" : "mt-8",
+              signedOutCompactMode ? "mt-0 animate-in fade-in duration-500" : "mt-8 animate-in fade-in duration-500",
               "relative flex flex-col rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] pt-2 pb-3",
               userEmail &&
                 result &&
                 mainView === "generate" &&
-                "max-h-[calc(100vh-5.5rem)] min-h-0 overflow-visible",
+                "mt-2 min-h-0 flex-1 overflow-hidden",
               signedOutCompactMode &&
                 result &&
-                "max-h-[calc(100vh-5.5rem)] min-h-0 overflow-visible",
-              "shadow-[0_0_0_1px_color-mix(in_srgb,var(--border)_40%,transparent),6px_0_42px_-22px_color-mix(in_srgb,var(--accent)_16%,transparent)]",
+                "mt-0 min-h-0 flex-1 overflow-hidden",
+              "shadow-[0_0_0_1px_color-mix(in_srgb,var(--border)_40%,transparent),0_0_60px_-10px_color-mix(in_srgb,var(--accent)_25%,transparent)]",
               "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:z-[1] before:h-px before:bg-gradient-to-r before:from-transparent before:via-[color-mix(in_srgb,var(--accent)_48%,transparent)] before:to-transparent before:opacity-[0.85]",
             )}
           >
@@ -15581,6 +17283,7 @@ export default function Home() {
                     onClick={() => {
                       setInput(signedOutInputSnapshot);
                       setResult(null);
+                      setIsInputCollapsed(false);
                       setShowSignUpBanner(false);
                       setIsEditingSignedOutInput(true);
                       setExportLockedPromptOpen(false);
@@ -15601,6 +17304,7 @@ export default function Home() {
                       void requestFullGeneration();
                     }}
                   >
+                    <LightningBoltIcon className="text-white" />
                     Generate again
                   </Button>
                 </div>
@@ -15612,7 +17316,7 @@ export default function Home() {
                 role="status"
               >
                 <p className="min-w-0 text-[12px] text-[var(--text-secondary)]">
-                  Showing your last report —{" "}
+                  Showing your last report  - {" "}
                   <span className="font-semibold text-[var(--text-primary)]">
                     {(
                       lastSessionRestoreBannerProject.project_name ||
@@ -15653,24 +17357,16 @@ export default function Home() {
                 </div>
               </div>
             ) : null}
-            <Tabs
-              value={outputMainTab}
-              onValueChange={setOutputMainTab}
-              className={cn(
-                "flex w-full flex-col gap-0",
-                userEmail &&
-                  result &&
-                  mainView === "generate" &&
-                  "min-h-0 flex-1 overflow-hidden",
-                signedOutCompactMode && result && "min-h-0 flex-1 overflow-hidden",
-              )}
-            >
-            {userEmail && result ? (
+            <div className="flex-shrink-0">
+            {userEmail && (result || lastInputQuality) ? (
               <div className="mb-4 shrink-0 px-3 pt-1">
-                <p className="mb-2 text-[12px] font-medium tracking-normal text-[var(--text-secondary)]">
-                  Send or save your report
-                </p>
+                {result ? (
+                  <p className="mb-2 text-[12px] font-medium tracking-normal text-[var(--text-secondary)]">
+                    Send or save your report
+                  </p>
+                ) : null}
                 <div className="overflow-hidden rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)]">
+                  {result ? (
                   <div className="flex flex-wrap gap-2 p-3">
                     <button
                       type="button"
@@ -15742,18 +17438,74 @@ export default function Home() {
                         {followUpLoading ? "Generating..." : "Follow up email"}
                       </button>
                     ) : null}
+                    {smartActionsEligible ? (
+                      <button
+                        type="button"
+                        onClick={() => setSmartActionsOpen(true)}
+                        className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-transparent px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition-all duration-150 hover:border-[var(--accent)]/30 hover:text-[var(--accent)]"
+                      >
+                        <Zap className="size-3.5" />
+                        Smart Actions
+                      </button>
+                    ) : null}
                   </div>
+                  ) : null}
+                  {lastInputQuality && !result ? (
+                    lastInputQuality.score === 100 ? (
+                      <p className="flex items-center gap-3 border-t border-[var(--border)] px-4 py-2 text-[11px] font-medium text-green-400">
+                        ✓ Input quality: Excellent
+                        <InfoHoverTooltip
+                          text={INPUT_QUALITY_TOOLTIP_TEXT}
+                          ariaLabel="About input quality"
+                        />
+                      </p>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-3 border-t border-[var(--border)] px-4 py-2">
+                        <span
+                          className={cn(
+                            "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium",
+                            lastInputQuality.score >= 80
+                              ? "bg-green-500/15 text-green-400"
+                              : lastInputQuality.score >= 60
+                                ? "bg-amber-500/15 text-amber-400"
+                                : "bg-red-500/15 text-red-400",
+                          )}
+                        >
+                          Input quality: {lastInputQuality.score}/100
+                          <InfoHoverTooltip
+                            text={INPUT_QUALITY_TOOLTIP_TEXT}
+                            ariaLabel="About input quality"
+                          />
+                        </span>
+                        {lastInputQuality.reasons.length > 0 ? (
+                          <span className="min-w-0 flex-1 text-[11px] text-[var(--text-secondary)]">
+                            {lastInputQuality.reasons.join(" · ")}
+                          </span>
+                        ) : null}
+                      </div>
+                    )
+                  ) : null}
                   {reportQuality ? (
                     reportQuality.score === 100 ? (
-                      <p className="flex items-center gap-3 border-t border-[var(--border)] px-4 py-2 text-[11px] font-medium text-green-400">
+                      <p
+                        data-tour="report-quality-badge"
+                        className="flex items-center gap-3 border-t border-[var(--border)] px-4 py-2 text-[11px] font-medium text-green-400"
+                      >
                         ✓ Report quality: Excellent
+                        <InfoHoverTooltip
+                          text={REPORT_QUALITY_TOOLTIP_TEXT}
+                          ariaLabel="About report quality"
+                        />
                       </p>
                     ) : (
                       <>
-                        <div className="flex flex-wrap items-center gap-3 border-t border-[var(--border)] px-4 py-2">
+                        <div
+                          data-tour="report-quality-badge"
+                          className="flex flex-wrap items-center gap-3 border-t border-[var(--border)] px-4 py-2"
+                        >
                           <span
                             className={cn(
-                              "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium",
+                              "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium",
                               reportQuality.score >= 80
                                 ? "bg-green-500/15 text-green-400"
                                 : reportQuality.score >= 60
@@ -15762,6 +17514,10 @@ export default function Home() {
                             )}
                           >
                             Quality: {reportQuality.score}/100
+                            <InfoHoverTooltip
+                              text={REPORT_QUALITY_TOOLTIP_TEXT}
+                              ariaLabel="About report quality"
+                            />
                           </span>
                           {reportQuality.issues.length > 0 ? (
                             <span className="min-w-0 flex-1 text-[11px] text-[var(--text-secondary)]">
@@ -15789,6 +17545,45 @@ export default function Home() {
                 </div>
               </div>
             ) : null}
+            {showTimeSaved && lastGenDurationMs ? (
+              <div className="animate-in fade-in slide-in-from-top-2 duration-500 mx-4 mt-3 flex items-center gap-3 rounded-xl border border-green-500/20 bg-green-500/[0.06] px-4 py-2.5">
+                <div className="size-1.5 flex-shrink-0 rounded-full bg-green-400" />
+                <p className="text-[12px] text-green-300/90">
+                  Generated in {(lastGenDurationMs / 1000).toFixed(0)}s. Manual
+                  equivalent: roughly{" "}
+                  {Math.max(
+                    1,
+                    Math.round(
+                      (result?.actions?.length ?? 5) * 0.4 +
+                        (result?.risks?.length ?? 3) * 0.3 +
+                        1.5,
+                    ),
+                  )}
+                  h of PM time.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowTimeSaved(false)}
+                  className="ml-auto text-[11px] text-green-400/50 transition-colors hover:text-green-400/80"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : null}
+            </div>
+            <Tabs
+              data-tour="output-tabs-region"
+              value={outputMainTab}
+              onValueChange={setOutputMainTab}
+              className={cn(
+                "flex w-full flex-col gap-0",
+                userEmail &&
+                  result &&
+                  mainView === "generate" &&
+                  "min-h-0 flex-1 overflow-hidden",
+                signedOutCompactMode && result && "min-h-0 flex-1 overflow-hidden",
+              )}
+            >
             <div className="shrink-0 border-b border-[var(--border)] bg-[var(--bg-primary)] px-3 pt-2 md:hidden">
               <label htmlFor="output-main-tab-select" className="sr-only">
                 Output section
@@ -15814,24 +17609,11 @@ export default function Home() {
                     {EXTENDED_PM_TAB_LABELS[key]}
                   </option>
                 ))}
+                {hasPreviousReport ? (
+                  <option value="compare">What changed</option>
+                ) : null}
               </select>
             </div>
-            {smartActionsEligible ? (
-              <div className="flex shrink-0 justify-end border-b border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 md:hidden">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className={cn(
-                    "h-8 shrink-0 gap-1 whitespace-nowrap rounded-[var(--radius)] border-[var(--border)] px-2.5 text-[11px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-primary)]",
-                    focusRing,
-                  )}
-                  onClick={() => setSmartActionsOpen(true)}
-                >
-                  <CyanBoltIcon /> Smart Actions
-                </Button>
-              </div>
-            ) : null}
             <div className="relative hidden shrink-0 items-stretch border-b border-[var(--border)] bg-[var(--bg-primary)] md:flex">
               <button
                 type="button"
@@ -15868,12 +17650,13 @@ export default function Home() {
                   />
                   <TabsList
                     variant="line"
-                    className="relative z-0 flex !h-auto w-max min-w-0 shrink-0 flex-nowrap items-end gap-4 rounded-none border-0 bg-transparent p-0 px-3 pt-2 shadow-none"
+                    className="relative z-0 flex !h-auto w-max min-w-0 shrink-0 animate-in fade-in slide-in-from-bottom-2 duration-500 flex-nowrap items-end gap-4 rounded-none border-0 bg-transparent p-0 px-3 pt-2 shadow-none"
                   >
                     {visibleCoreTabsList.map((key) => (
                       <TabsTrigger
                         key={key}
                         value={key}
+                        data-tour={`output-tab-${key}`}
                         className={cn(
                           "inline-flex items-center",
                           OUTPUT_SEGMENT_TRIGGER_CLASS,
@@ -15911,6 +17694,22 @@ export default function Home() {
                         {EXTENDED_PM_TAB_LABELS[key]}
                       </TabsTrigger>
                     ))}
+                    {hasPreviousReport ? (
+                      <TabsTrigger
+                        value="compare"
+                        className={cn(
+                          "inline-flex items-center",
+                          OUTPUT_SEGMENT_TRIGGER_CLASS,
+                          focusRing,
+                        )}
+                      >
+                        <BarChart2 className="mr-1.5 size-3" />
+                        What changed
+                        {compareLoading ? (
+                          <div className="ml-1.5 size-2.5 animate-spin rounded-full border border-current border-t-transparent" />
+                        ) : null}
+                      </TabsTrigger>
+                    ) : null}
                   </TabsList>
                 </div>
               </div>
@@ -15928,25 +17727,142 @@ export default function Home() {
               >
                 <ChevronRight className="size-5" aria-hidden />
               </button>
-              {smartActionsEligible ? (
-                <div className="flex shrink-0 items-end border-l border-[var(--border)] bg-[var(--bg-primary)] px-2 pb-2 pt-1">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className={cn(
-                      "h-8 shrink-0 gap-1 whitespace-nowrap rounded-[var(--radius)] border-[var(--border)] px-2.5 text-[11px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-primary)]",
-                      focusRing,
-                    )}
-                    onClick={() => setSmartActionsOpen(true)}
-                  >
-                    <CyanBoltIcon /> Smart Actions
-                  </Button>
-                </div>
-              ) : null}
             </div>
 
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+            <div className="flex min-h-0 flex-1 flex-col overflow-visible md:overflow-y-auto">
+            {hasPreviousReport ? (
+            <TabsContent value="compare" className="flex-1 min-h-0">
+              <div className="space-y-4 p-4">
+                {compareLoading ? (
+                  <div className="flex items-center justify-center gap-3 py-12">
+                    <div className="size-5 animate-spin rounded-full border-2 border-white/20 border-t-[var(--accent)]" />
+                    <p className="text-[13px] text-[var(--text-muted)]">
+                      Comparing with previous report...
+                    </p>
+                  </div>
+                ) : compareResult ? (
+                  <div className="space-y-4">
+                    {stagedCompareExample ? (
+                      <p className="text-[12px] text-[var(--text-muted)]">
+                        Example comparison — real reports compare against your previous report
+                        automatically
+                      </p>
+                    ) : null}
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={cn(
+                          "rounded-full px-3 py-1 text-[12px] font-semibold uppercase tracking-wide",
+                          compareResult.trend === "improving"
+                            ? "bg-green-500/10 text-green-400"
+                            : compareResult.trend === "worsening"
+                              ? "bg-red-500/10 text-red-400"
+                              : "bg-white/[0.06] text-white/50",
+                        )}
+                      >
+                        {compareResult.trend === "improving"
+                          ? "↑ Improving"
+                          : compareResult.trend === "worsening"
+                            ? "↓ Worsening"
+                            : "→ Stable"}
+                      </span>
+                      <p className="text-[13px] text-[var(--text-secondary)]">
+                        {compareResult.trend_justification}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] p-4">
+                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                        What changed
+                      </p>
+                      <p className="text-[13px] leading-relaxed text-[var(--text-secondary)]">
+                        {compareResult.what_changed}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      {compareResult.resolved.length > 0 && (
+                        <div className="rounded-xl border border-green-500/15 bg-green-500/[0.04] p-4">
+                          <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-green-400">
+                            Resolved ({compareResult.resolved.length})
+                          </p>
+                          <ul className="space-y-2">
+                            {compareResult.resolved.map((item, i) => (
+                              <li
+                                key={i}
+                                className="flex items-start gap-2 text-[12px] text-white/70"
+                              >
+                                <span className="mt-0.5 flex-shrink-0 font-bold text-green-400">
+                                  ✓
+                                </span>
+                                {item}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {compareResult.new_items.length > 0 && (
+                        <div className="rounded-xl border border-[var(--accent)]/15 bg-[var(--accent)]/[0.04] p-4">
+                          <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--accent)]">
+                            New ({compareResult.new_items.length})
+                          </p>
+                          <ul className="space-y-2">
+                            {compareResult.new_items.map((item, i) => (
+                              <li
+                                key={i}
+                                className="flex items-start gap-2 text-[12px] text-white/70"
+                              >
+                                <span className="mt-0.5 flex-shrink-0 font-bold text-[var(--accent)]">
+                                  +
+                                </span>
+                                {item}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {compareResult.still_open.length > 0 && (
+                        <div className="rounded-xl border border-amber-500/15 bg-amber-500/[0.04] p-4">
+                          <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-amber-400">
+                            Ongoing ({compareResult.still_open.length})
+                          </p>
+                          <ul className="space-y-2">
+                            {compareResult.still_open.map((item, i) => (
+                              <li
+                                key={i}
+                                className="flex items-start gap-2 text-[12px] text-white/70"
+                              >
+                                <span className="mt-0.5 flex-shrink-0 font-bold text-amber-400">
+                                  →
+                                </span>
+                                {item}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center gap-3 py-12">
+                    <BarChart2 className="size-8 text-[var(--accent)] opacity-40" />
+                    <p className="max-w-xs text-center text-[13px] text-[var(--text-muted)]">
+                      Compare this report with the previous one to see what was resolved, what is
+                      new, and what is still ongoing.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void loadCompare()}
+                      className="rounded-lg bg-[var(--accent)] px-4 py-2 text-[12px] font-semibold text-[#06091a] transition-all hover:scale-[1.02]"
+                    >
+                      Generate comparison
+                    </button>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+            ) : null}
             {visibleCoreTabsList.includes("actions") ? (
             <TabsContent value="actions" className={OUTPUT_TAB_PANEL_CLASS}>
               <div className={OUTPUT_TAB_CONTENT_SHELL}>
@@ -15998,11 +17914,15 @@ export default function Home() {
                           <TableRow
                             key={idx}
                             className={cn(
-                              "border-[var(--border)] transition-colors duration-150",
+                              "border-[var(--border)] transition-colors duration-150 animate-in fade-in slide-in-from-bottom-1 duration-300",
                               idx % 2 === 1 && "bg-white/[0.02]",
                               idx !== result.actions.length - 1 &&
                                 "border-b",
                             )}
+                            style={{
+                              animationDelay: `${idx * 40}ms`,
+                              animationFillMode: "both",
+                            }}
                           >
                             <TableCell className="max-w-md whitespace-normal px-2.5 py-1.5 text-[13px] font-medium leading-snug text-[var(--text-primary)]">
                               {editingActionRow === idx ? (
@@ -16086,7 +18006,7 @@ export default function Home() {
                                   {(row.due_date ?? "").trim() ? (
                                     <span>{row.due_date}</span>
                                   ) : (
-                                    <span className="text-[var(--text-secondary)]">—</span>
+                                    <span className="text-[var(--text-secondary)]"> - </span>
                                   )}
                                   <Edit2
                                     className="size-3 shrink-0 text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100"
@@ -16230,10 +18150,14 @@ export default function Home() {
                           <TableRow
                             key={idx}
                             className={cn(
-                              "border-[var(--border)] transition-colors duration-150",
+                              "border-[var(--border)] transition-colors duration-150 animate-in fade-in slide-in-from-bottom-1 duration-300",
                               idx % 2 === 1 && "bg-white/[0.02]",
                               idx !== result.risks.length - 1 && "border-b",
                             )}
+                            style={{
+                              animationDelay: `${idx * 40}ms`,
+                              animationFillMode: "both",
+                            }}
                           >
                             <TableCell className="max-w-xs whitespace-normal px-2.5 py-1.5 text-[13px] leading-snug text-[var(--text-primary)]">
                               {editingRiskRow === idx ? (
@@ -16500,7 +18424,7 @@ export default function Home() {
                         disabled={!userEmail}
                         title={
                           userEmail
-                            ? "Send this email from noreply@gethandover.uk"
+                            ? "Send this email from hello@gethandover.uk"
                             : "Sign in to send email"
                         }
                         onClick={() => setSendClientEmailModalOpen(true)}
@@ -16821,7 +18745,7 @@ export default function Home() {
                             >
                               <p className="mb-2 text-[12px] font-medium text-[var(--accent)]">
                                 {section.title}
-                                {section.client ? ` — ${section.client}` : ""}
+                                {section.client ? ` - ${section.client}` : ""}
                               </p>
                               <button
                                 type="button"
@@ -16964,6 +18888,33 @@ export default function Home() {
             ))}
 
             </div>
+          </Tabs>
+
+            {result && !isGenerating && savedGenerationId && !generationRating ? (
+              <div className="flex shrink-0 animate-in fade-in items-center gap-3 border-t border-[var(--border)] px-4 py-3 duration-300">
+                <span className="text-[11px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
+                  Rate this output
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => void rateGeneration(savedGenerationId, "positive")}
+                    className="flex items-center gap-1 rounded-lg border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-[12px] font-medium text-white/40 transition-all duration-150 hover:bg-white/[0.07] hover:text-white/70"
+                  >
+                    <ThumbsUp className="size-3" />
+                    <span>Good</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void rateGeneration(savedGenerationId, "negative")}
+                    className="flex items-center gap-1 rounded-lg border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-[12px] font-medium text-white/40 transition-all duration-150 hover:bg-white/[0.07] hover:text-white/70"
+                  >
+                    <ThumbsDown className="size-3" />
+                    <span>Needs work</span>
+                  </button>
+                </div>
+              </div>
+            ) : null}
 
             {result &&
             mainView !== "overview" &&
@@ -17015,7 +18966,7 @@ export default function Home() {
                   </Button>
                 </div>
                 <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">
-                  {userEmail && isEnterprisePlanUser && portalSlug.trim() && sharePortalClientId ? (
+                  {userEmail && hasPortalPlanAccess && portalSlug.trim() && sharePortalClientId ? (
                     <Button
                       type="button"
                       variant="outline"
@@ -17033,7 +18984,6 @@ export default function Home() {
                 </div>
               </div>
             ) : null}
-          </Tabs>
             {userEmail && showPostGenReferralFooter ? (
               <div className="flex items-center justify-between gap-3 border-t border-[var(--border)] bg-[var(--bg-secondary)]/40 px-4 py-2">
                 <p className="min-w-0 text-[11px] leading-snug text-[var(--text-muted)]">
@@ -17041,7 +18991,7 @@ export default function Home() {
                     href="/referral"
                     className="text-[var(--text-secondary)] underline-offset-2 transition-colors hover:text-[var(--text-primary)] hover:underline"
                   >
-                    Refer a colleague → get 3 months free
+                    Refer a colleague → earn 1 month free (£79 credit)
                   </Link>
                 </p>
                 <button
@@ -17073,7 +19023,7 @@ export default function Home() {
               >
                 <p className="min-w-0 text-[13px] leading-snug text-[var(--text-secondary)]">
                   Want scheduled reports and HaloPSA push-back?{" "}
-                  <span className="text-[var(--text-primary)]">Available on Pro.</span>
+                  <span className="text-[var(--text-primary)]">Available on Growth and above.</span>
                 </p>
                 <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
                   <Button
@@ -17086,7 +19036,7 @@ export default function Home() {
                       setHeaderUpgradeOpen(true);
                     }}
                   >
-                    View Pro
+                    Upgrade
                   </Button>
                   <button
                     type="button"
@@ -17110,7 +19060,7 @@ export default function Home() {
                 <p className="text-[13px] text-[var(--text-secondary)]">
                   Sign up free to save your results
                 </p>
-                <Link href="/auth?tab=signup&returnTo=/welcome" className="inline-flex shrink-0">
+                <Link href="/onboarding/connect" className="inline-flex shrink-0">
                   <Button
                     type="button"
                     className="h-10 rounded-[var(--radius)] bg-[var(--accent)] px-5 text-[13px] font-semibold text-white hover:bg-[var(--accent-hover)]"
@@ -17125,10 +19075,11 @@ export default function Home() {
 
       </div>
       </div>
-        </>
+      </div>
+        </div>
       ) : null}
       {!showLeftSidebar ? <MarketingFooter /> : null}
-      {plan === "enterprise" ? (
+      {hasPortalPlanAccess ? (
         <EnterprisePortalOnboarding
           open={
             onboardingOverlayOpen &&
@@ -17148,6 +19099,20 @@ export default function Home() {
           }
           isTrial={!!trialEndsAt}
           welcomeFirstName={onboardingWelcomeFirst}
+          firstName={profileFirstName}
+          setFirstName={setProfileFirstName}
+          lastName={profileLastName}
+          setLastName={setProfileLastName}
+          jobTitle={profileJobTitle}
+          setJobTitle={setProfileJobTitle}
+          companyName={profileCompanyName}
+          setCompanyName={setProfileCompanyName}
+          outputLanguage={profileOutputLanguage}
+          setOutputLanguage={setProfileOutputLanguage}
+          onSaveProfile={async () => {
+            const ok = await saveOnboardingProfileStep();
+            if (!ok) throw new Error("profile save failed");
+          }}
           haloUrl={haloUrl}
           setHaloUrl={setHaloUrl}
           haloTenant={haloTenant}
@@ -17163,6 +19128,7 @@ export default function Home() {
           onComplete={(choice) => {
             void (async () => {
               await markOnboardingComplete();
+              const confetti = (await import("canvas-confetti")).default;
               confetti({
                 particleCount: 100,
                 spread: 70,
@@ -17224,25 +19190,7 @@ export default function Home() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {isGenerating ? (
-        <div
-          className="fixed inset-x-0 bottom-0 z-[160] border-t border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-primary)_96%,var(--bg-secondary))] px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm"
-          role="status"
-          aria-live="polite"
-          aria-label="Generation in progress"
-        >
-          <p className="text-center text-[13px] font-medium text-[var(--text-primary)]">Generating your report…</p>
-          <p className="mt-1 text-center text-[12px] text-[var(--text-secondary)]">{GEN_PROGRESS_MESSAGES[genProgressMsgIx]}</p>
-          <div className="mx-auto mt-2 h-1.5 max-w-md overflow-hidden rounded-full bg-[var(--border)]">
-            <div
-              className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-500 ease-out"
-              style={{
-                width: `${((genProgressMsgIx + 1) / GEN_PROGRESS_MESSAGES.length) * 100}%`,
-              }}
-            />
-          </div>
-        </div>
-      ) : null}
+      {userEmail && mainView === "generate" ? <HandoverTourDevTrigger /> : null}
     </motion.div>
   );
 }

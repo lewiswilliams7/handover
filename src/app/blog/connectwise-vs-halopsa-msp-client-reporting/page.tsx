@@ -37,10 +37,9 @@ export const metadata: Metadata = {
     authors: [post.author],
     images: [
       {
-        url: "/og-image.png",
+        url: "https://gethandover.uk/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "Handover - MSP delivery tool",
       },
     ],
   },
@@ -50,7 +49,7 @@ export const metadata: Metadata = {
       "ConnectWise vs HaloPSA for MSP Client Reporting: Which Gives You Better Data?",
     description:
       "Comparing ConnectWise Manage and HaloPSA for MSP client reporting. Which PSA gives you better ticket data, project visibility, and automated report generation?",
-    images: ["/og-image.png"],
+    images: ["https://gethandover.uk/opengraph-image"],
   },
 };
 
@@ -106,7 +105,7 @@ export default function ConnectWiseVsHalopsaMspClientReportingPage() {
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               If you run a managed service provider, your PSA is the single source of truth for
               everything your team does. But when it comes to turning that data into client-facing
-              reports, ConnectWise Manage and HaloPSA take very different approaches — and the gap
+              reports, ConnectWise Manage and HaloPSA take very different approaches - and the gap
               matters more than most MSPs realise.
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
@@ -124,19 +123,19 @@ export default function ConnectWiseVsHalopsaMspClientReportingPage() {
             </p>
             <ul className="mb-5 list-disc pl-6 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               <li>
-                <strong className="text-[var(--text-primary)]">Ticket data</strong> — summaries,
+                <strong className="text-[var(--text-primary)]">Ticket data</strong> - summaries,
                 status, resolution notes, time logged, SLA performance
               </li>
               <li>
-                <strong className="text-[var(--text-primary)]">Project data</strong> — milestones,
+                <strong className="text-[var(--text-primary)]">Project data</strong> - milestones,
                 completion percentage, upcoming work, blockers
               </li>
               <li>
-                <strong className="text-[var(--text-primary)]">Client context</strong> — which work
+                <strong className="text-[var(--text-primary)]">Client context</strong> - which work
                 belongs to which client, with enough detail to be meaningful
               </li>
               <li>
-                <strong className="text-[var(--text-primary)]">Notes and activity</strong> — the
+                <strong className="text-[var(--text-primary)]">Notes and activity</strong> - the
                 narrative behind the numbers, not just the counts
               </li>
             </ul>
@@ -157,7 +156,7 @@ export default function ConnectWiseVsHalopsaMspClientReportingPage() {
               consistently high. HaloPSA&apos;s ticket model captures detailed action notes, time
               entries with per-engineer attribution, and SLA tracking that&apos;s straightforward to
               query. When you pull ticket history from HaloPSA, you get enough context to write a
-              meaningful client update — not just a status code.
+              meaningful client update - not just a status code.
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               <strong className="text-[var(--text-primary)]">Project data</strong> is where HaloPSA
@@ -175,7 +174,7 @@ export default function ConnectWiseVsHalopsaMspClientReportingPage() {
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               <strong className="text-[var(--text-primary)]">The limitation</strong> is that
               HaloPSA&apos;s native reporting module isn&apos;t built for client communication.
-              It&apos;s operational — useful for internal visibility, not polished enough to send to
+              It&apos;s operational - useful for internal visibility, not polished enough to send to
               a customer.
             </p>
 
@@ -194,7 +193,7 @@ export default function ConnectWiseVsHalopsaMspClientReportingPage() {
               <strong className="text-[var(--text-primary)]">Ticket data</strong> is comprehensive
               but requires more interpretation. ConnectWise Manage stores a lot of information per
               ticket, but the data model has evolved over many years and reflects that history.
-              Fields that seem equivalent — like different types of time entries — can mean
+              Fields that seem equivalent - like different types of time entries - can mean
               different things depending on how your team has configured the system.
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
@@ -230,7 +229,7 @@ export default function ConnectWiseVsHalopsaMspClientReportingPage() {
             </p>
             <ul className="mb-5 list-disc pl-6 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               <li>
-                <strong className="text-[var(--text-primary)]">Designed for internal use</strong> —
+                <strong className="text-[var(--text-primary)]">Designed for internal use</strong>  - 
                 raw data tables, not client narratives
               </li>
               <li>
@@ -238,11 +237,11 @@ export default function ConnectWiseVsHalopsaMspClientReportingPage() {
                 report-writing expertise
               </li>
               <li>
-                <strong className="text-[var(--text-primary)]">Time-consuming to produce</strong> —
+                <strong className="text-[var(--text-primary)]">Time-consuming to produce</strong>  - 
                 pulling, formatting, and presenting data manually
               </li>
               <li>
-                <strong className="text-[var(--text-primary)]">Inconsistent in tone</strong> —
+                <strong className="text-[var(--text-primary)]">Inconsistent in tone</strong>  - 
                 they reflect system data, not your team&apos;s voice
               </li>
             </ul>
@@ -262,8 +261,8 @@ export default function ConnectWiseVsHalopsaMspClientReportingPage() {
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               Handover integrates natively with both HaloPSA and ConnectWise Manage. The connection
               pulls live ticket and project data, processes it through AI trained on MSP delivery
-              language, and produces structured outputs — actions, risks, executive summary, status
-              report, client email, and QBR pack — in under a minute.
+              language, and produces structured outputs - actions, risks, executive summary, status
+              report, client email, and QBR pack - in under a minute.
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               The experience is slightly different for each PSA, reflecting the differences above:
@@ -282,7 +281,7 @@ export default function ConnectWiseVsHalopsaMspClientReportingPage() {
               Handover has more context to draw on for clients with complex service histories.
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
-              Both integrations support pushing report notes back to the PSA — so the client
+              Both integrations support pushing report notes back to the PSA - so the client
               communication you generate doesn&apos;t just go to the client, it stays in the ticket
               history where your team can see it.
             </p>
@@ -303,12 +302,12 @@ export default function ConnectWiseVsHalopsaMspClientReportingPage() {
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               The more important question is how you&apos;re getting from PSA data to client report
-              today — and whether that process is taking more engineer time than it should.
+              today - and whether that process is taking more engineer time than it should.
             </p>
 
             <p className="mb-5 text-[16px] italic leading-[1.8] text-[var(--text-secondary)]">
               Handover integrates natively with both HaloPSA and ConnectWise Manage. Connect your
-              PSA and generate your first client report in 30 seconds —{" "}
+              PSA and generate your first client report in 30 seconds  - {" "}
               <Link href="/auth?tab=signup" className="text-[var(--accent)] hover:underline">
                 start your free trial
               </Link>
@@ -342,7 +341,7 @@ export default function ConnectWiseVsHalopsaMspClientReportingPage() {
                 </h3>
                 <p className="mt-2 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
                   Connect HaloPSA or ConnectWise and generate your first client report in 30 seconds
-                  — 14-day free trial, cancel anytime.
+                  - 14-day free trial, cancel anytime.
                 </p>
                 <div className="mt-5">
                   <Link

@@ -32,14 +32,20 @@ export const metadata: Metadata = {
     type: "article",
     publishedTime: post.dateISO,
     authors: [post.author],
-    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "Handover - MSP delivery tool" }],
+    images: [
+      {
+        url: "https://gethandover.uk/opengraph-image",
+        width: 1200,
+        height: 630,
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "HaloPSA and ConnectWise Reporting: Native Tools vs Dedicated Reporting Software",
     description:
       "HaloPSA and ConnectWise have reporting built in - but is it enough for client-facing project delivery? We compare native PSA reporting against dedicated tools and explain when you need both.",
-    images: ["/og-image.png"],
+    images: ["https://gethandover.uk/opengraph-image"],
   },
 };
 
@@ -58,7 +64,7 @@ export default function HaloPsaReportingNativeVsDedicatedToolsPage() {
     datePublished: post.dateISO,
     dateModified: post.dateISO,
     mainEntityOfPage: "https://gethandover.uk/blog/halopsa-reporting-native-vs-dedicated-tools",
-    image: ["https://gethandover.uk/og-image.png"],
+    image: ["https://gethandover.uk/opengraph-image"],
   };
 
   return (

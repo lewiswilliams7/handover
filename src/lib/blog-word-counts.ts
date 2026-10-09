@@ -2,6 +2,11 @@ import { BLOG_POSTS } from "@/lib/blog-data";
 import { countWordsFromHtml, getDynamicArticleHtml } from "@/lib/blog-dynamic-articles-html";
 
 const LEGACY_ARTICLE_WORD_COUNTS: Record<string, number> = {
+  "why-msp-clients-leave": 1450,
+  "msp-raid-log-template": 1350,
+  "msp-qbr-automation-what-gets-generated": 1500,
+  "msp-client-intelligence-account-memory": 1400,
+  "halopsa-manual-reporting-real-cost-msps": 920,
   "connectwise-vs-halopsa-msp-client-reporting": 1450,
   "automate-msp-qbr-preparation": 1650,
   "handover-vs-rewst-vs-n8n-msp-reporting": 750,

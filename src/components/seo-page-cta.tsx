@@ -8,12 +8,12 @@ export function SeoPageCta({ headline }: { headline: string }) {
       <div className="mx-auto max-w-[720px]">
         <h2 className="text-2xl font-bold text-white md:text-3xl">{headline}</h2>
         <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-          <Link href="/auth?tab=signup&returnTo=/welcome">
+          <Link href="/onboarding/connect">
             <Button
               size="lg"
               className="rounded-[var(--radius)] bg-[var(--accent)] px-8 text-white hover:bg-[var(--accent-hover)]"
             >
-              Start 14-day free trial
+              Run the free PSA scan
             </Button>
           </Link>
           <Link href="/demo">
@@ -31,7 +31,6 @@ export function SeoPageCta({ headline }: { headline: string }) {
             </Button>
           </Link>
         </div>
-        <p className="mt-4 text-sm text-[var(--sidebar-text)]">14-day free trial — cancel anytime.</p>
       </div>
     </section>
   );

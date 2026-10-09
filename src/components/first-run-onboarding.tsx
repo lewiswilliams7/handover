@@ -5,11 +5,24 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+const OUTPUT_LANGUAGES = ["English", "French", "Dutch", "German", "Spanish"] as const;
+
 type Props = {
   open: boolean;
   isTrial?: boolean;
   /** First name for welcome line; null → generic welcome */
   welcomeFirstName: string | null;
+  firstName: string;
+  setFirstName: (v: string) => void;
+  lastName: string;
+  setLastName: (v: string) => void;
+  jobTitle: string;
+  setJobTitle: (v: string) => void;
+  companyName: string;
+  setCompanyName: (v: string) => void;
+  outputLanguage: string;
+  setOutputLanguage: (v: string) => void;
+  onSaveProfile: () => Promise<void>;
   haloUrl: string;
   setHaloUrl: (v: string) => void;
   haloTenant: string;
@@ -32,6 +45,17 @@ export function FirstRunOnboardingOverlay({
   open,
   isTrial,
   welcomeFirstName,
+  firstName,
+  setFirstName,
+  lastName,
+  setLastName,
+  jobTitle,
+  setJobTitle,
+  companyName,
+  setCompanyName,
+  outputLanguage,
+  setOutputLanguage,
+  onSaveProfile,
   haloUrl,
   setHaloUrl,
   haloTenant,
@@ -47,12 +71,13 @@ export function FirstRunOnboardingOverlay({
   onComplete,
   onSkipEntirely,
 }: Props) {
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(0);
   const [slide, setSlide] = useState<"in" | "out">("in");
+  const [profileSaving, setProfileSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setStep(1);
+      setStep(0);
       setSlide("in");
     }
   }, [open]);
@@ -67,11 +92,17 @@ export function FirstRunOnboardingOverlay({
     }, 200);
   };
 
+  const profileStepComplete =
+    firstName.trim().length > 0 &&
+    lastName.trim().length > 0 &&
+    jobTitle.trim().length > 0 &&
+    companyName.trim().length > 0;
+
   const haloStepHasInput = Boolean(haloUrl.trim() || haloClientId.trim() || haloClientSecret.trim());
 
   const dots = (
     <div className="mb-6 flex items-center justify-center gap-0">
-      {[1, 2].map((n, i) => (
+      {[0, 1, 2].map((n, i) => (
         <div key={n} className="flex items-center">
           <div
             className={cn(
@@ -80,7 +111,7 @@ export function FirstRunOnboardingOverlay({
             )}
             aria-current={step === n ? "step" : undefined}
           />
-          {i < 1 ? (
+          {i < 2 ? (
             <div
               className="mx-1 h-px w-8 sm:w-12"
               style={{
@@ -99,7 +130,7 @@ export function FirstRunOnboardingOverlay({
 
   return (
     <div
-      className="fixed inset-0 z-[210] flex items-center justify-center overflow-y-auto p-4 py-10"
+      className="fixed inset-0 z-[210] flex items-center justify-center overflow-y-auto overscroll-contain p-4 py-10 md:overscroll-auto"
       style={{
         background: "rgba(0,0,0,0.7)",
         backdropFilter: "blur(8px)",
@@ -129,12 +160,114 @@ export function FirstRunOnboardingOverlay({
 
         {dots}
 
-        {step === 1 ? (
+        {step === 0 ? (
           <>
             <h2
               id="onboard-title"
               className="text-xl font-bold tracking-tight text-[var(--text-primary)] sm:text-2xl"
             >
+              Tell us about yourself
+            </h2>
+            <p className="mt-2 text-[14px] leading-relaxed text-[var(--text-secondary)]">
+              This personalises every report Handover generates - your name and signature appear on all
+              client outputs.
+            </p>
+            <div className="mt-6 space-y-3">
+              <label className="text-[12px] font-medium text-[var(--text-secondary)]">
+                First name
+                <input
+                  className="mt-1 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-[14px] text-[var(--text-primary)]"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  required
+                  autoComplete="given-name"
+                />
+              </label>
+              <label className="text-[12px] font-medium text-[var(--text-secondary)]">
+                Last name
+                <input
+                  className="mt-1 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-[14px] text-[var(--text-primary)]"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  required
+                  autoComplete="family-name"
+                />
+              </label>
+              <label className="text-[12px] font-medium text-[var(--text-secondary)]">
+                Job title
+                <input
+                  className="mt-1 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-[14px] text-[var(--text-primary)]"
+                  value={jobTitle}
+                  onChange={(e) => setJobTitle(e.target.value)}
+                  placeholder="Technical Project Manager"
+                  required
+                  autoComplete="organization-title"
+                />
+              </label>
+              <label className="text-[12px] font-medium text-[var(--text-secondary)]">
+                Company name
+                <input
+                  className="mt-1 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-[14px] text-[var(--text-primary)]"
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  placeholder="Your MSP name"
+                  required
+                  autoComplete="organization"
+                />
+              </label>
+              <label className="text-[12px] font-medium text-[var(--text-secondary)]">
+                Output language
+                <select
+                  className="mt-1 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-[14px] text-[var(--text-primary)]"
+                  value={outputLanguage}
+                  onChange={(e) => setOutputLanguage(e.target.value)}
+                >
+                  {OUTPUT_LANGUAGES.map((lang) => (
+                    <option key={lang} value={lang}>
+                      {lang}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="mt-6 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-4 text-[13px] text-[var(--text-secondary)]">
+              <p className="mb-2 text-[11px] uppercase tracking-wide text-[var(--text-muted)]">
+                Signature preview
+              </p>
+              <p>Kind regards,</p>
+              <p className="font-medium text-[var(--text-primary)]">
+                {firstName.trim() || "\u00a0"} {lastName.trim() || "\u00a0"}
+              </p>
+              <p>{jobTitle.trim() || "\u00a0"}</p>
+              <p>{companyName.trim() || "\u00a0"}</p>
+            </div>
+            <Button
+              type="button"
+              className="mt-6 w-full bg-[var(--accent)] font-semibold text-white hover:bg-[var(--accent-hover)]"
+              disabled={!profileStepComplete || profileSaving}
+              onClick={() =>
+                void (async () => {
+                  if (!profileStepComplete || profileSaving) return;
+                  setProfileSaving(true);
+                  try {
+                    await onSaveProfile();
+                    go(1);
+                  } catch {
+                    /* save failed — stay on step */
+                  } finally {
+                    setProfileSaving(false);
+                  }
+                })()
+              }
+            >
+              {profileSaving ? "Saving…" : "Continue →"}
+            </Button>
+          </>
+        ) : null}
+
+        {step === 1 ? (
+          <>
+            <h2 className="text-xl font-bold tracking-tight text-[var(--text-primary)] sm:text-2xl">
               Connect HaloPSA when you&apos;re ready
             </h2>
             <p className="mt-2 text-[14px] leading-relaxed text-[var(--text-secondary)]">

@@ -46,8 +46,13 @@ export default async function AuthPage({ searchParams }: AuthPageProps) {
   const trialPlan = parseTrialQueryParam(params.trial);
 
   return (
-    <div className="relative min-h-screen animate-in fade-in duration-300 overflow-hidden bg-transparent">
-      <MarketingHeroAmbient />
+    <div
+      className="relative min-h-screen animate-in fade-in duration-300 overflow-hidden bg-[#0f172a]"
+      style={{ background: "var(--bg-primary, #0f172a)" }}
+    >
+      <div className="absolute inset-0 z-0 bg-[#0f172a]">
+        <MarketingHeroAmbient />
+      </div>
       <div className="relative z-[1] mb-4 flex w-full flex-col items-center px-4 pt-10">
         <a
           href="/"

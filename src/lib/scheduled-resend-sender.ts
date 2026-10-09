@@ -29,7 +29,7 @@ export async function fetchScheduledEmailSenderContext(
     const { data: prof } = await supabase
       .from("profiles")
       .select(
-        "company_name, display_name, first_name, last_name, brand_name, brand_colour, brand_secondary_colour, brand_logo_url, plan, white_label_mode",
+        "company_name, display_name, first_name, last_name, brand_name, brand_colour, brand_secondary_colour, brand_logo_url, plan, team_id, trial_ends_at, trial_plan, subscription_status, white_label_mode",
       )
       .eq("id", userId)
       .maybeSingle();

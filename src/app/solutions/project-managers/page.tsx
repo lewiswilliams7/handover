@@ -53,10 +53,10 @@ export default function SolutionsProjectManagersPage() {
             </p>
             <div className="mt-6">
               <Link
-                href="/auth?tab=signup&returnTo=/welcome"
+                href="/onboarding/connect"
                 className="inline-flex items-center rounded-[var(--radius)] bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]"
               >
-                Start your free trial
+                Run the free PSA scan
               </Link>
             </div>
           </div>
@@ -178,8 +178,8 @@ export default function SolutionsProjectManagersPage() {
               Connect HaloPSA or ConnectWise in minutes with no setup project. Select projects, generate your report,
               and send today.
             </p>
-            <Link href="/auth?tab=signup&returnTo=/welcome" className="marketing-page-bottom-cta mt-5 inline-flex items-center">
-              Start your free trial at gethandover.uk
+            <Link href="/onboarding/connect" className="marketing-page-bottom-cta mt-5 inline-flex items-center">
+              Run the free PSA scan
             </Link>
           </section>
           <section className="rounded-[var(--radius-lg)] border border-white/[0.08] border-l-[3px] border-l-[#0EA5E9] bg-white/[0.04] backdrop-blur-sm p-6">

@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { encrypt } from "@/lib/encryption";
+import { trackEvent } from "@/lib/logsnag";
 import { getHaloToken } from "@/lib/halo";
+import { invalidateHaloTokenCache } from "@/lib/halo-token-cache";
+import { normalizeHaloUrlForSubmit } from "@/lib/halo-url";
 import { isProUser } from "@/lib/plans";
 import { createServerClient } from "@/lib/supabase/server";
 
@@ -11,6 +14,10 @@ type ConnectBody = {
   clientId?: string;
   clientSecret?: string;
 };
+
+function maskClientId(value: string): string {
+  return "•".repeat(Math.min(value.length, 16));
+}
 
 function logHaloConnectGetErr(context: string, err: unknown) {
   const e = err as { message?: string; code?: string; details?: string; hint?: string };
@@ -49,6 +56,7 @@ export async function GET() {
 
     let data: {
       halo_url?: string | null;
+      client_id?: string | null;
       updated_at?: string | null;
       auto_closure_summary_enabled?: boolean | null;
       auto_closure_summary?: boolean | null;
@@ -56,7 +64,7 @@ export async function GET() {
 
     const full = await supabase
       .from("halo_connections")
-      .select("halo_url, updated_at, auto_closure_summary_enabled, auto_closure_summary")
+      .select("halo_url, client_id, updated_at, auto_closure_summary_enabled, auto_closure_summary")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -64,7 +72,7 @@ export async function GET() {
       logHaloConnectGetErr("halo_connections select (full) failed", full.error);
       const minimal = await supabase
         .from("halo_connections")
-        .select("halo_url, updated_at")
+        .select("halo_url, client_id, updated_at")
         .eq("user_id", user.id)
         .maybeSingle();
       if (minimal.error) {
@@ -83,6 +91,8 @@ export async function GET() {
         return NextResponse.json({
           connected: true,
           haloUrl: data.halo_url ?? "",
+          clientIdMasked: data.client_id ? maskClientId(data.client_id) : "",
+          clientIdLength: data.client_id?.length ?? 0,
           updatedAt: data.updated_at ?? null,
           autoClosureSummaryEnabled: false,
         });
@@ -98,6 +108,8 @@ export async function GET() {
     return NextResponse.json({
       connected: true,
       haloUrl: data.halo_url,
+      clientIdMasked: data.client_id ? maskClientId(data.client_id) : "",
+      clientIdLength: data.client_id?.length ?? 0,
       updatedAt: data.updated_at,
       autoClosureSummaryEnabled: closureOn,
     });
@@ -127,7 +139,7 @@ export async function POST(req: Request) {
     }
 
     const body = (await req.json()) as ConnectBody;
-    const haloUrl = body.haloUrl?.trim();
+    const haloUrl = typeof body.haloUrl === "string" ? normalizeHaloUrlForSubmit(body.haloUrl) : "";
     const tenant = body.tenant?.trim() || null;
     const clientId = body.clientId?.trim();
     const clientSecret = body.clientSecret?.trim();
@@ -141,6 +153,12 @@ export async function POST(req: Request) {
 
     let token = "";
     try {
+      invalidateHaloTokenCache({
+        haloUrl,
+        tenant,
+        clientId,
+        clientSecret,
+      });
       token = await getHaloToken({ haloUrl, tenant, clientId, clientSecret });
     } catch (e) {
       const message =
@@ -206,6 +224,18 @@ export async function POST(req: Request) {
         "read:tickettype permission not detected - Project tickets tab may not work",
       );
     }
+
+    void trackEvent({
+      channel: "activations",
+      event: "PSA Connected",
+      icon: "🔌",
+      description: `${user.email} connected HaloPSA`,
+      tags: {
+        email: user.email ?? "unknown",
+        psa: "halopsa",
+      },
+      notify: true,
+    });
 
     return NextResponse.json({ success: true, warnings });
   } catch {

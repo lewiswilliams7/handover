@@ -132,7 +132,7 @@ export function SendClientEmailModal({
           <DialogTitle>Send email</DialogTitle>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-5">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5 md:overscroll-auto">
           {sendSuccess ? (
             <div className="flex flex-col items-center justify-center gap-3 py-16">
               <CheckCircle className="size-12 shrink-0 text-green-500" aria-hidden />
@@ -214,7 +214,7 @@ export function SendClientEmailModal({
               />
             </div>
             <p className="text-[11px] leading-snug text-[var(--text-muted)]">
-              This email will be sent from noreply@gethandover.uk - we recommend adding this to
+              This email will be sent from hello@gethandover.uk - we recommend adding this to
               your safe senders list.
             </p>
           </div>

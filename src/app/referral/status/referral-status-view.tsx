@@ -244,12 +244,12 @@ export function ReferralStatusView() {
                 Your free month is active
               </h1>
               <p className="mt-4 text-center text-[15px] leading-relaxed text-[var(--text-secondary)]">
-                Your first month is completely free. You&apos;ll be charged £29 on {renewalLabel}.
+                Your first month is completely free. You&apos;ll be charged £49 on {renewalLabel}.
                 Cancel anytime before then to pay nothing.
               </p>
               <StepsTimeline steps={activeSteps} />
               <p className="mx-auto mt-8 max-w-[440px] text-center text-[13px] leading-relaxed text-[var(--text-muted)]">
-                When your month 2 payment completes, {refName} will earn £87 as a thank you.
+                When your first paid month completes, {refName} will earn £79 credit (1 month free) as a thank you.
               </p>
             </>
           ) : null}

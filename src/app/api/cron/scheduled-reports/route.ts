@@ -66,6 +66,7 @@ type ScheduleRow = {
   send_day?: string | null;
   send_time?: string | null;
   active?: boolean | null;
+  ci_qbr_client_name?: string | null;
 };
 
 function parseScheduleIdArray(raw: unknown): number[] {
@@ -203,6 +204,10 @@ export async function GET(request: Request) {
 
   for (const schedule of due) {
     try {
+      if (schedule.report_type === "ci_qbr" || schedule.ci_qbr_client_name) {
+        continue;
+      }
+
       if (!proIds.has(schedule.user_id)) {
         const allowed = await assertFreeScheduledRunAllowed(supabase, schedule.user_id);
         if (!allowed) {

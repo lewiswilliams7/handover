@@ -1,9 +1,14 @@
 import { BEST_HALOPSA_REPORTING_TOOLS_HTML } from "@/lib/blog-articles/best-halopsa-reporting-tools-html";
 import { BEST_MSP_CLIENT_REPORTING_TOOL_2026_HTML } from "@/lib/blog-articles/best-msp-client-reporting-tool-2026-html";
+import { HALOPSA_REPORTING_WHATS_BUILT_IN_HTML } from "@/lib/blog-articles/halopsa-reporting-whats-built-in-html";
+import { HOW_MSPS_LOSE_CLIENTS_COMMUNICATION_HTML } from "@/lib/blog-articles/how-msps-lose-clients-communication-html";
+import { HOW_TO_WRITE_MSP_WEEKLY_CLIENT_REPORT_HTML } from "@/lib/blog-articles/how-to-write-msp-weekly-client-report-html";
 import { MSP_CLIENT_PORTAL_GUIDE_HTML } from "@/lib/blog-articles/msp-client-portal-guide-html";
 import { MSP_QBR_AUTOMATION_HTML } from "@/lib/blog-articles/msp-qbr-automation-html";
 import { PITCHIT_2026_BUILDING_MSP_SAAS_HTML } from "@/lib/blog-articles/pitchit-2026-building-msp-saas-html";
 import { PITCHIT_2026_HANDOVER_MSP_ACCELERATOR_HTML } from "@/lib/blog-articles/pitchit-2026-handover-msp-accelerator-html";
+import { WHAT_MSPS_TOLD_US_ABOUT_CLIENT_REPORTING_HTML } from "@/lib/blog-articles/what-msps-told-us-about-client-reporting-html";
+import { WHAT_SHOULD_A_QBR_INCLUDE_MSP_TEMPLATE_HTML } from "@/lib/blog-articles/what-should-a-qbr-include-msp-template-html";
 
 export function countWordsFromHtml(html: string): number {
   const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
@@ -134,9 +139,9 @@ const handoverHalopsaMarketplace = `
 <p>The push-back feature in particular closes the full reporting loop in a way that no other tool does for HaloPSA specifically - pull from HaloPSA, generate, push back. The ticket history stays accurate, the client gets a professional update, and the PM reclaims the hours they were spending doing this manually.</p>
 <h2>What's next</h2>
 <p>ConnectWise integration is on the roadmap, which will extend the same workflow to the significant portion of the MSP market running ConnectWise Manage. A ConnectWise waitlist is available at <a href="https://gethandover.uk/integrations">gethandover.uk/integrations</a>.</p>
-<p>Team plans are also now available - allowing MSP delivery teams to share a HaloPSA connection, pool generation allowances, and manage member permissions from a central admin dashboard.</p>
+<p>Growth plans are also now available - allowing MSP delivery teams to share a HaloPSA connection, pool generation allowances, and manage member permissions from a central admin dashboard.</p>
 <h2>Try it</h2>
-<p>Handover offers a 14-day free trial at <a href="https://gethandover.uk">gethandover.uk</a> - 14-day free trial — cancel anytime. Pro plan starts at £29 per month. Team plans from £35 per seat per month.</p>
+<p>Handover offers a 14-day free trial at <a href="https://gethandover.uk">gethandover.uk</a> - 14-day free trial — cancel anytime. Starter plan starts at £49 per month. Growth plan from £99 per month with unlimited users.</p>
 `.trim();
 
 const sapN8nMspAutomation = `
@@ -161,6 +166,10 @@ const sapN8nMspAutomation = `
 `.trim();
 
 export const ARTICLE_HTML: Record<string, string> = {
+  "how-msps-lose-clients-communication": HOW_MSPS_LOSE_CLIENTS_COMMUNICATION_HTML,
+  "how-to-write-msp-weekly-client-report": HOW_TO_WRITE_MSP_WEEKLY_CLIENT_REPORT_HTML,
+  "halopsa-reporting-whats-built-in": HALOPSA_REPORTING_WHATS_BUILT_IN_HTML,
+  "what-should-a-qbr-include-msp-template": WHAT_SHOULD_A_QBR_INCLUDE_MSP_TEMPLATE_HTML,
   "best-msp-client-reporting-tool-2026": BEST_MSP_CLIENT_REPORTING_TOOL_2026_HTML,
   "best-halopsa-reporting-tools": BEST_HALOPSA_REPORTING_TOOLS_HTML,
   "halopsa-client-reporting-automation": halopsaClientReportingAutomation,
@@ -172,6 +181,7 @@ export const ARTICLE_HTML: Record<string, string> = {
   "pitchit-2026-building-msp-saas": PITCHIT_2026_BUILDING_MSP_SAAS_HTML,
   "pitchit-2026-handover-msp-accelerator": PITCHIT_2026_HANDOVER_MSP_ACCELERATOR_HTML,
   "sap-n8n-msp-automation": sapN8nMspAutomation,
+  "what-msps-told-us-about-client-reporting": WHAT_MSPS_TOLD_US_ABOUT_CLIENT_REPORTING_HTML,
 };
 
 export const DYNAMIC_ARTICLE_SLUGS = Object.keys(ARTICLE_HTML);

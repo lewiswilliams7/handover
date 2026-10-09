@@ -32,14 +32,20 @@ export const metadata: Metadata = {
     type: "article",
     publishedTime: post.dateISO,
     authors: [post.author],
-    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "Handover - MSP delivery tool" }],
+    images: [
+      {
+        url: "https://gethandover.uk/opengraph-image",
+        width: 1200,
+        height: 630,
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "What Good MSP Project Delivery Looks Like in 2026",
     description:
       "The bar for MSP project delivery has risen. Here's what separates MSPs with strong client relationships from those still running projects the old way in 2026.",
-    images: ["/og-image.png"],
+    images: ["https://gethandover.uk/opengraph-image"],
   },
 };
 
@@ -58,7 +64,7 @@ export default function GoodMspProjectDelivery2026Page() {
     datePublished: post.dateISO,
     dateModified: post.dateISO,
     mainEntityOfPage: "https://gethandover.uk/blog/good-msp-project-delivery-2026",
-    image: ["https://gethandover.uk/og-image.png"],
+    image: ["https://gethandover.uk/opengraph-image"],
   };
 
   return (
@@ -130,7 +136,7 @@ export default function GoodMspProjectDelivery2026Page() {
               Delivery health is visible in seconds
             </h2>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
-              Senior delivery managers should see project RAG posture at a glance. Handover gives Pro and Team users a live delivery
+              Senior delivery managers should see project RAG posture at a glance. Handover gives Starter and Growth users a live delivery
               dashboard view across active clients and tickets via <Link href="/features">/features</Link>.
             </p>
 

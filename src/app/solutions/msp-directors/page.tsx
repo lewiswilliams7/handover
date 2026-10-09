@@ -43,7 +43,7 @@ export default function SolutionsMspDirectorsPage() {
             </p>
             <div className="mt-6">
               <Link
-                href="/auth?tab=signup&returnTo=/welcome"
+                href="/onboarding/connect"
                 className="inline-flex items-center rounded-[var(--radius)] bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]"
               >
                 See how Handover works for your MSP
@@ -117,7 +117,7 @@ export default function SolutionsMspDirectorsPage() {
               Connect to HaloPSA or ConnectWise with no migration project and no consultancy overhead. If you use both
               PSAs, Handover supports both simultaneously.
             </p>
-            <Link href="/auth?tab=signup&returnTo=/welcome" className="marketing-page-bottom-cta mt-5 inline-flex items-center">
+            <Link href="/onboarding/connect" className="marketing-page-bottom-cta mt-5 inline-flex items-center">
               See how Handover works for your MSP
             </Link>
           </section>

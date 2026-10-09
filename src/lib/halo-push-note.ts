@@ -1,4 +1,5 @@
-import { exportFullReportToBuffer, extractStatusReportSectionForTicket } from "@/lib/export";
+import { extractStatusReportSectionForTicket } from "@/lib/export-parsers";
+import { exportFullReportToBuffer } from "@/lib/export-excel";
 import { partnerReportFileSlug } from "@/lib/white-label";
 
 export type HaloPushNoteTicketResult = {

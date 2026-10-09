@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
 
+import { requireScanDetailsEntitlement } from "@/lib/scan-entitlement";
 import { createServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -16,6 +17,8 @@ export async function POST(req: Request) {
     if (!user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const entitlementError = await requireScanDetailsEntitlement(user.id, supabase);
+    if (entitlementError) return entitlementError;
 
     let body: { prompt?: unknown };
     try {
@@ -39,7 +42,7 @@ export async function POST(req: Request) {
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt.slice(0, MAX_PROMPT_CHARS) }],
       max_tokens: 600,
-      temperature: 0.4,
+      temperature: 0.3,
     });
 
     const content = response.choices[0]?.message?.content?.trim() ?? "";

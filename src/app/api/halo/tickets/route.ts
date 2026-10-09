@@ -44,7 +44,7 @@ export async function POST(req: Request) {
     if (refreshRequested) {
       clearHaloProjectsCache();
       clearHaloTicketsCache();
-      logTicketsRoute("refresh=1 — cleared Halo projects and tickets cache");
+      logTicketsRoute("refresh=1 - cleared Halo projects and tickets cache");
     }
 
     const supabase = await createServerClient();

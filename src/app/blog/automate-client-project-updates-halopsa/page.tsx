@@ -35,10 +35,9 @@ export const metadata: Metadata = {
     authors: [post.author],
     images: [
       {
-        url: "/og-image.png",
+        url: "https://gethandover.uk/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "Handover - MSP delivery tool",
       },
     ],
   },
@@ -47,7 +46,7 @@ export const metadata: Metadata = {
     title: "How MSPs Can Automate Client Project Updates with HaloPSA or ConnectWise",
     description:
       "Learn how MSPs using HaloPSA or ConnectWise can automate client project updates, eliminate manual reformatting, and deliver consistent weekly reports without PM admin overhead.",
-    images: ["/og-image.png"],
+    images: ["https://gethandover.uk/opengraph-image"],
   },
 };
 
@@ -66,7 +65,7 @@ export default function AutomateClientProjectUpdatesHaloPsaPage() {
     datePublished: post.dateISO,
     dateModified: post.dateISO,
     mainEntityOfPage: "https://gethandover.uk/blog/automate-client-project-updates-halopsa",
-    image: ["https://gethandover.uk/og-image.png"],
+    image: ["https://gethandover.uk/opengraph-image"],
   };
 
   return (

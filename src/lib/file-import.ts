@@ -1,8 +1,5 @@
-import mammoth from "mammoth";
-import Papa from "papaparse";
-import * as XLSX from "xlsx";
-
 export async function parseCSVFile(file: File): Promise<string> {
+  const Papa = (await import("papaparse")).default;
   const csvText = await file.text();
   if (!csvText.trim()) {
     throw new Error("The file appears to be empty");
@@ -59,7 +56,11 @@ export function formatImportedFileTypeLabel(
   return "Excel";
 }
 
-function sheetToStructuredText(sheetName: string, ws: XLSX.WorkSheet): string {
+function sheetToStructuredText(
+  sheetName: string,
+  ws: import("xlsx").WorkSheet,
+  XLSX: Awaited<typeof import("xlsx")>,
+): string {
   if (!ws["!ref"]) return "";
   const aoa = XLSX.utils.sheet_to_json<(string | number | boolean | null | undefined)[]>(ws, {
     header: 1,
@@ -87,7 +88,8 @@ function sheetToStructuredText(sheetName: string, ws: XLSX.WorkSheet): string {
 
 /** Reads all sheets from an .xlsx / .xls file into one text block for the model. */
 export async function parseExcelFileToImportText(file: File): Promise<string> {
-  let wb: XLSX.WorkBook;
+  const XLSX = await import("xlsx");
+  let wb: import("xlsx").WorkBook;
   try {
     const buf = await file.arrayBuffer();
     wb = XLSX.read(buf, { type: "array", cellDates: true });
@@ -104,7 +106,7 @@ export async function parseExcelFileToImportText(file: File): Promise<string> {
   for (const name of names) {
     const ws = wb.Sheets[name];
     if (!ws) continue;
-    const block = sheetToStructuredText(name, ws);
+    const block = sheetToStructuredText(name, ws, XLSX);
     if (block.trim()) parts.push(block);
   }
 
@@ -117,6 +119,7 @@ export async function parseExcelFileToImportText(file: File): Promise<string> {
 
 /** Plain text from a .docx file for the model. */
 export async function parseDocxFileToImportText(file: File): Promise<string> {
+  const mammoth = (await import("mammoth")).default;
   try {
     const arrayBuffer = await file.arrayBuffer();
     const { value } = await mammoth.extractRawText({ arrayBuffer });

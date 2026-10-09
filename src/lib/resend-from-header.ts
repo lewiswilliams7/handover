@@ -8,7 +8,7 @@ export function getNoreplyMailbox(): string {
     if (angle?.[1]) return angle[1].trim();
     if (/^[^\s<>]+@[^\s<>]+$/.test(raw)) return raw;
   }
-  return "noreply@gethandover.uk";
+  return "hello@gethandover.uk";
 }
 
 export type ProfileNameFields = {
@@ -18,6 +18,10 @@ export type ProfileNameFields = {
   company_name?: string | null;
   brand_name?: string | null;
   plan?: string | null;
+  team_id?: string | null;
+  trial_ends_at?: string | null;
+  trial_plan?: string | null;
+  subscription_status?: string | null;
   white_label_mode?: boolean | null;
 } | null;
 
@@ -70,7 +74,7 @@ export function buildHandoverResendFromHeader(profile: ProfileNameFields): strin
   } else if (fullName) {
     label = `${sanitizeDisplayPart(fullName)} via Handover`;
   } else {
-    label = "Handover Reports";
+    label = "Lewis at Handover";
   }
 
   return `${label} <${addr}>`;

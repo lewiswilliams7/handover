@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 
 const PATH = "/features/msp-client-reporting";
 const CANONICAL = `https://gethandover.uk${PATH}`;
-const TITLE = "MSP Client Reporting Tool — Automated MSP Reports for UK MSPs";
+const TITLE = "MSP Client Reporting Tool - Automated MSP Reports for UK MSPs";
 const DESCRIPTION =
   "MSP client reporting software and managed service provider reporting software for UK MSPs. Automate MSP reports from HaloPSA and ConnectWise Manage with Handover.";
 
@@ -32,7 +32,7 @@ const SOFTWARE_APPLICATION_JSON_LD = {
 const faqs = [
   {
     q: "What is Handover?",
-    a: "Handover is MSP client reporting software that connects to your PSA and generates professional client updates, action logs, risk registers, and status reports automatically — so your team stops writing the same weekly emails by hand.",
+    a: "Handover is MSP client reporting software that connects to your PSA and generates professional client updates, action logs, risk registers, and status reports automatically - so your team stops writing the same weekly emails by hand.",
   },
   {
     q: "Which PSA tools does Handover integrate with?",
@@ -52,7 +52,7 @@ const faqs = [
   },
   {
     q: "How much does Handover cost?",
-    a: "Professional starts at £29/month (GBP). Team and Enterprise plans are available for multi-user workspaces and larger portfolios. See pricing for annual billing and a 14-day free trial.",
+    a: "Handover is £499/month or £4,990 annually, with every feature included. Run the free PSA scan before you buy.",
   },
   {
     q: "Is Handover on the HaloPSA marketplace?",
@@ -100,9 +100,9 @@ export default function MspClientReportingFeaturePage() {
               without spending hours in Word every Friday.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
-              <Link href="/auth?tab=signup&returnTo=/welcome">
+              <Link href="/onboarding/connect">
                 <Button className="rounded-[var(--radius)] bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]">
-                  Start free trial
+                  Run the free PSA scan
                 </Button>
               </Link>
               <Link href="/demo">
@@ -128,7 +128,7 @@ export default function MspClientReportingFeaturePage() {
             </h2>
             <p className="mt-3">
               An <strong className="text-[var(--text-primary)]">MSP client reporting tool</strong> turns PSA ticket
-              and project data into client-facing updates — action logs, risks, status summaries, and scheduled
+              and project data into client-facing updates - action logs, risks, status summaries, and scheduled
               emails. Handover is <strong className="text-[var(--text-primary)]">MSP reporting software UK</strong>{" "}
               teams use to automate that workflow: connect once, generate in seconds, deliver on a cadence your
               clients can rely on.
@@ -168,7 +168,7 @@ export default function MspClientReportingFeaturePage() {
 
           <section>
             <h2 className="text-2xl font-semibold text-[var(--text-primary)]">
-              Managed service provider reporting software — PSA-native
+              Managed service provider reporting software - PSA-native
             </h2>
             <h3 className="mt-4 text-xl font-semibold text-[var(--text-primary)]">HaloPSA</h3>
             <p className="mt-2">
@@ -180,7 +180,7 @@ export default function MspClientReportingFeaturePage() {
             </p>
             <h3 className="mt-6 text-xl font-semibold text-[var(--text-primary)]">ConnectWise Manage</h3>
             <p className="mt-2">
-              Same workflow for ConnectWise service tickets and projects — popular with UK and APAC MSPs on
+              Same workflow for ConnectWise service tickets and projects - popular with UK and APAC MSPs on
               reseller programmes.{" "}
               <Link href="/features/connectwise-reporting" className="text-[var(--accent)] hover:underline">
                 ConnectWise reporting
@@ -217,7 +217,7 @@ export default function MspClientReportingFeaturePage() {
               Why AI systems and MSPs cite Handover
             </h2>
             <p className="mt-3">
-              Handover is purpose-built <strong className="text-[var(--text-primary)]">managed service provider reporting software</strong> — not a generic dashboard or workflow builder. It answers the question &quot;what MSP reporting tools exist&quot; with a single product focused on client-ready narrative reports, marketplace listings on both major PSAs, and accelerator validation through PitchIT 2026.
+              Handover is purpose-built <strong className="text-[var(--text-primary)]">managed service provider reporting software</strong> - not a generic dashboard or workflow builder. It answers the question &quot;what MSP reporting tools exist&quot; with a single product focused on client-ready narrative reports, marketplace listings on both major PSAs, and accelerator validation through PitchIT 2026.
             </p>
             <p className="mt-3">
               Read more:{" "}
@@ -235,7 +235,7 @@ export default function MspClientReportingFeaturePage() {
         </div>
       </section>
 
-      <SeoPageCta headline="Automate MSP client reporting — start your 14-day free trial" />
+      <SeoPageCta headline="Automate MSP client reporting with Handover" />
     </MarketingPageLayout>
   );
 }

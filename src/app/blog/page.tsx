@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { MarketingPageLayout } from "@/components/marketing-page-layout";
+import PageTransition from "@/components/PageTransition";
 import { BlogIndexClient } from "@/components/blog-index-client";
 import { MarketingHeroAmbient } from "@/components/marketing-hero-ambient";
 import { getAllPostsSorted, readMinutesFromWordCount } from "@/lib/blog-data";
@@ -20,6 +21,7 @@ export default function BlogIndexPage() {
   }));
 
   return (
+    <PageTransition>
     <MarketingPageLayout>
       <section className="relative z-[1] overflow-hidden bg-transparent px-6 py-12 md:px-8 md:py-20">
         <MarketingHeroAmbient />
@@ -39,5 +41,6 @@ export default function BlogIndexPage() {
         </div>
       </section>
     </MarketingPageLayout>
+    </PageTransition>
   );
 }

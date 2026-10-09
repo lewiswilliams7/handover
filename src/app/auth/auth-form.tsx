@@ -32,6 +32,17 @@ function isObfuscatedDuplicateSignupUser(user: User | null): boolean {
   return Array.isArray(user.identities) && user.identities.length === 0;
 }
 
+function isSignInConnectionFailure(err: { message?: string } | null): boolean {
+  if (!err) return false;
+  const msg = (err.message || "").toLowerCase();
+  return (
+    msg.includes("fetch") ||
+    msg.includes("network") ||
+    msg.includes("enotfound") ||
+    msg.includes("failed to fetch")
+  );
+}
+
 function isLikelyUnconfirmedDuplicateSignup(
   err: { code?: string; message?: string } | null,
   data: { user: User | null },
@@ -165,6 +176,33 @@ export function AuthForm({
     const base = safeInternalPath(returnTo) ?? "/";
     return appendTrialQueryToPath(base, trialPlan);
   }, [returnTo, trialPlan]);
+  const destinationAfterSignIn = useMemo(() => {
+    const base = safeInternalPath(returnTo);
+    if (base === "/welcome" && !trialPlan) return "/pricing";
+    if (!base || base === "/") return appendTrialQueryToPath("/attention", trialPlan);
+    return destinationAfterAuth;
+  }, [destinationAfterAuth, returnTo, trialPlan]);
+  const resolvePostSignInDestination = async (): Promise<string> => {
+    if (trialPlan) return destinationAfterSignIn;
+    try {
+      const response = await fetch("/api/auth/scan-claim-redirect", {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (response.ok) {
+        const data = (await response.json()) as {
+          redirectToResults?: boolean;
+        };
+        if (data.redirectToResults === true) {
+          return "/onboarding/results";
+        }
+      }
+    } catch {
+      // Let the home route perform the state check if the marker lookup is unavailable.
+    }
+    return destinationAfterSignIn;
+  };
 
   useEffect(() => {
     if (!trialPlan) return;
@@ -275,7 +313,9 @@ export function AuthForm({
       }
     }
     const supabase = createClient();
-    const redirectTo = authCallbackUrlWithNext(destinationAfterAuth);
+    const redirectTo = authCallbackUrlWithNext(
+      activeTab === "signin" ? destinationAfterSignIn : destinationAfterAuth,
+    );
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo },
@@ -359,6 +399,13 @@ export function AuthForm({
     setIsSigningIn(false);
 
     if (error) {
+      if (isSignInConnectionFailure(error)) {
+        setSignInError(
+          "Connection issue - please check your internet and try again.",
+        );
+        return;
+      }
+
       const code =
         typeof (error as { code?: string }).code === "string"
           ? (error as { code: string }).code
@@ -402,7 +449,7 @@ export function AuthForm({
       return;
     }
 
-    router.push(destinationAfterAuth);
+    router.push(await resolvePostSignInDestination());
     router.refresh();
   };
 
@@ -513,7 +560,7 @@ export function AuthForm({
   };
 
   return (
-    <div className="relative z-[1] mx-auto flex min-h-[calc(100vh-56px)] w-full max-w-[440px] items-center px-4 py-8 sm:py-10">
+    <div className="relative z-[1] mx-auto flex min-h-[calc(100dvh-56px)] w-full max-w-[440px] items-center px-4 py-8 sm:py-10 md:min-h-[calc(100vh-56px)]">
       <div className="auth-card-shell w-full rounded-2xl border border-white/[0.10] bg-white/[0.05] p-4 backdrop-blur-xl sm:p-8 animate-in fade-in zoom-in-95 duration-200">
         {initialConfirmationExpired ? (
           <div className="space-y-4 text-[var(--text-primary)]">
@@ -769,7 +816,7 @@ export function AuthForm({
                   className="font-medium text-[var(--accent)] hover:underline"
                   onClick={() => setActiveTab("signup")}
                 >
-                  Start free trial →
+                  Create an account →
                 </button>
               </div>
             )}

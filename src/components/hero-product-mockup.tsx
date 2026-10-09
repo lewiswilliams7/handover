@@ -129,7 +129,7 @@ export function HeroProductMockup({
 
         <div className="border-b border-[var(--border)] bg-[var(--bg-primary)] p-2">
           <div
-            className="flex h-auto w-full flex-nowrap items-center gap-1 overflow-x-auto overflow-y-hidden rounded-t-[var(--radius-lg)] border border-[var(--border)] border-b-white/10 bg-[var(--bg-primary)] px-1.5 py-1.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:overflow-x-visible sm:px-2"
+            className="scrollbar-none flex h-auto w-full flex-nowrap items-center gap-1 overflow-x-auto overflow-y-hidden rounded-t-[var(--radius-lg)] border border-[var(--border)] border-b-white/10 bg-[var(--bg-primary)] px-1.5 py-1.5 sm:flex-wrap sm:overflow-x-visible sm:px-2"
             role="tablist"
             aria-label="Output preview tabs"
           >
@@ -175,7 +175,7 @@ export function HeroProductMockup({
                   <TableRow key={idx}>
                     <TableCell
                       className={cn(
-                        "max-w-[220px] whitespace-normal font-medium text-[var(--text-primary)] md:max-w-none",
+                        "line-clamp-3 max-w-[220px] font-medium text-[var(--text-primary)] sm:line-clamp-none sm:whitespace-normal md:max-w-none",
                         isCompact ? "text-sm" : "",
                       )}
                     >
@@ -183,7 +183,7 @@ export function HeroProductMockup({
                     </TableCell>
                     <TableCell
                       className={cn(
-                        "max-w-[80px] truncate text-[var(--text-primary)] sm:max-w-none sm:whitespace-normal",
+                        "max-w-[90px] truncate text-[var(--text-primary)] sm:max-w-none sm:whitespace-normal",
                         isCompact ? "text-sm" : "",
                       )}
                     >
@@ -374,7 +374,7 @@ Best regards`}
                 <div className="mt-2 space-y-2">
                   <div className="rounded bg-[var(--bg-secondary)] px-3 py-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-[var(--text-primary)]">Azure AD Migration — Phase 2</span>
+                      <span className="text-[var(--text-primary)]">Azure AD Migration - Phase 2</span>
                       <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
                         Amber
                       </span>

@@ -3,6 +3,7 @@
 import { startTransition, useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
+  Brain,
   Calendar,
   FileSpreadsheet,
   LayoutDashboard,
@@ -15,10 +16,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import {
-  STRIPE_PRO_ANNUAL_PRICE_ID,
-  STRIPE_PRO_MONTHLY_PRICE_ID,
-} from "@/lib/stripe-price-ids";
+import { STRIPE_PRICE_IDS } from "@/lib/stripe-price-ids";
 import { cn } from "@/lib/utils";
 
 const enterAnim = "transition-all duration-200 ease-out";
@@ -78,8 +76,8 @@ export function PremiumHardLimitModal({
   if (!open) return null;
 
   const busy = checkoutLoadingPriceId !== null;
-  const monthlyOk = Boolean(STRIPE_PRO_MONTHLY_PRICE_ID);
-  const annualOk = Boolean(STRIPE_PRO_ANNUAL_PRICE_ID);
+  const monthlyOk = Boolean(STRIPE_PRICE_IDS.handover.monthly);
+  const annualOk = Boolean(STRIPE_PRICE_IDS.handover.annual);
   const showPortalSwitch =
     Boolean(monthlyPayingPlan) && typeof onSwitchToAnnualPortal === "function";
 
@@ -149,14 +147,13 @@ export function PremiumHardLimitModal({
           </h2>
           {limitType === "trial" ? (
             <p className="mt-2 max-w-md text-[15px] leading-relaxed text-slate-400">
-              You&apos;ve used all your trial generations. Upgrade to Professional to continue generating client-ready
-              outputs.
+              You&apos;ve reached the included generation limit. Move to Handover for unlimited production use.
             </p>
           ) : limitType === "pro_monthly" ? (
             <>
               <p className="mt-2 max-w-md text-[15px] leading-relaxed text-slate-400">
-                You&apos;ve reached your 200 generation limit for this month. Your limit resets on the 1st of each
-                month. Upgrade to Team for unlimited generations, or contact us to purchase a top-up.
+                You&apos;ve reached the included generation limit for this month. Handover includes unlimited
+                production generations.
               </p>
               <a
                 href="mailto:hello@gethandover.uk?subject=Generation%20top-up"
@@ -167,8 +164,8 @@ export function PremiumHardLimitModal({
             </>
           ) : (
             <p className="mt-2 max-w-md text-[15px] leading-relaxed text-slate-400">
-              Your team has reached its pooled generation limit for this month. Contact us to purchase additional
-              generations or upgrade your plan.
+              You&apos;ve reached the included generation limit for this month. Handover includes unlimited
+              production generations.
             </p>
           )}
         </div>
@@ -209,20 +206,20 @@ export function PremiumHardLimitModal({
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-[var(--radius)] border border-white/10 bg-white/[0.04] p-4 text-left">
               <p className="text-[13px] font-semibold text-slate-200">Monthly</p>
-              <p className="mt-2 text-xl font-bold text-white">£29/mo</p>
+              <p className="mt-2 text-xl font-bold text-white">£499/mo</p>
               <p className="mt-1 text-[11px] text-slate-500">Billed monthly</p>
               <Button
                 type="button"
                 className="mt-4 h-10 w-full bg-white/10 text-[13px] font-semibold text-white hover:bg-white/15"
                 disabled={!monthlyOk || busy}
-                onClick={() => onCheckout(STRIPE_PRO_MONTHLY_PRICE_ID)}
+                onClick={() => onCheckout(STRIPE_PRICE_IDS.handover.monthly)}
               >
-                {checkoutLoadingPriceId === STRIPE_PRO_MONTHLY_PRICE_ID ? (
+                {checkoutLoadingPriceId === STRIPE_PRICE_IDS.handover.monthly ? (
                   <Loader2 className="mx-auto size-4 animate-spin" aria-hidden />
                 ) : welcomeRewardEligible ? (
                   "Claim free month →"
                 ) : (
-                  "Upgrade - monthly"
+                  "Buy Handover"
                 )}
               </Button>
             </div>
@@ -233,28 +230,31 @@ export function PremiumHardLimitModal({
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-[13px] font-semibold text-slate-200">Annual</p>
                 <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300 ring-1 ring-emerald-500/35">
-                  Save 29%
+                  Two months free
                 </span>
               </div>
-              <p className="mt-2 text-xl font-bold text-white">£25/mo</p>
-              <p className="mt-1 text-[12px] text-slate-400">Billed £300/year</p>
+              <p className="mt-2 text-xl font-bold text-white">£4,990/year</p>
+              <p className="mt-1 text-[12px] text-slate-400">Two months free</p>
               <Button
                 type="button"
                 className="mt-4 h-10 w-full bg-[var(--accent)] text-[13px] font-bold text-slate-950 hover:bg-[var(--accent-hover)]"
                 disabled={!annualOk || busy}
-                onClick={() => STRIPE_PRO_ANNUAL_PRICE_ID && onCheckout(STRIPE_PRO_ANNUAL_PRICE_ID)}
+                onClick={() =>
+                  STRIPE_PRICE_IDS.handover.annual &&
+                  onCheckout(STRIPE_PRICE_IDS.handover.annual)
+                }
               >
-                {checkoutLoadingPriceId === STRIPE_PRO_ANNUAL_PRICE_ID ? (
+                {checkoutLoadingPriceId === STRIPE_PRICE_IDS.handover.annual ? (
                   <Loader2 className="mx-auto size-4 animate-spin" aria-hidden />
                 ) : (
-                  "Upgrade - annual"
+                  "Buy Handover annually"
                 )}
               </Button>
             </div>
           </div>
           {showPortalSwitch ? (
             <div className="rounded-[var(--radius)] border border-emerald-500/30 bg-emerald-500/[0.07] p-4">
-              <p className="text-[13px] font-semibold text-emerald-100">Switch to annual and save 29%</p>
+              <p className="text-[13px] font-semibold text-emerald-100">Switch to annual and save two months</p>
               <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
                 You&apos;re on monthly billing. Use the Stripe customer portal to change your subscription to annual.
               </p>
@@ -276,7 +276,7 @@ export function PremiumHardLimitModal({
         </div>
 
         <p className="relative z-[1] mt-4 text-center text-[11px] text-slate-500">
-          14-day money-back guarantee. Cancel anytime.
+          Cancel anytime from your billing portal.
         </p>
         <button
           type="button"
@@ -314,7 +314,7 @@ const PRO_GATE_COPY: Record<
     bullets: [
       "One click from Handover into the tickets you imported",
       "Keeps audit trail and client context aligned in Halo",
-      "Included on Pro alongside higher generation limits",
+      "Included with Handover",
     ],
     icon: Link2,
   },
@@ -325,7 +325,7 @@ const PRO_GATE_COPY: Record<
     bullets: [
       "Pick day, time, clients, and which tabs to include",
       "Runs in the background - ideal for recurring QBR-style updates",
-      "Pro-only - built for teams who live in Halo every week",
+      "Included with Handover",
     ],
     icon: Calendar,
   },
@@ -336,7 +336,7 @@ const PRO_GATE_COPY: Record<
     bullets: [
       "One file instead of juggling separate exports",
       "Branded layout for client-ready delivery",
-      "Pro unlocks the full multi-tab pack",
+      "Included with Handover",
     ],
     icon: FileSpreadsheet,
   },
@@ -347,11 +347,43 @@ const PRO_GATE_COPY: Record<
     bullets: [
       "Roll-up views across tickets and projects you care about",
       "Spot stuck work before it becomes an escalation",
-      "Pro feature - pairs with 200 generations/month on Pro",
+      "Included with Handover",
     ],
     icon: LayoutDashboard,
   },
+  "Client Intelligence": {
+    title: "Client Intelligence",
+    lead:
+      "Handover Client Intelligence remembers every report, risk, and delivery milestone - so account context survives staff changes and QBR prep takes minutes, not hours.",
+    bullets: [
+      "Account summaries and relationship health across your portfolio",
+      "Recurring risks and talking points for QBRs and service reviews",
+      "Included with Handover",
+    ],
+    icon: Brain,
+  },
 };
+
+const GATE_CHECKOUT_PRICING = {
+  starter: {
+    monthlyPriceId: STRIPE_PRICE_IDS.handover.monthly,
+    annualPriceId: STRIPE_PRICE_IDS.handover.annual,
+    monthlyLabel: "£499/mo",
+    annualEquivLabel: "£415.83/mo",
+    annualBilledLabel: "Billed £4,990/year",
+    annualSaveLabel: "Two months free",
+    footer: "£499/mo or £4,990/year · Cancel anytime",
+  },
+  growth: {
+    monthlyPriceId: STRIPE_PRICE_IDS.handover.monthly,
+    annualPriceId: STRIPE_PRICE_IDS.handover.annual,
+    monthlyLabel: "£499/mo",
+    annualEquivLabel: "£415.83/mo",
+    annualBilledLabel: "Billed £4,990/year",
+    annualSaveLabel: "Two months free",
+    footer: "£499/mo or £4,990/year · Cancel anytime",
+  },
+} as const;
 
 type ProGateModalProps = {
   open: boolean;
@@ -359,6 +391,8 @@ type ProGateModalProps = {
   featureName: string;
   checkoutLoadingPriceId: string | null;
   onCheckout: (priceId: string) => void;
+  /** Checkout SKU shown in the modal — Growth features must pass `growth`. */
+  upgradePlan?: "starter" | "growth";
   monthlyPayingPlan?: "professional" | "team" | null;
   onSwitchToAnnualPortal?: () => void;
   portalLoading?: boolean;
@@ -370,14 +404,16 @@ export function ProFeatureGateModal({
   featureName,
   checkoutLoadingPriceId,
   onCheckout,
+  upgradePlan = "starter",
   monthlyPayingPlan = null,
   onSwitchToAnnualPortal,
   portalLoading = false,
 }: ProGateModalProps) {
   const [entered, setEntered] = useState(false);
+  const pricing = GATE_CHECKOUT_PRICING[upgradePlan];
   const copy = PRO_GATE_COPY[featureName] ?? {
     title: featureName,
-    lead: "This capability is included on Handover Pro - built for MSP delivery teams who live in HaloPSA.",
+    lead: "This capability is included with Handover for MSP delivery teams who live in HaloPSA and ConnectWise.",
     bullets: [
       "Higher generation limits for production use",
       "Scheduled automation and Halo push-back",
@@ -399,10 +435,13 @@ export function ProFeatureGateModal({
   if (!open) return null;
 
   const busy = checkoutLoadingPriceId !== null;
-  const monthlyOk = Boolean(STRIPE_PRO_MONTHLY_PRICE_ID);
-  const annualOk = Boolean(STRIPE_PRO_ANNUAL_PRICE_ID);
+  const monthlyOk = Boolean(pricing.monthlyPriceId);
+  const annualOk = Boolean(pricing.annualPriceId);
   const showPortalSwitch =
-    Boolean(monthlyPayingPlan) && typeof onSwitchToAnnualPortal === "function";
+    Boolean(monthlyPayingPlan) &&
+    typeof onSwitchToAnnualPortal === "function" &&
+    ((upgradePlan === "growth" && monthlyPayingPlan === "team") ||
+      (upgradePlan === "starter" && monthlyPayingPlan === "professional"));
 
   return (
     <div
@@ -470,15 +509,15 @@ export function ProFeatureGateModal({
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-[var(--radius)] border border-white/10 bg-white/[0.04] p-3 text-left">
               <p className="text-[12px] font-semibold text-slate-200">Monthly</p>
-              <p className="mt-1.5 text-lg font-bold text-white">£29/mo</p>
+              <p className="mt-1.5 text-lg font-bold text-white">{pricing.monthlyLabel}</p>
               <Button
                 type="button"
                 size="sm"
                 className="mt-3 w-full bg-white/10 text-[12px] font-semibold text-white hover:bg-white/15"
                 disabled={!monthlyOk || busy}
-                onClick={() => onCheckout(STRIPE_PRO_MONTHLY_PRICE_ID)}
+                onClick={() => onCheckout(pricing.monthlyPriceId)}
               >
-                {checkoutLoadingPriceId === STRIPE_PRO_MONTHLY_PRICE_ID ? (
+                {checkoutLoadingPriceId === pricing.monthlyPriceId ? (
                   <Loader2 className="mx-auto size-4 animate-spin" aria-hidden />
                 ) : (
                   "Upgrade - monthly"
@@ -492,19 +531,19 @@ export function ProFeatureGateModal({
               <div className="flex flex-wrap items-center gap-1.5">
                 <p className="text-[12px] font-semibold text-slate-200">Annual</p>
                 <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">
-                  Save 29%
+                  {pricing.annualSaveLabel}
                 </span>
               </div>
-              <p className="mt-1.5 text-lg font-bold text-white">£25/mo</p>
-              <p className="text-[11px] text-slate-400">Billed £300/year</p>
+              <p className="mt-1.5 text-lg font-bold text-white">{pricing.annualEquivLabel}</p>
+              <p className="text-[11px] text-slate-400">{pricing.annualBilledLabel}</p>
               <Button
                 type="button"
                 size="sm"
                 className="mt-2 w-full bg-[var(--accent)] text-[12px] font-bold text-slate-950 hover:bg-[var(--accent-hover)]"
                 disabled={!annualOk || busy}
-                onClick={() => STRIPE_PRO_ANNUAL_PRICE_ID && onCheckout(STRIPE_PRO_ANNUAL_PRICE_ID)}
+                onClick={() => pricing.annualPriceId && onCheckout(pricing.annualPriceId)}
               >
-                {checkoutLoadingPriceId === STRIPE_PRO_ANNUAL_PRICE_ID ? (
+                {checkoutLoadingPriceId === pricing.annualPriceId ? (
                   <Loader2 className="mx-auto size-4 animate-spin" aria-hidden />
                 ) : (
                   "Upgrade - annual"
@@ -533,7 +572,7 @@ export function ProFeatureGateModal({
           ) : null}
         </div>
         <p className="relative z-[1] mt-3 text-center text-[11px] text-slate-500">
-          £29/mo or £25/mo billed annually · 14-day money-back · Cancel anytime
+          {pricing.footer}
         </p>
       </div>
     </div>

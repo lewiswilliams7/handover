@@ -5,11 +5,15 @@ import { type NextRequest, NextResponse } from "next/server";
 import { shouldRedirectToVerifyEmailPage } from "@/lib/auth/email-verification-gate";
 import { confirmAuthEmailIfOAuthUser } from "@/lib/auth/oauth-email-confirmed";
 import { ensureProfileFromAuthUser } from "@/lib/auth/ensure-profile-from-auth-user";
+import { trackEvent } from "@/lib/logsnag";
 import { runWelcomeEmailForUser } from "@/lib/email-triggers";
 import { applyReferralAttribution } from "@/lib/referral-server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { getSupabaseEnv } from "@/lib/supabase/env";
-import { normalizePlanLabel } from "@/lib/utils/getPlan";
+import {
+  getPlanTierFromFields,
+  planFieldsFromProfileRow,
+} from "@/lib/utils/getPlan";
 
 /**
  * Email confirmation / magic-link style callbacks include `type` (and often `token_hash`, or PKCE `code` with `type`).
@@ -33,9 +37,9 @@ const EMAIL_CONFIRMATION_TYPES = new Set<string>([
 ]);
 
 function safeNextPath(raw: string | null): string {
-  if (!raw || typeof raw !== "string") return "/";
+  if (!raw || typeof raw !== "string") return "/attention";
   const t = raw.trim();
-  if (!t.startsWith("/") || t.startsWith("//")) return "/";
+  if (!t.startsWith("/") || t.startsWith("//")) return "/attention";
   return t;
 }
 
@@ -145,6 +149,17 @@ async function postAuthSessionSideEffects(
     console.error("[auth/callback] welcome email:", e);
   }
 
+  void trackEvent({
+    channel: "signups",
+    event: "New Signup",
+    icon: "👋",
+    description: `${user.email} signed up`,
+    tags: {
+      email: user.email ?? "unknown",
+    },
+    notify: true,
+  });
+
   return null;
 }
 
@@ -163,8 +178,16 @@ async function resolveEnterprisePortalRedirectPath(
   }
 
   const planRaw = profile && typeof profile === "object" ? (profile as { plan?: unknown }).plan : null;
-  const plan = normalizePlanLabel(typeof planRaw === "string" ? planRaw : "");
-  if (plan !== "enterprise") return null;
+  const tier = getPlanTierFromFields(
+    planFieldsFromProfileRow({
+      plan: typeof planRaw === "string" ? planRaw : null,
+      team_id: null,
+      trial_ends_at: null,
+      trial_plan: null,
+      subscription_status: null,
+    }),
+  );
+  if (tier < 2) return null;
 
   const { data: portal, error: portalErr } = await admin
     .from("portal_accounts")
@@ -200,7 +223,7 @@ export async function GET(request: NextRequest) {
    * Post-login redirect: `next` is set by email links and OAuth (see auth form).
    * Never reject redirects based on `profiles.plan` — all trial and paid SKUs use the same session.
    */
-  const successPath = nextPath || "/";
+  const successPath = nextPath === "/" ? "/attention" : nextPath;
   let successUrl = new URL(successPath, request.nextUrl.origin);
   const redirectResponse = NextResponse.redirect(successUrl);
 

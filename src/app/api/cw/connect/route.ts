@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { encrypt } from "@/lib/encryption";
+import { trackEvent } from "@/lib/logsnag";
 import {
   normalizeConnectWiseSiteUrl,
   testCWConnection,
@@ -158,6 +159,18 @@ export async function POST(req: Request) {
         { status: 500 },
       );
     }
+
+    void trackEvent({
+      channel: "activations",
+      event: "PSA Connected",
+      icon: "🔌",
+      description: `${user.email} connected ConnectWise`,
+      tags: {
+        email: user.email ?? "unknown",
+        psa: "connectwise",
+      },
+      notify: true,
+    });
 
     return NextResponse.json({ ok: true });
   } catch (e) {

@@ -78,8 +78,8 @@ export async function POST(request: Request, ctx: Ctx) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : "error";
     if (msg === "unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    if (msg === "enterprise_required") {
-      return NextResponse.json({ error: "Enterprise plan required." }, { status: 403 });
+    if (msg === "growth_required" || msg === "enterprise_required") {
+      return NextResponse.json({ error: "Growth plan or above required." }, { status: 403 });
     }
     console.error("[portal/client logo]", e);
     return NextResponse.json({ error: "Server error" }, { status: 500 });

@@ -14,6 +14,7 @@ type Body = {
   signature_extra?: unknown;
   signature_override?: unknown;
   display_name?: unknown;
+  output_language?: unknown;
 };
 
 function toNullableTrimmed(v: unknown): string | null | undefined {
@@ -49,6 +50,7 @@ export async function PATCH(request: Request) {
     const customSignoff = toNullableTrimmed(body.custom_signoff);
     const signatureOverride = toNullableTrimmed(body.signature_override);
     const displayName = toNullableTrimmed(body.display_name);
+    const outputLanguage = toNullableTrimmed(body.output_language);
 
     if (firstName !== undefined) updates.first_name = firstName;
     if (lastName !== undefined) updates.last_name = lastName;
@@ -57,6 +59,7 @@ export async function PATCH(request: Request) {
     if (customSignoff !== undefined) updates.custom_signoff = customSignoff;
     if (signatureOverride !== undefined) updates.signature_override = signatureOverride;
     if (displayName !== undefined) updates.display_name = displayName;
+    if (outputLanguage !== undefined) updates.output_language = outputLanguage;
 
     const signatureExtra = toNullableTrimmed(body.signature_extra);
     if (signatureExtra !== undefined) {

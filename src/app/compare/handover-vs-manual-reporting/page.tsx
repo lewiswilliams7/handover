@@ -11,7 +11,7 @@ import { softwareApplicationJsonLd } from "@/lib/seo-page-jsonld";
 
 const PATH = "/compare/handover-vs-manual-reporting";
 const CANONICAL = `https://gethandover.uk${PATH}`;
-const TITLE = "Automate MSP Client Reporting — Handover vs Manual Reports";
+const TITLE = "Automate MSP Client Reporting - Handover vs Manual Reports";
 const DESCRIPTION =
   "Replace manual MSP reports with MSP reporting automation. See how Handover helps UK MSPs cut report time from hours to under 60 seconds with PSA-native scheduling.";
 
@@ -29,14 +29,14 @@ export const metadata: Metadata = {
 };
 
 const manualCompareRows = [
-  { feature: "Time per report", handover: "Under 60 seconds", competitor: "30–120 minutes" },
+  { feature: "Time per report", handover: "Under 60 seconds", competitor: "30 to 120 minutes" },
   { feature: "Consistency", handover: "Standardised every week", competitor: "Varies by PM and workload" },
   { feature: "PSA integration", handover: "Native HaloPSA & ConnectWise", competitor: "Manual copy-paste" },
   { feature: "Scheduling", handover: true, competitor: false },
   {
     feature: "Cost (typical team)",
-    handover: "From ~£29/mo (Professional)",
-    competitor: "£50–100+ per report in PM time",
+    handover: "£499/mo or £4,990/year",
+    competitor: "£50 to 100+ per report in PM time",
   },
 ];
 
@@ -55,13 +55,13 @@ const faqs = [
   },
   {
     q: "What does MSP reporting automation cost compared to manual reporting?",
-    a: "Manual reporting often costs thousands per year in PM time. Handover Professional starts at £29/month with a 14-day free trial. See pricing for Team and Enterprise options.",
+    a: "Manual reporting often costs thousands per year in PM time. Handover is £499/month or £4,990 annually, with every feature included. Run the free PSA scan before you buy.",
   },
 ];
 
 export default function HandoverVsManualReportingPage() {
   const jsonLd = softwareApplicationJsonLd({
-    name: "Handover — MSP Reporting Automation",
+    name: "Handover - MSP Reporting Automation",
     description: DESCRIPTION,
     url: CANONICAL,
   });
@@ -82,12 +82,12 @@ export default function HandoverVsManualReportingPage() {
             <strong className="text-[var(--text-primary)]">UK MSPs</strong> running HaloPSA or ConnectWise.
           </p>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-            <Link href="/auth?tab=signup&returnTo=/welcome">
+            <Link href="/onboarding/connect">
               <Button
                 size="lg"
                 className="rounded-[var(--radius)] bg-[var(--accent)] px-8 text-white hover:bg-[var(--accent-hover)]"
               >
-                Start free trial
+                Run the free PSA scan
               </Button>
             </Link>
             <Link href="/demo">
@@ -113,7 +113,7 @@ export default function HandoverVsManualReportingPage() {
             <p className="mt-3">
               Every week, a <strong className="text-[var(--text-primary)]">managed service provider</strong> (MSP)
               project or service manager pulls data from the PSA, summarises tickets, formats a document, and emails
-              each client. For a mid-size portfolio that is often 10–20 hours of skilled PM time — every single week.
+              each client. For a mid-size portfolio that is often 10 to 20 hours of skilled PM time every single week.
             </p>
             <p className="mt-3">
               Reports slip when the desk is busy. Tone and detail vary by author. Clients cannot tell whether silence

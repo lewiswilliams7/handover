@@ -223,12 +223,12 @@ export default function MspWeeklyReportingCaseStudyPage() {
               Join MSP delivery teams worldwide who have already made the switch.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
-              <Link href="/auth?tab=signup&returnTo=/welcome">
+              <Link href="/onboarding/connect">
                 <Button
                   size="lg"
                   className="w-full bg-[var(--accent)] px-8 text-white hover:bg-[var(--accent-hover)] sm:w-auto"
                 >
-                  Start free trial →
+                  Run the free PSA scan →
                 </Button>
               </Link>
               <Link href="/pricing">
@@ -242,7 +242,7 @@ export default function MspWeeklyReportingCaseStudyPage() {
               </Link>
             </div>
             <p className="mt-6 text-sm text-[var(--sidebar-text)]">
-              14-day free trial — cancel anytime. 14-day free trial.
+              Run the free PSA scan before you buy.
             </p>
           </ScrollRevealItem>
         </div>

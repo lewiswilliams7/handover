@@ -112,7 +112,7 @@ export default function DashboardHeroMockup() {
         {/* Row 1 - Meridian - GREEN */}
         <rect x="216" y="286" width="670" height="36" fill="#0F172A" />
         <text x="220" y="300" fill="white" fontSize="10" fontWeight="600">Meridian Technolo...</text>
-        <text x="220" y="314" fill="#64748B" fontSize="9">Azure AD Migration — Ph...</text>
+        <text x="220" y="314" fill="#64748B" fontSize="9">Azure AD Migration - Ph...</text>
         <rect x="318" y="308" width="36" height="14" rx="3" fill="#166534" />
         <text x="322" y="319" fill="#4ADE80" fontSize="8" fontWeight="600">Project</text>
         <rect x="376" y="296" width="34" height="16" rx="3" fill="#14532D" />
@@ -182,7 +182,7 @@ export default function DashboardHeroMockup() {
         {/* Row 4 - Birchwood - GREEN */}
         <rect x="216" y="394" width="670" height="36" fill="#111827" />
         <text x="220" y="408" fill="white" fontSize="10" fontWeight="600">Birchwood Financial</text>
-        <text x="220" y="422" fill="#64748B" fontSize="9">M365 licensing audit — r...</text>
+        <text x="220" y="422" fill="#64748B" fontSize="9">M365 licensing audit - r...</text>
         <rect x="310" y="416" width="32" height="14" rx="3" fill="#1E3A5F" />
         <text x="316" y="427" fill="#38BDF8" fontSize="8" fontWeight="600">Ticket</text>
         <rect x="376" y="402" width="34" height="16" rx="3" fill="#14532D" />

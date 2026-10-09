@@ -65,7 +65,7 @@ export async function POST(request: Request) {
       .select("brand_name, brand_colour, brand_secondary_colour, brand_logo_url, white_label_mode")
       .eq("id", user.id)
       .maybeSingle();
-    const profileForWl = { ...profile, plan: pf.plan };
+    const profileForWl = { ...profile, ...pf };
     const resolvedBrandLogoUrl = await resolveBrandLogoUrlForExcel(
       supabase,
       typeof profile?.brand_logo_url === "string" ? profile.brand_logo_url : null,

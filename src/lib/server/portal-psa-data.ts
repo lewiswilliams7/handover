@@ -33,6 +33,44 @@ export type PortalPsaPayloadStats = {
   resolvedThisMonth?: number;
 };
 
+export type PortalTimelineResolvedTicket = {
+  id: number;
+  summary: string;
+  priority: string;
+  resolvedAt: string | null;
+};
+
+export type PortalTimelineProjectMilestone = {
+  id: number;
+  name: string;
+  description: string;
+  milestoneAt: string | null;
+};
+
+const TIMELINE_LOOKBACK_MS = 365 * 24 * 60 * 60 * 1000;
+
+function isSignificantTicketPriority(priority: string): boolean {
+  const p = priority.trim().toLowerCase();
+  return (
+    p === "high" ||
+    p === "critical" ||
+    p === "urgent" ||
+    p.includes("high") ||
+    p.includes("critical")
+  );
+}
+
+function withinTimelineWindow(iso: string | null | undefined): boolean {
+  if (!iso) return false;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return false;
+  return t >= Date.now() - TIMELINE_LOOKBACK_MS;
+}
+
+function isCompletedProjectStatus(status: string): boolean {
+  return /complete|completed|closed|delivered|finished/i.test(status);
+}
+
 function worstRagFromRows(rows: { rag: DeliveryHealthRag }[]): DeliveryHealthRag | null {
   if (rows.length === 0) return null;
   const rags = rows.map((r) => r.rag);
@@ -238,6 +276,7 @@ export async function fetchPortalPsaPayload(opts: {
   visibilityPriorityBreakdown: boolean;
   visibilityResolvedCount: boolean;
   visibilityRecentActivity: boolean;
+  includeTimeline?: boolean;
 }): Promise<{
   tickets?: ReturnType<typeof mapHaloTicketToPortalRow>[];
   projects?: PortalProjectRow[];
@@ -245,6 +284,8 @@ export async function fetchPortalPsaPayload(opts: {
   lastUpdated: string;
   stats?: PortalPsaPayloadStats;
   recentActivity?: Array<{ date: string | null; author: string; summary: string }>;
+  timelineResolvedTickets?: PortalTimelineResolvedTicket[];
+  timelineProjectMilestones?: PortalTimelineProjectMilestone[];
 }> {
   const lastUpdated = new Date().toISOString();
   const out: {
@@ -254,7 +295,10 @@ export async function fetchPortalPsaPayload(opts: {
     lastUpdated: string;
     stats?: PortalPsaPayloadStats;
     recentActivity?: Array<{ date: string | null; author: string; summary: string }>;
+    timelineResolvedTickets?: PortalTimelineResolvedTicket[];
+    timelineProjectMilestones?: PortalTimelineProjectMilestone[];
   } = { lastUpdated };
+  const includeTimeline = opts.includeTimeline !== false;
 
   const needTicketsInternal =
     opts.visibilityTickets ||
@@ -341,6 +385,7 @@ export async function fetchPortalPsaPayload(opts: {
     }
 
     let activeProjects: PortalProjectRow[] = [];
+    let haloProjectsForTimeline: Awaited<ReturnType<typeof getHaloProjects>> = [];
     if (needProjectsInternal) {
       let projects: Awaited<ReturnType<typeof getHaloProjects>> = [];
       try {
@@ -351,6 +396,7 @@ export async function fetchPortalPsaPayload(opts: {
       } catch {
         projects = [];
       }
+      haloProjectsForTimeline = projects;
       const active = projects
         .filter((p) => haloProjectBelongsToPortalClient(p, numericClientId))
         .filter((p) => {
@@ -445,6 +491,65 @@ export async function fetchPortalPsaPayload(opts: {
 
     if (opts.visibilityRecentActivity && recentActivity && recentActivity.length > 0) {
       out.recentActivity = recentActivity;
+    }
+
+    if (includeTimeline) {
+      const closedForTimeline = scopedHalo.filter(
+        (t) => !t.is_project && !isHaloTicketActive(t.status?.name ?? ""),
+      );
+      out.timelineResolvedTickets = closedForTimeline
+        .filter((t) => isSignificantTicketPriority(t.priority?.name ?? ""))
+        .map((t) => ({
+          id: t.id,
+          summary: t.summary ?? "",
+          priority: t.priority?.name ?? "",
+          resolvedAt:
+            (typeof (t as { last_update?: string }).last_update === "string"
+              ? (t as { last_update?: string }).last_update
+              : null) ?? t.dateoccurred ?? null,
+        }))
+        .filter((t) => withinTimelineWindow(t.resolvedAt))
+        .sort(
+          (a, b) =>
+            Date.parse(b.resolvedAt ?? "") - Date.parse(a.resolvedAt ?? ""),
+        )
+        .slice(0, 20);
+
+      out.timelineProjectMilestones = haloProjectsForTimeline
+        .filter((p) => haloProjectBelongsToPortalClient(p, numericClientId))
+        .filter((p) => {
+          const status = p.status?.name ?? "";
+          const pct =
+            typeof p.completionpercent === "number" && Number.isFinite(p.completionpercent)
+              ? p.completionpercent
+              : 0;
+          return isCompletedProjectStatus(status) || pct >= 100;
+        })
+        .map((p) => {
+          const status = p.status?.name ?? "Completed";
+          const pct =
+            typeof p.completionpercent === "number" && Number.isFinite(p.completionpercent)
+              ? Math.round(p.completionpercent)
+              : null;
+          return {
+            id: p.id,
+            name: p.name ?? `Project ${p.id}`,
+            description:
+              pct != null
+                ? `Project marked ${status} (${pct}% complete)`
+                : `Project marked ${status}`,
+            milestoneAt:
+              (typeof (p as { completeddate?: string }).completeddate === "string"
+                ? (p as { completeddate?: string }).completeddate
+                : null) ?? p.targetdate ?? null,
+          };
+        })
+        .filter((m) => withinTimelineWindow(m.milestoneAt))
+        .sort(
+          (a, b) =>
+            Date.parse(b.milestoneAt ?? "") - Date.parse(a.milestoneAt ?? ""),
+        )
+        .slice(0, 15);
     }
 
     return out;
@@ -608,6 +713,62 @@ export async function fetchPortalPsaPayload(opts: {
 
     if (opts.visibilityRecentActivity && recentActivity && recentActivity.length > 0) {
       out.recentActivity = recentActivity;
+    }
+
+    if (includeTimeline && companyId) {
+      const yearAgo = new Date(Date.now() - TIMELINE_LOOKBACK_MS);
+      const startBracket = `[${yearAgo.toISOString().slice(0, 19)}Z]`;
+      const closedCond = encodeURIComponent(
+        `company/id=${companyId} and closedFlag=true and dateResolved>=${startBracket}`,
+      );
+      const curl = `${cwConn.siteUrl}/v4_6_release/apis/3.0/service/tickets?conditions=${closedCond}&pageSize=200`;
+      try {
+        const cres = await fetch(curl, { headers, cache: "no-store" });
+        const craw = (await cres.json().catch(() => [])) as unknown;
+        const crows = (
+          Array.isArray(craw)
+            ? craw
+            : Array.isArray((craw as { items?: unknown }).items)
+              ? ((craw as { items: unknown[] }).items as unknown[])
+              : []
+        ).filter((r) =>
+          cwRowBelongsToPortalCompany(r as Record<string, unknown>, companyId),
+        );
+        out.timelineResolvedTickets = crows
+          .map((r) => mapCwTicketRow(r as Record<string, unknown>))
+          .filter((t) => isSignificantTicketPriority(t.priority))
+          .map((t) => ({
+            id: t.id,
+            summary: t.summary,
+            priority: t.priority,
+            resolvedAt: t.lastUpdated,
+          }))
+          .filter((t) => withinTimelineWindow(t.resolvedAt))
+          .sort(
+            (a, b) =>
+              Date.parse(b.resolvedAt ?? "") - Date.parse(a.resolvedAt ?? ""),
+          )
+          .slice(0, 20);
+      } catch {
+        out.timelineResolvedTickets = [];
+      }
+
+      out.timelineProjectMilestones = activeProjects
+        .filter(
+          (p) =>
+            isCompletedProjectStatus(p.status) ||
+            (p.percentComplete != null && p.percentComplete >= 100),
+        )
+        .map((p) => ({
+          id: p.id,
+          name: p.name,
+          description: `Project ${p.status}${
+            p.percentComplete != null ? ` (${p.percentComplete}% complete)` : ""
+          }`,
+          milestoneAt: p.targetDate,
+        }))
+        .filter((m) => withinTimelineWindow(m.milestoneAt))
+        .slice(0, 15);
     }
 
     return out;

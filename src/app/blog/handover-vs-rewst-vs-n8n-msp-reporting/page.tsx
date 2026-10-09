@@ -36,10 +36,9 @@ export const metadata: Metadata = {
     authors: [post.author],
     images: [
       {
-        url: "/og-image.png",
+        url: "https://gethandover.uk/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "Handover - MSP delivery tool",
       },
     ],
   },
@@ -47,7 +46,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Handover vs Rewst vs n8n: Which Tool Actually Solves MSP Reporting?",
     description: post.description,
-    images: ["/og-image.png"],
+    images: ["https://gethandover.uk/opengraph-image"],
   },
 };
 
@@ -104,7 +103,7 @@ export default function HandoverVsRewstVsN8nMspReportingPage() {
               If you work in an MSP and you&apos;ve looked at automating client reporting,
               you&apos;ve probably come across Rewst and n8n. Both are genuinely powerful tools.
               Both have enthusiastic communities. And both will absolutely let you build a
-              reporting workflow — if you have the time, the technical skill, and the patience
+              reporting workflow - if you have the time, the technical skill, and the patience
               to maintain it.
             </p>
 
@@ -126,13 +125,13 @@ export default function HandoverVsRewstVsN8nMspReportingPage() {
             </p>
 
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
-              n8n is a general-purpose workflow automation tool — similar to Zapier or Make but
+              n8n is a general-purpose workflow automation tool - similar to Zapier or Make but
               self-hostable and developer-friendly. It can connect to almost anything via API and
               is highly flexible for building custom integrations.
             </p>
 
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
-              Neither of them is built for reporting. That&apos;s not a criticism — it&apos;s just
+              Neither of them is built for reporting. That&apos;s not a criticism - it&apos;s just
               not what they do. They&apos;re plumbing tools. They move data between systems. If you
               want to use them to generate a professional client status report, you&apos;re building
               that capability from scratch on top of a general automation layer.
@@ -153,7 +152,7 @@ export default function HandoverVsRewstVsN8nMspReportingPage() {
                 by client, date range, and status.
               </li>
               <li>
-                Write logic to format that data into something meaningful — not just a data dump,
+                Write logic to format that data into something meaningful - not just a data dump,
                 but a structured update a client would actually understand.
               </li>
               <li>
@@ -164,7 +163,7 @@ export default function HandoverVsRewstVsN8nMspReportingPage() {
                 Build an output layer that formats the result into a document, email, or PDF.
               </li>
               <li>
-                Wire up delivery — email, ticket note, Slack, whatever your workflow requires.
+                Wire up delivery - email, ticket note, Slack, whatever your workflow requires.
               </li>
               <li>
                 Then maintain all of it when your PSA updates its API, when the AI model changes
@@ -174,7 +173,7 @@ export default function HandoverVsRewstVsN8nMspReportingPage() {
 
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               For an experienced Rewst or n8n developer, this is achievable. It&apos;s also a
-              meaningful project — not an afternoon&apos;s work. And once it&apos;s built, it needs
+              meaningful project - not an afternoon&apos;s work. And once it&apos;s built, it needs
               ongoing maintenance. The workflow doesn&apos;t know when something breaks. It just
               silently produces wrong output until someone notices.
             </p>
@@ -186,7 +185,7 @@ export default function HandoverVsRewstVsN8nMspReportingPage() {
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               Handover is purpose-built for this one job. It connects to HaloPSA and ConnectWise,
               pulls your ticket and project data, and generates professional client outputs in around
-              30 seconds. Status reports, action logs, risk logs, client emails, RAID logs — all
+              30 seconds. Status reports, action logs, risk logs, client emails, RAID logs - all
               formatted and ready to send or push straight back to the ticket as a note.
             </p>
 
@@ -196,7 +195,7 @@ export default function HandoverVsRewstVsN8nMspReportingPage() {
             </p>
 
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
-              It also handles things that a generic automation workflow typically doesn&apos;t —
+              It also handles things that a generic automation workflow typically doesn&apos;t  - 
               like detecting when multiple clients are in the same notes and generating separate
               emails for each, or applying your custom fields as additional context for the AI, or
               scheduling reports to go out automatically on a cadence you define.
@@ -221,7 +220,7 @@ export default function HandoverVsRewstVsN8nMspReportingPage() {
             </p>
 
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
-              Most MSPs don&apos;t need to choose between them — they&apos;re solving different
+              Most MSPs don&apos;t need to choose between them - they&apos;re solving different
               problems. The question is whether your reporting problem is better solved by building
               something on a general platform, or by using a tool that already does it.
             </p>
@@ -237,7 +236,7 @@ export default function HandoverVsRewstVsN8nMspReportingPage() {
             </p>
 
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
-              Handover starts at £29 per month for solo use and £79 per month for teams.
+              Handover starts at £49 per month for solo use and £99 per month for Growth.
               There&apos;s a 14-day free trial.
             </p>
 

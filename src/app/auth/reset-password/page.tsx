@@ -11,7 +11,12 @@ export default function ResetPasswordPage() {
       className="relative min-h-screen animate-in fade-in duration-300 overflow-hidden"
       style={{ background: "var(--bg-primary, #0f172a)" }}
     >
-      <MarketingHeroAmbient />
+      <div
+        className="pointer-events-none absolute inset-0 z-0"
+        style={{ background: "var(--bg-primary, #0f172a)" }}
+      >
+        <MarketingHeroAmbient />
+      </div>
       <div className="relative z-[1] mb-4 flex w-full flex-col items-center px-4 pt-10">
         <Link
           href="/"

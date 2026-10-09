@@ -29,7 +29,11 @@ export async function POST() {
       return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
     }
 
-    if (user.email_confirmed_at || (await hasVerifiedEmailInTable(admin, user.id))) {
+    const pendingScanVerification = user.user_metadata?.scan_verification_pending === true;
+    if (
+      (!pendingScanVerification && user.email_confirmed_at) ||
+      (await hasVerifiedEmailInTable(admin, user.id))
+    ) {
       return NextResponse.json({ ok: true, sent: false, reason: "already_verified" });
     }
 

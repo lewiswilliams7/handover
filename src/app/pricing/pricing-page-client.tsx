@@ -1,1337 +1,337 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
-import type { LucideIcon } from "lucide-react";
-import {
-  Activity,
-  ArrowLeftRight,
-  ArrowUpCircle,
-  CalendarClock,
-  ChevronDown,
-  Clock,
-  CreditCard,
-  FileDown,
-  FileText,
-  FormInput,
-  Handshake,
-  Headphones,
-  Infinity,
-  Layers,
-  LayoutList,
-  LayoutTemplate,
-  Loader2,
-  Lock,
-  Minus,
-  Mail,
-  MessageSquare,
-  Paintbrush,
-  PhoneCall,
-  Presentation,
-  Plug,
-  Plus,
-  Send,
-  Shield,
-  Star,
-  Gauge,
-  Users,
-  Webhook,
-  Zap,
-  Globe,
-} from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, ArrowRight, Loader2 } from "lucide-react";
 
-import { cn } from "@/lib/utils";
-import { HomeRoiCalculator } from "@/components/home-roi-calculator";
-import { PricingComparisonSection } from "@/components/pricing-comparison-section";
-import { PricingPlanTick } from "@/components/pricing-plan-tick";
-import { PricingWhatsIncludedComparison } from "@/components/pricing-whats-included-comparison";
-import { ScrollRevealItem } from "@/components/scroll-reveal-item";
-import { TestimonialMarquee } from "@/components/testimonial-marquee";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { BOOK_DEMO_CALENDLY_URL } from "@/lib/book-demo";
+import { STRIPE_PRICE_IDS } from "@/lib/stripe-price-ids";
 import { createClient } from "@/lib/supabase";
-import { STRIPE_ONBOARDING_CALL_PRICE_ID, STRIPE_PRICE_IDS } from "@/lib/stripe-price-ids";
-import {
-  isSoloSubscriptionLive,
-  isTrialExpired,
-  normalizePlanLabel,
-  planFieldsFromProfileRow,
-  type UserPlanFields,
-} from "@/lib/utils/getPlan";
 
-function FeatureTooltip({ children, tip }: { children: React.ReactNode; tip: string }) {
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
-  const ref = useRef<HTMLSpanElement>(null);
+type BillingPeriod = "monthly" | "annual";
 
-  const handleEnter = () => {
-    if (!ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
-    setPos({ x: rect.right + 8, y: rect.top + rect.height / 2 });
-  };
-
-  return (
-    <>
-      <span
-        ref={ref}
-        className="cursor-default"
-        onMouseEnter={handleEnter}
-        onMouseLeave={() => setPos(null)}
-      >
-        {children}
-      </span>
-      {pos &&
-        typeof window !== "undefined" &&
-        createPortal(
-          <span
-            className="fixed z-[9999] w-56 rounded-lg border border-white/[0.10] bg-[#0A0F1C]/98 px-3 py-2 text-[11px] leading-relaxed text-white/70 shadow-xl backdrop-blur-md pointer-events-none"
-            style={{ left: pos.x, top: pos.y, transform: "translateY(-50%)" }}
-          >
-            {tip}
-          </span>,
-          document.body,
-        )}
-    </>
-  );
-}
-
-const FEATURE_TIPS: Record<string, string> = {
-  "One PSA connection (HaloPSA or ConnectWise)":
-    "Connect either HaloPSA or ConnectWise Manage as your data source. Switch PSA at any time from settings.",
-  "Unlimited manual report generation":
-    "Generate as many reports as you need on demand. No monthly cap on manual generations.",
-  "All standard output types":
-    "Includes client email, action log, risk log, executive summary, and status report — all generated simultaneously.",
-  "Up to 3 active scheduled reports":
-    "Run up to three enabled scheduled report campaigns at once. Upgrade to Team for unlimited active schedules.",
-  "Basic Excel export":
-    "Export your report data as a formatted Excel file with key delivery metrics and ticket summaries.",
-  "Push notes to PSA":
-    "Write generated report content back directly into your PSA ticket notes automatically.",
-  "Delivery health dashboard":
-    "A live RAG status overview of all your client accounts showing health scores, overdue tickets, and SLA performance.",
-  "1 QBR pack per month":
-    "Generate one full quarterly business review pack per month including charts, exec summary, and project status.",
-  "Email support":
-    "Direct email support from the Handover team with responses within 1 business day.",
-  "Everything in Professional": "Includes all features from the Professional plan.",
-  "Both PSAs simultaneously (HaloPSA and ConnectWise)":
-    "Connect both HaloPSA and ConnectWise at the same time and generate reports from either within the same account.",
-  "Unlimited scheduled reports":
-    "Set up as many automated scheduled reports as you need with no monthly cap.",
-  "3 QBR packs per month":
-    "Generate up to three full QBR packs per month across your client base.",
-  "PowerPoint and PDF export":
-    "Export QBR packs and reports as branded PowerPoint slides or PDF documents ready to share with clients.",
-  "Slack and Microsoft Teams notifications":
-    "Send automatic report summary alerts to your Slack or Teams channels when reports are generated.",
-  "White label and custom branding":
-    "Apply your company logo, colours, and brand name to all report outputs and remove Handover branding entirely.",
-  "Team management and invites":
-    "Invite team members and manage access with role-based permissions across your Handover account.",
-  "Shared PSA connection (admin managed)":
-    "One PSA connection shared across the whole team, managed centrally by the account admin.",
-  "Pooled usage across team":
-    "All team members share the same generation allowances rather than having separate per-user limits.",
-  "Priority email support":
-    "Priority support queue with faster response times and dedicated assistance from the Handover team.",
-  "Everything in Team": "Includes all features from the Team plan.",
-  "Unlimited users":
-    "Add as many team members as you need with no per-user pricing above your base contract.",
-  "Unlimited QBR packs": "Generate as many QBR packs as needed with no monthly cap.",
-  "Client portal with branded login":
-    "Give your clients a branded portal to view tickets, projects and reports.",
-  "Partner and reseller multi-tenancy":
-    "Manage multiple end-client accounts under one Handover instance — ideal for resellers and large MSP groups. Coming soon.",
-  "Custom domain support":
-    "Host Handover on your own domain for a fully white-labelled experience.",
-  "Dedicated account manager":
-    "A named Handover account manager for onboarding, quarterly reviews, and ongoing support.",
-  "Onboarding call included":
-    "A dedicated setup call with the Handover team to get your account configured and your first reports running.",
-  "SLA guarantee":
-    "Contractual uptime and response time guarantees backed by a formal service level agreement.",
-  "Custom contract":
-    "Bespoke contract terms including payment schedules, data processing agreements, and custom terms.",
-  "Custom integrations on request":
-    "Additional PSA or platform integrations built to specification for your specific workflow requirements.",
-  "Custom field mapping — maps your PSA custom fields into every report automatically.":
-    "Map PSA custom fields to specific report outputs so every generation reflects your ticket and project data.",
-  "One-click client email send":
-    "Send the generated client email from Handover with a single action when you are ready to share it.",
-};
-
-const professionalFeatureList: { text: string; Icon: LucideIcon }[] = [
-  { text: "One PSA connection (HaloPSA or ConnectWise)", Icon: Plug },
-  { text: "Unlimited manual report generation", Icon: Zap },
-  { text: "All standard output types", Icon: LayoutList },
-  { text: "One-click client email send", Icon: Send },
-  { text: "Up to 3 active scheduled reports", Icon: CalendarClock },
-  { text: "Basic Excel export", Icon: FileDown },
-  { text: "Push notes to PSA", Icon: ArrowLeftRight },
+const FEATURE_GROUPS = [
   {
-    text: "Custom field mapping — maps your PSA custom fields into every report automatically.",
-    Icon: FormInput,
-  },
-  { text: "Delivery health dashboard", Icon: Activity },
-  { text: "1 QBR pack per month", Icon: LayoutTemplate },
-  { text: "Email support", Icon: Headphones },
-];
-
-const teamCardFeatures: { text: string; Icon: LucideIcon }[] = [
-  { text: "Everything in Professional", Icon: Layers },
-  { text: "Both PSAs simultaneously (HaloPSA and ConnectWise)", Icon: Plug },
-  { text: "Unlimited scheduled reports", Icon: CalendarClock },
-  { text: "3 QBR packs per month", Icon: LayoutTemplate },
-  { text: "PowerPoint and PDF export", Icon: Presentation },
-  { text: "Slack and Microsoft Teams notifications", Icon: MessageSquare },
-  { text: "White label and custom branding", Icon: Paintbrush },
-  { text: "Team management and invites", Icon: Users },
-  { text: "Shared PSA connection (admin managed)", Icon: Shield },
-  { text: "Pooled usage across team", Icon: Zap },
-  { text: "Priority email support", Icon: Headphones },
-];
-
-const enterpriseFeatures: Array<{
-  text: string;
-  Icon: LucideIcon;
-  comingSoon?: boolean;
-  beta?: boolean;
-}> = [
-  { text: "Everything in Team", Icon: Layers },
-  { text: "Unlimited users", Icon: Users },
-  { text: "Unlimited QBR packs", Icon: LayoutTemplate },
-  { text: "Client portal with branded login", Icon: Globe, beta: true },
-  { text: "Partner and reseller multi-tenancy", Icon: Users, comingSoon: true },
-  { text: "Custom domain support", Icon: Webhook, comingSoon: true },
-  { text: "Dedicated account manager", Icon: Handshake },
-  { text: "Onboarding call included", Icon: PhoneCall },
-  { text: "SLA guarantee", Icon: Gauge },
-  { text: "Custom contract", Icon: FileText },
-  { text: "Custom integrations on request", Icon: Plug },
-];
-
-function PricingBillingFromQuery({
-  setBillingPeriod,
-}: {
-  setBillingPeriod: (p: "monthly" | "annual") => void;
-}) {
-  const searchParams = useSearchParams();
-  useEffect(() => {
-    const b = searchParams.get("billing");
-    if (b === "annual") setBillingPeriod("annual");
-    else if (b === "monthly") setBillingPeriod("monthly");
-  }, [searchParams, setBillingPeriod]);
-  return null;
-}
-
-const faqItems: { q: string; a: string }[] = [
-  {
-    q: "How does the free trial work?",
-    a: "Start a 14-day Professional or Team trial with card details collected at signup. You get full access to that plan’s features until the trial ends, then your paid subscription starts automatically unless you cancel. 14-day free trial - cancel anytime.",
+    title: "Client intelligence",
+    items: [
+      "Portfolio scan",
+      "Change detection against each client’s own baseline",
+      "Commercial, service and relationship signals",
+      "Weekly digest",
+    ],
   },
   {
-    q: "Do I need a PSA account to use Handover?",
-    a: "No. You can paste notes or ticket data manually (or import from CSV / Excel) and get outputs instantly. HaloPSA and ConnectWise connection, push-back, scheduled reports, and the delivery health dashboard are included on Professional and above.",
+    title: "Reporting suite",
+    items: [
+      "Service reviews",
+      "QBR packs",
+      "Scheduled reports",
+      "PPTX, PDF and Excel export",
+      "Push back to the PSA",
+      "Approval queue",
+    ],
   },
   {
-    q: "What counts as a generation?",
-    a: "Each time you click Generate counts as one generation. You can select up to 5 outputs per generation - selecting more outputs does not use more generations.",
+    title: "Client portal",
+    items: ["White-labelled, per-client access"],
   },
   {
-    q: "Can I cancel anytime?",
-    a: "Yes. Cancel anytime from your account settings. You keep access until the end of your billing period.",
+    title: "Platform",
+    items: ["HaloPSA and ConnectWise", "Unlimited users"],
   },
-  {
-    q: "Is my data secure?",
-    a: "Your notes are sent to OpenAI for processing and are not stored by OpenAI for training. Your PSA credentials (HaloPSA or ConnectWise) are encrypted before being stored. We never share your data with third parties.",
-  },
-  {
-    q: "Do you offer team plans?",
-    a: "Yes. Team includes pooled usage, shared PSA setup, and collaboration. For larger deployments or Enterprise features, contact us at hello@gethandover.uk",
-  },
-  {
-    q: "What if I need more than the free trial allowance?",
-    a: "Upgrade to Professional or Team for higher generation limits, automation, and integrations. See the plan cards above for current UK pricing.",
-  },
-];
-
-/** Professional annual total (GBP) — monthly equivalent shown on annual toggle. */
-const PRO_ANNUAL_TOTAL_GBP = 290;
-
-/** Team seat pricing: flat base up to 5 users, then per-seat add-on (marketing page — keep in sync with Stripe). */
-const TEAM_SEAT_INCLUDED = 5;
-const TEAM_BASE_MONTHLY_GBP = 79;
-const TEAM_EXTRA_PER_SEAT_MONTHLY_GBP = 20;
-/** 17% off annual billing — display-only monthly equivalent. */
-const TEAM_ANNUAL_DISCOUNT = 0.83;
-/** Team annual base shown on pricing page. */
-const TEAM_ANNUAL_TOTAL_GBP = 632;
-
-const clampTeamSeatCount = (n: number) => Math.min(50, Math.max(5, n));
-
-function clampAnimatedPrice(n: number) {
-  if (!Number.isFinite(n)) return 0;
-  return Math.min(999, Math.max(0, Math.round(n)));
-}
-
-function useAnimatedNumber(target: number, duration: number = 400) {
-  const safeTarget = clampAnimatedPrice(target);
-  const cappedDuration = Math.min(duration, 400);
-  const [display, setDisplay] = useState(safeTarget);
-  const rafRef = useRef<number | null>(null);
-  const fromRef = useRef(safeTarget);
-
-  useEffect(() => {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    fromRef.current = display;
-    const from = fromRef.current;
-    const to = safeTarget;
-    if (from === to) return;
-    const start = performance.now();
-
-    const animate = (now: number) => {
-      const elapsed = now - start;
-      const progress = Math.min(elapsed / cappedDuration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      const current = Math.round(from + (to - from) * eased);
-      setDisplay(current);
-      if (progress < 1) {
-        rafRef.current = requestAnimationFrame(animate);
-      }
-    };
-
-    rafRef.current = requestAnimationFrame(animate);
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
-  }, [safeTarget, cappedDuration]);
-
-  return display;
-}
+] as const;
 
 export function PricingPageClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  /** From settings "Manage subscription" / upgrade flows — prefer paid checkout over starting a new trial. */
-  const pricingIntentUpgrade = searchParams.get("upgrade") === "true";
-  const [isSignedIn, setIsSignedIn] = useState<boolean | null>(null);
-  const [planFields, setPlanFields] = useState<UserPlanFields | null>(null);
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
-  /** Referral welcome coupon eligible (DB); only true when signed in with pending reward. */
-  const [welcomeRewardEligible, setWelcomeRewardEligible] = useState(false);
-  const [teamSeats, setTeamSeats] = useState(5);
-  const [billingPeriod, setBillingPeriod] = useState<"monthly" | "annual">("monthly");
-  const [proOnboardingChecked, setProOnboardingChecked] = useState(false);
-  const [teamOnboardingChecked, setTeamOnboardingChecked] = useState(false);
+  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>(() =>
+    searchParams.get("billing") === "annual" ? "annual" : "monthly",
+  );
+  const [signedIn, setSignedIn] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
-    void (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (user?.id) {
-        const { data: row } = await supabase
-          .from("profiles")
-          .select(
-            "plan, team_id, trial_ends_at, trial_plan, subscription_status, stripe_customer_id",
-          )
-          .eq("id", user.id)
-          .maybeSingle();
-        const pf = planFieldsFromProfileRow(row);
-        setPlanFields(pf);
-        try {
-          const res = await fetch("/api/referrals/welcome-eligible", {
-            credentials: "include",
-          });
-          const body = (await res.json()) as { eligible?: boolean };
-          setWelcomeRewardEligible(body.eligible === true);
-        } catch {
-          setWelcomeRewardEligible(false);
-        }
-      } else {
-        setPlanFields(null);
-        setWelcomeRewardEligible(false);
-      }
-      setIsSignedIn(!!user);
-    })();
-  }, []);
+    let mounted = true;
 
-  const proPriceId =
-    billingPeriod === "annual"
-      ? STRIPE_PRICE_IDS.professional.annual
-      : STRIPE_PRICE_IDS.professional.monthly;
-  const teamPriceId =
-    billingPeriod === "annual"
-      ? STRIPE_PRICE_IDS.team.annual
-      : STRIPE_PRICE_IDS.team.monthly;
-
-  const professionalCardCta = useMemo(() => {
-    if (isSignedIn === null) return { variant: "loading" as const };
-    if (!isSignedIn) return { variant: "anonymous" as const };
-    const f = planFields;
-    const p = normalizePlanLabel(f?.plan ?? "");
-    const teamWorkspace = Boolean(f?.team_id?.trim());
-    if (
-      pricingIntentUpgrade &&
-      (p === "free" || p === "basic") &&
-      !teamWorkspace
-    ) {
-      return { variant: "upgrade" as const, label: "Upgrade Now" as const };
-    }
-    if (teamWorkspace) {
-      return { variant: "team_workspace" as const };
-    }
-    const sub = f?.subscription_status ?? null;
-    if (p === "professional" && isSoloSubscriptionLive(sub)) {
-      return { variant: "current_plan" as const };
-    }
-    if ((p === "team" || p === "enterprise") && isSoloSubscriptionLive(sub)) {
-      return { variant: "included_higher" as const };
-    }
-    const end = f?.trial_ends_at;
-    const endFuture = end && new Date(end) > new Date();
-    const activeTrial =
-      Boolean(endFuture) &&
-      (p === "professional_trial" ||
-        p === "team_trial" ||
-        (p === "free" && Boolean(f?.trial_plan?.trim())));
-    if (activeTrial) {
-      return { variant: "upgrade" as const, label: "Upgrade Now" as const };
-    }
-    if (f && isTrialExpired(f)) {
-      return {
-        variant: "upgrade" as const,
-        label: "Reactivate — Upgrade Now" as const,
-      };
-    }
-    return { variant: "start_trial" as const };
-  }, [isSignedIn, planFields, pricingIntentUpgrade]);
-
-  const teamCardCta = useMemo(() => {
-    if (isSignedIn === null) return { variant: "loading" as const };
-    if (!isSignedIn) return { variant: "anonymous" as const };
-    const f = planFields;
-    const p = normalizePlanLabel(f?.plan ?? "");
-    const teamWorkspace = Boolean(f?.team_id?.trim());
-    if (
-      pricingIntentUpgrade &&
-      (p === "free" || p === "basic") &&
-      !teamWorkspace
-    ) {
-      return { variant: "upgrade" as const, label: "Upgrade Now" as const };
-    }
-    if (teamWorkspace) {
-      return { variant: "manage_workspace" as const };
-    }
-    const sub = f?.subscription_status ?? null;
-    if (p === "team" && isSoloSubscriptionLive(sub)) {
-      return { variant: "current_plan" as const };
-    }
-    if (p === "enterprise" && isSoloSubscriptionLive(sub)) {
-      return { variant: "included_enterprise" as const };
-    }
-    const end = f?.trial_ends_at;
-    const endFuture = end && new Date(end) > new Date();
-    const activeTrial =
-      Boolean(endFuture) &&
-      (p === "professional_trial" ||
-        p === "team_trial" ||
-        (p === "free" && Boolean(f?.trial_plan?.trim())));
-    if (activeTrial) {
-      return { variant: "upgrade" as const, label: "Upgrade Now" as const };
-    }
-    if (f && isTrialExpired(f)) {
-      return {
-        variant: "upgrade" as const,
-        label: "Reactivate — Upgrade Now" as const,
-      };
-    }
-    if (p === "professional" && isSoloSubscriptionLive(sub)) {
-      return { variant: "upgrade" as const, label: "Upgrade" as const };
-    }
-    return { variant: "start_trial" as const };
-  }, [isSignedIn, planFields, pricingIntentUpgrade]);
-
-  /** Matches server `hasActiveSoloAppTrialFromProfile` — used for Stripe checkout (no second trial). */
-  const hasActiveAppTrialForCheckout = useMemo(() => {
-    const f = planFields;
-    if (!f?.trial_ends_at) return false;
-    if (new Date(f.trial_ends_at) <= new Date()) return false;
-    const p = normalizePlanLabel(f.plan ?? "");
-    return (
-      p === "professional_trial" ||
-      p === "team_trial" ||
-      (p === "free" && Boolean(f.trial_plan?.trim()))
-    );
-  }, [planFields]);
-
-  const professionalButtonLabel = useMemo(() => {
-    if (checkoutLoading) return "Loading…";
-    const c = professionalCardCta;
-    if (c.variant === "current_plan") return "Current Plan";
-    if (c.variant === "included_higher") return "Included in your plan";
-    if (c.variant === "team_workspace") return "Team workspace";
-    if (c.variant === "upgrade") return c.label;
-    if (c.variant === "start_trial" || c.variant === "anonymous") {
-      return welcomeRewardEligible ? "Claim your free month →" : "Start 14-day free trial";
-    }
-    return "Start 14-day free trial";
-  }, [checkoutLoading, professionalCardCta, welcomeRewardEligible]);
-
-  const teamPrimaryButtonLabel = useMemo(() => {
-    if (checkoutLoading) return "Loading…";
-    const c = teamCardCta;
-    if (c.variant === "current_plan") return "Current Plan";
-    if (c.variant === "included_enterprise") return "Included in Enterprise";
-    if (c.variant === "upgrade") return c.label;
-    return "Start 14-day free trial";
-  }, [checkoutLoading, teamCardCta]);
-
-  const startCheckout = async (
-    priceId: string,
-    options?: {
-      seats?: number;
-      skipTeamTrial?: boolean;
-      hasActiveTrial?: boolean;
-      includeOnboardingCall?: boolean;
-      /** Immediate paid subscription (no Stripe 14-day trial). */
-      purchaseWithoutTrial?: boolean;
-    },
-  ) => {
-    if (checkoutLoading || !priceId) return;
-    setCheckoutLoading(true);
-    try {
-      const payload: {
-        priceId: string;
-        seats?: number;
-        skipTeamTrial?: boolean;
-        hasActiveTrial?: boolean;
-        includeOnboardingCall?: boolean;
-        purchaseWithoutTrial?: boolean;
-      } = { priceId };
-      if (options?.seats != null) payload.seats = options.seats;
-      if (options?.skipTeamTrial) payload.skipTeamTrial = true;
-      if (options?.hasActiveTrial === true) payload.hasActiveTrial = true;
-      if (options?.includeOnboardingCall === true) payload.includeOnboardingCall = true;
-      if (options?.purchaseWithoutTrial === true) payload.purchaseWithoutTrial = true;
-      const res = await fetch("/api/stripe/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(payload),
-      });
-      const data = (await res.json()) as { url?: string; error?: string };
-      if (!res.ok || !data.url) {
-        console.error(data.error ?? "Checkout failed");
-        return;
-      }
-      window.location.href = data.url;
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setCheckoutLoading(false);
-    }
-  };
-
-  const isEnterprisePlanUser = useMemo(() => {
-    const p = normalizePlanLabel(planFields?.plan ?? "");
-    return p === "enterprise";
-  }, [planFields]);
-
-  const includeOnboardingFromCheckbox = (forStripeCheckout: boolean) =>
-    Boolean(
-      forStripeCheckout &&
-        isSignedIn &&
-        !isEnterprisePlanUser &&
-        STRIPE_ONBOARDING_CALL_PRICE_ID,
-    );
-
-  const startPlanTrial = async (which: "professional" | "team") => {
-    if (checkoutLoading) return;
-    if (!isSignedIn) {
-      router.push(`/signup?trial=${which}`);
-      return;
-    }
-    setCheckoutLoading(true);
-    try {
-      const res = await fetch("/api/trial/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ plan: which }),
-      });
-      const data = (await res.json()) as { ok?: boolean; error?: string };
-      if (!res.ok || !data.ok) {
-        console.error(data.error ?? "Could not start trial");
-        return;
-      }
-      router.push("/");
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setCheckoutLoading(false);
-    }
-  };
-
-  /** Monthly list price £29; annual £290 → save £58/year. */
-  const PRO_MONTHLY_LIST_GBP = 29;
-  const proAnnualSavePerYearGbp = PRO_MONTHLY_LIST_GBP * 12 - PRO_ANNUAL_TOTAL_GBP;
-
-  const teamSeatCountClamped = clampTeamSeatCount(teamSeats);
-  const extraSeats = Math.max(0, teamSeatCountClamped - TEAM_SEAT_INCLUDED);
-  const teamMonthlyTotal = TEAM_BASE_MONTHLY_GBP + extraSeats * TEAM_EXTRA_PER_SEAT_MONTHLY_GBP;
-  const teamAnnualMonthlyEquiv = Math.round(
-    TEAM_ANNUAL_TOTAL_GBP / 12 + extraSeats * TEAM_EXTRA_PER_SEAT_MONTHLY_GBP * TEAM_ANNUAL_DISCOUNT,
-  );
-  const teamAnnualTotal = Math.round(
-    TEAM_ANNUAL_TOTAL_GBP + extraSeats * TEAM_EXTRA_PER_SEAT_MONTHLY_GBP * 10,
-  );
-  const proAnnualMonthlyEquiv = Math.floor(PRO_ANNUAL_TOTAL_GBP / 12);
-  const safeProAnnual = Number.isFinite(Number(proAnnualMonthlyEquiv))
-    ? Number(proAnnualMonthlyEquiv)
-    : 29;
-  const safeTeamAnnual = Number.isFinite(Number(teamAnnualMonthlyEquiv))
-    ? Number(teamAnnualMonthlyEquiv)
-    : 52;
-  const calculatedTeamPrice =
-    billingPeriod === "annual" ? safeTeamAnnual : teamMonthlyTotal;
-  const animatedTeamPrice = useAnimatedNumber(calculatedTeamPrice, 400);
-  /** Annual vs paying monthly list for same seat count for a full year. */
-  const teamAnnualSavePerYearGbp = teamMonthlyTotal * 12 - teamAnnualTotal;
-
-  const scrollToTeamIncludes = () => {
-    const prefersReduced =
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    document.getElementById("pricing-whats-included")?.scrollIntoView({
-      behavior: prefersReduced ? "auto" : "smooth",
-      block: "start",
+    void supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!mounted) return;
+      setSignedIn(Boolean(user));
+      setAuthChecked(true);
     });
-  };
 
-  /**
-   * After signup/sign-in with returnTo=/pricing?checkout=buy-team, open paid Team checkout once.
-   * sessionStorage avoids duplicate sessions under React Strict Mode remounts.
-   */
-  useEffect(() => {
-    if (searchParams.get("checkout") !== "buy-team" || isSignedIn !== true || !teamPriceId) return;
-
-    let cancelled = false;
-    void (async () => {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user?.id || cancelled) return;
-      const guardKey = `handover_pricing_buy_team_${user.id}`;
-      try {
-        if (sessionStorage.getItem(guardKey) === "1") {
-          router.replace("/pricing");
-          return;
-        }
-        sessionStorage.setItem(guardKey, "1");
-      } catch {
-        return;
-      }
-      await startCheckout(teamPriceId, {
-        seats: teamSeatCountClamped,
-        skipTeamTrial: true,
-        purchaseWithoutTrial: true,
-      });
-      if (!cancelled) {
-        try {
-          router.replace("/pricing");
-        } catch {
-          /* ignore */
-        }
-      }
-    })();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+      setSignedIn(Boolean(session?.user));
+      setAuthChecked(true);
+    });
 
     return () => {
-      cancelled = true;
+      mounted = false;
+      subscription.unsubscribe();
     };
-  }, [searchParams, isSignedIn, teamPriceId, teamSeatCountClamped, router]);
+  }, []);
+
+  const checkoutPriceId =
+    billingPeriod === "annual"
+      ? STRIPE_PRICE_IDS.handover.annual
+      : STRIPE_PRICE_IDS.handover.monthly;
+  const hasCheckoutPrice = Boolean(checkoutPriceId);
+  const checkoutComplete = searchParams.get("checkout") === "success";
+
+  const buyNow = async () => {
+    if (checkoutBusy) return;
+    setCheckoutError(null);
+
+    if (!signedIn) {
+      const returnTo = `/pricing?billing=${billingPeriod}`;
+      router.push(`/auth?tab=signin&returnTo=${encodeURIComponent(returnTo)}`);
+      return;
+    }
+    if (!checkoutPriceId) {
+      setCheckoutError("Checkout is not configured yet. Please book a walkthrough.");
+      return;
+    }
+
+    setCheckoutBusy(true);
+    try {
+      const response = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ priceId: checkoutPriceId }),
+      });
+      const data = (await response.json().catch(() => ({}))) as {
+        url?: string;
+        error?: string;
+      };
+      if (!response.ok || !data.url) {
+        setCheckoutError(data.error ?? "We could not start checkout.");
+        return;
+      }
+      window.location.assign(data.url);
+    } catch {
+      setCheckoutError("We could not reach checkout. Please try again.");
+    } finally {
+      setCheckoutBusy(false);
+    }
+  };
 
   return (
-    <div
-      className="animate-in fade-in duration-300"
-      style={{
-        minHeight: "100vh",
-        ["--bg-secondary" as string]: "rgba(255, 255, 255, 0.03)",
-        ["--bg-primary" as string]: "rgba(255, 255, 255, 0.02)",
-      }}
-    >
-      <PricingBillingFromQuery setBillingPeriod={setBillingPeriod} />
-      <section className="relative z-[1] overflow-hidden bg-transparent px-6 py-12 md:px-8 md:py-20">
-        {/* Ambient orbs - inline implementation */}
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            inset: 0,
-            overflow: "hidden",
-            pointerEvents: "none",
-            zIndex: 0,
-          }}
-        >
-          <div
-            style={{
-              position: "absolute",
-              top: "-20%",
-              left: "-10%",
-              width: "600px",
-              height: "600px",
-              borderRadius: "50%",
-              background:
-                "radial-gradient(circle, rgba(14,165,233,0.15) 0%, transparent 70%)",
-              animation: "pricingOrbA 8s ease-in-out infinite alternate",
-            }}
-          />
-          <div
-            style={{
-              position: "absolute",
-              bottom: "-20%",
-              right: "-10%",
-              width: "500px",
-              height: "500px",
-              borderRadius: "50%",
-              background:
-                "radial-gradient(circle, rgba(34,211,238,0.12) 0%, transparent 70%)",
-              animation: "pricingOrbB 10s ease-in-out infinite alternate",
-            }}
-          />
-          <div
-            style={{
-              position: "absolute",
-              top: "-10%",
-              right: "20%",
-              width: "400px",
-              height: "400px",
-              borderRadius: "50%",
-              background:
-                "radial-gradient(circle, rgba(245,158,11,0.08) 0%, transparent 70%)",
-              animation: "pricingOrbC 12s ease-in-out infinite alternate",
-            }}
-          />
-        </div>
-        <div className="relative z-[1] mx-auto w-full max-w-[1200px]">
-          <div className="text-center">
-          <span className="mb-4 inline-block text-xs font-semibold uppercase tracking-widest text-[var(--accent)]">
-            Simple, honest pricing
-          </span>
-          <h1 className="text-5xl font-semibold tracking-tight text-white lg:text-6xl">
-            Plans for every <span className="text-cyan-400">MSP</span> delivery team
+    <main className="marketing-aurora min-h-screen px-4 py-12 text-white sm:px-6 md:pb-20">
+      <div className="mx-auto max-w-5xl">
+        <section className="mx-auto max-w-3xl text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">
+            One plan for MSP delivery
+          </p>
+          <h1 className="mt-4 text-4xl font-semibold tracking-tight sm:text-6xl">
+            See what changed across your client base, before the next conversation.
           </h1>
-          <p className="mx-auto mt-4 max-w-2xl text-lg leading-relaxed text-white/70">
-            Generate your first report free. 14-day trial on Professional or Team — cancel anytime.
+          <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-white/60 sm:text-lg">
+            One Handover workspace for seeing what changed, deciding what matters, and showing
+            clients you are on top of it.
           </p>
+        </section>
+
+        {checkoutComplete ? (
+          <p className="mx-auto mt-8 max-w-2xl rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.08] px-4 py-3 text-center text-sm text-emerald-100">
+            Payment received. Your Handover access is being updated.
+          </p>
+        ) : null}
+
+        <section className="mx-auto mt-12 max-w-5xl">
+          <div className="rounded-[2rem] border border-cyan-300/35 bg-[#0b1629]/85 p-6 shadow-2xl shadow-cyan-950/35 backdrop-blur-sm sm:p-10">
+          <div className="flex flex-col gap-8 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300">
+                The whole product
+              </p>
+              <h2 className="mt-3 text-3xl font-semibold">Handover</h2>
+              <p className="mt-2 text-sm text-white/55">Everything included. No client counting.</p>
+            </div>
+            <div className="text-left sm:text-right">
+              <p className="font-bold tracking-tight text-white">
+                <span className="text-[clamp(2.5rem,5vw,3.75rem)] leading-none">
+                  {billingPeriod === "annual" ? "£4,990" : "£499"}
+                </span>
+                <span className="ml-1 text-xl font-semibold text-white/70">
+                  {billingPeriod === "annual" ? "/year" : "/month"}
+                </span>
+              </p>
+              <p className="mt-2 text-sm text-cyan-200">
+                {billingPeriod === "annual" ? "Two months free" : "Billed monthly"}
+              </p>
+            </div>
           </div>
-        </div>
-      </section>
 
-      <section className="relative z-[1] bg-transparent px-6 pt-6 pb-6 md:px-8 md:pt-8 md:pb-10">
-        <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6">
-          <ScrollRevealItem index={0} className="mx-auto w-full max-w-[600px]">
-            <p
-              className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-[13px] leading-snug text-[var(--text-secondary)]"
-              aria-label="Handover at a glance"
-            >
-              <span>
-                <span className="font-semibold text-[var(--text-primary)]">40+</span> MSP teams
-              </span>
-              <span className="text-[var(--text-muted)]" aria-hidden>
-                ·
-              </span>
-              <span>
-                <span className="font-semibold text-[var(--text-primary)]">96%</span> average time saved
-              </span>
-              <span className="text-[var(--text-muted)]" aria-hidden>
-                ·
-              </span>
-              <span>
-                <span className="font-semibold text-[var(--text-primary)]">HaloPSA marketplace</span> listed
-              </span>
-              <span className="text-[var(--text-muted)]" aria-hidden>
-                ·
-              </span>
-              <span>
-                <span className="font-semibold text-[var(--text-primary)]">ConnectWise integration</span> available
-              </span>
-              <span className="text-[var(--text-muted)]" aria-hidden>
-                ·
-              </span>
-              <span>
-                Built by an <span className="font-semibold text-[var(--text-primary)]">MSP PM</span>
-              </span>
-            </p>
-          </ScrollRevealItem>
-
-          <ScrollRevealItem index={1} className="mx-auto w-full max-w-[1200px]">
-            <div className="flex flex-col items-center justify-center gap-3 px-2 py-4">
-              <div
-                className="inline-flex flex-wrap items-center justify-center gap-1 rounded-full border-2 border-[var(--border)] bg-[var(--bg-primary)] p-1.5 shadow-md"
-                role="tablist"
-                aria-label="Billing period"
-              >
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={billingPeriod === "monthly"}
-                  className={cn(
-                    "rounded-full px-5 py-2.5 text-sm font-semibold transition-colors",
-                    billingPeriod === "monthly"
-                      ? "bg-[var(--accent)] text-white shadow-sm"
-                      : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
-                  )}
-                  onClick={() => setBillingPeriod("monthly")}
-                >
-                  Monthly
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={billingPeriod === "annual"}
-                  className={cn(
-                    "inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition-colors",
-                    billingPeriod === "annual"
-                      ? "bg-[var(--accent)] text-white shadow-sm"
-                      : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
-                  )}
-                  onClick={() => setBillingPeriod("annual")}
-                >
-                  <span>Annual</span>
-                  <span className="rounded-full bg-emerald-400/15 border border-emerald-400/25 px-2.5 py-0.5 text-[10px] font-semibold tracking-wide text-emerald-300">
-                    Save 17%
-                  </span>
-                </button>
-              </div>
-            </div>
-          </ScrollRevealItem>
-
-          <div className="grid min-w-0 grid-cols-1 gap-6 md:grid-cols-3 xl:grid-cols-3 xl:items-start">
-              <ScrollRevealItem index={0} className="min-w-0 h-full">
-              <div className="pricing-card-wrapper pricing-card-pro relative z-0 flex h-full min-h-0 flex-col">
-                <div className="pricing-card-inner flex min-h-0 flex-1 flex-col">
-                  <div className="pricing-pro-premium-dots" aria-hidden />
-                  <div className="pricing-card-glass bg-white/[0.04] backdrop-blur-xl border border-[var(--border)] rounded-2xl p-8 transition-all duration-300 hover:bg-white/[0.06] relative flex h-full min-h-0 flex-1 flex-col gap-5 shadow-none ring-0">
-                  <CardHeader className="!px-8 pt-2 text-center">
-                    <CardTitle className="text-xl text-[var(--text-primary)]">Professional</CardTitle>
-                    <p className="flex flex-wrap items-baseline justify-center gap-2 leading-none tabular-nums">
-                      <span className="pricing-pro-premium-price">
-                        £{billingPeriod === "annual" ? safeProAnnual : PRO_MONTHLY_LIST_GBP}
-                      </span>
-                      <span className="text-base font-normal text-[var(--text-secondary)]">/mo</span>
-                    </p>
-                    <p className="mt-2 text-center text-sm text-white/70">
-                      {billingPeriod === "annual"
-                        ? "1 user · Billed annually"
-                        : "1 user · Billed monthly"}
-                    </p>
-                    {billingPeriod === "annual" ? (
-                      <p className="mt-1 text-center text-[12px] leading-snug text-teal-600 dark:text-teal-400">
-                        You&apos;re saving £{proAnnualSavePerYearGbp} compared to monthly billing
-                      </p>
-                    ) : null}
-                  </CardHeader>
-                  <CardContent className="relative z-[1] flex flex-1 flex-col gap-2 !px-8">
-                    <ul className="flex flex-col gap-1 text-sm text-[var(--text-primary)]">
-                      {professionalFeatureList.map((f, idx) => (
-                        <li
-                          key={`${f.text}-${idx}`}
-                          className="pricing-pro-feature-row"
-                          style={{ animationDelay: `${idx * 50}ms` }}
-                        >
-                          <PricingPlanTick variant="professional" className="mt-0.5" />
-                          <span className="min-w-0 flex flex-wrap items-center gap-2 pt-0.5">
-                            <FeatureTooltip tip={FEATURE_TIPS[f.text]}>
-                              <span>{f.text}</span>
-                            </FeatureTooltip>
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </CardContent>
-                  <CardFooter className="relative z-[1] mt-auto flex-col gap-3 border-t border-[var(--border-subtle)] !px-8 pt-8 pb-6">
-                    <div className="mt-auto pt-6 flex flex-col gap-3">
-                      {isSignedIn === null ? (
-                        <Button className="w-full" size="lg" disabled>
-                          <Loader2 className="size-4 animate-spin" />
-                        </Button>
-                      ) : !isSignedIn ? (
-                        <div className="flex w-full flex-col gap-2">
-                          <Link
-                            href="/signup?trial=professional"
-                            className="bg-gradient-to-r from-[#0EA5E9] to-[#0284C7] hover:from-[#0284C7] hover:to-[#0EA5E9] text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-[#0EA5E9]/20 hover:shadow-[#0EA5E9]/30 transition-all duration-300 transform hover:scale-[1.02] pricing-pro-premium-cta inline-flex min-h-12 w-full items-center justify-center text-sm"
-                          >
-                            {welcomeRewardEligible ? "Claim your free month →" : "Start 14-day free trial"}
-                          </Link>
-                        </div>
-                      ) : (
-                        <div className="flex w-full flex-col gap-2">
-                          <Button
-                            className="pricing-pro-premium-cta w-full min-h-12 rounded-[var(--radius)]"
-                            size="lg"
-                            disabled={
-                              checkoutLoading ||
-                              professionalCardCta.variant === "current_plan" ||
-                              professionalCardCta.variant === "included_higher" ||
-                              professionalCardCta.variant === "team_workspace"
-                            }
-                            onClick={() => {
-                              if (professionalCardCta.variant === "upgrade") {
-                                void startCheckout(proPriceId, {
-                                  hasActiveTrial: hasActiveAppTrialForCheckout,
-                                  includeOnboardingCall:
-                                    includeOnboardingFromCheckbox(proOnboardingChecked),
-                                });
-                                return;
-                              }
-                              void startPlanTrial("professional");
-                            }}
-                          >
-                            <span className="pricing-pro-premium-cta-inner">
-                              {checkoutLoading ? (
-                                <>
-                                  <Loader2 className="size-4 animate-spin" />
-                                  Loading…
-                                </>
-                              ) : (
-                                professionalButtonLabel
-                              )}
-                            </span>
-                          </Button>
-                        </div>
-                      )}
-                      <p className="mt-2 text-center text-[12px] text-white/40">
-                        Cancel anytime
-                      </p>
-                    </div>
-                    {isSignedIn && !isEnterprisePlanUser ? (
-                      <div className="mt-3 flex w-full items-start gap-2.5 rounded-[var(--radius)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/35 px-3 py-2.5 text-left">
-                        <Checkbox
-                          id="pricing-pro-onboarding"
-                          checked={proOnboardingChecked}
-                          onCheckedChange={(c) => setProOnboardingChecked(c === true)}
-                          className="mt-0.5"
-                        />
-                        <label
-                          htmlFor="pricing-pro-onboarding"
-                          className="min-w-0 flex-1 cursor-pointer select-none"
-                        >
-                          <span className="text-[13px] font-medium text-[var(--text-primary)]">
-                            Add onboarding call — £99 one-time
-                          </span>
-                          <p className="mt-1 text-[11px] leading-snug text-[var(--text-muted)]">
-                            45-min setup session. We connect your PSA and get you fully configured.
-                          </p>
-                        </label>
-                      </div>
-                    ) : null}
-                  </CardFooter>
-                </div>
-                </div>
-              </div>
-              </ScrollRevealItem>
-
-              <ScrollRevealItem index={1} className="min-w-0 h-full">
-              <div className="pricing-card-wrapper pricing-card-team relative z-0 flex h-full min-h-0 flex-col ring-1 ring-cyan-400/30">
-                <div className="pricing-card-inner flex min-h-0 flex-1 flex-col">
-                  <div className="pricing-team-premium-dots" aria-hidden />
-                  <div className="pricing-card-glass bg-white/[0.04] backdrop-blur-xl border border-[var(--border)] rounded-2xl p-8 transition-all duration-300 hover:bg-white/[0.06] relative flex h-full min-h-0 flex-1 flex-col gap-5 shadow-none ring-0">
-                    <div className="mx-auto mt-1 w-fit bg-[var(--accent)]/15 text-[var(--accent)] border border-[var(--accent)]/30 text-[11px] font-medium px-2 py-0.5 rounded-full">
-                      Most Popular
-                    </div>
-                    <CardHeader className="!px-8 pt-0 text-center">
-                      <CardTitle className="text-xl text-[var(--text-primary)]">Team</CardTitle>
-                      {billingPeriod === "monthly" ? (
-                        <p className="mt-3 flex flex-wrap items-baseline justify-center gap-x-1 tabular-nums">
-                          <span className="text-[4.5rem] font-semibold leading-none tracking-[-0.04em] text-white tabular-nums">
-                            £{animatedTeamPrice}
-                          </span>
-                          <span className="text-base font-normal text-[var(--text-secondary)]">/mo</span>
-                        </p>
-                      ) : (
-                        <>
-                          <p className="mt-3 flex flex-wrap items-baseline justify-center gap-x-1 tabular-nums">
-                            <span className="text-[4.5rem] font-semibold leading-none tracking-[-0.04em] text-white tabular-nums">
-                              £{animatedTeamPrice}
-                            </span>
-                            <span className="text-base font-normal text-[var(--text-secondary)]">/mo</span>
-                          </p>
-                          <p className="mt-1 text-center text-[12px] leading-snug text-teal-600 dark:text-teal-400">
-                            You&apos;re saving £{teamAnnualSavePerYearGbp}/year compared to monthly billing
-                          </p>
-                          <p className="mt-1 text-center text-sm font-medium text-[var(--text-secondary)]">
-                            £{teamAnnualTotal} billed annually
-                          </p>
-                        </>
-                      )}
-                      <p className="mt-2 text-center text-sm text-white/70">
-                        {billingPeriod === "annual"
-                          ? "5 users · Billed annually"
-                          : "5 users · Billed monthly"}
-                      </p>
-                      <div className="mt-3 space-y-2">
-                        {extraSeats > 0 ? (
-                          <p className="text-center text-[12px] text-white/50">
-                            +{extraSeats} extra seat{extraSeats > 1 ? "s" : ""} · +£
-                            {extraSeats * TEAM_EXTRA_PER_SEAT_MONTHLY_GBP}/mo
-                          </p>
-                        ) : null}
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            type="button"
-                            className="inline-flex size-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] transition hover:bg-[var(--bg-primary)] disabled:opacity-40"
-                            aria-label="Decrease users"
-                            disabled={teamSeatCountClamped <= 5}
-                            onClick={() => setTeamSeats((s) => clampTeamSeatCount(s - 1))}
-                          >
-                            <Minus className="size-3.5" aria-hidden />
-                          </button>
-                          <span className="min-w-[5.5rem] text-center text-sm font-semibold tabular-nums text-white">
-                            {teamSeatCountClamped} users
-                          </span>
-                          <button
-                            type="button"
-                            className="inline-flex size-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] transition hover:bg-[var(--bg-primary)] disabled:opacity-40"
-                            aria-label="Increase users"
-                            disabled={teamSeatCountClamped >= 50}
-                            onClick={() => setTeamSeats((s) => clampTeamSeatCount(s + 1))}
-                          >
-                            <Plus className="size-3.5" aria-hidden />
-                          </button>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="flex min-h-0 flex-1 flex-col gap-4 !px-8">
-                      <div className="flex min-h-0 flex-1 flex-col gap-4">
-                        <ul className="flex min-h-0 flex-1 flex-col gap-2 text-sm text-[var(--text-primary)]">
-                          {teamCardFeatures.map((f) => (
-                            <li key={f.text} className="flex items-start gap-2">
-                              <PricingPlanTick variant="team" className="mt-0.5" />
-                              <span className="min-w-0">
-                                <FeatureTooltip tip={FEATURE_TIPS[f.text]}>
-                                  <span>{f.text}</span>
-                                </FeatureTooltip>
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </CardContent>
-                    <CardFooter className="mt-auto flex-col gap-3 border-t !px-8 pt-8 pb-6">
-                      <div className="mt-auto pt-6 flex flex-col gap-3">
-                      {isSignedIn === null ? (
-                        <Button className="w-full" size="lg" disabled>
-                          <Loader2 className="size-4 animate-spin" />
-                        </Button>
-                      ) : !isSignedIn ? (
-                        <div className="flex w-full flex-col gap-2">
-                          <Link
-                            href="/signup?trial=team"
-                            className="bg-gradient-to-r from-[#0EA5E9] to-[#0284C7] hover:from-[#0284C7] hover:to-[#0EA5E9] text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-[#0EA5E9]/20 hover:shadow-[#0EA5E9]/30 transition-all duration-300 transform hover:scale-[1.02] inline-flex h-11 w-full items-center justify-center gap-2 text-sm"
-                          >
-                            Start 14-day free trial
-                          </Link>
-                        </div>
-                      ) : teamCardCta.variant === "manage_workspace" ? (
-                        <Link
-                          href="/dashboard/team"
-                          className="bg-gradient-to-r from-[#0EA5E9] to-[#0284C7] hover:from-[#0284C7] hover:to-[#0EA5E9] text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-[#0EA5E9]/20 hover:shadow-[#0EA5E9]/30 transition-all duration-300 transform hover:scale-[1.02] inline-flex h-11 w-full items-center justify-center gap-2 text-sm"
-                        >
-                          Manage team
-                        </Link>
-                      ) : (
-                        <>
-                          <Button
-                            className="bg-gradient-to-r from-[#0EA5E9] to-[#0284C7] hover:from-[#0284C7] hover:to-[#0EA5E9] text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-[#0EA5E9]/20 hover:shadow-[#0EA5E9]/30 transition-all duration-300 transform hover:scale-[1.02] w-full gap-2"
-                            size="lg"
-                            disabled={
-                              checkoutLoading ||
-                              teamCardCta.variant === "current_plan" ||
-                              teamCardCta.variant === "included_enterprise"
-                            }
-                            onClick={() => {
-                              if (teamCardCta.variant === "upgrade") {
-                                void startCheckout(teamPriceId, {
-                                  seats: teamSeatCountClamped,
-                                  hasActiveTrial: hasActiveAppTrialForCheckout,
-                                  includeOnboardingCall:
-                                    includeOnboardingFromCheckbox(teamOnboardingChecked),
-                                });
-                                return;
-                              }
-                              void startPlanTrial("team");
-                            }}
-                          >
-                            {checkoutLoading ? (
-                              <>
-                                <Loader2 className="size-4 animate-spin" />
-                                Loading…
-                              </>
-                            ) : (
-                              teamPrimaryButtonLabel
-                            )}
-                          </Button>
-                          {isSignedIn && !isEnterprisePlanUser ? (
-                            <div className="mt-2 flex w-full items-start gap-2.5 rounded-[var(--radius)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/35 px-3 py-2.5 text-left">
-                              <Checkbox
-                                id="pricing-team-onboarding"
-                                checked={teamOnboardingChecked}
-                                onCheckedChange={(c) => setTeamOnboardingChecked(c === true)}
-                                className="mt-0.5"
-                              />
-                              <label
-                                htmlFor="pricing-team-onboarding"
-                                className="min-w-0 flex-1 cursor-pointer select-none"
-                              >
-                                <span className="text-[13px] font-medium text-[var(--text-primary)]">
-                                  Add onboarding call — £99 one-time
-                                </span>
-                                <p className="mt-1 text-[11px] leading-snug text-[var(--text-muted)]">
-                                  45-min setup session. We connect your PSA and get you fully configured.
-                                </p>
-                              </label>
-                            </div>
-                          ) : null}
-                          <p className="text-center text-[12px] text-[var(--text-muted)]">
-                            Cancel anytime
-                          </p>
-                          <p className="text-center text-[12px] text-[var(--text-muted)]">
-                            Refer a friend, get 3 months free —{" "}
-                            <Link href="/referral" className="text-[var(--accent)] hover:underline">
-                              Learn more
-                            </Link>
-                          </p>
-                        </>
-                      )}
-                      <p className="mt-2 text-center text-[12px] text-white/40">
-                        Cancel anytime
-                      </p>
-                      </div>
-                    </CardFooter>
-                  </div>
-                </div>
-              </div>
-              </ScrollRevealItem>
-
-              <ScrollRevealItem index={2} className="min-w-0 h-full">
-              <div className="pricing-card-wrapper pricing-card-enterprise relative flex h-full min-h-0 w-full max-w-full flex-col">
-                <div className="pricing-card-inner flex min-h-0 flex-1 flex-col">
-                  <div className="pricing-card-glass bg-white/[0.04] backdrop-blur-xl border border-[var(--border)] rounded-2xl p-8 transition-all duration-300 hover:bg-white/[0.06] relative flex h-full min-h-0 flex-1 flex-col gap-5 shadow-none ring-0">
-                  <CardHeader className="!px-8 pb-2 pt-0 text-center">
-                    <CardTitle className="text-xl text-[var(--text-primary)]">Enterprise</CardTitle>
-                    <p className="mt-2 flex flex-wrap items-baseline justify-center gap-2 leading-none tabular-nums">
-                      <span className="pricing-pro-premium-price text-4xl">£249</span>
-                      <span className="text-base font-normal text-[var(--text-secondary)]">/mo</span>
-                    </p>
-                    <p className="mt-2 text-center text-sm text-white/70">
-                      Unlimited users · Custom contract
-                    </p>
-                  </CardHeader>
-                  <CardContent className="flex min-h-0 flex-1 flex-col gap-3 !px-8">
-                    <ul className="flex flex-col gap-2.5 text-sm text-[var(--text-primary)]">
-                      {enterpriseFeatures
-                        .filter((f) => !f.comingSoon)
-                        .map((f) => (
-                        <li key={f.text} className="flex items-start gap-2">
-                          <PricingPlanTick variant="enterprise" className="mt-0.5" />
-                          <span className="min-w-0">
-                            <FeatureTooltip tip={FEATURE_TIPS[f.text]}>
-                              <span className="inline-flex flex-wrap items-center gap-2">
-                                <span>{f.text}</span>
-                                {f.beta ? (
-                                  <span className="rounded-md border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white/60">
-                                    Beta
-                                  </span>
-                                ) : null}
-                              </span>
-                            </FeatureTooltip>
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </CardContent>
-                  <CardFooter className="mt-auto flex-col gap-3 border-t border-[var(--border-subtle)] bg-transparent !px-8 pt-8 pb-6">
-                    <div className="mt-auto pt-6 flex flex-col gap-3">
-                      <Link
-                        href="/contact/sales?plan=enterprise"
-                        className="border border-white/15 bg-white/[0.04] hover:bg-white/[0.08] text-white font-medium px-6 py-3 rounded-xl transition-all duration-200 inline-flex h-12 w-full items-center justify-center text-sm"
-                      >
-                        Contact Sales
-                      </Link>
-                      <Link
-                        href="/demo"
-                        className="text-sm text-white/55 underline underline-offset-2 transition-colors hover:text-white"
-                      >
-                        or Book a demo call →
-                      </Link>
-                    </div>
-                  </CardFooter>
-                </div>
-                </div>
-              </div>
-              </ScrollRevealItem>
-            </div>
-
-            <div className="mt-8 flex justify-center">
+          <div className="mt-8 flex rounded-xl border border-white/10 bg-black/10 p-1">
+            {(["monthly", "annual"] as const).map((period) => (
               <button
+                key={period}
                 type="button"
-                onClick={scrollToTeamIncludes}
-                className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)] transition-opacity duration-150 hover:opacity-[0.85]"
+                onClick={() => setBillingPeriod(period)}
+                className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
+                  billingPeriod === period
+                    ? "bg-cyan-300 text-slate-950"
+                    : "text-white/55 hover:text-white"
+                }`}
               >
-                What&apos;s included
-                <ChevronDown
-                  className="whats-included-chevron size-3.5 shrink-0 opacity-80"
-                  aria-hidden
-                />
+                {period === "monthly" ? "Monthly · £499" : "Annual · £4,990"}
               </button>
-            </div>
+            ))}
+          </div>
 
-            <ScrollRevealItem index={4} className="mx-auto mt-6 block w-full max-w-[720px]">
-              <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] px-5 py-4 text-center shadow-sm">
-                <p className="text-[14px] text-[var(--text-secondary)]">
-                  Know an MSP PM? Refer them and get{" "}
-                  <span className="font-semibold text-[var(--text-primary)]">3 months free</span>.{" "}
-                  <Link
-                    href="/referral"
-                    className="font-medium text-[var(--accent)] underline-offset-4 hover:underline"
-                  >
-                    Learn more →
-                  </Link>
-                </p>
-              </div>
-            </ScrollRevealItem>
+          <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => void buyNow()}
+              disabled={!authChecked || checkoutBusy}
+              className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-cyan-300 px-5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200 disabled:cursor-wait disabled:opacity-60"
+            >
+              {checkoutBusy ? <Loader2 className="size-4 animate-spin" /> : null}
+              Buy now
+              {!checkoutBusy ? <ArrowRight className="size-4" /> : null}
+            </button>
+            <a
+              href={BOOK_DEMO_CALENDLY_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-12 flex-1 items-center justify-center rounded-xl border border-white/15 px-5 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/[0.05]"
+            >
+              Book a walkthrough
+            </a>
+          </div>
+          {checkoutError ? (
+            <p className="mt-3 text-sm text-amber-200" role="alert">
+              {checkoutError}
+            </p>
+          ) : null}
+          {!hasCheckoutPrice ? (
+            <p className="mt-3 text-xs text-white/40">
+              Online checkout is being configured. Book a walkthrough to get started.
+            </p>
+          ) : null}
+          </div>
+        </section>
+        <p className="mx-auto mt-5 max-w-2xl text-center text-sm text-white/60">
+          Every customer gets a{" "}
+          <Link
+            href="/onboarding-programme"
+            className="font-semibold text-cyan-200 underline decoration-cyan-200/30 underline-offset-4 hover:text-cyan-100"
+          >
+            30-day launch
+          </Link>
+          , run by me personally.
+        </p>
 
-          <ScrollRevealItem index={5} className="flex justify-center">
-            <div className="mx-auto inline-flex items-center gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-2.5 text-sm text-white/75">
-              <Shield className="size-4 shrink-0 text-emerald-400" aria-hidden />
-              <span>Your data is never stored or used for AI training.</span>
-              <Link
-                href="/privacy"
-                className="whitespace-nowrap text-cyan-300 transition-colors hover:text-cyan-200"
+        <div className="mx-auto mt-12 max-w-3xl">
+          <p className="text-center text-xs font-semibold uppercase tracking-[0.16em] text-white/40">
+            Everything included
+          </p>
+          <div className="mt-3">
+            {FEATURE_GROUPS.map((group) => (
+              <section
+                key={group.title}
+                className="border-t border-white/10 py-6 first:border-t-0 first:pt-0"
               >
-                Privacy policy →
-              </Link>
-            </div>
-          </ScrollRevealItem>
-        </div>
-      </section>
-
-      <section className="relative z-[1] bg-transparent px-6 py-10 md:px-8 md:py-12">
-        <ScrollRevealItem index={3} className="block">
-          <HomeRoiCalculator variant="condensed" className="mx-auto" />
-        </ScrollRevealItem>
-      </section>
-
-      <section className="relative z-[1] bg-transparent px-6 py-12 md:px-8 md:py-20">
-        <div className="mx-auto w-full max-w-[1200px]">
-          <ScrollRevealItem index={4} className="block">
-          <div className="bg-white/[0.03] backdrop-blur-md border border-white/[0.07] rounded-2xl p-6 shadow-md sm:p-8">
-            <PricingWhatsIncludedComparison headingId="pricing-whats-included" />
+                <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-200/65">
+                  {group.title}
+                </h3>
+                <ul className="mt-3 space-y-2.5">
+                  {group.items.map((feature) => (
+                    <li key={feature} className="flex items-start gap-3 text-sm leading-6 text-white/70">
+                      <Check className="mt-1 size-4 shrink-0 text-cyan-300" aria-hidden />
+                      <span>{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
           </div>
-          </ScrollRevealItem>
         </div>
-      </section>
 
-      <ScrollRevealItem index={5} className="block">
-        <PricingComparisonSection />
-      </ScrollRevealItem>
-
-      <section className="relative z-[1] bg-transparent px-6 py-12 md:px-8 md:py-20">
-        <div className="mx-auto w-full max-w-[1200px]">
-          <ScrollRevealItem index={0} className="block">
-          <h2
-            className="text-center font-bold text-[var(--text-primary)]"
-            style={{ fontSize: "24px", marginBottom: "0.5rem" }}
-          >
-            What delivery professionals say
-          </h2>
-          <p
-            className="text-center text-[var(--text-secondary)]"
-            style={{ fontSize: "15px", marginBottom: "2rem" }}
-          >
-            From PMs and SDMs at leading IT organisations
+        <div className="mx-auto mt-10 max-w-3xl text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200/70">
+            Start with the evidence
           </p>
-          </ScrollRevealItem>
-          <ScrollRevealItem index={1} className="block">
-            <TestimonialMarquee />
-          </ScrollRevealItem>
+          <p className="mx-auto mt-3 max-w-xl text-base leading-7 text-white/65">
+            Connect your PSA and see what&apos;s in your client base before you commit.
+          </p>
+          <Link
+            href="/onboarding/connect"
+            className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-cyan-300 px-6 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-950/25 transition hover:bg-cyan-200 sm:w-auto"
+          >
+            See what&apos;s in your client base first
+            <ArrowRight className="ml-2 size-4" aria-hidden />
+          </Link>
+          <p className="mt-3 text-xs text-white/45">No card, no trial.</p>
         </div>
-      </section>
 
-      <section className="relative z-[1] bg-transparent px-6 py-12 md:px-8 md:py-20">
-        <div className="mx-auto w-full max-w-[1200px]">
-          <ScrollRevealItem index={0} className="block">
-          <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] p-6 sm:p-8">
-            <h2 className="text-xl font-semibold text-[var(--text-primary)]">Common questions</h2>
-            <dl className="mt-6 space-y-6">
-              {faqItems.map((item) => (
-                <div
-                  key={item.q}
-                  className="border-b border-[var(--border-subtle)] pb-6 last:border-0 last:pb-0"
-                >
-                  <dt className="font-medium text-[var(--text-primary)]">{item.q}</dt>
-                  <dd className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">{item.a}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-          </ScrollRevealItem>
-        </div>
-      </section>
+        <p className="mx-auto mt-7 max-w-3xl text-center text-xs text-white/40">
+          Smaller MSP?{" "}
+          <Link
+            href="/pricing/starter-programme"
+            className="font-semibold text-white/65 underline decoration-white/20 underline-offset-4 hover:text-white"
+          >
+            Starter Programme
+          </Link>
+          <span className="mx-2 text-white/20">·</span>
+          Larger portfolio?{" "}
+          <Link
+            href="/pricing/enterprise"
+            className="font-semibold text-white/65 underline decoration-white/20 underline-offset-4 hover:text-white"
+          >
+            Enterprise
+          </Link>
+        </p>
 
-      <section className="relative z-[1] bg-transparent px-6 py-12 md:px-8 md:py-20">
-        <div className="mx-auto w-full max-w-[1200px]">
-          <ScrollRevealItem index={0} className="block">
-          <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] px-4 py-4">
-            <div className="grid grid-cols-2 gap-3 text-[13px] text-[var(--text-secondary)] md:flex md:flex-wrap md:items-center md:justify-center md:gap-x-8 md:gap-y-3">
-              <span className="inline-flex items-center gap-2">
-                <Shield className="size-4 text-[var(--accent)]" aria-hidden />
-                Data never stored
+        <section className="mx-auto mt-6 max-w-5xl">
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+            <a
+              href="https://usehalo.com/integration/handover-integration/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 transition-opacity hover:opacity-80"
+            >
+              <img src="/halopsa.png" alt="HaloPSA" width={20} height={20} className="h-5 w-auto object-contain opacity-60" />
+              <span className="text-[11px] font-medium uppercase tracking-wide text-white/40">
+                HaloPSA Marketplace
               </span>
-              <span className="hidden h-4 w-px bg-[var(--border)] md:block" />
-              <span className="inline-flex items-center gap-2">
-                <CreditCard className="size-4 text-[var(--accent)]" aria-hidden />
-                Cancel anytime
+            </a>
+            <span className="hidden text-white/15 sm:block">·</span>
+            <a
+              href="https://marketplace.connectwise.com/handover"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 transition-opacity hover:opacity-80"
+            >
+              <img
+                src="/connectwise.jpeg"
+                alt="ConnectWise"
+                width={20}
+                height={20}
+                className="h-5 w-auto rounded-sm object-contain opacity-60"
+                style={{ background: "white", padding: "2px" }}
+              />
+              <span className="text-[11px] font-medium uppercase tracking-wide text-white/40">
+                ConnectWise Marketplace
               </span>
-              <span className="hidden h-4 w-px bg-[var(--border)] md:block" />
-              <span className="inline-flex items-center gap-2">
-                <Star className="size-4 text-[var(--accent)]" aria-hidden />
-                14-day money back
-              </span>
-              <span className="hidden h-4 w-px bg-[var(--border)] md:block" />
-              <span className="inline-flex items-center gap-2">
-                <Lock className="size-4 text-[var(--accent)]" aria-hidden />
-                Encrypted credentials
-              </span>
-            </div>
-          </div>
-          </ScrollRevealItem>
-        </div>
-      </section>
-
-      <section className="relative z-[1] bg-transparent px-6 py-8 text-center md:px-8 md:py-12">
-        <div className="mx-auto w-full max-w-[1200px]">
-          <ScrollRevealItem index={0} className="block">
-          <p className="text-center text-sm text-[var(--text-secondary)]">
-            <Link href="/" className="underline-offset-4 hover:underline">
-              ← Back to app
+            </a>
+            <span className="hidden text-white/15 sm:block">·</span>
+            <Link
+              href="/blog/pitchit-2026-handover-msp-accelerator"
+              className="text-[11px] font-medium uppercase tracking-wide text-white/40 transition-colors hover:text-white/60"
+            >
+              PitchIT 2026
             </Link>
-          </p>
-          </ScrollRevealItem>
-        </div>
-      </section>
-
-    </div>
+          </div>
+        </section>
+      </div>
+    </main>
   );
 }

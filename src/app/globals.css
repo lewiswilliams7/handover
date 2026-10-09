@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "driver.js/dist/driver.css";
+@import "../styles/tour-theme.css";
 
 @property --border-angle {
   syntax: "<angle>";
@@ -194,10 +196,13 @@
     font-size: 15px;
     line-height: 1.7;
     overflow-x: hidden;
+    overscroll-behavior-y: auto;
+    touch-action: pan-y;
+    min-height: 100%;
+    min-height: -webkit-fill-available;
   }
   html {
     @apply font-sans;
-    scroll-behavior: smooth;
   }
   h1,
   h2,
@@ -501,6 +506,23 @@
     will-change: transform;
   }
 
+  /* The carousel layers are absolutely positioned, so the wrapper must own
+     the full layout box that the right hero column is sizing around. */
+  .home-hero-screenshot-cluster {
+    width: 760px;
+    height: 660px;
+    top: 20px;
+    transform: scale(0.7);
+    transform-origin: top center;
+  }
+
+  @media (min-width: 1400px) {
+    .home-hero-screenshot-cluster {
+      height: 720px;
+      transform: scale(0.8);
+    }
+  }
+
   .home-hero-dot-overlay {
     pointer-events: none;
     position: absolute;
@@ -643,9 +665,9 @@
       radial-gradient(80% 60% at 15% 10%, oklch(0.42 0.18 240 / 0.28), transparent 60%),
       radial-gradient(70% 50% at 88% 25%, oklch(0.38 0.2 285 / 0.2), transparent 65%),
       radial-gradient(90% 70% at 50% 92%, oklch(0.3 0.15 235 / 0.25), transparent 70%);
-    background-attachment: fixed;
     animation: aurora-drift 90s ease-in-out infinite alternate;
   }
+
   @keyframes aurora-drift {
     0% {
       background-position: 0% 0%, 100% 0%, 50% 100%;
@@ -1368,7 +1390,7 @@
   transition: opacity 0.28s ease, visibility 0.28s ease;
   opacity: 1;
   visibility: visible;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .page-load-overlay--leaving {
@@ -1794,6 +1816,20 @@ nav.h-14 img[alt="Handover"] {
   background: var(--border);
 }
 
+.ci-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.ci-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.ci-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+}
+.ci-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -1807,6 +1843,14 @@ nav.h-14 img[alt="Handover"] {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
+}
+
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
 }
 
 @keyframes streak-fire-pulse {
@@ -1881,6 +1925,22 @@ nav.h-14 img[alt="Handover"] {
   }
 }
 
+:root,
+.app-shell-geometry {
+  --app-sidebar-expanded-width: 280px;
+  --app-sidebar-compact-width: 56px;
+  --app-header-height: 52px;
+  --app-past-due-banner-height: 48px;
+  --app-content-top-mobile: 60px;
+  --app-content-top-desktop: 72px;
+  --app-content-top-mobile-past-due: 108px;
+  --app-content-top-desktop-past-due: 120px;
+  --app-fixed-panel-top: 52px;
+  --app-fixed-panel-top-past-due: 100px;
+  --app-settings-rail-width: 220px;
+  --app-settings-header-height: 56px;
+}
+
 body[data-app-shell='true'] {
   background-color: #172035 !important;
 }
@@ -1897,5 +1957,15 @@ body[data-app-shell='true'] canvas {
   /* Ensure all transparent marketing sections have a fallback */
   .page-route-fade {
     background-color: #080D14;
+  }
+}
+
+@media (max-width: 768px) {
+  nav[class*="h-14"] {
+    touch-action: pan-y;
+  }
+
+  .fixed.top-4 {
+    touch-action: pan-y;
   }
 }

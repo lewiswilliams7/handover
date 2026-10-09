@@ -8,6 +8,10 @@ function isEmailPasswordUser(user: User): boolean {
   return user.app_metadata?.provider === "email";
 }
 
+function isPendingScanVerification(user: User): boolean {
+  return user.user_metadata?.scan_verification_pending === true;
+}
+
 function isSupabaseEmailVerified(user: User): boolean {
   return Boolean(user.email_confirmed_at);
 }
@@ -105,6 +109,10 @@ export async function shouldRedirectToVerifyEmailPage(
 ): Promise<boolean> {
   if (isGoogleUser(user)) {
     return false;
+  }
+
+  if (isPendingScanVerification(user)) {
+    return !(await hasVerifiedRowInTable(supabase, user.id));
   }
 
   if (isSupabaseEmailVerified(user)) {

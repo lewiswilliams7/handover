@@ -27,23 +27,14 @@ export async function GET() {
     }
 
     const userId = user.id;
-    console.log("[referrals/dashboard] userId:", userId);
 
     const serviceSupabase = createServiceRoleClient();
-
-    const { data: allCodes } = await serviceSupabase
-      .from("referral_codes")
-      .select("user_id, code")
-      .limit(10);
-    console.log("[referrals/dashboard] all codes in table:", allCodes);
 
     const { data: codeData, error: codeError } = await serviceSupabase
       .from("referral_codes")
       .select("code, click_count, created_at")
       .eq("user_id", userId)
       .maybeSingle();
-
-    console.log("[referrals/dashboard] code fetch:", { codeData, codeError, userId });
 
     const { data: referralsDataRaw, error: referralsError } = await serviceSupabase
       .from("referrals")
@@ -70,7 +61,7 @@ export async function GET() {
         converted:
           referralsData?.filter((r) => r.status === "converted" || r.status === "rewarded")
             .length ?? 0,
-        earned: (referralsData?.filter((r) => r.status === "rewarded").length ?? 0) * 105,
+        earned: (referralsData?.filter((r) => r.status === "rewarded").length ?? 0) * 79,
       },
     });
   } catch (e) {

@@ -15,15 +15,16 @@ import type { User } from "@supabase/supabase-js";
 import { runUpgradeNudgeForUser } from "@/lib/email-triggers";
 import { notifyHandoverGenerationWebhooks } from "@/lib/chat-generation-notify";
 import {
-  canonicalPlanId,
+  getMonthlyGenerationLimit,
+  getMonthlyReportLimit,
+} from "@/lib/plan-limits";
+import {
   getPlanTierFromFields,
   getQbrPacksPerMonthLimit,
   isProOrTeam,
   isSoloGenerationBlockedByPlan,
   isValidTeamSubscriptionStatus,
-  normalizePlanLabel,
   planFieldsFromProfileRow,
-  PRO_SOLO_MONTHLY_GENERATION_LIMIT,
 } from "@/lib/plans";
 import { isEnterpriseSoloPlan } from "@/lib/white-label";
 /** API routes must use this — reads auth from cookies. Do not use @/lib/supabase (browser client) here. */
@@ -43,6 +44,7 @@ import {
   normalizeExtendedOutputKeys,
 } from "@/lib/pm-output-tabs";
 import { resolveSavedGenerationProjectName } from "@/lib/generation-project-name";
+import { trackEvent, updateInsight } from "@/lib/logsnag";
 
 const ALL_RESPONSE_JSON_KEYS = [
   "actions",
@@ -126,6 +128,27 @@ When analysing notes for risks, look for these indicators:
 - Any incomplete action from previous notes
 
 For the RISKS section, extract AT LEAST one risk if any of these indicators appear in the notes. Never return "No risks" when the notes contain blockers or incomplete items.`;
+
+const SPARSE_INPUT_INSTRUCTION = `
+##########  SPARSE INPUT HANDLING  ##########
+
+The ticket data provided has been flagged as low quality 
+(missing descriptions, absent resolution notes, or very few tickets).
+
+Apply these rules:
+- For Actions: only include actions where a specific next step is 
+  clearly stated in the ticket data. Do not infer actions from 
+  vague or missing information.
+- For Risks: only include risks explicitly evidenced in the notes. 
+  Do not infer risks from ticket titles alone.
+- For Summary: keep to what is directly evidenced. Do not pad with 
+  assumed context.
+- For Client Email and Status Report: omit any section or point 
+  where the underlying data is absent or ambiguous. A shorter, 
+  accurate email is preferable to a longer speculative one.
+- Never mention data quality or ticket completeness to the client 
+  in any output.
+`;
 
 function parseRequestTone(
   raw: unknown,
@@ -472,6 +495,63 @@ function nextBusinessDay(date: Date, daysToAdd: number): Date {
   return result;
 }
 
+function buildOutputLanguageInstructionBlock(outputLanguage: string): string {
+  const key = outputLanguage.trim().toLowerCase();
+  const configs: Record<string, { name: string; rules: string }> = {
+    en: {
+      name: "English",
+      rules:
+        "Use British English spelling (not American). Apply all phrase and punctuation rules under LANGUAGE RULES.",
+    },
+    english: {
+      name: "English",
+      rules:
+        "Use British English spelling (not American). Apply all phrase and punctuation rules under LANGUAGE RULES.",
+    },
+    fr: {
+      name: "French",
+      rules: "Write all client-facing outputs entirely in French. Use professional MSP delivery tone.",
+    },
+    french: {
+      name: "French",
+      rules: "Write all client-facing outputs entirely in French. Use professional MSP delivery tone.",
+    },
+    nl: {
+      name: "Dutch",
+      rules: "Write all client-facing outputs entirely in Dutch. Use professional MSP delivery tone.",
+    },
+    dutch: {
+      name: "Dutch",
+      rules: "Write all client-facing outputs entirely in Dutch. Use professional MSP delivery tone.",
+    },
+    de: {
+      name: "German",
+      rules: "Write all client-facing outputs entirely in German. Use professional MSP delivery tone.",
+    },
+    german: {
+      name: "German",
+      rules: "Write all client-facing outputs entirely in German. Use professional MSP delivery tone.",
+    },
+    es: {
+      name: "Spanish",
+      rules: "Write all client-facing outputs entirely in Spanish. Use professional MSP delivery tone.",
+    },
+    spanish: {
+      name: "Spanish",
+      rules: "Write all client-facing outputs entirely in Spanish. Use professional MSP delivery tone.",
+    },
+  };
+  const cfg = configs[key] ?? configs.en;
+  return `
+##########  OUTPUT LANGUAGE  ##########
+Preferred output language: ${cfg.name}.
+${cfg.rules}
+Write client_email, email_subject, status_report, summary (when client-facing), and all extended PM fields intended for the client in ${cfg.name} only.
+For internal and note_to_self report types, keep operational fields in ${cfg.name} unless ticket notes are clearly English-only internal shorthand.
+Do not mix languages except when quoting verbatim text from ticket notes.
+`;
+}
+
 const buildSystemPrompt = (
   displayName?: string | null,
   jobTitle?: string | null,
@@ -492,6 +572,8 @@ const buildSystemPrompt = (
    * summary opening guidance and extra quality rules below (not a separate shortened prompt).
    */
   isScheduledHandoverRun = false,
+  outputLanguage: string = "en",
+  sparseInput = false,
 ) => {
   const todayFormatted = new Date().toLocaleDateString("en-GB", {
     day: "2-digit",
@@ -599,6 +681,7 @@ Follow these preferences closely while maintaining professional standards.
       : "";
 
   const extendedPmBlock = buildExtendedPmOutputsPromptBlock(extendedOutputKeys);
+  const outputLanguageBlock = buildOutputLanguageInstructionBlock(outputLanguage);
 
   const whoGetsClientEmailSection = scheduledIncludeAllSelectedTickets
     ? reportType === "external"
@@ -772,6 +855,7 @@ ${outputScope}
 ${reportTypeBlock}
 ${toneInstructions}
 ${writingStyleBlock}
+${outputLanguageBlock}
 ${extendedPmBlock}
 
 ##########  INPUT FORMAT  ##########
@@ -963,6 +1047,40 @@ When writing the opening summary paragraph for a report covering multiple client
 }
 Write ONE combined executive summary paragraph covering ALL tickets and projects in this import. 3-4 sentences maximum. Lead with the overall status across all items, then highlight the 2-3 most important actions or risks. Do not write separate paragraphs per ticket. Do not label by ticket name. Write as a senior PM would brief a stakeholder on the whole portfolio.
 
+SUMMARY — OPENING SENTENCE RULE:
+The first sentence of the summary MUST
+reference the single most time-critical
+or highest-stakes item in the portfolio.
+Determine urgency by:
+1. Items with a confirmed date within
+   7 days (e.g. Saturday migration,
+   Monday deployment)
+2. Items with active escalation or
+   unresolved critical failures
+3. Items blocking other work
+
+Never open with:
+✗ "Several high-priority items are
+   in motion this week"
+✗ "Delivery across the portfolio is
+   progressing well"
+✗ Any sentence that doesn't contain
+   a specific client name and specific
+   item
+
+CORRECT opening example:
+"Saturday's Fortigate 200F cutover for
+Bridgewater Council is the week's
+highest-stakes item — pre-migration
+checks are complete, 14 VPN tunnels
+documented, and the rollback plan is
+confirmed."
+
+WRONG opening:
+"Several high-priority items are in
+motion this week, including backup
+monitoring and client approvals."
+
 MANDATORY SUMMARY RULES:
   - Name specific projects and their current status
   - Reference the single most important blocker or next step
@@ -1094,16 +1212,29 @@ List formatting rules:
 
 Never write "null" as a value. If owner unknown: ${clientContactName || "the delivery lead"}.
 
-MULTI-TICKET / MULTI-PROJECT STATUS REPORT (mandatory when import has more than one ticket or project):
-The status_report must have a separate section for each ticket/project. Format each section as:
+MULTI-TICKET / MULTI-PROJECT STATUS REPORT (when import has more than one ticket or project):
 
+First, classify each ticket/project as SUBSTANTIAL or TRIVIAL:
+- SUBSTANTIAL: status is open/in-progress, OR has an identified risk, OR has a meaningful action still outstanding, OR involved notable work this period worth a client knowing about.
+- TRIVIAL: status is closed/resolved with no further action, no risk, and no outstanding handover - i.e. fully done, nothing more to report.
+
+For SUBSTANTIAL items: give each its own section as before:
 [Ticket Title] — [Client]
 Status: [status] | Owner: [owner] | RAG: [colour]
 Progress: [what has been done]
 Actions: [numbered list with owner and priority]
 Next Steps: [what happens next]
 
-Separate each ticket section with a horizontal rule. Never combine multiple tickets into one section. Each ticket must be independently reported.
+For TRIVIAL items: do NOT give each its own section. Instead, collapse all trivial items into a single rollup block at the end, in this format:
+
+Also closed this period
+[N] ticket(s) closed with no further action required: [comma-separated short titles or a 1-sentence thematic grouping, e.g. "password resets, VPN access, and minor user requests"].
+
+If ALL items in the import are trivial (no substantial items at all), skip individual sections entirely and use only this rollup format as the full status_report - do not pad it with empty Progress/Actions/Risks/Next Steps sections for closed items.
+
+If there is a MIX of substantial and trivial items, show substantial items in full individual sections first, followed by the single trivial rollup block at the end.
+
+Separate substantial item sections with a horizontal rule, as before. The trivial rollup block does not need its own horizontal rule per item - it's one block.
 
 ##########  TICKET STATUS HANDLING  ##########
 
@@ -1164,52 +1295,372 @@ INSTEAD write like this:
   ✓ "The 3CX update is confirmed for 4:30pm today. Remote access is set up and ready."
 
 ##########  FEW-SHOT EXAMPLES  ##########
+These examples define the quality ceiling.
+Every output you produce must meet or
+exceed this standard. Read them carefully
+— they demonstrate judgment, not just
+format compliance.
 
-The following are real examples of input and the correct output standard. Use these to calibrate your outputs.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EXAMPLE 1: MULTI-CLIENT SUMMARY QUALITY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+INPUT: 7 clients, 36 tickets including
+a Saturday firewall migration, a backup
+failure being monitored, an Osprey SQL
+migration blocked on partner sign-off,
+and a Bromcom MIS rollout with 2 of 6
+academies still to migrate.
 
---- EXAMPLE 1: Time-sensitive support ticket with email thread ---
+CORRECT SUMMARY:
+"The week's highest-stakes item is
+Saturday's Fortigate 200F cutover for
+Bridgewater Council — all pre-migration
+checks are complete, 14 VPN tunnels
+documented, change request approved,
+and rollback plan confirmed. At Northwood
+Manufacturing, the SPF issue affecting
+sales team email delivery is under
+extended monitoring following further
+bounce reports from Hartigan & Co; the
+backup failure has been manually
+remediated but overnight jobs need
+confirming before the ticket closes.
+Acme Legal's Osprey SQL migration is
+staging-complete and performance-tested
+— production is blocked only on partner
+sign-off, which is being chased Friday.
+At Solent Academies Trust, four of six
+academies are live on Bromcom with
+Fareham and Gosport scheduled for
+half-term; the phishing incident at
+Gosport is resolved with no evidence
+of post-click compromise. Pennine
+Logistics' ransomware assessment has
+surfaced OT segmentation gaps that need
+remediation before the board report
+lands. Hartley and Sons are one IT
+manager approval away from completing
+Cyber Essentials recertification."
 
-INPUT SUMMARY:
-Ticket: 3CX update for Yardleys School
-Most recent notes: Lewis asked to move from 7pm Thursday to 4:30pm tomorrow. Ravi (client) confirmed 4:30pm and has installed Splashtop.
+WHY THIS IS CORRECT:
+- Opens with the most time-critical item
+  (Saturday cutover) not a generic statement
+- Named specifics: Hartigan & Co,
+  4 of 6 academies, Gosport phishing
+- Synthesises themes rather than listing
+  tickets
+- Signals genuine account knowledge
+- Reads like a senior PM briefing —
+  not a database query
 
-CORRECT OUTPUT:
-  actions[0].task = "Complete 3CX out-of-hours update for Yardleys School — confirmed for 4:30pm today, remote access via Splashtop ready"
-  actions[0].suggested_owner = "Lewis Williams"
-  actions[0].priority = "High"
-  summary = "The 3CX update for Yardleys School is confirmed for 4:30pm today. Ravi Poye has installed Splashtop Streamer and confirmed availability. Jack Cole is assisting. No blockers — update can proceed as planned."
-  client_email greeting = "Hi Dal," (NOT "Hi Lewis,")
-  client_email body references the 4:30pm time (NOT 7pm)
+WRONG SUMMARY (never produce this):
+"Delivery across the portfolio is
+progressing well, with high-priority
+actions focused on resolving issues
+and completing migrations. Key risks
+include delays in approvals and
+segmentation gaps."
+WHY WRONG: Generic. Could describe
+any MSP portfolio. Contains no
+specific facts. "Progressing well"
+is a content-free phrase.
 
-WRONG OUTPUT (do not do this):
-  ✗ Assigning action to "Daljit" (client contact)
-  ✗ Summary saying "scheduled for Thursday at 7pm"
-  ✗ Client email opening "Hi Lewis,"
-  ✗ Priority: Medium (this is time-sensitive, out-of-hours, imminent)
-  ✗ Risks: None (remote access dependency is a real risk)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EXAMPLE 2: ACTION QUALITY CEILING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+INPUT: Backup failure — NAS unit. VSS
+writer restarted, manual backup succeeded.
+Overnight job being monitored.
 
---- EXAMPLE 2: Internal project with multiple workstreams ---
+CORRECT ACTION:
+task: "Confirm overnight NAS backup
+completed successfully — manual run
+passed but VSS writer failure was 4
+days without backup. Close only on
+two consecutive clean overnight runs."
+owner: "Jamie Clarke"
+priority: "High"
+due: [next business day]
 
-INPUT SUMMARY:
-Project: Internal - Intune Refresh (Panacea Group Limited as client)
-Multiple workstreams: CA in report-only, UAC tested on VM, device groups created, managed favourites updated, update rings near complete.
+WRONG ACTION:
+task: "Monitor overnight backup job
+on NAS unit server room after VSS
+writer restart"
+WHY WRONG: Passive. Doesn't communicate
+the severity (4 days without backup).
+Doesn't define "done" (what confirms
+resolution?). A PM reading this doesn't
+know what success looks like.
 
-CORRECT OUTPUT:
-  client_email = "" (internal project — no client email)
-  Multiple actions — one per workstream:
-    "Confirm stakeholder decision on Cato conditional access impact on personal phones before enabling — Lewis Williams, High"
-    "Deploy UAC policy to active users — tested on VM, pending approval — Jack Cole, Medium"
-    "Complete staged update ring rollout — Technical group first, then all staff — Lewis Williams, Medium"
-  summary references specific workstream status, not generic progress language
+CORRECT ACTION (Osprey sign-off):
+task: "Chase [Partner] for Osprey SQL
+migration sign-off — staging complete,
+performance-tested, production window
+proposed for Thursday. Escalate to
+partner director if no response by
+Friday EOD."
+owner: "Jamie Clarke"
+priority: "High"
 
-WRONG OUTPUT (do not do this):
-  ✗ Generating a client email for an internal Panacea project
-  ✗ Collapsing all workstreams into one action
-  ✗ Summary: "The project is in progress with several tasks underway"
+WRONG ACTION:
+task: "Chase partner for sign-off on
+Osprey case management SQL migration
+to schedule production upgrade"
+WHY WRONG: No escalation path. No
+deadline. Reads like a copy of the
+ticket description. A real PM would
+include the consequence of inaction.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EXAMPLE 3: RISK QUALITY CEILING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+INPUT: Saturday firewall migration for
+Bridgewater Council. Pre-checks done.
+No rollback window documented after
+cutover starts.
+
+CORRECT RISK:
+title: "Fortigate cutover Saturday —
+  no recovery window once migration
+  starts"
+description: "If the Saturday Fortigate
+  migration overruns or fails mid-cutover,
+  the council's 14 site-to-site VPN
+  tunnels and public-facing services
+  will be degraded until an emergency
+  window is agreed. Rollback is
+  documented but adds 2-3 hours to
+  the window."
+mitigation: "Confirm escalation contact
+  with council IT before Saturday.
+  Pre-position rollback config on
+  standby engineer's device. Define
+  abort criteria — at what point do
+  we rollback vs push through?"
+owner: "Alex Thompson"
+probability: 2
+impact: 5
+priority: "High"
+
+WRONG RISK:
+title: "Migration risk"
+description: "There may be issues with
+  the firewall migration."
+mitigation: "Monitor the situation."
+owner: "TBC"
+probability: "TBC"
+WHY WRONG: Owner is always known from
+the ticket. Probability and impact
+should always be inferred from context
+— "TBC" is never acceptable. "Monitor
+the situation" is not a mitigation.
+
+RISK OWNER RULE (non-negotiable):
+The risk owner is ALWAYS the ticket
+owner unless context indicates otherwise.
+Never output owner: "TBC" when a ticket
+owner is present in the input.
+
+PROBABILITY INFERENCE RULES:
+- Active, time-sensitive issue with
+  recent escalation signals: probability 4
+- Known blocker with no resolution
+  path: probability 4
+- Awaiting client approval with
+  history of delays: probability 3
+- Standard scheduled work with
+  contingency: probability 2
+- Theoretical risk on green ticket:
+  probability 1
+Never output probability: "TBC"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EXAMPLE 4: CLIENT EMAIL QUALITY CEILING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+INPUT: Northwood Manufacturing. SPF
+issue ongoing, backup being monitored,
+new starter onboarding, SharePoint
+Phase 2 scheduled, WiFi APs ordered,
+MFA awaiting approval.
+
+CORRECT client_email body:
+"The SPF issue affecting your sales
+team's outbound email has had further
+attention this week — we received
+additional bounce reports from Hartigan
+& Co and have extended the monitoring
+window as a result. I'll let you know
+as soon as we have clean delivery
+confirmed.
+
+Your new Production Manager's setup
+is underway — M365 account is live
+and the laptop is being built today.
+We're waiting on finance to confirm
+Sage 200 access, so please do chase
+that from your end if you haven't
+already.
+
+On infrastructure: the warehouse WiFi
+access points have been ordered (Ubiquiti
+U6-Pro, delivery Thursday) and the
+SharePoint archive migration is
+confirmed for Monday. We'll need your
+IT manager's sign-off on the MFA
+hardware tokens before we can proceed
+with the remote worker rollout —
+Jamie will follow up directly."
+
+WHY THIS IS CORRECT:
+- Opens with the most urgent item
+  (email delivery) with named specifics
+- Asks the client to do something
+  specific (chase finance for Sage 200)
+- Groups related items naturally
+  rather than listing all tickets
+- Personal, direct, reads like it
+  was written by a human who knows
+  the account
+- No pleasantries, no "I hope this
+  finds you well"
+- Tells the client what's happening
+  on their account — not just what
+  the engineer did
+
+WRONG client_email:
+"The main items in progress are the
+Office 365 email delivery issue for
+the sales team and onboarding for your
+new Production Manager. Our team has
+updated the SPF record and is monitoring
+outbound mail delivery."
+WHY WRONG: Passive voice ("our team
+has updated"). Generic. No named
+specifics. No call to action. Reads
+like a status list, not a communication
+from someone who owns the account.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EXAMPLE 5: WHAT "SPECIFIC" MEANS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+These pairs show the difference between
+acceptable and excellent output for the
+same fact:
+
+ACCEPTABLE: "4 laptops ordered for
+  field team"
+EXCELLENT: "4x Panasonic CF-54 ordered
+  for field ops — build checklist ready,
+  deploy immediately on arrival"
+
+ACCEPTABLE: "Phishing simulation
+  complete, training underway"
+EXCELLENT: "Q2 phishing simulation
+  complete — click rate dropped from
+  12% to 7%. 4 repeat clickers enrolled
+  in targeted KnowBe4 module. Board
+  metric improving."
+
+ACCEPTABLE: "Data mapping in progress"
+EXCELLENT: "NAV-to-BC data mapping
+  60% complete — custom reports
+  identified for redevelopment.
+  Timeline on track for July cutover."
+
+ACCEPTABLE: "MFA hardware tokens
+  awaiting approval"
+EXCELLENT: "Phase 2 MFA rollout blocked
+  on IT manager approval for YubiKey
+  5 NFC tokens for 3 remote users —
+  Jamie to chase directly, no remote
+  secure access until resolved"
+
+The rule: if a number, name, model,
+percentage, or specific date exists
+in the input — use it. Generic language
+is never preferable to specific language.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ANTI-PATTERN REFERENCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+These phrases are banned from all output.
+They signal AI-generated content and
+must never appear:
+
+OPENING PHRASES (never use):
+✗ "I hope this email finds you well"
+✗ "Please find below/attached"
+✗ "As per our previous conversation"
+✗ "I am writing to inform you"
+✗ "I wanted to reach out"
+✗ "Further to our discussion"
+✗ "I trust this email finds you"
+
+FILLER PHRASES (never use):
+✗ "Going forward"
+✗ "Touch base" / "Circle back"
+✗ "Leverage" (unless quoting client)
+✗ "In terms of"
+✗ "It is worth noting that"
+✗ "It should be noted that"
+✗ "Overall" as paragraph opener
+✗ "In summary" as paragraph opener
+✗ "Please do not hesitate to contact"
+✗ "Should you have any questions"
+✗ "Kind regards" mid-body (sign-off only)
+✗ "I hope the above is helpful"
+✗ "Please let me know if you need
+    anything further"
+
+SUMMARY PHRASES (never use):
+✗ "Delivery is progressing well"
+✗ "The team has been working hard"
+✗ "Several tasks were completed"
+✗ "Various issues were addressed"
+✗ "A number of tickets were worked on"
+✗ "Good progress has been made"
+✗ Any sentence that could describe
+    any MSP portfolio
+
+RISK PHRASES (never use):
+✗ owner: "TBC"
+✗ probability: "TBC"
+✗ mitigation: "Monitor the situation"
+✗ mitigation: "Continue to monitor"
+✗ mitigation: "Keep an eye on progress"
+✗ Any mitigation that is just
+    a restatement of the action
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+QUALITY SELF-CHECK (run before output)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Before outputting, ask yourself:
+
+1. Does my summary open with the most
+   urgent/time-critical item?
+2. Does every risk have a real owner
+   (not TBC) and a real probability
+   (not TBC)?
+3. Does every action define what
+   "done" looks like?
+4. Does the client email open with
+   a specific fact about their account?
+5. Have I used any banned phrases?
+6. Could any sentence in my output
+   describe any MSP client generically?
+   If yes — make it specific.
+7. Are there numbers, names, or
+   percentages in the input that I
+   haven't used?
+
+If any answer is unfavourable —
+correct before outputting.
 
 ##########  EXTENDED PM OUTPUTS  ##########
 
 ${extendedPmBlock}
+
+${sparseInput ? SPARSE_INPUT_INSTRUCTION : ""}
 
 ##########  JSON SCHEMA  ##########
 
@@ -1231,6 +1682,30 @@ The JSON object must contain exactly these keys: ${ALL_JSON_KEYS_LINE}.
   "project_name": "Exact ticket title from input",
   "source_ticket": "Exact ticket title from input"
 }
+
+RISKS OUTPUT — MANDATORY RULES:
+- suggested_owner: ALWAYS use the ticket
+  owner from the input. Never output
+  "TBC", null, or empty string when a
+  ticket owner is present. The risk
+  owner is the same person responsible
+  for the ticket.
+- probability: ALWAYS output a number
+  1-5 based on context. Never output
+  "TBC". Use these inference rules:
+  • Active issue with recent escalation: 4
+  • Blocked on external approval with
+    no progress: 4
+  • Awaiting parts/delivery: 3
+  • Scheduled work with contingency: 2
+  • Green ticket, theoretical risk: 1
+- status: Always "Open" for active risks.
+  Never "TBC".
+These rules apply to the risks[] array
+in the JSON output. The RAID log already
+follows these rules — the risks[] array
+must match the same standard.
+
 - summary: string
 - client_email: string (empty string if no client-facing tickets)
 - email_note: string (empty unless multi-client)
@@ -1359,6 +1834,8 @@ export async function POST(req: Request) {
         ? body.clientContactEmail.trim() || null
         : null;
     const privacyMode = body.privacyMode === true;
+    const inputQualityScore =
+      typeof body.inputQualityScore === "number" ? body.inputQualityScore : null;
 
     const authHeader = req.headers.get("authorization");
     const cronSecret = process.env.CRON_SECRET?.trim();
@@ -1486,11 +1963,14 @@ export async function POST(req: Request) {
     let companyName: string | null = null;
     let signatureOverride: string | null = null;
     let writingStyle: string | null = null;
+    let outputLanguage = "en";
     let plan: string = "free";
     let profileTeamId: string | null = null;
     let trialEndsAt: string | null = null;
     let trialPlan: string | null = null;
     let subscriptionStatus: string | null = null;
+    let generationLimitOverride: number | null = null;
+    let totalGenerationCountBefore = 0;
 
     {
       let verifiedPlanFields;
@@ -1508,10 +1988,27 @@ export async function POST(req: Request) {
       const { data: profileExtras } = await adminProfile
         .from("profiles")
         .select(
-          "display_name, job_title, company_name, signature_override, writing_style",
+          "display_name, job_title, company_name, signature_override, writing_style, output_language, total_generations, generation_limit_override",
         )
         .eq("id", user.id)
         .maybeSingle();
+
+      totalGenerationCountBefore =
+        typeof profileExtras?.total_generations === "number"
+          ? profileExtras.total_generations
+          : 0;
+
+      generationLimitOverride =
+        typeof profileExtras?.generation_limit_override === "number" &&
+        Number.isFinite(profileExtras.generation_limit_override)
+          ? profileExtras.generation_limit_override
+          : null;
+
+      outputLanguage =
+        typeof profileExtras?.output_language === "string" &&
+        profileExtras.output_language.trim()
+          ? profileExtras.output_language.trim()
+          : "en";
 
       console.log("[generate] profile (service role):", {
         plan: verifiedPlanFields.plan,
@@ -1646,7 +2143,7 @@ export async function POST(req: Request) {
           {
             error: "qbr_not_available",
             message:
-              "QBR packs require an active Professional, Team, or Enterprise plan. Upgrade to generate QBR packs.",
+              "QBR packs require an active Starter, Growth, or Enterprise plan. Upgrade to generate QBR packs.",
           },
           { status: 403 },
         );
@@ -1707,7 +2204,7 @@ export async function POST(req: Request) {
               error: "qbr_monthly_limit_reached",
               message:
                 qbrLimit === 1
-                  ? "You have used your 1 QBR pack for this month. Upgrade to Team for 3 QBRs per month."
+                  ? "You have used your trial QBR allowance for this month. Upgrade to Starter or Growth for unlimited QBR packs."
                   : enterpriseUnlimitedCopy,
             },
             { status: 403 },
@@ -1769,6 +2266,7 @@ If ticket data contains a CUSTOM FIELDS block, extract values and apply them acc
         reportType,
         scheduledIncludeAllSelectedTickets,
         isScheduledCron,
+        outputLanguage,
       );
       if (hasMappings) {
         rewriteSystemPrompt += customFieldsContextBlock;
@@ -1833,10 +2331,25 @@ If ticket data contains a CUSTOM FIELDS block, extract values and apply them acc
           endsAt: string;
         }
       | null = null;
-    if (!input.startsWith("MOCK:") && !profileTeamId) {
-      const np = canonicalPlanId(plan);
-      if (np === "professional" && !profileTeamId) {
-        const startOfMonthPro = new Date(
+    if (!input.startsWith("MOCK:") && !profileTeamId && !rewriteEmailOnly) {
+      const planFieldsForMonthlyLimit = planFieldsFromProfileRow({
+        plan,
+        team_id: profileTeamId,
+        trial_ends_at: trialEndsAt,
+        trial_plan: trialPlan,
+        subscription_status: subscriptionStatus,
+      });
+      const accountCreated = new Date(user.created_at ?? Date.now());
+      const daysSinceCreation =
+        (Date.now() - accountCreated.getTime()) / (1000 * 60 * 60 * 24);
+      const emailDomain = user.email?.split("@")[1]?.toLowerCase() ?? "";
+      const isDisposable = DISPOSABLE_DOMAINS.has(emailDomain);
+      const isInTrialPeriod = !isDisposable && daysSinceCreation < 14;
+      const skipMonthlyLimitForFreeTrial =
+        getPlanTierFromFields(planFieldsForMonthlyLimit) < 1 && isInTrialPeriod;
+
+      if (!skipMonthlyLimitForFreeTrial) {
+        const startOfMonth = new Date(
           Date.UTC(
             new Date().getUTCFullYear(),
             new Date().getUTCMonth(),
@@ -1846,23 +2359,56 @@ If ticket data contains a CUSTOM FIELDS block, extract values and apply them acc
             0,
             0,
           ),
-        ).toISOString();
-        const { count: proSoloMonthCount, error: proSoloCountErr } = await supabase
+        );
+        const { count: monthCount, error: monthCountErr } = await supabase
           .from("generations")
           .select("id", { count: "exact", head: true })
           .eq("user_id", user.id)
-          .gte("created_at", startOfMonthPro);
-        if (proSoloCountErr) {
-          console.error("[generate] Pro solo generation count error:", proSoloCountErr);
-        } else if ((proSoloMonthCount ?? 0) >= PRO_SOLO_MONTHLY_GENERATION_LIMIT) {
-          return NextResponse.json(
-            {
-              error: "limit_reached",
-              message:
-                "You have reached your Pro plan limit of 200 generations this month (UTC). It resets on the 1st of each month.",
-            },
-            { status: 403 },
+          .gte("created_at", startOfMonth.toISOString());
+        if (monthCountErr) {
+          console.error("[generate] Monthly generation count error:", monthCountErr);
+        } else {
+          const limit = getMonthlyGenerationLimit(
+            plan,
+            generationLimitOverride,
           );
+          const used = monthCount ?? 0;
+          if (limit !== null && used >= limit) {
+            return NextResponse.json(
+              {
+                error: "Monthly generation limit reached",
+                limitReached: true,
+                limit,
+                used,
+              },
+              { status: 429 },
+            );
+          }
+
+          if (reportType === "qbr" || persistedReportType === "qbr") {
+            const reportLimit = getMonthlyReportLimit(plan);
+            if (reportLimit !== null && reportLimit > 0) {
+              const { count: qbrCount, error: qbrCountErr } = await supabase
+                .from("generations")
+                .select("id", { count: "exact", head: true })
+                .eq("user_id", user.id)
+                .eq("report_type", "qbr")
+                .gte("created_at", startOfMonth.toISOString());
+              if (qbrCountErr) {
+                console.error("[generate] QBR report count error:", qbrCountErr);
+              } else if ((qbrCount ?? 0) >= reportLimit) {
+                return NextResponse.json(
+                  {
+                    error: "Monthly report limit reached",
+                    limitReached: true,
+                    reportLimit,
+                    reportUsed: qbrCount ?? 0,
+                  },
+                  { status: 429 },
+                );
+              }
+            }
+          }
         }
       }
     }
@@ -1997,11 +2543,25 @@ If ticket data contains a CUSTOM FIELDS block, extract values and apply them acc
 
         if (countError) {
           console.error("Generation count error:", countError);
-        } else if ((count ?? 0) >= 10) {
-          return NextResponse.json(
-            { error: "limit_reached" },
-            { status: 403 },
+        } else {
+          const freeMonthlyLimit = getMonthlyGenerationLimit(
+            plan,
+            generationLimitOverride,
           );
+          if (
+            freeMonthlyLimit !== null &&
+            (count ?? 0) >= freeMonthlyLimit
+          ) {
+            return NextResponse.json(
+              {
+                error: "Monthly generation limit reached",
+                limitReached: true,
+                limit: freeMonthlyLimit,
+                used: count ?? 0,
+              },
+              { status: 429 },
+            );
+          }
         }
       }
     }
@@ -2021,6 +2581,8 @@ If ticket data contains a CUSTOM FIELDS block, extract values and apply them acc
       reportType,
       scheduledIncludeAllSelectedTickets,
       isScheduledCron,
+      outputLanguage,
+      typeof inputQualityScore === "number" && inputQualityScore < 60,
     );
     if (hasMappings) {
       systemPrompt += customFieldsContextBlock;
@@ -2131,7 +2693,28 @@ If ticket data contains a CUSTOM FIELDS block, extract values and apply them acc
 
         if (insertError) {
           console.error("Failed to save generation:", insertError);
-        } else if (!input.startsWith("MOCK:")) {
+        } else {
+          if (totalGenerationCountBefore === 0) {
+            void trackEvent({
+              channel: "activations",
+              event: "First Report Generated",
+              icon: "⚡",
+              description: `${user.email} generated their first report`,
+              tags: {
+                email: user.email ?? "unknown",
+                report_type: reportType ?? "unknown",
+              },
+              notify: true,
+            });
+          }
+          void updateInsight(
+            "Total Generations",
+            totalGenerationCountBefore + 1,
+            "⚡",
+          );
+        }
+
+        if (!insertError && !input.startsWith("MOCK:")) {
           try {
             const admin = createServiceRoleClient();
             const { error: lastGenErr } = await admin

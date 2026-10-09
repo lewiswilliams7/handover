@@ -3,18 +3,24 @@ import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { createServerClient } from "@/lib/supabase/server";
 import { getStripe } from "@/lib/stripe";
+import {
+  LEGACY_STRIPE_PRICE_IDS,
+  STRIPE_PRICE_IDS,
+} from "@/lib/stripe-price-ids";
 
 export const runtime = "nodejs";
 
-function monthlyPriceIds() {
-  const proMonthly =
-    process.env.STRIPE_PROFESSIONAL_MONTHLY_PRICE_ID ??
-    process.env.STRIPE_PRO_MONTHLY_PRICE_ID ??
-    process.env.STRIPE_PRO_PRICE_ID;
-  const teamMonthly =
-    process.env.STRIPE_TEAM_MONTHLY_PRICE_ID ??
-    process.env.NEXT_PUBLIC_STRIPE_TEAM_MONTHLY_PRICE_ID;
-  return { proMonthly, teamMonthly };
+function recognizedPaidPriceIds() {
+  return {
+    handover: new Set(
+      [
+        STRIPE_PRICE_IDS.handover.monthly,
+        STRIPE_PRICE_IDS.handover.annual,
+        ...LEGACY_STRIPE_PRICE_IDS.professional.monthly,
+        ...LEGACY_STRIPE_PRICE_IDS.professional.annual,
+      ].filter(Boolean),
+    ),
+  };
 }
 
 function priceIdFromItem(price: unknown): string | null {
@@ -26,7 +32,7 @@ function priceIdFromItem(price: unknown): string | null {
   return null;
 }
 
-/** Active or trialing subscription paid on a monthly Pro or Team Stripe price. */
+/** Active or trialing subscription on a current or legacy paid price. */
 export async function GET() {
   try {
     const supabase = await createServerClient();
@@ -84,8 +90,8 @@ export async function GET() {
       });
     }
 
-    const { proMonthly, teamMonthly } = monthlyPriceIds();
-    if (!proMonthly && !teamMonthly) {
+    const { handover } = recognizedPaidPriceIds();
+    if (handover.size === 0) {
       return NextResponse.json({
         activeMonthlyPayingSubscription: false,
         plan: null as "professional" | "team" | null,
@@ -105,13 +111,7 @@ export async function GET() {
         for (const item of sub.items.data) {
           const pid = priceIdFromItem(item.price);
           if (!pid) continue;
-          if (teamMonthly && pid === teamMonthly) {
-            return NextResponse.json({
-              activeMonthlyPayingSubscription: true,
-              plan: "team" as const,
-            });
-          }
-          if (proMonthly && pid === proMonthly) {
+          if (handover.has(pid)) {
             return NextResponse.json({
               activeMonthlyPayingSubscription: true,
               plan: "professional" as const,

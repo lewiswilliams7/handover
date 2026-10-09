@@ -1091,7 +1091,7 @@ Keep it concise and professional. This is for the engineer or account manager to
               <div>
                 <h2 className="flex items-center gap-2 text-[15px] font-semibold text-white">
                   <FileText className="size-4 text-[var(--accent)]" aria-hidden />
-                  Meeting Brief — {row.clientName}
+                  Meeting Brief - {row.clientName}
                 </h2>
                 <p className="mt-1 text-[12px] text-[var(--text-secondary)]">{row.name}</p>
               </div>
@@ -1103,7 +1103,7 @@ Keep it concise and professional. This is for the engineer or account manager to
                 <X className="size-4" />
               </button>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-4 md:overscroll-auto">
               <div className="space-y-1">
                 {meetingPrepContent ? renderMeetingPrep(meetingPrepContent) : null}
               </div>

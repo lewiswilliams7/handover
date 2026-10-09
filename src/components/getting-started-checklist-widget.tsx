@@ -31,7 +31,8 @@ export type ChecklistStepDef = {
   label: string;
   description: string;
   cta: string;
-  onCta: () => void;
+  /** Return false to keep the checklist open (e.g. action could not complete). May return a Promise. */
+  onCta: () => void | boolean | Promise<boolean>;
   done: boolean;
 };
 
@@ -255,7 +256,7 @@ export function GettingStartedChecklistWidget({ steps, storageScope }: Props) {
                 </p>
               </div>
 
-              <ul className="max-h-[min(340px,calc(100vh-220px))] overflow-y-auto">
+              <ul className="max-h-none overflow-visible md:max-h-[min(340px,calc(100vh-220px))] md:overflow-y-auto">
                 {steps.map((s) => (
                   <li
                     key={s.id}
@@ -305,8 +306,14 @@ export function GettingStartedChecklistWidget({ steps, storageScope }: Props) {
                       <button
                         type="button"
                         onClick={() => {
-                          s.onCta();
-                          beginClosePanel();
+                          const completed = s.onCta();
+                          if (completed instanceof Promise) {
+                            void completed.then((ok) => {
+                              if (ok !== false) beginClosePanel();
+                            });
+                            return;
+                          }
+                          if (completed !== false) beginClosePanel();
                         }}
                         className="ml-auto shrink-0 rounded-full border border-[rgba(56,189,248,0.2)] bg-[rgba(56,189,248,0.1)] px-2 py-0.5 text-[11px] font-semibold text-[#38bdf8] transition-all duration-150 ease-out hover:border-[rgba(56,189,248,0.4)] hover:bg-[rgba(56,189,248,0.2)]"
                       >
@@ -324,7 +331,7 @@ export function GettingStartedChecklistWidget({ steps, storageScope }: Props) {
                 <div className="min-w-0 text-[12px] text-[rgba(255,255,255,0.3)]">
                   Need help?{" "}
                   <Link
-                    href="/integrations/halopsa"
+                    href="/?openSettings=integrations"
                     className="font-medium text-[#38bdf8] hover:underline"
                   >
                     View docs →

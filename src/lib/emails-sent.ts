@@ -27,6 +27,10 @@ export const EmailId = {
   TRIAL_SEQ_EXPIRED_DAY: "trial_seq_expired_day",
   /** Trial — 3 days after expiry, not upgraded. */
   TRIAL_SEQ_POST_EXPIRY: "trial_seq_post_expiry",
+  /** Trial — 7 days after expiry winback. */
+  TRIAL_WINBACK_WEEK_ONE: "trial_winback_week_one",
+  /** Trial — 21 days after expiry winback. */
+  TRIAL_WINBACK_WEEK_THREE: "trial_winback_week_three",
   /** 48h after last generation if user has not emailed client or pushed to PSA. */
   LOOP_CLOSER_48H: "loop_closer_48h",
   /** Trial user cold (4+ days since last gen, loop incomplete); founder outreach + internal alert. */

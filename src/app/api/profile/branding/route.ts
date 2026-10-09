@@ -54,7 +54,7 @@ export async function POST(request: Request) {
     if (wantsWhiteLabel && tier < 2) {
       return NextResponse.json(
         {
-          error: "White label mode requires Team or Enterprise.",
+          error: "White label mode is available on Growth and above.",
         },
         { status: 403 },
       );

@@ -8,7 +8,7 @@ const ENTRIES = [
       "Collapsible sidebar with hover-to-expand",
       "Overview home screen with activity feed and weekly stats",
       "ConnectWise RAG status and owner mapping fixed",
-      "Delivery health pagination — 25 clients per page",
+      "Delivery health pagination - 25 clients per page",
       "Card-upfront 14-day trial",
       "Excel export sheet selector restored",
       "Push to PSA PSA-source detection",

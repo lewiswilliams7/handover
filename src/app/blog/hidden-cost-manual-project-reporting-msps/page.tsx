@@ -32,14 +32,20 @@ export const metadata: Metadata = {
     type: "article",
     publishedTime: post.dateISO,
     authors: [post.author],
-    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "Handover - MSP delivery tool" }],
+    images: [
+      {
+        url: "https://gethandover.uk/opengraph-image",
+        width: 1200,
+        height: 630,
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "The Hidden Cost of Manual Project Reporting for MSPs",
     description:
       "Manual project reporting costs MSPs more than they realise. This breakdown covers the direct time cost, indirect costs, and what replacing the process actually looks like.",
-    images: ["/og-image.png"],
+    images: ["https://gethandover.uk/opengraph-image"],
   },
 };
 
@@ -58,7 +64,7 @@ export default function HiddenCostManualProjectReportingMspsPage() {
     datePublished: post.dateISO,
     dateModified: post.dateISO,
     mainEntityOfPage: "https://gethandover.uk/blog/hidden-cost-manual-project-reporting-msps",
-    image: ["https://gethandover.uk/og-image.png"],
+    image: ["https://gethandover.uk/opengraph-image"],
   };
 
   return (

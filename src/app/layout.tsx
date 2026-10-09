@@ -1,13 +1,11 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
 import Head from "next/head";
+import Script from "next/script";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { PageLoadOverlay } from "@/components/page-load-overlay";
 import { RootLayoutChrome } from "@/components/root-layout-chrome";
 import { ToastProvider } from "@/components/toasts";
-import { TrialAutoStartFromPendingStorage } from "@/components/trial-auto-start-pending-storage";
-import { TrialAutoStartFromQuery } from "@/components/trial-auto-start-from-query";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -20,10 +18,12 @@ const siteUrl = siteUrlRaw.replace(/\/$/, "");
 
 /** ≤155 chars for Google SERP; synced across meta, Open Graph, and Twitter. */
 const META_DESCRIPTION =
-  "Handover — AI-powered client reporting for MSPs. Native HaloPSA and ConnectWise integration. Generate reports, push back to tickets, automate weekly updates.";
+  "Handover connects to HaloPSA or ConnectWise and surfaces the client accounts where commercial, service or relationship behaviour has materially changed. Built for MSPs.";
+
+const META_TITLE = "Handover - Know Which Clients Need Your Attention";
 
 export const metadata: Metadata = {
-  title: "Handover - AI-Powered MSP Reporting Tool",
+  title: META_TITLE,
   description: META_DESCRIPTION,
   metadataBase: new URL(siteUrl),
   alternates: {
@@ -42,26 +42,16 @@ export const metadata: Metadata = {
     title: "Handover",
   },
   openGraph: {
-    title: "Handover — Automated MSP Client Reporting",
-    description:
-      "Connect HaloPSA or ConnectWise and generate professional client reports in 30 seconds. Built for MSPs.",
+    title: META_TITLE,
+    description: META_DESCRIPTION,
     url: "https://gethandover.uk",
     siteName: "Handover",
-    images: [
-      {
-        url: "https://gethandover.uk/og-image.png",
-        width: 1200,
-        height: 630,
-      },
-    ],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Handover — Automated MSP Client Reporting",
-    description:
-      "Connect HaloPSA or ConnectWise and generate professional client reports in 30 seconds.",
-    images: ["https://gethandover.uk/og-image.png"],
+    title: META_TITLE,
+    description: META_DESCRIPTION,
   },
   keywords: [
     "MSP",
@@ -84,8 +74,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} h-full antialiased dark`}>
+    <html lang="en" className={`${inter.variable} antialiased dark`}>
       <Head>
+        <script async src="https://www.googletagmanager.com/gtag/js?id=G-8DN9FSLDRC" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-8DN9FSLDRC');`,
+          }}
+        />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
@@ -97,22 +96,6 @@ export default function RootLayout({
               operatingSystem: "Web",
               description: META_DESCRIPTION,
               url: "https://gethandover.uk",
-              offers: [
-                {
-                  "@type": "Offer",
-                  name: "Professional",
-                  price: "29",
-                  priceCurrency: "GBP",
-                  billingIncrement: "month",
-                },
-                {
-                  "@type": "Offer",
-                  name: "Team",
-                  price: "79",
-                  priceCurrency: "GBP",
-                  billingIncrement: "month",
-                },
-              ],
               creator: {
                 "@type": "Organization",
                 name: "Handover",
@@ -124,13 +107,20 @@ export default function RootLayout({
       </Head>
       <body className="flex min-h-full flex-col" suppressHydrationWarning>
         <ToastProvider>
-          <Suspense fallback={null}>
-            <TrialAutoStartFromQuery />
-            <TrialAutoStartFromPendingStorage />
-          </Suspense>
           <PageLoadOverlay />
           <RootLayoutChrome>{children}</RootLayoutChrome>
         </ToastProvider>
+        <Script
+          id="microsoft-clarity"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `(function(c,l,a,r,i,t,y){
+      c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+      t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+      y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "x0t59k2tbn");`,
+          }}
+        />
       </body>
     </html>
   );

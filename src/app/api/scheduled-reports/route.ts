@@ -9,6 +9,8 @@ import {
   londonWallScheduleTimeToUtcStored,
   utcStoredScheduleTimeToLondonWall,
 } from "@/lib/scheduled-report-schedule-time";
+import { getScheduledReportLimit } from "@/lib/plan-limits";
+import { canonicalPlanId } from "@/lib/plans";
 import { computeNextRunUtc } from "@/lib/scheduled-reports";
 import { getPlanTierServer, verifyUserPlan } from "@/lib/server/verifyUserPlan";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
@@ -210,7 +212,7 @@ export async function PUT(req: Request) {
       return NextResponse.json(
         {
           error: "upgrade_required",
-          message: "Scheduled reports require an active Professional plan or higher.",
+          message: "Scheduled reports require an active Starter plan or higher.",
         },
         { status: 403 },
       );
@@ -258,6 +260,7 @@ export async function PUT(req: Request) {
         ? body.email_bcc.trim()
         : null;
     const push_to_halo = body.push_to_halo === true;
+    const hold_for_review = body.hold_for_review === true;
     const halo_push_outputs = Array.isArray(body.halo_push_outputs)
       ? body.halo_push_outputs.filter((x): x is string => typeof x === "string")
       : ["client_email", "actions", "risks"];
@@ -348,6 +351,7 @@ export async function PUT(req: Request) {
       email_cc,
       email_bcc,
       push_to_halo,
+      hold_for_review,
       halo_push_outputs,
       halo_push_excel,
       halo_push_excel_tabs,
@@ -376,7 +380,10 @@ export async function PUT(req: Request) {
       project_all_clients: payload.project_all_clients,
     });
 
-    if (getPlanTierServer(planFieldsForRoute) === 1 && enabled) {
+    const scheduledReportLimit = getScheduledReportLimit(
+      canonicalPlanId(planFieldsForRoute.plan),
+    );
+    if (scheduledReportLimit !== null && enabled) {
       const admin = createServiceRoleClient();
       const { count: enabledCount, error: enErr } = await admin
         .from("scheduled_reports")
@@ -395,22 +402,20 @@ export async function PUT(req: Request) {
           .eq("user_id", user.id)
           .maybeSingle();
         const wasOn = existingRow?.enabled === true;
-        if (!wasOn && n >= 3) {
+        if (!wasOn && n >= scheduledReportLimit) {
           return NextResponse.json(
             {
               error: "professional_schedule_limit",
-              message:
-                "You have reached the 3 scheduled report limit on the Professional plan. Upgrade to Team for unlimited scheduled reports.",
+              message: `You have reached the ${scheduledReportLimit} scheduled report limit on your plan. Upgrade for more scheduled reports.`,
             },
             { status: 403 },
           );
         }
-      } else if (n >= 3) {
+      } else if (n >= scheduledReportLimit) {
         return NextResponse.json(
           {
             error: "professional_schedule_limit",
-            message:
-              "You have reached the 3 scheduled report limit on the Professional plan. Upgrade to Team for unlimited scheduled reports.",
+            message: `You have reached the ${scheduledReportLimit} scheduled report limit on your plan. Upgrade for more scheduled reports.`,
           },
           { status: 403 },
         );

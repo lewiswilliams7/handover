@@ -1,8 +1,17 @@
 import { NextResponse } from "next/server";
 
 import { getCWAuthHeaders, getCWConnectionForUser } from "@/lib/cw-auth";
+import { HALO_TICKETS_HISTORICAL_MAX_PAGES } from "@/lib/halo";
 import { getPlanTierServer, verifyUserPlan } from "@/lib/server/verifyUserPlan";
 import { createServerClient } from "@/lib/supabase/server";
+
+/** Matches Halo historical ceiling: 100 pages × 100 rows = 10_000 tickets. */
+const CW_HISTORICAL_PAGE_SIZE = 100;
+const CW_HISTORICAL_MAX_ROWS = CW_HISTORICAL_PAGE_SIZE * HALO_TICKETS_HISTORICAL_MAX_PAGES;
+
+/** Slim fields for POST date-range / scan aggregation (no summary or notes). */
+const CW_HISTORICAL_TICKET_FIELDS =
+  "id,company/id,dateEntered,dateResponded,closedDate,status";
 
 type CwTicket = {
   id?: number;
@@ -16,6 +25,7 @@ type CwTicket = {
   resources?: Array<{ name?: string | null; identifier?: string | null } | null> | null;
   company?: { id?: number | string | null; name?: string | null } | null;
   dateEntered?: string | null;
+  dateResponded?: string | null;
   requiredDate?: string | null;
   targetDate?: string | null;
   closedDate?: string | null;
@@ -57,7 +67,7 @@ function mapCwRowToTicket(row: CwTicket) {
   const subTypeName = (row.subType?.name ?? "").trim();
   const compositeCategory =
     typeName && subTypeName
-      ? `${typeName} — ${subTypeName}`
+      ? `${typeName} - ${subTypeName}`
       : typeName || subTypeName || null;
   return {
     id: Number(row.id ?? 0),
@@ -71,6 +81,8 @@ function mapCwRowToTicket(row: CwTicket) {
     owner: resolvedOwner ? { name: resolvedOwner } : null,
     assignedTo: row.assignedTo ?? null,
     dateoccurred: row.dateEntered ?? null,
+    dateresponded: row.dateResponded ?? null,
+    dateclosed: row.closedDate ?? null,
     targetdate: row.requiredDate ?? row.targetDate ?? row.closedDate ?? null,
     slaTargetSet: !!(row.requiredDate?.trim() || row.targetDate?.trim()),
     timetaken:
@@ -238,11 +250,12 @@ export async function POST(req: Request) {
       `dateEntered >= ${fromBracket} and dateEntered <= ${toBracket}`,
     );
 
-    const pageSize = 100;
-    const maxRows = 1000;
+    const pageSize = CW_HISTORICAL_PAGE_SIZE;
+    const maxRows = CW_HISTORICAL_MAX_ROWS;
+    const fieldsParam = encodeURIComponent(CW_HISTORICAL_TICKET_FIELDS);
     const rows: CwTicket[] = [];
-    for (let page = 1; page <= 20 && rows.length < maxRows; page += 1) {
-      const url = `${conn.siteUrl}/v4_6_release/apis/3.0/service/tickets?conditions=${conditions}&page=${page}&pageSize=${pageSize}`;
+    for (let page = 1; page <= HALO_TICKETS_HISTORICAL_MAX_PAGES && rows.length < maxRows; page += 1) {
+      const url = `${conn.siteUrl}/v4_6_release/apis/3.0/service/tickets?conditions=${conditions}&page=${page}&pageSize=${pageSize}&fields=${fieldsParam}`;
       const res = await fetch(url, { headers, cache: "no-store" });
       const text = await res.text();
       if (!res.ok) {

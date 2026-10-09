@@ -29,7 +29,7 @@ const connectwiseCards = [
   },
   {
     title: "Full PSA data coverage",
-    body: "Service tickets, project tickets, time entries, SLA performance, and client records — Handover pulls the complete picture from ConnectWise Manage to generate accurate, data-driven client reports.",
+    body: "Service tickets, project tickets, time entries, SLA performance, and client records - Handover pulls the complete picture from ConnectWise Manage to generate accurate, data-driven client reports.",
     Icon: Database,
   },
 ] as const;
@@ -88,10 +88,10 @@ export default function ConnectWisePartnerPage() {
               View on ConnectWise Marketplace →
             </a>
             <Link
-              href="/sign-up"
+              href="/onboarding/connect"
               className="inline-flex items-center justify-center rounded-[var(--radius)] border border-white/20 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10"
             >
-              Start free trial
+              Run the free PSA scan
             </Link>
           </div>
         </div>
@@ -170,10 +170,10 @@ export default function ConnectWisePartnerPage() {
               View on ConnectWise Marketplace →
             </a>
             <Link
-              href="/sign-up"
+              href="/onboarding/connect"
               className="inline-flex items-center justify-center rounded-[var(--radius)] border border-white/30 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10"
             >
-              Start free trial
+              Run the free PSA scan
             </Link>
           </div>
         </div>

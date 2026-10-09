@@ -228,6 +228,7 @@ export async function GET() {
     const pendingInvites = invites ?? [];
 
     let halo: { user_id: string; updated_at: string }[] = [];
+    let cw: { user_id: string; updated_at: string }[] = [];
     if (memberUserIds.length > 0) {
       const { data: haloRows, error: haloErr } = await admin
         .from("halo_connections")
@@ -238,6 +239,16 @@ export async function GET() {
         return NextResponse.json({ error: "Could not load Halo connections." }, { status: 500 });
       }
       halo = haloRows ?? [];
+
+      const { data: cwRows, error: cwErr } = await admin
+        .from("cw_connections")
+        .select("user_id, updated_at")
+        .in("user_id", memberUserIds);
+      if (cwErr) {
+        logSupabaseErr("[team/overview] RETURN 500: cw_connections select failed", cwErr);
+        return NextResponse.json({ error: "Could not load ConnectWise connections." }, { status: 500 });
+      }
+      cw = cwRows ?? [];
     }
 
     const usage = {
@@ -369,6 +380,10 @@ export async function GET() {
       haloConnections: halo.map((h) => ({
         user_id: h.user_id,
         updated_at: h.updated_at,
+      })),
+      cwConnections: cw.map((c) => ({
+        user_id: c.user_id,
+        updated_at: c.updated_at,
       })),
     });
   } catch (e) {

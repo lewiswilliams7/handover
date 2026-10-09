@@ -2,6 +2,8 @@ import OpenAI from "openai";
 import { NextResponse } from "next/server";
 
 import { GLOBAL_GENERATION_VOICE_AND_PUNCTUATION } from "@/lib/generation-global-style-rules";
+import { requireScanDetailsEntitlement } from "@/lib/scan-entitlement";
+import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { createServerClient } from "@/lib/supabase/server";
 import {
   parseSmartActionType,
@@ -11,10 +13,10 @@ import {
 
 export const runtime = "nodejs";
 
-const SYSTEM = `You are a delivery assistant for an MSP project manager. Based on the generated report below, suggest 3-5 specific, actionable next steps the PM should take right now. Each suggestion must be specific to the actual content — use real names, ticket titles, and actions from the report. Do not suggest generic steps.
+const SYSTEM = `You are a delivery assistant for an MSP project manager. Based on the generated report below, suggest 3-5 specific, actionable next steps the PM should take right now. Each suggestion must be specific to the actual content - use real names, ticket titles, and actions from the report. Do not suggest generic steps.
 
 Each object must have:
-- "action": a SHORT imperative phrase for the UI (maximum 6 words), e.g. "Push update to HaloPSA", "Email Andy about firewall change", "Schedule weekly client report". NEVER put the type enum or snake_case here — do not use "email", "push_to_halo", "schedule", "slack", or "manual" as the action text.
+- "action": a SHORT imperative phrase for the UI (maximum 6 words), e.g. "Push update to HaloPSA", "Email Andy about firewall change", "Schedule weekly client report". NEVER put the type enum or snake_case here - do not use "email", "push_to_halo", "schedule", "slack", or "manual" as the action text.
 - "description": exactly one clear sentence explaining what to do and why (muted helper text in the UI).
 - "type": one of: email, push_to_halo, schedule, slack, manual (machine-only; never repeat this string in "action").
 
@@ -46,12 +48,42 @@ export async function POST(req: Request) {
     if (!user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const entitlementError = await requireScanDetailsEntitlement(user.id, supabase);
+    if (entitlementError) return entitlementError;
 
-    let body: { reportContext?: unknown };
+    let body: { reportContext?: unknown; generationId?: unknown };
     try {
       body = (await req.json()) as typeof body;
     } catch {
       return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    }
+
+    const generationId =
+      typeof body.generationId === "string" ? body.generationId.trim() : "";
+
+    const adminClient = createServiceRoleClient();
+
+    if (generationId) {
+      const { data: cachedRow } = await adminClient
+        .from("generations")
+        .select("smart_action_suggestions")
+        .eq("id", generationId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      const cached = cachedRow as {
+        smart_action_suggestions: SmartActionSuggestion[] | null;
+      } | null;
+
+      if (
+        Array.isArray(cached?.smart_action_suggestions) &&
+        cached.smart_action_suggestions.length > 0
+      ) {
+        return NextResponse.json({
+          suggestions: cached.smart_action_suggestions,
+          cached: true,
+        });
+      }
     }
 
     const reportContext =
@@ -69,7 +101,8 @@ export async function POST(req: Request) {
     const client = new OpenAI({ apiKey });
     const response = await client.chat.completions.create({
       model: "gpt-4o-mini",
-      temperature: 0.35,
+      temperature: 0.2,
+      max_tokens: 1500,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: SYSTEM },
@@ -105,7 +138,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No suggestions returned." }, { status: 502 });
     }
 
-    return NextResponse.json({ suggestions });
+    if (generationId) {
+      await adminClient
+        .from("generations")
+        .update({ smart_action_suggestions: suggestions })
+        .eq("id", generationId)
+        .eq("user_id", user.id);
+    }
+
+    return NextResponse.json({ suggestions, cached: false });
   } catch (e) {
     console.error("[smart-actions-suggestions]", e);
     return NextResponse.json({ error: "Failed to generate suggestions." }, { status: 500 });

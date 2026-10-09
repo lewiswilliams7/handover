@@ -22,6 +22,7 @@ type Props = {
   onClose: () => void;
   focusRing: string;
   reportContext: string;
+  generationId?: string | null;
   resultSnapshot: {
     actions: { task?: string | null; client_name?: string | null }[];
     client_email: string;
@@ -46,6 +47,7 @@ export function SmartActionsPanel({
   onClose,
   focusRing,
   reportContext,
+  generationId,
   resultSnapshot,
   projectName,
   onDoEmail,
@@ -97,7 +99,10 @@ export function SmartActionsPanel({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "same-origin",
-          body: JSON.stringify({ reportContext }),
+          body: JSON.stringify({
+            reportContext,
+            ...(generationId ? { generationId } : {}),
+          }),
         });
         const data = (await res.json().catch(() => ({}))) as {
           suggestions?: SmartActionSuggestion[];
@@ -140,7 +145,7 @@ export function SmartActionsPanel({
     return () => {
       cancelled = true;
     };
-  }, [open, reportContext, anchors, resetLocal]);
+  }, [open, reportContext, generationId, anchors, resetLocal]);
 
   useEffect(() => {
     if (!open || loading) return;
@@ -212,7 +217,7 @@ export function SmartActionsPanel({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 md:overscroll-auto">
           {loading ? (
             <div className="space-y-3 py-6">
               <div className="h-4 w-2/3 animate-pulse rounded bg-[var(--border)]" />

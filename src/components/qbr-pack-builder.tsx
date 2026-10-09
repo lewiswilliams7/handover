@@ -2,7 +2,6 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import JSZip from "jszip";
-import PptxGenJS from "pptxgenjs";
 import * as XLSX from "xlsx-js-style";
 import {
   Bar,
@@ -21,7 +20,7 @@ import {
   YAxis,
 } from "recharts";
 
-import { Loader2 } from "lucide-react";
+import { Brain, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -90,7 +89,7 @@ type ProjectRow = {
 function sanitiseProjectName(name: string | null | undefined, id: string | number): string {
   const raw = String(name ?? "").trim();
   if (/^child ticket of id/i.test(raw)) {
-    return `Untitled Project — Ref ${id}`;
+    return `Untitled Project - Ref ${id}`;
   }
   return raw || `Project ${id}`;
 }
@@ -366,7 +365,7 @@ function breakdownBucketName(t: TicketRow & Record<string, unknown>): string {
     const type = String(t.cwType ?? "").trim();
     const sub = String(t.cwSubType ?? "").trim();
     const cat = typeof t.category === "string" ? t.category.trim() : "";
-    if (type && sub) return `${type} — ${sub}`;
+    if (type && sub) return `${type} - ${sub}`;
     if (cat) return cat;
     if (type) return type;
     if (sub) return sub;
@@ -378,7 +377,7 @@ function breakdownBucketName(t: TicketRow & Record<string, unknown>): string {
       : "");
   const c1 = String(t.category_1 ?? "").trim();
   const c2 = String(t.category_2 ?? "").trim();
-  if (c1 && c2) return `${c1} — ${c2}`;
+  if (c1 && c2) return `${c1} - ${c2}`;
   if (c1) return c1;
   if (c2) return c2;
   if (typeName) return typeName;
@@ -470,6 +469,15 @@ type Props = {
   demoMode?: boolean;
   /** Plan copy for monthly QBR allowance (enforced server-side on `/api/generate`). */
   usageHint?: string | null;
+  /** Optional Client Intelligence context (wired to QBR prompt in a follow-up). */
+  intelligenceContext?: {
+    clientName: string;
+    accountNarrative: string;
+    keyAchievements: string[];
+    openRisks: string[];
+    qbrTalkingPoints: string[];
+    relationshipHealth: string;
+  } | null;
 };
 
 const SECTION_UI: Record<keyof QbrSections, { label: string; description: string }> = {
@@ -519,6 +527,7 @@ export function QbrPackBuilder({
   embedded = false,
   demoMode = false,
   usageHint = null,
+  intelligenceContext = null,
 }: Props) {
   const toast = useToast();
   const psaStatus = usePSAStatus();
@@ -530,6 +539,9 @@ export function QbrPackBuilder({
     connectwise: false,
   });
   const [qbrSelectedClients, setQbrSelectedClients] = useState<string[]>([]);
+  const [autoIntelligence, setAutoIntelligence] = useState<NonNullable<Props["intelligenceContext"]> | null>(
+    null,
+  );
   const [qbrExpandedClients, setQbrExpandedClients] = useState<Set<string>>(new Set());
   const [qbrAvailableClients, setQbrAvailableClients] = useState<
     Array<{
@@ -876,6 +888,52 @@ export function QbrPackBuilder({
       toIso: now.toISOString(),
     };
   }, [dateRange, customFrom, customTo]);
+
+  useEffect(() => {
+    if (qbrSelectedClients.length !== 1) {
+      setAutoIntelligence(null);
+      return;
+    }
+    const clientKey = qbrSelectedClients[0];
+    const client = qbrAvailableClients.find((c) => `${c.source}:${String(c.id)}` === clientKey);
+    const clientName = client?.name?.trim();
+    if (!clientName) {
+      setAutoIntelligence(null);
+      return;
+    }
+    let cancelled = false;
+    const { fromIso, toIso } = getRangeBoundsIso;
+    void (async () => {
+      try {
+        const res = await fetch("/api/client-intelligence/summarise", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            clientName,
+            periodFrom: fromIso ?? undefined,
+            periodTo: toIso ?? undefined,
+          }),
+        });
+        const data = (await res.json()) as { summary?: Record<string, unknown> };
+        if (cancelled || !res.ok || !data.summary) return;
+        const s = data.summary;
+        setAutoIntelligence({
+          clientName,
+          accountNarrative: String(s.account_narrative ?? ""),
+          keyAchievements: Array.isArray(s.key_achievements) ? (s.key_achievements as string[]) : [],
+          openRisks: Array.isArray(s.open_risks) ? (s.open_risks as string[]) : [],
+          qbrTalkingPoints: Array.isArray(s.qbr_talking_points) ? (s.qbr_talking_points as string[]) : [],
+          relationshipHealth: String(s.relationship_health ?? "amber"),
+        });
+      } catch {
+        if (!cancelled) setAutoIntelligence(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [qbrSelectedClients.join(","), qbrAvailableClients, getRangeBoundsIso]);
 
   useEffect(() => {
     if (step !== 4 || !canGenerate) {
@@ -1268,11 +1326,11 @@ export function QbrPackBuilder({
     const promptLines: string[] = [
       "QBR CONTEXT: Write for MSP business reviews, client-facing and business language. Avoid deep technical jargon.",
       "This is a quarterly business review. Focus on trends, performance, patterns and outcomes across the period.",
-      "EXECUTIVE SUMMARY: Write a single punchy pull-quote sentence (max 25 words) that captures the defining theme of this quarter — the most important single thing a director needs to know. Put this in a field called exec_pull_quote. Then write a full executive summary paragraph (3-5 sentences) for the summary field.",
+      "EXECUTIVE SUMMARY: Write a single punchy pull-quote sentence (max 25 words) that captures the defining theme of this quarter - the most important single thing a director needs to know. Put this in a field called exec_pull_quote. Then write a full executive summary paragraph (3-5 sentences) for the summary field.",
       "RECOMMENDATIONS: You must output exactly 3-5 structured commitments as a JSON array in a field called recommendation_items. Each must be an object with these exact keys:",
       '  action: specific verb-led action (e.g. "Complete Azure migration cutover", "Audit backup reliability at [client]")',
-      '  owner: job title of the responsible person (e.g. "Service Delivery Manager", "Project Lead") — infer from ticket assignee if available, otherwise use role title',
-      '  target: target date as relative string (e.g. "30 Jun 2026", "14 Jun 2026") — use ticket due dates if available, otherwise set +14 days from today',
+      '  owner: job title of the responsible person (e.g. "Service Delivery Manager", "Project Lead") - infer from ticket assignee if available, otherwise use role title',
+      '  target: target date as relative string (e.g. "30 Jun 2026", "14 Jun 2026") - use ticket due dates if available, otherwise set +14 days from today',
       "  riskAddressed: one sentence explaining what risk or issue this addresses",
       "Do NOT produce generic advice. Each commitment must be specific to the data provided. No more than 5 items.",
       "NEXT STEPS (status_report field): Also output a plain string array of 5-8 bullet points as the status_report field for fallback use.",
@@ -1329,10 +1387,37 @@ export function QbrPackBuilder({
 
     const input = promptLines.join("\n");
 
+    const effectiveIntelligence = intelligenceContext ?? autoIntelligence ?? null;
+
+    const ciBlock = effectiveIntelligence
+      ? `
+
+##########  CLIENT INTELLIGENCE CONTEXT  ##########
+
+This Service Review is informed by accumulated account intelligence.
+
+RELATIONSHIP HEALTH: ${effectiveIntelligence.relationshipHealth}
+
+ACCOUNT NARRATIVE:
+${effectiveIntelligence.accountNarrative}
+
+KEY ACHIEVEMENTS THIS PERIOD:
+${effectiveIntelligence.keyAchievements.map((a) => `- ${a}`).join("\n")}
+
+OPEN RISKS:
+${effectiveIntelligence.openRisks.map((r) => `- ${r}`).join("\n")}
+
+QBR TALKING POINTS (from account intelligence):
+${effectiveIntelligence.qbrTalkingPoints.map((t, i) => `${i + 1}. ${t}`).join("\n")}
+
+Use this intelligence to enrich the executive summary and recommendations. Reference the account narrative where relevant.
+`
+      : "";
+
     const res = await fetch("/api/qbr-generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ input, tone: "professional" }),
+      body: JSON.stringify({ input: input + ciBlock, tone: "professional" }),
     });
     const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (!res.ok) throw new Error(generateApiErrorMessage(data, "QBR AI generation failed"));
@@ -1383,7 +1468,7 @@ export function QbrPackBuilder({
       const { fromIso, toIso } = getRangeBoundsIso;
       if (!fromIso && !toIso && sections.projectStatus) {
         // Allow generation but warn — do not block
-        console.warn("[generateQbr] No date range set — generating with all-time data");
+        console.warn("[generateQbr] No date range set - generating with all-time data");
       }
 
       const { tickets, projects } = await fetchTicketsAndProjects(fromIso, toIso);
@@ -1447,7 +1532,7 @@ export function QbrPackBuilder({
       );
       const applied = applySectionValidationToToggles(sections, validationSnap);
       let effective = applied.effective;
-      let autoExcludedLabels = [...applied.autoExcludedLabels];
+      const autoExcludedLabels = [...applied.autoExcludedLabels];
 
       const bp = validationSnap.breakdownPack;
       const breakdownAgg = {
@@ -1538,7 +1623,7 @@ export function QbrPackBuilder({
       let recurringInsight =
         recurringRows[0] != null
           ? `Consider root-cause review for "${recurringRows[0].name}" (${recurringRows[0].count} occurrences, ${recurringRows[0].pct}% of tickets).`
-          : "No recurring issues identified this quarter — all tickets were unique incidents.";
+          : "No recurring issues identified this quarter - all tickets were unique incidents.";
       if (recurringRows.length > 0 && effective.recurringIssues) {
         try {
           const ir = await fetch("/api/generate", {
@@ -1885,8 +1970,9 @@ export function QbrPackBuilder({
     if (!qbr) return;
     if (!qbr.dateRangeLabel || qbr.dateRangeLabel.toLowerCase() === "all time") {
       // Show warning but allow export to proceed
-      console.warn("[exportPptx] Exporting with 'All time' period — consider setting a date range");
+      console.warn("[exportPptx] Exporting with 'All time' period - consider setting a date range");
     }
+    const PptxGenJS = (await import("pptxgenjs")).default;
     const pptx = new PptxGenJS();
     pptx.theme = { headFontFace: "Inter", bodyFontFace: "Inter" };
     pptx.layout = "LAYOUT_WIDE";
@@ -1920,7 +2006,7 @@ export function QbrPackBuilder({
     const recMaxBottom = HARD_BOTTOM_PT * PT_TO_IN;
     const recBoxH = Math.max(0.35, recMaxBottom - bodyTop);
     if (!qbr.periodEndDate && qbr.dateRangeLabel?.toLowerCase() === "all time") {
-      console.warn("[exportPptx] Generating QBR with All time period — consider setting a date range for production use");
+      console.warn("[exportPptx] Generating QBR with All time period - consider setting a date range for production use");
     }
 
     let headerLogoData: string | null = null;
@@ -1954,7 +2040,7 @@ export function QbrPackBuilder({
       }
     }
 
-    const addChrome = (slide: PptxGenJS.Slide, title: string, pageNumber: number) => {
+    const addChrome = (slide: ReturnType<typeof pptx.addSlide>, title: string, pageNumber: number) => {
       slide.background = { color: SLIDE_BG };
       slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: SLIDE_W, h: HEADER_H, fill: { color: SLIDE_BG }, line: { color: SLIDE_BG } });
       slide.addText(title, {
@@ -2073,10 +2159,10 @@ export function QbrPackBuilder({
     const smartTitle = (s: string): string => {
       const PRESERVE = /^(HaloPSA|ConnectWise|3CX|Microsoft|Azure|Google|AWS|VMware|Veeam|Cisco|Barracuda|SQL|CRM|ERP|VPN|MFA|SLA|SOW|IT|MSP|PSA|AI|API|UI|UX|ID|P1|P2|P3|P4|SO|PRJ|INC|RFC)$/i;
       return s.split(/\s+/).map((w) => {
-        if (PRESERVE.test(w)) return w; // known product/acronym — leave exactly as-is
+        if (PRESERVE.test(w)) return w; // known product/acronym - leave exactly as-is
         if (/[A-Z].*[A-Z]/.test(w)) return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(); // mixed case like UPgrades → Upgrades
-        if (/[A-Z]/.test(w)) return w; // single uppercase start — leave alone
-        return w.charAt(0).toUpperCase() + w.slice(1); // all lowercase — title-case
+        if (/[A-Z]/.test(w)) return w; // single uppercase start - leave alone
+        return w.charAt(0).toUpperCase() + w.slice(1); // all lowercase - title-case
       }).join(" ");
     };
 
@@ -2240,7 +2326,7 @@ export function QbrPackBuilder({
       });
     }
     const slaDisplay = (qbr.slaCompliancePct === null || qbr.slaCompliancePct === 0)
-      ? "—"
+      ? " - "
       : `${qbr.slaCompliancePct}%`;
     const slaSub = (qbr.slaCompliancePct === null || qbr.slaCompliancePct === 0)
       ? "Insufficient data"
@@ -2345,14 +2431,14 @@ export function QbrPackBuilder({
         ? "Industry benchmark for P3 resolution is typically 24-48 hours."
         : "";
     qbr.resolutionByPriority.forEach((r, idx) => {
-      const y = bodyTop + 1.05 + idx * 0.78;
+      const y = bodyTop + 1.05 + idx * 0.95;
       const barW = Math.max(0.2, (r.avgHours / maxRes) * 3.2);
       const c = idx === 0 ? CHART_COLORS.primary : CHART_COLORS.neutral;
       const existingBenchmarkText =
         r.key === "P3" && r.avgHours <= 48
           ? "Industry benchmark for P3 resolution is typically 24-48 hours."
           : "";
-      const displayHours = r.ticketCount < 3 ? "—" : `${r.avgHours.toFixed(1)}h`;
+      const displayHours = r.ticketCount < 3 ? " - " : `${r.avgHours.toFixed(1)}h`;
       const displaySub = r.ticketCount < 3 ? "Too few tickets" : existingBenchmarkText;
       const line = `${r.priority}: ${displayHours} average resolution time`;
       metrics.addText(line, {
@@ -2368,7 +2454,7 @@ export function QbrPackBuilder({
       if (displaySub) {
         metrics.addText(displaySub, {
           x: 7.0,
-          y: y + 0.76,
+          y: y + 0.65,
           w: 6.1,
           h: 0.2,
           fontFace: "Inter",
@@ -2377,7 +2463,7 @@ export function QbrPackBuilder({
           wrap: true,
         });
       }
-      metrics.addShape(pptx.ShapeType.rect, { x: 7.0, y: y + 0.32, w: barW, h: 0.22, fill: { color: c }, line: { color: c } });
+      metrics.addShape(pptx.ShapeType.rect, { x: 7.0, y: y + 0.38, w: barW, h: 0.22, fill: { color: c }, line: { color: c } });
     });
     if (bench && !qbr.resolutionByPriority.some((r) => r.ticketCount < 3)) {
       metrics.addText(bench, {
@@ -2547,7 +2633,7 @@ export function QbrPackBuilder({
             line: { color: CHART_COLORS.primary },
           });
         }
-        slide.addText(p.percent > 0 ? `${p.percent}%` : "—", {
+        slide.addText(p.percent > 0 ? `${p.percent}%` : " - ", {
           x: 9.45,
           y,
           w: 0.75,
@@ -2559,7 +2645,7 @@ export function QbrPackBuilder({
           valign: "middle",
         });
         if (p.percent === 0) {
-          slide.addText("—", {
+          slide.addText(" - ", {
             x: 10.35,
             y: y + 0.1,
             w: 1.15,
@@ -2833,7 +2919,7 @@ export function QbrPackBuilder({
             else rightCardY += 1.3;
           });
           if (chunk.length === 0) {
-            rec.addText("—", {
+            rec.addText(" - ", {
               x: 0.4,
               y: 1.1,
               w: 11.5,
@@ -3069,7 +3155,7 @@ export function QbrPackBuilder({
                 {qbrClientsLoading || clientsWithDataLoading ? (
                   <p className="py-4 text-[13px] text-[var(--text-muted)]">Loading clients...</p>
                 ) : (
-                  <div className="overflow-y-auto rounded-[var(--radius-lg)] border border-[var(--border)]" style={{ maxHeight: "260px" }}>
+                  <div className="max-h-none overflow-visible rounded-[var(--radius-lg)] border border-[var(--border)] md:max-h-[260px] md:overflow-y-auto">
                     {qbrAvailableClientsFiltered
                       .filter((c) => !clientSearch || c.name.toLowerCase().includes(clientSearch.toLowerCase()))
                       .map((client, idx) => {
@@ -3160,7 +3246,7 @@ export function QbrPackBuilder({
                                     </button>
                                   ))}
                                 </div>
-                                <div className="max-h-48 overflow-y-auto px-3 py-2">
+                                <div className="max-h-none overflow-visible px-3 py-2 md:max-h-48 md:overflow-y-auto">
                                   {(clientExpandTab[clientKey] ?? "tickets") === "tickets" ? (
                                     loadingTickets[clientKey] ? (
                                       <p className="py-2 text-[12px] text-[var(--text-muted)]">Loading tickets...</p>
@@ -3231,6 +3317,12 @@ export function QbrPackBuilder({
 
         {step === 4 ? (
           <div className="space-y-4">
+            {autoIntelligence ? (
+              <div className="mb-3 flex items-center gap-2 rounded-lg border border-[var(--accent)]/20 bg-[var(--accent)]/5 px-3 py-2 text-[12px] text-[var(--accent)]">
+                <Brain className="size-3.5 shrink-0" />
+                Client Intelligence context loaded - this Service Review is enriched with account history
+              </div>
+            ) : null}
             <div>
               <h3 className="text-lg font-semibold text-[var(--text-primary)]">Configure Sections</h3>
               <p className="mt-1 text-sm text-[var(--text-secondary)]">Choose exactly what appears in the final QBR pack.</p>
@@ -3265,7 +3357,7 @@ export function QbrPackBuilder({
                 {12 - countSectionsAvailable(step3Snapshot) > 0 ? (
                   <>
                     {" "}
-                    You can still build a strong pack with the sections that are available — the others are shown greyed out
+                    You can still build a strong pack with the sections that are available - the others are shown greyed out
                     until your data meets their thresholds.
                   </>
                 ) : null}
@@ -3544,7 +3636,7 @@ export function QbrPackBuilder({
                         wordBreak: "break-word",
                       }}
                     >
-                      {normaliseQbrPdfText(qbr.executiveSummary) || "—"}
+                      {normaliseQbrPdfText(qbr.executiveSummary) || " - "}
                     </p>
                   </section>
                 ) : null}
@@ -3864,7 +3956,7 @@ export function QbrPackBuilder({
                     wordBreak: "break-word",
                   }}
                 >
-                  {normaliseQbrPdfText(qbr.recommendations) || "—"}
+                  {normaliseQbrPdfText(qbr.recommendations) || " - "}
                 </p>
               </section>
             </QbrPdfChunk>
@@ -3928,7 +4020,7 @@ export function QbrPackBuilder({
                   <ol className="mb-3 list-decimal space-y-1 pl-5 text-sm" style={{ color: BODY_TEXT }}>
                     {qbr.recurringIssues.rows.map((r) => (
                       <li key={r.name}>
-                        {r.name} — {r.count} tickets ({r.pct}% of total)
+                        {r.name} - {r.count} tickets ({r.pct}% of total)
                       </li>
                     ))}
                   </ol>
@@ -3947,7 +4039,7 @@ export function QbrPackBuilder({
               </h4>
               {qbr.firstContactResolution.resolvedEvaluated === 0 ? (
                 <p className="text-sm" style={{ color: BODY_TEXT }}>
-                  No resolved tickets in this period — first contact resolution cannot be calculated.
+                  No resolved tickets in this period - first contact resolution cannot be calculated.
                 </p>
               ) : (
                 <div className="flex flex-col gap-4 md:flex-row md:items-start md:gap-8">
@@ -4011,7 +4103,7 @@ export function QbrPackBuilder({
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[92vh] max-w-[96vw] overflow-y-auto sm:max-w-7xl">
+        <DialogContent className="max-h-[92dvh] max-w-[96vw] overflow-y-auto overscroll-contain sm:max-w-7xl md:max-h-[92vh] md:overscroll-auto">
           <DialogHeader>
             <DialogTitle>QBR Pack Builder</DialogTitle>
           </DialogHeader>

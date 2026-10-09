@@ -1,6 +1,7 @@
 "use client";
 
 import Script from "next/script";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import PageTransition from "@/components/PageTransition";
@@ -42,7 +43,17 @@ export default function DemoPage() {
           </h1>
           <p className="mx-auto mt-2 max-w-2xl text-[13px] leading-snug text-[var(--text-secondary)] sm:text-sm">
             See how Handover connects to your PSA and generates client-ready reports in under 30
-            seconds. No slides, no fluff — just a live walkthrough built around your workflow.
+            seconds. No slides, no fluff - just a live walkthrough built around your workflow.
+          </p>
+          <p className="mt-4 text-xs text-[var(--text-muted)] sm:text-sm">
+            Every customer gets a{" "}
+            <Link
+              href="/onboarding-programme"
+              className="font-semibold text-cyan-200 underline decoration-cyan-200/30 underline-offset-4 hover:text-cyan-100"
+            >
+              30-day launch
+            </Link>
+            , run by me personally.
           </p>
         </div>
       </section>

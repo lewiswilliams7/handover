@@ -33,14 +33,20 @@ export const metadata: Metadata = {
     type: "article",
     publishedTime: post.dateISO,
     authors: [post.author],
-    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "Handover - MSP delivery tool" }],
+    images: [
+      {
+        url: "https://gethandover.uk/opengraph-image",
+        width: 1200,
+        height: 630,
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "Why MSP Engineers Dread the Friday Report",
     description:
       "Why MSP reporting becomes a weekly drain, what it really costs, and what a better client-ready reporting workflow looks like.",
-    images: ["/og-image.png"],
+    images: ["https://gethandover.uk/opengraph-image"],
   },
 };
 

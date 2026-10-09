@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import Link from "next/link";
 
 import { BlogAuthorSection } from "@/components/blog-author-section";
 import { BlogBackLink } from "@/components/blog-back-link";
 import { BlogRelatedArticles } from "@/components/blog-related-articles";
 import { ShareArticleActions } from "@/app/blog/share-article-actions";
+import { buildBlogArticleJsonLd } from "@/lib/blog-article-jsonld";
 import { DYNAMIC_ARTICLE_SLUGS, getDynamicArticleHtml } from "@/lib/blog-dynamic-articles-html";
 import { getPostBySlug, getRelatedPosts, readMinutesFromWordCount } from "@/lib/blog-data";
 import { getAllArticleWordCounts, getArticleWordCount } from "@/lib/blog-word-counts";
@@ -54,7 +56,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   if (slug === "pitchit-2026-handover-msp-accelerator") {
     const title =
-      "Handover is joining PitchIT 2026 — here's why we applied | Handover Blog";
+      "Handover is joining PitchIT 2026 - here's why we applied | Handover Blog";
     const keywords = [
       "PitchIT 2026",
       "ConnectWise PitchIT",
@@ -79,10 +81,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
         authors: [post.author],
         images: [
           {
-            url: "/og-image.png",
+            url: "https://gethandover.uk/opengraph-image",
             width: 1200,
             height: 630,
-            alt: "Handover - MSP delivery tool",
           },
         ],
       },
@@ -90,7 +91,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
         card: "summary_large_image",
         title,
         description,
-        images: ["/og-image.png"],
+        images: ["https://gethandover.uk/opengraph-image"],
       },
       other: {
         "article:author": post.author,
@@ -117,10 +118,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       authors: [post.author],
       images: [
         {
-          url: "/og-image.png",
+          url: "https://gethandover.uk/opengraph-image",
           width: 1200,
           height: 630,
-          alt: "Handover - MSP delivery tool",
         },
       ],
     },
@@ -128,7 +128,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       card: "summary_large_image",
       title: post.title,
       description,
-      images: ["/og-image.png"],
+      images: ["https://gethandover.uk/opengraph-image"],
     },
     other: {
       "article:author": post.author,
@@ -153,12 +153,23 @@ export default async function DynamicBlogArticlePage({ params }: PageProps) {
   const related = getRelatedPosts(slug, 2);
   const wordMap = getAllArticleWordCounts();
   const toc = post.toc;
+  const articleJsonLd = buildBlogArticleJsonLd({
+    headline: post.title,
+    description: post.description,
+    datePublished: post.dateISO,
+    url: `https://gethandover.uk/blog/${slug}`,
+    keywords: post.tags,
+  });
 
   return (
     <div
       className="animate-in fade-in duration-300"
       style={{ background: "var(--bg-primary)", minHeight: "100vh" }}
     >
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(articleJsonLd) }}
+      />
       <div className="mx-auto w-full max-w-[1100px] px-6 py-12 md:px-8 md:py-20">
         <div
           className={cn(
@@ -216,6 +227,28 @@ export default async function DynamicBlogArticlePage({ params }: PageProps) {
                 }}
                 dangerouslySetInnerHTML={{ __html: html }}
               />
+
+              {slug === "what-msps-told-us-about-client-reporting" ? (
+                <div className="mt-12 rounded-xl border border-[rgba(56,189,248,0.2)] bg-[rgba(56,189,248,0.05)] p-6">
+                  <h2 className="text-[24px] font-bold text-[var(--text-primary)]">
+                    See what&apos;s in your client base
+                  </h2>
+                  <p className="mt-2 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
+                    Connect HaloPSA or ConnectWise with a read-only key.
+                  </p>
+                  <p className="mt-1 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
+                    About a minute, no trial, no card.
+                  </p>
+                  <div className="mt-5">
+                    <Link
+                      href="/onboarding/connect"
+                      className="inline-flex items-center rounded-[var(--radius)] bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]"
+                    >
+                      See what&apos;s in your client base →
+                    </Link>
+                  </div>
+                </div>
+              ) : null}
 
               <div className="mt-12">
                 <ShareArticleActions />

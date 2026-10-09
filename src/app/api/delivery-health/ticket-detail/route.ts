@@ -217,7 +217,7 @@ export async function GET(req: Request) {
       return NextResponse.json(
         {
           error: isRateLimit
-            ? "HaloPSA is rate limiting requests — please wait a moment and try again."
+            ? "HaloPSA is rate limiting requests - please wait a moment and try again."
             : (lastError?.message ?? "Could not fetch ticket details."),
         },
         { status: isRateLimit ? 503 : 500 },

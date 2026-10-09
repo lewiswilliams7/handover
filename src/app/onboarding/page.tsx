@@ -1,6 +1,8 @@
 "use client";
 
 import { Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
+import confetti from "canvas-confetti";
+import { CheckCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
@@ -20,7 +22,9 @@ const jetbrains = JetBrains_Mono({
   display: "swap",
 });
 
-type Step = 0 | 1 | 2 | 3;
+type Step = 0 | 1 | 2 | 3 | 4;
+
+const OUTPUT_LANGUAGES = ["English", "French", "Dutch", "German", "Spanish"] as const;
 type PsaChoice = "halo" | "cw" | "later";
 
 type ClientOption = {
@@ -42,13 +46,16 @@ const DEMO_CLIENT_OPTIONS: ClientOption[] = [
   { name: "Meridian Logistics Co", ticketCount: 7 },
 ];
 
+const ONBOARDING_DEFAULT_DEMO_CLIENT = "Northwood Manufacturing";
+const ONBOARDING_REPORT_TYPE = "Weekly Update" as const;
+
 const DEMO_INPUTS: Record<string, string> = {
   "Meridian Health":
-    "Client: Meridian Health\n\nTickets this week:\n- QBR preparation — slides drafted, awaiting client confirmation\n- Office 365 licence review — 3 unused licences identified\n- Firewall firmware update — scheduled for Saturday maintenance window",
+    "Client: Meridian Health\n\nTickets this week:\n- QBR preparation - slides drafted, awaiting client confirmation\n- Office 365 licence review - 3 unused licences identified\n- Firewall firmware update - scheduled for Saturday maintenance window",
   "Northwood Manufacturing":
-    "Client: Northwood Manufacturing\n\nTickets this week:\n- SPF record update for sales team email delivery\n- SharePoint Phase 2 migration — 847GB migrated, archive phase next week\n- MFA hardware token procurement — awaiting approval",
+    "Client: Northwood Manufacturing\n\nTickets this week:\n\n#1001 - Office 365 outbound email delivery failure - sales team\nStatus: In Progress | Priority: High | Agent: Alex Thompson\nSPF record misconfigured after DNS migration, causing bounced emails to external recipients. SPF record updated and verified. Monitoring delivery over the next 48 hours. Hartigan & Co reported bounce on Tuesday, confirmed resolved Wednesday morning.\n\n#1002 - MFA rollout - hardware token procurement\nStatus: Awaiting Approval | Priority: Medium | Agent: Jamie Clarke\n3 remote users still without MFA coverage pending hardware token delivery. Procurement request submitted to finance on Monday, awaiting sign-off before order is placed with supplier.\n\n#1003 - SharePoint Phase 2 migration - archive document library\nStatus: In Progress | Priority: Medium | Agent: Alex Thompson\n847GB of active document data migrated successfully over the weekend maintenance window. Archive phase (legacy folders, ~2TB) scheduled to begin next week. No user-reported issues from Phase 1 cutover.\n\n#1004 - Wi-Fi coverage gap - warehouse floor 2\nStatus: Open | Priority: Low | Agent: Jamie Clarke\nUsers reporting intermittent drop-off near the loading bay. Site survey booked for next Thursday to assess additional access point placement.",
   "Bridgewater Council":
-    "Client: Bridgewater Council\n\nTickets this week:\n- Fortigate firewall migration — window confirmed Saturday 14 June\n- VPN tunnel documentation complete\n- Change request approved",
+    "Client: Bridgewater Council\n\nTickets this week:\n- Fortigate firewall migration - window confirmed Saturday 14 June\n- VPN tunnel documentation complete\n- Change request approved",
   "Meridian Logistics Co":
     "Client: Meridian Logistics Co\n\nTickets this week:\n- Azure Infrastructure Migration cutover planning\n- Legacy server decommission complete\n- Backup validation successful",
 };
@@ -75,12 +82,17 @@ const ONBOARDING_CSS = `
   --danger: #f87171;
   --mono: var(--font-onboarding-mono), "JetBrains Mono", monospace;
   --sans: var(--font-onboarding-sans), "Hanken Grotesk", system-ui, sans-serif;
-  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   background: var(--bg);
   color: var(--text);
   font-family: var(--sans);
+}
+@media (min-width: 768px) {
+  .ho-root {
+    min-height: 100vh;
+  }
 }
 .ho-header {
   display: flex;
@@ -380,6 +392,35 @@ const ONBOARDING_CSS = `
 .ho-field input:focus {
   border-color: rgba(59, 192, 240, 0.55);
 }
+.ho-field select {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  padding: 0.65rem 0.75rem;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s;
+  cursor: pointer;
+}
+.ho-field select:focus {
+  border-color: rgba(59, 192, 240, 0.55);
+}
+.ho-skip-step {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+  margin-top: 0.75rem;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  transition: color 0.15s;
+}
+.ho-skip-step:hover { color: rgba(255, 255, 255, 0.8); }
 .ho-form-actions {
   display: flex;
   flex-wrap: wrap;
@@ -474,6 +515,11 @@ const ONBOARDING_CSS = `
   border-color: rgba(59, 192, 240, 0.65);
   background: rgba(59, 192, 240, 0.08);
 }
+.ho-client-chip--static {
+  opacity: 0.5;
+  cursor: default;
+  pointer-events: none;
+}
 .ho-client-initial {
   width: 36px;
   height: 36px;
@@ -510,6 +556,17 @@ const ONBOARDING_CSS = `
   border-color: rgba(59, 192, 240, 0.65);
   background: rgba(59, 192, 240, 0.12);
   color: #7dd3fc;
+}
+.ho-pill--static {
+  opacity: 0.5;
+  cursor: default;
+  pointer-events: none;
+}
+.ho-report-type-note {
+  margin-top: 0.65rem;
+  text-align: center;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
 }
 .ho-generate-btn {
   width: 100%;
@@ -582,12 +639,37 @@ const ONBOARDING_CSS = `
   border-radius: 50%;
   animation: ho-spin 0.7s linear infinite;
 }
+.ho-finish-success-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  background: rgba(10, 15, 28, 0.92);
+  text-align: center;
+  padding: 2rem;
+}
+.ho-finish-success-overlay h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #f8fafc;
+  margin: 0;
+}
+.ho-finish-success-overlay p {
+  font-size: 0.9375rem;
+  color: rgba(248, 250, 252, 0.65);
+  margin: 0;
+}
 `;
 
 function progressSegments(step: Step): number {
   if (step <= 0) return 1;
   if (step === 1) return 2;
-  return 3;
+  if (step === 2) return 3;
+  return 4;
 }
 
 function clientInitial(name: string): string {
@@ -631,9 +713,23 @@ export default function OnboardingPage() {
   const [cwError, setCwError] = useState<string | null>(null);
 
   const [clientOptions, setClientOptions] = useState<ClientOption[]>(DEMO_CLIENT_OPTIONS);
-  const [selectedClient, setSelectedClient] = useState(DEMO_CLIENT_OPTIONS[0]!.name);
-  const [reportType, setReportType] = useState<(typeof REPORT_TYPES)[number]>("Weekly Update");
+  const [selectedClient, setSelectedClient] = useState(ONBOARDING_DEFAULT_DEMO_CLIENT);
   const [finishing, setFinishing] = useState(false);
+  const [finishSuccess, setFinishSuccess] = useState(false);
+
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [jobTitle, setJobTitle] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [outputLanguage, setOutputLanguage] =
+    useState<(typeof OUTPUT_LANGUAGES)[number]>("English");
+  const [profileSaving, setProfileSaving] = useState(false);
+
+  const profileStepComplete =
+    firstName.trim().length > 0 &&
+    lastName.trim().length > 0 &&
+    jobTitle.trim().length > 0 &&
+    companyName.trim().length > 0;
 
   const goToStep = useCallback((next: Step) => {
     setStepPlay(false);
@@ -647,15 +743,15 @@ export default function OnboardingPage() {
     } = await supabase.auth.getUser();
     if (!user) return;
     await supabase.from("profiles").update({ onboarding_completed: true }).eq("id", user.id);
-  }, []);
-
-  const skipOnboarding = useCallback(async () => {
-    await markOnboardingComplete();
     try {
       sessionStorage.setItem(ONBOARDING_PAGE_SEEN_KEY, "1");
     } catch {
       /* ignore */
     }
+  }, []);
+
+  const skipOnboarding = useCallback(async () => {
+    await markOnboardingComplete();
     router.push("/");
   }, [markOnboardingComplete, router]);
 
@@ -678,14 +774,6 @@ export default function OnboardingPage() {
     return () => {
       el.remove();
     };
-  }, []);
-
-  useEffect(() => {
-    try {
-      sessionStorage.setItem(ONBOARDING_PAGE_SEEN_KEY, "1");
-    } catch {
-      /* ignore */
-    }
   }, []);
 
   useEffect(() => {
@@ -724,11 +812,48 @@ export default function OnboardingPage() {
     return () => cancelAnimationFrame(id);
   }, [step]);
 
+  const saveProfileAndContinue = useCallback(async () => {
+    if (!profileStepComplete || profileSaving) return;
+    setProfileSaving(true);
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+      const fn = firstName.trim();
+      const ln = lastName.trim();
+      await supabase
+        .from("profiles")
+        .update({
+          first_name: fn,
+          last_name: ln,
+          display_name: `${fn} ${ln}`,
+          job_title: jobTitle.trim(),
+          company_name: companyName.trim(),
+          output_language: outputLanguage,
+        })
+        .eq("id", user.id);
+      goToStep(2);
+    } finally {
+      setProfileSaving(false);
+    }
+  }, [
+    companyName,
+    firstName,
+    goToStep,
+    jobTitle,
+    lastName,
+    outputLanguage,
+    profileSaving,
+    profileStepComplete,
+  ]);
+
   useEffect(() => {
-    if (step !== 3) return;
+    if (step !== 4) return;
     if (psaChoice === "later") {
       setClientOptions(DEMO_CLIENT_OPTIONS);
-      setSelectedClient(DEMO_CLIENT_OPTIONS[0]!.name);
+      setSelectedClient(ONBOARDING_DEFAULT_DEMO_CLIENT);
       return;
     }
     if (!connectionTested) return;
@@ -781,12 +906,12 @@ export default function OnboardingPage() {
           setSelectedClient(built[0]!.name);
         } else {
           setClientOptions(DEMO_CLIENT_OPTIONS);
-          setSelectedClient(DEMO_CLIENT_OPTIONS[0]!.name);
+          setSelectedClient(ONBOARDING_DEFAULT_DEMO_CLIENT);
         }
       } catch {
         if (!cancelled) {
           setClientOptions(DEMO_CLIENT_OPTIONS);
-          setSelectedClient(DEMO_CLIENT_OPTIONS[0]!.name);
+          setSelectedClient(ONBOARDING_DEFAULT_DEMO_CLIENT);
         }
       }
     })();
@@ -816,14 +941,14 @@ export default function OnboardingPage() {
       });
       const data = (await res.json()) as { success?: boolean; error?: string };
       if (!res.ok || !data.success) {
-        setHaloError(data.error ?? "Connection failed — check your credentials.");
+        setHaloError(data.error ?? "Connection failed - check your credentials.");
         return;
       }
       setHaloClientSecret("");
       setConnectionTested(true);
       setCheckDraw(true);
     } catch {
-      setHaloError("Connection failed — check your credentials.");
+      setHaloError("Connection failed - check your credentials.");
     } finally {
       setHaloLoading(false);
     }
@@ -850,14 +975,14 @@ export default function OnboardingPage() {
       });
       const data = (await res.json()) as { ok?: boolean; error?: string };
       if (!res.ok || !data.ok) {
-        setCwError(data.error ?? "Connection failed — check your credentials.");
+        setCwError(data.error ?? "Connection failed - check your credentials.");
         return;
       }
       setCwPrivateKey("");
       setConnectionTested(true);
       setCheckDraw(true);
     } catch {
-      setCwError("Connection failed — check your credentials.");
+      setCwError("Connection failed - check your credentials.");
     } finally {
       setCwLoading(false);
     }
@@ -869,31 +994,49 @@ export default function OnboardingPage() {
     setCheckDraw(false);
     if (choice === "later") {
       setClientOptions(DEMO_CLIENT_OPTIONS);
-      setSelectedClient(DEMO_CLIENT_OPTIONS[0]!.name);
-      goToStep(3);
+      setSelectedClient(ONBOARDING_DEFAULT_DEMO_CLIENT);
+      goToStep(4);
       return;
     }
-    goToStep(2);
+    goToStep(3);
   };
 
-  const finishOnboarding = async () => {
+  const finishOnboarding = async (options?: { skipTourAutoStart?: boolean }) => {
     if (finishing) return;
     setFinishing(true);
     try {
       await markOnboardingComplete();
-      try {
-        sessionStorage.setItem(ONBOARDING_PAGE_SEEN_KEY, "1");
-      } catch {
-        /* ignore */
-      }
-      const demoInput =
+      let demoInput =
         DEMO_INPUTS[selectedClient] ??
         `Client: ${selectedClient}\n\nTickets this week:\n- Review open items and prepare your weekly client update.`;
-      router.push(
-        `/?demoInput=${encodeURIComponent(demoInput)}&reportType=${encodeURIComponent(reportType)}&onboarding=complete`,
-      );
-    } finally {
+      const company = companyName.trim();
+      if (company) {
+        demoInput = `Prepared for: ${company}\n\n${demoInput}`;
+      }
+      const isNorthwood = selectedClient === ONBOARDING_DEFAULT_DEMO_CLIENT;
+      const northwoodParams = isNorthwood
+        ? `&client=${encodeURIComponent(selectedClient)}${
+            options?.skipTourAutoStart ? "" : "&startTour=1"
+          }`
+        : "";
+      const destination =
+        `/?demoInput=${encodeURIComponent(demoInput)}&reportType=${encodeURIComponent(ONBOARDING_REPORT_TYPE)}&onboarding=complete` +
+        northwoodParams;
+
+      setFinishSuccess(true);
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ["#38bdf8", "#1e3a5f", "#ffffff", "#7dd3fc"],
+      });
+
+      window.setTimeout(() => {
+        router.push(destination);
+      }, 800);
+    } catch {
       setFinishing(false);
+      setFinishSuccess(false);
     }
   };
 
@@ -910,6 +1053,13 @@ export default function OnboardingPage() {
 
   return (
     <div className={`ho-root ${hanken.variable} ${jetbrains.variable}`}>
+      {finishSuccess ? (
+        <div className="ho-finish-success-overlay" role="status" aria-live="polite">
+          <CheckCircle className="size-14 text-[#38bdf8]" strokeWidth={1.75} aria-hidden />
+          <h2>You&apos;re all set!</h2>
+          <p>Taking you to Handover...</p>
+        </div>
+      ) : null}
       <header className="ho-header">
         <div className="ho-brand" data-anim style={{ "--d": 0 } as React.CSSProperties}>
           <img
@@ -920,7 +1070,7 @@ export default function OnboardingPage() {
           <span className="ho-brand-name">Handover</span>
         </div>
         <div className="ho-progress" aria-label="Setup progress">
-          {[1, 2, 3].map((n) => (
+          {[1, 2, 3, 4].map((n) => (
             <div key={n} className={`ho-progress-seg${n <= progressOn ? " on" : ""}`} />
           ))}
         </div>
@@ -969,6 +1119,103 @@ export default function OnboardingPage() {
         ) : null}
 
         {step === 1 ? (
+          <div className={stepClass}>
+            <div className="ho-centered" style={{ maxWidth: "28rem" }}>
+              <h1 data-anim style={{ "--d": 1 } as React.CSSProperties}>
+                Tell us about yourself
+              </h1>
+              <p className="ho-sub" data-anim style={{ "--d": 2 } as React.CSSProperties}>
+                This personalises every report Handover generates - your name and signature appear on
+                all client outputs.
+              </p>
+              <div
+                className="ho-form mt-8 w-full text-left"
+                data-anim
+                style={{ "--d": 3 } as React.CSSProperties}
+              >
+                <div className="ho-field">
+                  <label htmlFor="onboard-first-name">First name</label>
+                  <input
+                    id="onboard-first-name"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="John"
+                    required
+                    autoComplete="given-name"
+                  />
+                </div>
+                <div className="ho-field">
+                  <label htmlFor="onboard-last-name">Last name</label>
+                  <input
+                    id="onboard-last-name"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Smith"
+                    required
+                    autoComplete="family-name"
+                  />
+                </div>
+                <div className="ho-field">
+                  <label htmlFor="onboard-job-title">Job title</label>
+                  <input
+                    id="onboard-job-title"
+                    value={jobTitle}
+                    onChange={(e) => setJobTitle(e.target.value)}
+                    placeholder="Technical Project Manager"
+                    required
+                    autoComplete="organization-title"
+                  />
+                </div>
+                <div className="ho-field">
+                  <label htmlFor="onboard-company">Company name</label>
+                  <input
+                    id="onboard-company"
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    placeholder="Your MSP name"
+                    required
+                    autoComplete="organization"
+                  />
+                </div>
+                <div className="ho-field">
+                  <label htmlFor="onboard-output-language">Output language</label>
+                  <select
+                    id="onboard-output-language"
+                    value={outputLanguage}
+                    onChange={(e) =>
+                      setOutputLanguage(e.target.value as (typeof OUTPUT_LANGUAGES)[number])
+                    }
+                  >
+                    {OUTPUT_LANGUAGES.map((lang) => (
+                      <option key={lang} value={lang}>
+                        {lang}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="mt-8 w-full" data-anim style={{ "--d": 5 } as React.CSSProperties}>
+                <button
+                  type="button"
+                  className="ho-btn-primary w-full"
+                  disabled={!profileStepComplete || profileSaving}
+                  onClick={() => void saveProfileAndContinue()}
+                >
+                  {profileSaving ? "Saving…" : "Continue →"}
+                </button>
+                <button
+                  type="button"
+                  className="ho-skip-step mx-auto block"
+                  onClick={() => goToStep(2)}
+                >
+                  Skip for now →
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {step === 2 ? (
           <div className={stepClass}>
             <div className="ho-centered">
               <h1 data-anim style={{ "--d": 1 } as React.CSSProperties}>
@@ -1020,14 +1267,14 @@ export default function OnboardingPage() {
                     ⏭
                   </div>
                   <p className="ho-psa-name">I&apos;ll connect later</p>
-                  <p className="ho-psa-desc">Explore with demo data — connect your PSA anytime.</p>
+                  <p className="ho-psa-desc">Explore with demo data - connect your PSA anytime.</p>
                 </button>
               </div>
             </div>
           </div>
         ) : null}
 
-        {step === 2 && psaChoice === "halo" ? (
+        {step === 3 && psaChoice === "halo" ? (
           <div className={stepClass}>
             <div className="ho-split">
               <div className="ho-split-left ho-instructions">
@@ -1126,7 +1373,7 @@ export default function OnboardingPage() {
           </div>
         ) : null}
 
-        {step === 2 && psaChoice === "cw" ? (
+        {step === 3 && psaChoice === "cw" ? (
           <div className={stepClass}>
             <div className="ho-split">
               <div className="ho-split-left ho-instructions">
@@ -1232,72 +1479,99 @@ export default function OnboardingPage() {
           </div>
         ) : null}
 
-        {step === 3 ? (
+        {step === 4 ? (
           <div className={stepClass}>
-            <div className="ho-centered" style={{ maxWidth: "28rem" }}>
+            <div
+              className="ho-centered"
+              style={{ maxWidth: "28rem", paddingTop: "1.5rem", paddingBottom: "1.5rem" }}
+            >
               <p className="ho-eyebrow" data-anim style={{ "--d": 1 } as React.CSSProperties}>
-                One last thing
+                Last step
               </p>
               <h1 data-anim style={{ "--d": 2 } as React.CSSProperties}>
-                Generate your first report.
+                {firstName.trim()
+                  ? `Take the tour, ${firstName.trim()}.`
+                  : "Take the tour."}
               </h1>
               <p className="ho-sub" data-anim style={{ "--d": 3 } as React.CSSProperties}>
-                {psaChoice === "later"
-                  ? "Using demo data — connect your PSA anytime from Settings."
-                  : "We’ll use live PSA data for this client."}
+                We&apos;ll generate a sample report together, then show you around — takes
+                about a minute.
               </p>
-              <div className="ho-client-grid">
-                {clientOptions.map((c, i) => (
-                  <button
-                    key={c.name}
-                    type="button"
-                    className={`ho-client-chip${selectedClient === c.name ? " on" : ""}`}
-                    data-anim
-                    style={{ "--d": i + 4 } as React.CSSProperties}
-                    onClick={() => setSelectedClient(c.name)}
-                  >
-                    <span className="ho-client-initial shrink-0">{clientInitial(c.name)}</span>
-                    <div className="flex min-w-0 flex-1 flex-col gap-1 text-left">
-                      <span className="text-[14px] font-semibold leading-tight">{c.name}</span>
-                      <span className="text-[11px] text-white/40">
-                        {c.ticketCount} open tickets
-                      </span>
-                    </div>
-                  </button>
-                ))}
+              <div className="ho-client-grid" style={{ marginTop: "1.25rem" }}>
+                {clientOptions.map((c, i) => {
+                  const isStaticDemoCard =
+                    psaChoice === "later" && c.name !== ONBOARDING_DEFAULT_DEMO_CLIENT;
+                  const chipClass = `ho-client-chip${selectedClient === c.name ? " on" : ""}${isStaticDemoCard ? " ho-client-chip--static" : ""}`;
+                  const chipContent = (
+                    <>
+                      <span className="ho-client-initial shrink-0">{clientInitial(c.name)}</span>
+                      <div className="flex min-w-0 flex-1 flex-col gap-1 text-left">
+                        <span className="text-[14px] font-semibold leading-tight">{c.name}</span>
+                        <span className="text-[11px] text-white/40">
+                          {c.ticketCount} open tickets
+                        </span>
+                      </div>
+                    </>
+                  );
+                  if (isStaticDemoCard) {
+                    return (
+                      <div
+                        key={c.name}
+                        className={chipClass}
+                        data-anim
+                        style={{ "--d": i + 4 } as React.CSSProperties}
+                        aria-hidden
+                      >
+                        {chipContent}
+                      </div>
+                    );
+                  }
+                  return (
+                    <button
+                      key={c.name}
+                      type="button"
+                      className={chipClass}
+                      data-anim
+                      style={{ "--d": i + 4 } as React.CSSProperties}
+                      onClick={() => setSelectedClient(c.name)}
+                    >
+                      {chipContent}
+                    </button>
+                  );
+                })}
               </div>
               <p
-                className="ho-grid-label"
-                style={{ marginTop: "1.75rem", textAlign: "center", width: "100%" }}
+                className="ho-report-type-note"
                 data-anim
+                style={{ marginTop: "1.25rem", "--d": 8 } as React.CSSProperties}
               >
-                Report type
+                Weekly Update · More report types available after setup
               </p>
-              <div className="ho-pills">
-                {REPORT_TYPES.map((t, i) => (
-                  <button
-                    key={t}
-                    type="button"
-                    className={`ho-pill${reportType === t ? " on" : ""}`}
-                    data-anim
-                    style={{ "--d": i + 8 } as React.CSSProperties}
-                    onClick={() => setReportType(t)}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
               <button
                 type="button"
                 className="ho-generate-btn"
                 disabled={finishing}
                 data-anim
-                style={{ "--d": 12 } as React.CSSProperties}
+                style={{ marginTop: "1.25rem", "--d": 9 } as React.CSSProperties}
                 onClick={() => void finishOnboarding()}
               >
-                {finishing ? "Finishing…" : "Generate my first report →"}
+                {finishing ? "Finishing…" : "Start the tour →"}
               </button>
-              <p className="ho-generate-note" data-anim style={{ "--d": 13 } as React.CSSProperties}>
+              <button
+                type="button"
+                className="ho-skip-step mx-auto block"
+                disabled={finishing}
+                data-anim
+                style={{ "--d": 10 } as React.CSSProperties}
+                onClick={() => void finishOnboarding({ skipTourAutoStart: true })}
+              >
+                I&apos;ll look around myself →
+              </button>
+              <p
+                className="ho-generate-note"
+                data-anim
+                style={{ marginTop: "0.25rem", "--d": 11 } as React.CSSProperties}
+              >
                 Takes about 30 seconds · Nothing to configure
               </p>
             </div>
@@ -1311,10 +1585,11 @@ export default function OnboardingPage() {
             type="button"
             className="ho-back"
             onClick={() => {
-              if (step === 3) {
-                if (psaChoice === "later") goToStep(1);
-                else goToStep(2);
-              } else if (step === 2) goToStep(1);
+              if (step === 4) {
+                if (psaChoice === "later") goToStep(2);
+                else goToStep(3);
+              } else if (step === 3) goToStep(2);
+              else if (step === 2) goToStep(1);
               else if (step === 1) goToStep(0);
             }}
           >
@@ -1329,12 +1604,12 @@ export default function OnboardingPage() {
               Begin setup →
             </button>
           ) : null}
-          {step === 2 && psaChoice !== "later" ? (
+          {step === 3 && psaChoice !== "later" ? (
             <button
               type="button"
               className="ho-btn-primary"
               disabled={!connectionTested}
-              onClick={() => goToStep(3)}
+              onClick={() => goToStep(4)}
             >
               Continue →
             </button>

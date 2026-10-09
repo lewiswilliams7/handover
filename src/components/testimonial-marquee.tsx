@@ -19,7 +19,7 @@ const TESTIMONIALS: Testimonial[] = [
       "Strong initial implementation with real niche focus. The HaloPSA integration is the right approach and the output quality is genuinely impressive for an early stage product.",
     name: "Blake H.",
     company: "IBM",
-    highlights: ["kind of tool"],
+    highlights: ["output quality"],
     brandLogoSrc: "/ibm.png",
     brandLogoAlt: "IBM",
   },
@@ -28,7 +28,7 @@ const TESTIMONIALS: Testimonial[] = [
       "Really good product. The MSP space has needed something like this for a long time and Handover has nailed the positioning.",
     name: "Delivery Lead",
     company: "Computacenter",
-    highlights: ["kind of tool"],
+    highlights: ["nailed the positioning"],
     brandLogoSrc: "/computacenter.png",
     brandLogoAlt: "Computacenter",
   },
@@ -52,14 +52,14 @@ const TESTIMONIALS: Testimonial[] = [
     quote:
       "Wish this had been around years ago when I was at MSPs. Love what Handover is doing - this is going to save delivery teams hours every week.",
     name: "Director, MSP Operations",
-    highlights: ["save hours"],
+    highlights: ["save delivery teams hours"],
   },
   {
     quote:
       "I was spending an hour a day on client reporting - 30 minutes updating and 30 minutes compiling. Now it takes 30 seconds and I have an extra hour back in my day.",
     name: "Service Delivery Manager",
     company: "Tata Consultancy Services",
-    highlights: ["30 seconds"],
+    highlights: [],
     brandLogoSrc: "/tata.png",
     brandLogoAlt: "Tata Consultancy Services",
   },
@@ -141,10 +141,6 @@ function TestimonialCard({ item, layout }: { item: Testimonial; layout: "mobile"
       </p>
       <p className="mt-4 text-[13px] font-semibold text-[var(--text-primary)]">{item.name}</p>
       {item.company ? <p className="text-[13px] text-[var(--text-secondary)]">{item.company}</p> : null}
-      <p className="mt-2 inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400">
-        <span aria-hidden>✓</span>
-        Verified
-      </p>
     </article>
   );
 }

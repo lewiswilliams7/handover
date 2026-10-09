@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 export const metadata: Metadata = {
-  title: "Pricing - Handover | Free Trial, Pro & Team Plans for MSPs",
+  title: "Pricing - Handover | One plan for MSP delivery",
   description:
-    "Compare Handover plans: 14-day free trial, then unlock PSA push-back for HaloPSA and ConnectWise, scheduling, and Excel packs on Pro and Team.",
+    "Handover is £499/month or £4,990 annually, with every feature included. Run the free PSA scan before you buy.",
   alternates: {
     canonical: "https://gethandover.uk/pricing",
   },

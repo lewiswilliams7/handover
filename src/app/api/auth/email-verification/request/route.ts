@@ -59,7 +59,12 @@ export async function POST(request: Request) {
       return generic;
     }
 
-    if (authData.user.email_confirmed_at || (await hasVerifiedEmailInTable(admin, profileId))) {
+    const pendingScanVerification =
+      authData.user.user_metadata?.scan_verification_pending === true;
+    if (
+      (!pendingScanVerification && authData.user.email_confirmed_at) ||
+      (await hasVerifiedEmailInTable(admin, profileId))
+    ) {
       return generic;
     }
 

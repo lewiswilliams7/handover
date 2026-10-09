@@ -64,7 +64,7 @@ const featureLines = [
   "Excel export - action log, risk log, status report",
   "Custom writing style and tone per user",
   "Multi-client reports - all clients in one generation",
-  "Team plans - shared HaloPSA connection, pooled generations",
+  "Handover includes the complete HaloPSA workspace",
   "Works with HaloPSA Cloud and On-Premise",
 ] as const;
 
@@ -182,15 +182,15 @@ export default function HalopsaReportingPage() {
                   <p className="mt-6 max-w-[760px] text-[17px] leading-relaxed text-[var(--text-secondary)]">
                     Handover connects directly to HaloPSA, pulls your live ticket and project data, and generates
                     professional client updates, action logs, risk registers, and Excel report packs in seconds - then
-                    pushes notes back to your tickets automatically. Start free - cancel anytime - 14-day free trial — cancel anytime.
+                    pushes notes back to your tickets automatically. Run the free PSA scan before you buy.
                   </p>
                   <div className="mt-8 flex flex-wrap gap-3">
-                    <Link href="/auth?tab=signup&returnTo=/welcome">
+                    <Link href="/onboarding/connect">
                       <Button
                         size="lg"
                         className="rounded-[var(--radius)] bg-[var(--accent)] px-6 font-semibold text-white hover:bg-[var(--accent-hover)]"
                       >
-                        Start free trial
+                        Run the free PSA scan
                       </Button>
                     </Link>
                     <Link href="/integrations/halopsa">
@@ -444,12 +444,12 @@ export default function HalopsaReportingPage() {
               Start generating HaloPSA reports in minutes
             </h2>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
-              <Link href="/auth?tab=signup&returnTo=/welcome" className="inline-flex sm:flex-1 sm:max-w-[260px]">
+              <Link href="/onboarding/connect" className="inline-flex sm:flex-1 sm:max-w-[260px]">
                 <Button
                   size="lg"
                   className="w-full bg-[var(--accent)] px-8 font-semibold text-white hover:bg-[var(--accent-hover)]"
                 >
-                  Start free trial →
+                  Run the free PSA scan →
                 </Button>
               </Link>
               <Link href="/integrations/halopsa" className="inline-flex sm:flex-1 sm:max-w-[340px]">
@@ -463,7 +463,7 @@ export default function HalopsaReportingPage() {
               </Link>
             </div>
             <p className="mt-6 text-sm text-[var(--text-muted)]">
-              14-day free trial — cancel anytime. — 14-day free trial.
+              Run the free PSA scan before you buy.
             </p>
           </ScrollRevealItem>
         </div>

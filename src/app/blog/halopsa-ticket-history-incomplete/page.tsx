@@ -35,10 +35,9 @@ export const metadata: Metadata = {
     authors: [post.author],
     images: [
       {
-        url: "/og-image.png",
+        url: "https://gethandover.uk/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "Handover - MSP delivery tool",
       },
     ],
   },
@@ -47,7 +46,7 @@ export const metadata: Metadata = {
     title: "Why Your PSA Ticket History Is Incomplete (And How to Fix It)",
     description:
       "Most MSPs have a gap in their PSA ticket history (HaloPSA and ConnectWise) - client communications that never get logged back. Here's why it happens and how to fix it permanently.",
-    images: ["/og-image.png"],
+    images: ["https://gethandover.uk/opengraph-image"],
   },
 };
 
@@ -66,7 +65,7 @@ export default function HaloPsaTicketHistoryIncompletePage() {
     datePublished: post.dateISO,
     dateModified: post.dateISO,
     mainEntityOfPage: "https://gethandover.uk/blog/halopsa-ticket-history-incomplete",
-    image: ["https://gethandover.uk/og-image.png"],
+    image: ["https://gethandover.uk/opengraph-image"],
   };
 
   return (

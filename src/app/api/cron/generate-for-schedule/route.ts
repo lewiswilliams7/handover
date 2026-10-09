@@ -3,7 +3,7 @@ import { Resend } from "resend";
 
 import { getAppOrigin } from "@/lib/app-url";
 import { decrypt } from "@/lib/encryption";
-import { exportFullReportToBuffer } from "@/lib/export";
+import { exportFullReportToBuffer } from "@/lib/export-excel";
 import { getHaloToken, type HaloProject, type HaloTicket } from "@/lib/halo";
 import {
   buildScheduledReportFormattedInput,
@@ -25,7 +25,7 @@ import {
   SCHEDULED_CRON_TEMPLATE_CONTEXT,
 } from "@/lib/scheduled-report-email";
 import { notifyHandoverGenerationWebhooks } from "@/lib/chat-generation-notify";
-import { buildReportEmailResendFromHeader } from "@/lib/resend-from-header";
+import { buildHandoverResendFromHeader, buildReportEmailResendFromHeader } from "@/lib/resend-from-header";
 import { partnerReportFileSlug, partnerWhiteLabelActive } from "@/lib/white-label";
 import { fetchScheduledEmailSenderContext } from "@/lib/scheduled-resend-sender";
 import {
@@ -762,6 +762,7 @@ export async function POST(request: Request) {
       clients_covered: args.clientsCovered,
       status: args.status,
       error_message: args.errorMessage ?? null,
+      source: "psa",
     });
     if (error) {
       console.error("[cron-generate] history insert failed", error.message);
@@ -931,6 +932,50 @@ export async function POST(request: Request) {
   const clientNames = [...clientNamesSet].sort((a, b) => a.localeCompare(b));
   const clientCount = Math.max(clientNames.length, 1);
 
+  // Fetch most recent previous generation for this schedule for continuity context
+  let previousGenerationContext = "";
+  try {
+    const { data: prevGen } = await supabase
+      .from("generations")
+      .select("output_json, created_at")
+      .eq("scheduled_report_id", scheduleId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (prevGen?.output_json) {
+      const prev = prevGen.output_json as {
+        summary?: string;
+        actions?: Array<{
+          task: string;
+          suggested_owner: string;
+        }>;
+      };
+      const prevDate = new Date(prevGen.created_at).toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+
+      const prevActions = (prev.actions ?? [])
+        .slice(0, 5)
+        .map((a) => `- ${a.task}`)
+        .join("\n");
+
+      previousGenerationContext =
+        `\n\nPREVIOUS REPORT CONTEXT (week ending ${prevDate}):\n` +
+        `Previous summary: ${(prev.summary ?? "").slice(0, 400)}...\n` +
+        `Previous open actions:\n${prevActions}\n` +
+        `Use this context to:\n` +
+        `1. Identify what has changed this week vs last week\n` +
+        `2. Note items that have not progressed (stasis)\n` +
+        `3. Acknowledge progression where movement has occurred\n` +
+        `4. Never repeat last week's summary language verbatim`;
+    }
+  } catch (e) {
+    console.error("[generate-for-schedule] prev gen fetch:", e);
+  }
+
   const cwOnlyTickets = tickets.filter((t) => (t as { source?: unknown }).source === "connectwise");
   const cwOnlyProjects = projects.filter((p) => (p as { source?: unknown }).source === "connectwise");
 
@@ -1064,7 +1109,7 @@ export async function POST(request: Request) {
       "x-cron-secret": secret ?? "",
     },
     body: JSON.stringify({
-      input: formattedInput,
+      input: formattedInput + previousGenerationContext,
       tone: generateTone,
       projectName,
       isCronJob: true,
@@ -1179,6 +1224,141 @@ export async function POST(request: Request) {
   const toField = resendRecipientList(toList)!;
   const ccField = resendRecipientList(ccList);
   const bccField = resendRecipientList(bccList);
+
+  if (scheduleRow?.hold_for_review === true) {
+    const clientsCovered =
+      clientIds.length === 0 ? ["All clients"] : clientNames;
+    const effectiveScheduleName =
+      scheduleName ||
+      (typeof scheduleRow.name === "string" ? scheduleRow.name.trim() : "") ||
+      "Weekly Report";
+    const savedGenId =
+      typeof generated.savedGenerationId === "string"
+        ? generated.savedGenerationId
+        : null;
+    const nowIso = new Date().toISOString();
+
+    if (scheduleId.trim()) {
+      const { error: supersedeErr } = await supabase
+        .from("pending_approvals")
+        .update({ status: "superseded", resolved_at: nowIso })
+        .eq("schedule_id", scheduleId.trim())
+        .eq("status", "pending");
+      if (supersedeErr) {
+        console.error("[cron-generate] supersede pending failed", supersedeErr.message);
+      }
+    }
+
+    let haloPushConfig: Record<string, unknown> | null = null;
+    if (pushToHalo) {
+      const ticketIdsForPush = tickets
+        .map((t) => Number(t.id))
+        .filter((id) => Number.isFinite(id));
+      const projectIdsForPush = projects
+        .map((p) => Number(p.id))
+        .filter((id) => Number.isFinite(id));
+      const legacyScopeIds =
+        haloPushTarget === "projects"
+          ? projectIdsForPush
+          : haloPushTarget === "tickets"
+            ? ticketIdsForPush
+            : [...ticketIdsForPush, ...projectIdsForPush];
+      const orderedPushIds = postTargetsExplicit
+        ? postToTicketIdsRaw.filter((id: number) => legacyScopeIds.includes(id))
+        : legacyScopeIds;
+
+      haloPushConfig = {
+        haloUrl: connection?.halo_url ?? null,
+        userId,
+        orderedPushIds,
+        postConsolidated,
+        haloPushOutputs,
+        haloPushExcel,
+        haloPushExcelTabs,
+        haloPushTarget,
+        projectName,
+        brandName: effectiveBrandName || null,
+        brandColor: profileBrandColour || null,
+        brandSecondaryColor: profileBrandSecondaryColour || null,
+        brandLogoUrl: resolvedBrandLogoUrl || null,
+        partnerWhiteLabel: whiteLabelActive,
+        generated,
+        tickets,
+        projects,
+      };
+    }
+
+    const holdPayload = {
+      subject,
+      html,
+      text,
+      to: toField,
+      cc: ccField,
+      bcc: bccField,
+      replyTo: userReplyTo,
+      fromHeader: resendFromHeader,
+      excelAttachment:
+        attachExcel && excelBuffer
+          ? {
+              filename: `${attachPrefix}-Report-${fileSlug}.xlsx`,
+              content: excelBuffer.toString("base64"),
+              contentType:
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            }
+          : null,
+      pushToHalo,
+      haloPushConfig,
+      savedGenerationId: savedGenId,
+      scheduleName: effectiveScheduleName,
+      clientsCovered,
+    };
+
+    const { error: pendingInsertErr } = await supabase.from("pending_approvals").insert({
+      user_id: userId,
+      schedule_id: scheduleId.trim() || null,
+      source: "psa",
+      status: "pending",
+      payload: holdPayload,
+    });
+    if (pendingInsertErr) {
+      console.error("[cron-generate] pending_approvals insert failed", pendingInsertErr.message);
+      return NextResponse.json(
+        { error: "Could not store report for approval" },
+        { status: 500 },
+      );
+    }
+
+    const clientsLabel =
+      clientsCovered.length > 0 ? clientsCovered.join(", ") : effectiveScheduleName;
+    const approvalsUrl = `${baseUrl}/approvals`;
+    if (userReplyTo) {
+      const { error: notifyErr } = await resend.emails.send({
+        from: buildHandoverResendFromHeader(profileForResendFrom),
+        to: userReplyTo,
+        subject: "Report awaiting your approval",
+        text: `A scheduled report for ${clientsLabel} is ready and waiting in Approvals.\n\nReview it here: ${approvalsUrl}`,
+        html: `<p>A scheduled report for <strong>${clientsLabel}</strong> is ready and waiting in Approvals.</p><p><a href="${approvalsUrl}">Review in Approvals</a></p>`,
+      });
+      if (notifyErr) {
+        console.error("[cron-generate] hold notification email failed", notifyErr.message);
+      }
+    } else {
+      console.warn("[cron-generate] hold_for_review: no owner email for notification");
+    }
+
+    console.log(
+      "[cron-generate] Report held for approval",
+      scheduleId,
+      "processed",
+      processedCount,
+    );
+
+    return NextResponse.json({
+      held: true,
+      reason: "hold_for_review",
+      ticketsProcessed: processedCount,
+    });
+  }
 
   const { error: sendErr } = await resend.emails.send({
     from: resendFromHeader,

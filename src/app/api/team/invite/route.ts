@@ -20,7 +20,7 @@ export const runtime = "nodejs";
 type Body = {
   email?: string;
   role?: string;
-  /** User confirmed adding a billable seat when the team is at capacity on a paid Team plan. */
+  /** User confirmed adding a billable seat when the team is at capacity on a paid Growth plan. */
   confirmPaidSeat?: boolean;
 };
 

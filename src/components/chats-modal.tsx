@@ -87,7 +87,7 @@ export function ChatsModal({ open, onClose, ...panelProps }: ChatsModalProps) {
             />
           </div>
         </div>
-        <div className="sidebar-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-2">
+        <div className="sidebar-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-4 pt-2 md:overscroll-auto">
           <HistoryChatsPanel
             {...panelProps}
             searchQuery={search.trim().toLowerCase()}

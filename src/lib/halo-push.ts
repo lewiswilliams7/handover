@@ -1,4 +1,4 @@
-import type { FullReportOutputs } from "@/lib/export";
+import type { FullReportOutputs } from "@/lib/export-parsers";
 
 export type HaloPushOutputKey =
   | "client_email"

@@ -2,7 +2,7 @@ import { teamGenerationLimitForSeats } from "@/lib/plans";
 import { normalizePlanLabel } from "@/lib/utils/getPlan";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 
-const DEFAULT_SEATS = 5;
+const DEFAULT_SEATS = 3;
 
 function trialSkuIsTeam(trialPlan: string | null | undefined): boolean {
   const t = normalizePlanLabel(typeof trialPlan === "string" ? trialPlan : "");

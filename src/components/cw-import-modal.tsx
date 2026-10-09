@@ -52,7 +52,64 @@ type CwNote = {
   author: string;
   date: string | null;
   content: string;
+  resolutionFlag?: boolean;
 };
+
+type CwTicketForQuality = CwTicket & { notes?: CwNote[] };
+
+function calculateInputQuality(tickets: CwTicketForQuality[]): {
+  score: number;
+  reasons: string[];
+} {
+  if (tickets.length === 0) return { score: 0, reasons: ["No tickets selected"] };
+
+  const reasons: string[] = [];
+  let score = 100;
+
+  if (tickets.length < 3) {
+    score -= 20;
+    reasons.push(
+      `Only ${tickets.length} ticket${tickets.length === 1 ? "" : "s"} selected — outputs may be limited`,
+    );
+  }
+
+  const shortDesc = tickets.filter((t) => {
+    const desc = (t.summary || "").trim();
+    return desc.split(/\s+/).filter(Boolean).length < 20;
+  });
+  if (shortDesc.length > 0) {
+    const deduction = Math.min(shortDesc.length * 8, 40);
+    score -= deduction;
+    reasons.push(
+      `${shortDesc.length} ticket${shortDesc.length === 1 ? "" : "s"} with limited description`,
+    );
+  }
+
+  const noNotes = tickets.filter((t) => !t.notes || t.notes.length === 0);
+  if (noNotes.length > 0) {
+    const deduction = Math.min(noNotes.length * 5, 25);
+    score -= deduction;
+    reasons.push(`${noNotes.length} ticket${noNotes.length === 1 ? "" : "s"} with no notes`);
+  }
+
+  const closedNoResolution = tickets.filter((t) => {
+    const statusName = (t.status?.name ?? "").toLowerCase();
+    const isClosed = statusName.includes("closed") || statusName.includes("resolved");
+    const hasResolution = t.notes?.some(
+      (n) => n.resolutionFlag === true || (n.content || "").trim().length > 20,
+    );
+    return isClosed && !hasResolution;
+  });
+  if (closedNoResolution.length > 0) {
+    const deduction = Math.min(closedNoResolution.length * 7, 30);
+    score -= deduction;
+    reasons.push(
+      `${closedNoResolution.length} closed ticket${closedNoResolution.length === 1 ? "" : "s"} without resolution notes`,
+    );
+  }
+
+  return { score: Math.max(0, Math.min(100, score)), reasons };
+}
 
 function useDebouncedValue<T>(value: T, delayMs = 200): T {
   const [debounced, setDebounced] = useState(value);
@@ -133,6 +190,7 @@ type Props = {
       status: string;
       type: "ticket" | "project";
     }>;
+    inputQuality?: { score: number; reasons: string[] };
   }) => void;
 };
 
@@ -506,6 +564,12 @@ export function CwImportModal({
         ? selectedItems[0]?.clientName ?? null
         : null;
 
+    const ticketsForQuality: CwTicketForQuality[] = selectedTickets.map((t) => ({
+      ...t,
+      notes: ticketNotesById[t.id] ?? [],
+    }));
+    const inputQuality = calculateInputQuality(ticketsForQuality);
+
     onImport({
       formatted: `ConnectWise Export - ${selectedItems.length} items\n\n${sections}`,
       count: selectedItems.length,
@@ -513,6 +577,7 @@ export function CwImportModal({
       dataType: selectedProjects.length > 0 && selectedTickets.length === 0 ? "projects" : "tickets",
       fromDemo: demoMode || effectiveForceDemo,
       importedItems: selectedItems,
+      inputQuality,
     });
     window.setTimeout(() => onOpenChange(false), 500);
   }
@@ -545,7 +610,7 @@ export function CwImportModal({
             </div>
           ) : null}
           {!showMainContent ? (
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 md:overscroll-auto">
               <div className="space-y-3">
                 <p className="text-sm text-[var(--text-secondary)]">
                   ConnectWise is not connected. Open{" "}
@@ -564,7 +629,7 @@ export function CwImportModal({
               </div>
             </div>
           ) : (
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-4 py-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain px-4 py-4 md:overflow-hidden md:overscroll-auto">
           <div className="flex shrink-0 items-center gap-2">
             <Button
               type="button"
@@ -617,7 +682,7 @@ export function CwImportModal({
               {error}
             </div>
           ) : null}
-          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto rounded border border-[var(--border)] p-2">
+          <div className="min-h-0 flex-1 space-y-2 overflow-visible rounded border border-[var(--border)] p-2 md:overflow-y-auto">
             {(loading || ticketsLoading || projectsLoading) && rows.length === 0 ? (
               Array.from({ length: 6 }).map((_, i) => (
                 <div key={`sk-${i}`} className="animate-pulse rounded border border-[var(--border)] p-3">

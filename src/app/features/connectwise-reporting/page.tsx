@@ -10,7 +10,7 @@ import { softwareApplicationJsonLd } from "@/lib/seo-page-jsonld";
 
 const PATH = "/features/connectwise-reporting";
 const CANONICAL = `https://gethandover.uk${PATH}`;
-const TITLE = "ConnectWise Reporting Tool — Automate ConnectWise Client Reports";
+const TITLE = "ConnectWise Reporting Tool - Automate ConnectWise Client Reports";
 const DESCRIPTION =
   "ConnectWise Manage reporting for MSPs: automate ConnectWise reports, weekly client updates, and QBR packs. Native integration, marketplace listing, accepted into PitchIT 2026.";
 
@@ -30,7 +30,7 @@ export const metadata: Metadata = {
 const faqs = [
   {
     q: "What is the best ConnectWise reporting tool for client communication?",
-    a: "Handover connects to ConnectWise Manage and generates narrative client reports from live service tickets and projects — designed for weekly client updates, not just internal dashboards.",
+    a: "Handover connects to ConnectWise Manage and generates narrative client reports from live service tickets and projects - designed for weekly client updates, not just internal dashboards.",
   },
   {
     q: "How do I automate ConnectWise reports?",
@@ -48,7 +48,7 @@ const faqs = [
 
 export default function ConnectWiseReportingFeaturePage() {
   const jsonLd = softwareApplicationJsonLd({
-    name: "Handover — ConnectWise Reporting",
+    name: "Handover - ConnectWise Reporting",
     description: DESCRIPTION,
     url: CANONICAL,
   });
@@ -76,9 +76,9 @@ export default function ConnectWiseReportingFeaturePage() {
               Automated client reporting for ConnectWise Manage
             </h1>
             <div className="mt-6 flex flex-wrap gap-3">
-              <Link href="/auth?tab=signup&returnTo=/welcome">
+              <Link href="/onboarding/connect">
                 <Button className="rounded-[var(--radius)] bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]">
-                  Start free trial
+                  Run the free PSA scan
                 </Button>
               </Link>
               <Link href="/demo">
@@ -99,7 +99,7 @@ export default function ConnectWiseReportingFeaturePage() {
       <section className="px-6 py-12 md:px-8">
         <div className="mx-auto max-w-[900px] space-y-10 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
           <p>
-            ConnectWise Manage is the operational backbone for thousands of MSPs — especially{" "}
+            ConnectWise Manage is the operational backbone for thousands of MSPs - especially{" "}
             <strong className="text-[var(--text-primary)]">APAC MSPs</strong> and global partners on ConnectWise
             reseller programmes. Yet <strong className="text-[var(--text-primary)]">ConnectWise client reports</strong>{" "}
             are still often written by hand each week. Handover is the ConnectWise reporting tool that automates that
@@ -113,7 +113,7 @@ export default function ConnectWiseReportingFeaturePage() {
             </h2>
             <p className="mt-3">
               Handover integrates natively with ConnectWise Manage via the API. Pull service tickets and projects, generate
-              client-ready narratives, and optionally push summaries back as notes — the same workflow UK MSPs use with
+              client-ready narratives, and optionally push summaries back as notes - the same workflow UK MSPs use with
               HaloPSA.
             </p>
             <h3 className="mt-6 text-xl font-semibold text-[var(--text-primary)]">Native integration details</h3>
@@ -144,7 +144,7 @@ export default function ConnectWiseReportingFeaturePage() {
             <h3 className="mt-4 text-xl font-semibold text-[var(--text-primary)]">Weekly client reports</h3>
             <p className="mt-2">
               Automate ConnectWise reports as plain-English weekly updates: activity summary, open items, risks, and next
-              steps — without exporting to Word or rewriting ticket notes.
+              steps - without exporting to Word or rewriting ticket notes.
             </p>
             <h3 className="mt-6 text-xl font-semibold text-[var(--text-primary)]">QBR packs & exports</h3>
             <p className="mt-2">
@@ -153,7 +153,7 @@ export default function ConnectWiseReportingFeaturePage() {
             </p>
             <h3 className="mt-6 text-xl font-semibold text-[var(--text-primary)]">ConnectWise Manage reporting for PMs</h3>
             <p className="mt-2">
-              One ConnectWise report generator for the whole portfolio — consistent format whether you serve ten clients
+              One ConnectWise report generator for the whole portfolio - consistent format whether you serve ten clients
               or two hundred.
             </p>
           </section>
@@ -180,7 +180,7 @@ export default function ConnectWiseReportingFeaturePage() {
         </div>
       </section>
 
-      <SeoPageCta headline="Automate ConnectWise client reports — start your free trial" />
+      <SeoPageCta headline="Automate ConnectWise client reports with Handover" />
     </MarketingPageLayout>
   );
 }

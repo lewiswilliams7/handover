@@ -24,20 +24,21 @@ export async function POST(req: Request) {
     }
 
     const body = (await req.json()) as { input?: string; tone?: string };
-    const input = typeof body.input === "string" ? body.input.trim() : "";
-    if (!input) return NextResponse.json({ error: "No input provided" }, { status: 400 });
+    const cappedInput =
+      typeof body.input === "string" ? body.input.trim().slice(0, 50_000) : "";
+    if (!cappedInput) return NextResponse.json({ error: "No input provided" }, { status: 400 });
 
     const systemPrompt = `You are a senior MSP delivery consultant writing a Quarterly Business Review for a client.
 Your output must be a single valid JSON object with exactly these fields:
 
 {
-  "summary": "3-5 sentence executive summary paragraph — strategic themes, not ticket lists",
-  "exec_pull_quote": "Single sentence max 25 words — the single most important insight from this quarter for a director. Be specific, not generic.",
+  "summary": "3-5 sentence executive summary paragraph - strategic themes, not ticket lists",
+  "exec_pull_quote": "Single sentence max 25 words - the single most important insight from this quarter for a director. Be specific, not generic.",
   "recommendation_items": [
     {
       "action": "Specific verb-led action referencing named projects or ticket patterns from the data",
       "owner": "Job title (e.g. Service Delivery Manager, Project Lead, Account Manager)",
-      "target": "Date string — use actual dates from PSA data if available, otherwise stagger realistically: first item +14 days, second +30 days, third +45 days, fourth +60 days, fifth +75 days from today",
+      "target": "Date string - use actual dates from PSA data if available, otherwise stagger realistically: first item +14 days, second +30 days, third +45 days, fourth +60 days, fifth +75 days from today",
       "riskAddressed": "One sentence explaining the specific risk or issue this addresses, referencing the data"
     }
   ],
@@ -47,8 +48,8 @@ Your output must be a single valid JSON object with exactly these fields:
 Rules for recommendation_items:
 - Output exactly 3-5 items
 - Each action MUST reference specific named projects, ticket IDs, clients, or patterns from the data provided
-- NEVER produce generic advice like "review processes" or "improve communication" — every item must be traceable to something in the data
-- Target dates must be staggered — never the same date for multiple items
+- NEVER produce generic advice like "review processes" or "improve communication" - every item must be traceable to something in the data
+- Target dates must be staggered - never the same date for multiple items
 - If the data is sparse (fewer than 10 tickets), still reference the specific data that exists
 - Owners should be role titles, not names (unless assignee names are in the data)
 
@@ -66,10 +67,10 @@ Tone: ${body.tone || "professional"}, client-facing, MSP context.`;
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: input },
+        { role: "user", content: cappedInput },
       ],
       max_tokens: 2000,
-      temperature: 0.4,
+      temperature: 0.2,
     });
 
     const raw = completion.choices[0]?.message?.content ?? "{}";
