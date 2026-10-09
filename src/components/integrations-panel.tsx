@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
 /** Hub + inline detail keys — never used for routing. */
-export type ActiveIntegrationId = "halopsa" | "connectwise" | "slack" | "teams" | "zapier";
+export type ActiveIntegrationId = "halopsa" | "connectwise" | "slack" | "teams";
 
 type DisconnectConfirmId = "halo" | "connectwise" | "slack" | "teams";
 
@@ -20,7 +20,6 @@ const INTEGRATION_DETAIL_TITLES: Record<ActiveIntegrationId, string> = {
   connectwise: "ConnectWise Manage",
   slack: "Slack",
   teams: "Microsoft Teams",
-  zapier: "Zapier",
 };
 
 const INTEGRATION_DETAIL_LOGOS: Record<ActiveIntegrationId, string> = {
@@ -28,7 +27,6 @@ const INTEGRATION_DETAIL_LOGOS: Record<ActiveIntegrationId, string> = {
   connectwise: "/images/connectwise.png",
   slack: "/slack.png",
   teams: "/teams.png",
-  zapier: "/zapier.png",
 };
 
 type IntegrationsPanelProps = {
@@ -232,35 +230,6 @@ const cardHover =
 const INTEGRATION_SECTION_HDR =
   "text-[11px] font-semibold uppercase tracking-widest text-[var(--text-secondary)] mb-3";
 
-const HANDOVER_ZAPIER_WEBHOOK_URL = "https://gethandover.uk/api/webhooks/zapier";
-
-const ZAPIER_SAMPLE_PAYLOAD = `{
-  "api_key": "hzp_your_key_here",
-  "tickets": [
-    {
-      "id": "1234",
-      "title": "BitDefender issue at King James Academy",
-      "status": "In Progress",
-      "client": "King James Academy",
-      "priority": "High",
-      "notes": [
-        {
-          "author": "Support",
-          "date": "2026-04-13",
-          "content": "Endpoints showing expired anti-malware modules. Engineer investigating GravityZone licensing."
-        }
-      ]
-    }
-  ]
-}`;
-
-function maskZapierKeyDisplay(key: string): string {
-  if (!key) return "";
-  const u = key.indexOf("_");
-  if (u >= 0) return `${key.slice(0, u + 1)}${"•".repeat(16)}`;
-  return `${key.slice(0, 4)}${"•".repeat(16)}`;
-}
-
 function formatConnectionDate(value: string | null): string {
   if (!value) return "Not recorded";
   const date = new Date(value);
@@ -349,18 +318,7 @@ export function IntegrationsPanel({
   onDisconnectTeamsNotifications,
 }: IntegrationsPanelProps) {
   const isPro = hasProFeatures;
-  const zapierComingSoon = true;
   const connectedCount = isPro ? (haloConnected ? 1 : 0) + (cwConnected ? 1 : 0) : 0;
-
-  const [zapierKey, setZapierKey] = useState<string | null>(null);
-  const [zapierCanConfigure, setZapierCanConfigure] = useState(false);
-  const [zapierLoadError, setZapierLoadError] = useState<string | null>(null);
-  const [zapierBusy, setZapierBusy] = useState(false);
-  const [zapierCopied, setZapierCopied] = useState(false);
-  const [zapierWebhookCopied, setZapierWebhookCopied] = useState(false);
-  const [zapierSampleCopied, setZapierSampleCopied] = useState(false);
-  const [zapierRevealKey, setZapierRevealKey] = useState(false);
-  const [zapierKeyLoading, setZapierKeyLoading] = useState(false);
 
   const [activeIntegration, setActiveIntegration] = useState<ActiveIntegrationId | null>(null);
   const [disconnectConfirm, setDisconnectConfirm] = useState<DisconnectConfirmId | null>(null);
@@ -406,71 +364,6 @@ export function IntegrationsPanel({
     else openIntegration("connectwise");
     queueMicrotask(() => onConsumedInitialOpenDetail?.());
   }, [initialOpenDetail, openIntegration, onConsumedInitialOpenDetail]);
-
-  useEffect(() => {
-    if (!isPro || integrationsBootstrapping) return;
-    let cancelled = false;
-    (async () => {
-      setZapierKeyLoading(true);
-      setZapierLoadError(null);
-      try {
-        const res = await fetch("/api/profile/zapier-key");
-        const data = (await res.json()) as {
-          error?: string;
-          canConfigure?: boolean;
-          zapier_api_key?: string | null;
-        };
-        if (cancelled) return;
-        if (!res.ok) {
-          setZapierLoadError(typeof data.error === "string" ? data.error : "Failed to load Zapier key");
-          setZapierKey(null);
-          setZapierCanConfigure(false);
-          return;
-        }
-        setZapierCanConfigure(data.canConfigure === true);
-        setZapierKey(typeof data.zapier_api_key === "string" ? data.zapier_api_key : null);
-      } catch (error) {
-        console.log("[integrations] load error:", error);
-        if (!cancelled) setZapierLoadError("Network error");
-      } finally {
-        if (!cancelled) setZapierKeyLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isPro, integrationsBootstrapping]);
-
-  async function handleZapierGenerateOrRegenerate() {
-    setZapierBusy(true);
-    setZapierLoadError(null);
-    try {
-      const res = await fetch("/api/profile/zapier-key", { method: "POST" });
-      const data = (await res.json()) as { error?: string; zapier_api_key?: string };
-      if (!res.ok) {
-        setZapierLoadError(typeof data.error === "string" ? data.error : "Could not create key");
-        return;
-      }
-      if (typeof data.zapier_api_key === "string") {
-        setZapierKey(data.zapier_api_key);
-        setZapierRevealKey(false);
-        setZapierCanConfigure(true);
-      }
-    } catch {
-      setZapierLoadError("Network error");
-    } finally {
-      setZapierBusy(false);
-    }
-  }
-
-  async function copyToClipboard(text: string): Promise<boolean> {
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch {
-      return false;
-    }
-  }
 
   const slackChatConnected =
     isPro &&
@@ -1183,34 +1076,6 @@ export function IntegrationsPanel({
               </div>
             ) : null}
 
-            {activeIntegration === "zapier" ? (
-              <div className="w-full min-w-0 px-4 pb-8 pt-6 sm:px-8">
-                <div className="mb-6 flex items-center gap-4">
-                  <img
-                    src={INTEGRATION_DETAIL_LOGOS.zapier}
-                    alt=""
-                    className="h-12 w-12 shrink-0 object-contain"
-                    width={48}
-                    height={48}
-                  />
-                  <h2 className="text-xl font-semibold text-[var(--text-primary)]">{INTEGRATION_DETAIL_TITLES.zapier}</h2>
-                </div>
-                <DialogHeader className="space-y-1 pb-4 text-left">
-                  <p className="text-[13px] leading-relaxed text-[var(--text-secondary)]">
-                    Zapier will let you trigger Handover when tickets change in other tools. We are finishing the
-                    hosted webhook and API key experience - preview the planned workflow below.
-                  </p>
-                </DialogHeader>
-                <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-4 py-3 text-[13px] text-[var(--text-secondary)]">
-                  <p className="font-medium text-[var(--text-primary)]">Coming soon</p>
-                  <p className="mt-1">
-                    You will generate an API key, copy the Handover webhook URL into a Zap action, and map ticket JSON
-                    into the request body - same flow described on the public Zapier overview when it ships.
-                  </p>
-                </div>
-              </div>
-            ) : null}
-
             </div>
           </div>
         ) : null}
@@ -1441,55 +1306,6 @@ export function IntegrationsPanel({
             </div>
           </div>
         </section>
-        <section className="mt-14" aria-labelledby="automation-heading">
-          <h2 id="automation-heading" className={INTEGRATION_SECTION_HDR}>
-            Automation
-          </h2>
-          <p className="mb-6 max-w-2xl text-[13px] leading-relaxed text-[var(--text-secondary)]">
-            Trigger Handover from other tools. Full configuration opens in the Zapier panel below when available.
-          </p>
-          <div
-            className="grid gap-5"
-            style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}
-          >
-            <div
-              className="group integration-card-glow cursor-pointer rounded-[calc(var(--radius-lg)+2px)] opacity-50 transition-transform duration-150 hover:scale-105"
-              role="button"
-              tabIndex={0}
-              onClick={() => openIntegration("zapier")}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  openIntegration("zapier");
-                }
-              }}
-            >
-              <CardMouseSpotlight className="pro-card-content integration-card-glass relative flex min-h-full flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/80 bg-[var(--bg-primary)] p-6">
-                <div className="mb-4 flex items-start justify-between gap-3">
-                  <img src="/zapier.png" alt="" className="h-10 w-10 shrink-0 object-contain" width={40} height={40} />
-                  <BadgeComingSoon />
-                </div>
-                <p className="mb-1 text-[16px] font-semibold text-[var(--text-primary)]">Zapier</p>
-                <p className="mb-6 min-h-[40px] flex-1 text-[13px] leading-relaxed text-[var(--text-secondary)]">
-                  Automate ticket-to-report flows from hundreds of apps. API keys and webhooks ship in a future
-                  release.
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="mt-auto h-11 w-full border-[var(--border)]"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openIntegration("zapier");
-                  }}
-                >
-                  Coming soon
-                </Button>
-              </CardMouseSpotlight>
-            </div>
-          </div>
-        </section>
-
         <section className="mt-14" aria-labelledby="planned-heading">
           <h2 id="planned-heading" className={INTEGRATION_SECTION_HDR}>
             Coming soon

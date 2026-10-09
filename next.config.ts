@@ -10,6 +10,12 @@ const nextConfig: NextConfig = {
       ? ".next-build"
       : ".next",
   reactCompiler: true,
+  async redirects() {
+    return [
+      // Zapier was retired in Oct 2026. Keep old links and search results landing somewhere useful.
+      { source: "/integrations/zapier", destination: "/integrations", permanent: true },
+    ];
+  },
   compiler: {
     removeConsole: {
       exclude: ["error"],

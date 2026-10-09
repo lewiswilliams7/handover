@@ -149,30 +149,6 @@ export default function IntegrationsPage() {
           </ScrollRevealItem>
 
           <ScrollRevealItem disableAnimation index={2} className="min-w-0">
-          <CardMouseSpotlight className="integration-card-glass pointer-events-none relative flex flex-col rounded-[var(--radius-lg)] border border-[var(--border)]/70 p-6 opacity-[0.65]">
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div
-                className="flex size-12 shrink-0 items-center justify-center rounded-[10px] text-[12px] font-bold text-white"
-                style={{ background: "#FF4A00" }}
-              >
-                Zapier
-              </div>
-              <BadgeComingSoon />
-            </div>
-            <h2 className="mb-1 text-[16px] font-semibold text-[var(--text-primary)]">Zapier</h2>
-            <p className="mb-5 min-h-[40px] text-[13px] leading-relaxed text-[var(--text-secondary)]">
-              Connect any PSA or project management tool to Handover via Zapier. Trigger report generation automatically when tickets are updated.
-            </p>
-            <Link
-              href="/integrations/zapier"
-              className="pointer-events-auto mt-auto inline-flex h-11 w-full items-center justify-center text-[13px] font-medium text-[var(--accent)] underline-offset-4 hover:underline"
-            >
-              Learn more →
-            </Link>
-          </CardMouseSpotlight>
-          </ScrollRevealItem>
-
-          <ScrollRevealItem disableAnimation index={3} className="min-w-0">
           <CardMouseSpotlight className="integration-card-glass relative flex flex-col rounded-[var(--radius-lg)] border border-[var(--border)]/70 p-6 opacity-[0.65] transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:opacity-[0.78]">
             <div className="mb-4 flex items-start justify-between gap-3">
               <img
@@ -200,7 +176,7 @@ export default function IntegrationsPage() {
           </CardMouseSpotlight>
           </ScrollRevealItem>
 
-          <ScrollRevealItem disableAnimation index={4} className="min-w-0">
+          <ScrollRevealItem disableAnimation index={3} className="min-w-0">
           <div className="integration-card-glow">
           <CardMouseSpotlight className="integration-card-glass group relative flex flex-col rounded-[var(--radius-lg)] border border-[var(--border)]/70 p-6 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:border-[rgba(56,189,248,0.35)] hover:shadow-[0_4px_20px_rgba(56,189,248,0.08)]">
             <div className="mb-4 flex items-start justify-between gap-3">
@@ -230,7 +206,7 @@ export default function IntegrationsPage() {
           </div>
           </ScrollRevealItem>
 
-          <ScrollRevealItem disableAnimation index={5} className="min-w-0">
+          <ScrollRevealItem disableAnimation index={4} className="min-w-0">
           <CardMouseSpotlight className="integration-card-glass relative flex flex-col rounded-[var(--radius-lg)] border border-[var(--border)]/70 p-6 opacity-[0.65] transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:opacity-[0.78]">
             <div className="mb-4 flex items-start justify-between gap-3">
               <img
@@ -259,7 +235,7 @@ export default function IntegrationsPage() {
           </CardMouseSpotlight>
           </ScrollRevealItem>
 
-          <ScrollRevealItem disableAnimation index={6} className="min-w-0">
+          <ScrollRevealItem disableAnimation index={5} className="min-w-0">
           <CardMouseSpotlight className="integration-card-glass relative flex flex-col rounded-[var(--radius-lg)] border border-[var(--border)]/70 p-6 opacity-[0.65] transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:opacity-[0.78]">
             <div className="mb-4 flex items-start justify-between gap-3">
               <img

@@ -24,7 +24,6 @@ import {
   Shield,
   Sparkles,
   Star,
-  Webhook,
 } from "lucide-react";
 
 import { CardMouseSpotlight } from "@/components/card-mouse-spotlight";
@@ -303,12 +302,6 @@ export default function FeaturesPage() {
                   href: "/features/ai-insights",
                 },
                 {
-                  badge: "Roadmap",
-                  Icon: Webhook,
-                  title: "Zapier webhooks",
-                  body: "Trigger Handover from the rest of your stack - coming soon.",
-                },
-                {
                   badge: "Integration",
                   Icon: Plug,
                   title: "ConnectWise integration",
@@ -510,24 +503,6 @@ export default function FeaturesPage() {
             </CardMouseSpotlight>
             </ScrollRevealItem>
             <ScrollRevealItem index={2} className="min-w-0">
-            <CardMouseSpotlight className="feature-page-card flex flex-col rounded-[var(--radius-lg)] bg-white/[0.03] backdrop-blur-md border border-white/[0.07] p-6 shadow-sm">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-lg font-semibold text-[var(--text-primary)]">Zapier</h3>
-                <span className="rounded-full bg-[var(--bg-secondary)] px-2.5 py-0.5 text-xs font-medium text-[var(--text-muted)]">
-                  Coming soon
-                </span>
-              </div>
-              <p className="mt-3 flex-1 text-sm text-[var(--text-secondary)]">
-                Webhook automation to trigger Handover from your wider MSP toolchain.
-              </p>
-              <Link href="/integrations/zapier" className="mt-4">
-                <Button variant="outline" className="w-full border-[var(--border)]">
-                  Learn more
-                </Button>
-              </Link>
-            </CardMouseSpotlight>
-            </ScrollRevealItem>
-            <ScrollRevealItem index={3} className="min-w-0">
             <CardMouseSpotlight className="feature-page-card flex flex-col rounded-[var(--radius-lg)] bg-white/[0.03] backdrop-blur-md border border-white/[0.07] p-6 shadow-sm">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-lg font-semibold text-[var(--text-primary)]">CSV / Excel</h3>

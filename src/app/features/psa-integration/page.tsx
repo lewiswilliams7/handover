@@ -48,7 +48,7 @@ export default function PsaIntegrationFeaturePage() {
           <p>If your MSP uses both HaloPSA and ConnectWise, Handover supports both simultaneously. Reports can draw from either or both PSAs depending on which tickets and projects you include. Your client reporting does not need to reflect the complexity of your internal tooling.</p>
           <p>If you are migrating between PSAs, Handover continues working throughout the transition without interruption.</p>
           <h2 className="text-2xl font-semibold text-[var(--text-primary)]">More Integrations Coming</h2>
-          <p>Autotask and ServiceNow integrations are in development. If you are on a PSA not yet supported, the Zapier integration coming soon will allow Handover to connect with any PSA via webhook.</p>
+          <p>Autotask is next on the roadmap. If you run a PSA we do not support yet, <a href="/contact" className="text-[var(--accent)] hover:underline">tell us which one</a>. We build integrations in the order MSPs ask for them.</p>
           <div className="rounded-[var(--radius-lg)] border border-[var(--border)] border-l-[3px] border-l-[#0EA5E9] p-5">
             <h3 className="text-lg font-semibold text-[var(--text-primary)]">Who uses this</h3>
             <p className="mt-2 text-sm">Best fit for <a href="/solutions/halopsa" className="text-[var(--accent)] hover:underline">HaloPSA Users</a>, <a href="/solutions/connectwise" className="text-[var(--accent)] hover:underline">ConnectWise Users</a>, and <a href="/solutions/msp-directors" className="text-[var(--accent)] hover:underline">MSP Directors</a>.</p>

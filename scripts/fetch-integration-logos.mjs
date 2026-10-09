@@ -4,7 +4,6 @@ import https from "https";
 const outDir = new URL("../public/", import.meta.url);
 
 const downloads = [
-  ["zapier.png", "https://cdn.simpleicons.org/zapier/FF4A00"],
   // Simple Icons SVG served as PNG path — actually returns SVG; we'll save with correct ext below
 ];
 
@@ -35,7 +34,6 @@ function get(url) {
 
 async function main() {
   const svgTargets = [
-    ["zapier.svg", "https://cdn.simpleicons.org/zapier/FF4A00"],
     ["jira.svg", "https://cdn.simpleicons.org/jira/0052CC"],
     ["zendesk.svg", "https://cdn.simpleicons.org/zendesk/03363D"],
     ["datto.svg", "https://cdn.simpleicons.org/datto/199ED9"],

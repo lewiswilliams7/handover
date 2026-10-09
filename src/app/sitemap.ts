@@ -24,12 +24,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.8,
     },
     {
-      url: "https://gethandover.uk/integrations/zapier",
-      lastModified: today,
-      changeFrequency: "monthly" as const,
-      priority: 0.8,
-    },
-    {
       url: "https://gethandover.uk/about",
       lastModified: today,
       changeFrequency: "monthly" as const,

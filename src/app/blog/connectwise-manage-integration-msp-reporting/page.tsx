@@ -287,11 +287,6 @@ export default function ConnectWiseManageIntegrationBlogPage() {
               and ServiceNow, with more integrations planned based on demand from our user community.
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
-              We&apos;re also continuing to develop our Zapier integration, which will allow Handover to connect with any
-              PSA or ticketing tool via webhook - giving MSPs on platforms we don&apos;t yet natively support a way to use
-              Handover today.
-            </p>
-            <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               If you&apos;re on a platform you&apos;d like to see supported, get in touch. We build based on what MSPs
               actually need.
             </p>
