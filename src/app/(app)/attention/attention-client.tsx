@@ -11,10 +11,13 @@ import {
   Info,
   ListPlus,
   RefreshCw,
+  Rewind,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
+import { ChurnReplayPanel } from "@/components/churn-replay-panel";
+import { computeRevenueAtRisk } from "@/lib/revenue/revenue-signals";
 import { buildHaloScanEvidenceDeepLink } from "@/lib/psa/scan-deep-links";
 import type { ScanComparison } from "@/lib/psa/scan-comparison";
 import type {
@@ -69,6 +72,8 @@ type HistorySummary = {
   actioned: number;
   stillOpen: number;
   resolved: number;
+  savedRevenueAnnual?: number;
+  savedRevenueClients?: number;
 };
 
 const SERVICE_DETAIL_TYPES = new Set([
@@ -182,10 +187,23 @@ function findingGroups(findings: Finding[], filter: Filter) {
   };
 }
 
-function largestAtStake(
+/** Commercial signals that sit beside Revenue at Risk rather than inside it. */
+function commercialContext(
   results: StoredScanResults,
   findings: Finding[],
-): { value: number; text: string } | null {
+): Array<{ label: string; value: string }> {
+  const items: Array<{ label: string; value: string }> = [];
+  const expiringValue = results.portfolio.expiringContractValue;
+  const expiringCount = results.portfolio.expiringContractCount ?? 0;
+  if (expiringCount > 0) {
+    items.push({
+      label: `${expiringCount} renewal${expiringCount === 1 ? "" : "s"} due in 90 days`,
+      value:
+        expiringValue != null && expiringValue > 0
+          ? `${formatCurrency(expiringValue * 12)} a year`
+          : "Value not recorded",
+    });
+  }
   const quoteValue = findings
     .filter((finding) => finding.type === "quote_value_at_stake")
     .reduce(
@@ -196,35 +214,10 @@ function largestAtStake(
           .reduce((driverSum, driver) => driverSum + driver.value, 0),
       0,
     );
-  const expiringValue =
-    results.portfolio.expiringContractValue != null &&
-    results.portfolio.expiringContractValue > 0
-      ? results.portfolio.expiringContractValue
-      : 0;
-  const recurringValue =
-    results.exposureAvailability === "available_value" &&
-    results.portfolio.exposureValue != null &&
-    results.portfolio.exposureValue > 0
-      ? results.portfolio.exposureValue
-      : 0;
-  const largest = Math.max(quoteValue, expiringValue, recurringValue);
-  if (largest <= 0) return null;
-  if (largest === quoteValue) {
-    return {
-      value: largest,
-      text: "of quotes have expired without approval",
-    };
+  if (quoteValue > 0) {
+    items.push({ label: "Quotes expired without approval", value: formatCurrency(quoteValue) });
   }
-  if (largest === expiringValue) {
-    return {
-      value: largest,
-      text: "of monthly recurring revenue is in contracts ending within 90 days",
-    };
-  }
-  return {
-    value: largest,
-    text: "of monthly recurring revenue sits in accounts where something changed",
-  };
+  return items;
 }
 
 function clientIdsFromResults(results: StoredScanResults): number[] {
@@ -271,7 +264,7 @@ export function AttentionClient({
   const [expandedFinding, setExpandedFinding] = useState<string | null>(null);
   const [dismissedFindings, setDismissedFindings] = useState<Set<string>>(new Set());
   const [dismissalError, setDismissalError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"attention" | "history">("attention");
+  const [activeTab, setActiveTab] = useState<"attention" | "history" | "replay">("attention");
   const [historyStatus, setHistoryStatus] = useState<HistoryStatus>("all");
   const [historyClientId, setHistoryClientId] = useState("all");
   const [historyRows, setHistoryRows] = useState<ScanFindingLedgerRow[]>([]);
@@ -505,7 +498,8 @@ export function AttentionClient({
     [sessionId],
   );
 
-  const atStake = results ? largestAtStake(results, allFindings) : null;
+  const revenueAtRisk = useMemo(() => computeRevenueAtRisk(findings), [findings]);
+  const commercial = results ? commercialContext(results, findings) : [];
   const clientsWithFindings = new Set(supportedFindings.map((finding) => finding.clientId)).size;
   const allClientIds = useMemo(
     () => (results ? clientIdsFromResults(results) : []),
@@ -631,9 +625,33 @@ export function AttentionClient({
           >
             <History className="size-4" /> History
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "replay"}
+            onClick={() => setActiveTab("replay")}
+            className={`inline-flex items-center gap-2 border-b-2 px-3 py-2.5 text-sm font-semibold transition-colors ${
+              activeTab === "replay"
+                ? "border-cyan-300 text-cyan-100"
+                : "border-transparent text-[var(--text-secondary)] hover:text-white"
+            }`}
+          >
+            <Rewind className="size-4" /> Churn Replay
+          </button>
         </div>
 
-        {activeTab === "history" ? (
+        {activeTab === "replay" ? (
+          results ? (
+            <ChurnReplayPanel className="mt-8" replay={results.churnReplay} />
+          ) : (
+            <section className="mt-10 rounded-2xl border border-white/10 bg-white/[0.03] p-8">
+              <h2 className="text-xl font-semibold">No completed scan is saved yet.</h2>
+              <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--text-secondary)]">
+                Refresh the scan to replay the clients you lost in the last 12 months.
+              </p>
+            </section>
+          )
+        ) : activeTab === "history" ? (
           <HistoryPanel
             rows={historyRows}
             summary={historySummary}
@@ -730,17 +748,11 @@ export function AttentionClient({
                 resolvedClientNames={comparison.resolvedClientNames}
               />
             ) : null}
-            {atStake ? (
-              <section className="mt-8 rounded-2xl border border-[var(--border)] bg-white/[0.04] p-6 sm:p-8">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                  Largest at stake
-                </p>
-                <p className="mt-3 text-4xl font-bold tracking-tight text-[#dbeafe] sm:text-5xl">
-                  {formatCurrency(atStake.value)}
-                </p>
-                <p className="mt-2 text-base text-[var(--text-secondary)]">{atStake.text}</p>
-              </section>
-            ) : null}
+            <RevenueAtRiskSummary
+              revenueAtRisk={revenueAtRisk}
+              commercial={commercial}
+              valuesAvailable={results.exposureAvailability === "available_value"}
+            />
 
             <p className="mt-6 text-sm font-medium text-[var(--text-secondary)]">
               {results.portfolio.checksRun} checks across {results.portfolio.clientsAnalysed} accounts,{" "}
@@ -874,11 +886,26 @@ function HistoryPanel({
         </p>
       </div>
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-3">
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-xl border border-cyan-300/25 bg-cyan-300/[0.06] px-4 py-3">
+          <p className="text-2xl font-semibold text-cyan-100">
+            {formatCurrency(summary?.savedRevenueAnnual ?? 0)}
+            <span className="ml-1 text-sm font-medium text-cyan-100/60">a year</span>
+          </p>
+          <p className="mt-1 text-xs text-[var(--text-secondary)]">
+            Saved Revenue across {summary?.savedRevenueClients ?? 0} client
+            {(summary?.savedRevenueClients ?? 0) === 1 ? "" : "s"}
+          </p>
+        </div>
         <HistoryMetric label="Flags raised" value={summary?.flagsRaised ?? 0} />
         <HistoryMetric label="Actioned" value={summary?.actioned ?? 0} />
         <HistoryMetric label="Still open" value={summary?.stillOpen ?? 0} />
       </div>
+      <p className="mt-3 max-w-3xl text-xs leading-5 text-[var(--text-muted)]">
+        Saved Revenue counts a client once you acted on a flag, a later scan showed the signal had
+        cleared, and the client has not since left. Flags marked normal for the client are not
+        counted.
+      </p>
 
       <div className="mt-6 flex flex-wrap items-center gap-2" role="group" aria-label="History filters">
         {([
@@ -1430,6 +1457,68 @@ function CoverageSummary({ results }: { results: StoredScanResults }) {
       <ul className="mt-3 space-y-2 text-sm leading-6 text-[var(--text-secondary)]">
         {items.map((item) => <li key={item}>{item}</li>)}
       </ul>
+    </section>
+  );
+}
+
+function RevenueAtRiskSummary({
+  revenueAtRisk,
+  commercial,
+  valuesAvailable,
+}: {
+  revenueAtRisk: ReturnType<typeof computeRevenueAtRisk>;
+  commercial: Array<{ label: string; value: string }>;
+  valuesAvailable: boolean;
+}) {
+  const unvalued = revenueAtRisk.clientsAtRisk - revenueAtRisk.clientsWithValue;
+  if (revenueAtRisk.clientsAtRisk === 0 && commercial.length === 0) return null;
+  return (
+    <section
+      className="mt-8 rounded-2xl border border-[var(--border)] bg-white/[0.04] p-6 sm:p-8"
+      aria-labelledby="revenue-at-risk-heading"
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+        <h2 id="revenue-at-risk-heading" className="text-sm font-semibold text-[var(--text-secondary)]">
+          Revenue at Risk
+        </h2>
+        <Link
+          href="/features/revenue-at-risk"
+          className="text-xs font-semibold text-[var(--text-muted)] underline-offset-4 hover:text-white hover:underline"
+        >
+          How this is calculated
+        </Link>
+      </div>
+      {revenueAtRisk.clientsAtRisk > 0 ? (
+        <>
+          <p className="mt-3 text-4xl font-bold tracking-tight text-[#dbeafe] sm:text-5xl">
+            {valuesAvailable && revenueAtRisk.clientsWithValue > 0
+              ? `${formatCurrency(revenueAtRisk.annualValue)} a year`
+              : `${revenueAtRisk.clientsAtRisk} client${revenueAtRisk.clientsAtRisk === 1 ? "" : "s"}`}
+          </p>
+          <p className="mt-2 max-w-2xl text-base leading-7 text-[var(--text-secondary)]">
+            {valuesAvailable && revenueAtRisk.clientsWithValue > 0
+              ? `Recurring revenue held by ${revenueAtRisk.clientsWithValue} client${revenueAtRisk.clientsWithValue === 1 ? "" : "s"} whose service or relationship has changed.`
+              : "Service or relationship behaviour has changed for these clients. Your PSA did not return contract values, so no amount is shown."}
+            {valuesAvailable && unvalued > 0
+              ? ` ${unvalued} more flagged client${unvalued === 1 ? " has" : "s have"} no contract value in your PSA.`
+              : ""}
+          </p>
+        </>
+      ) : (
+        <p className="mt-3 text-base leading-7 text-[var(--text-secondary)]">
+          No client shows a change in service or relationship behaviour this week.
+        </p>
+      )}
+      {commercial.length > 0 ? (
+        <dl className="mt-5 flex flex-wrap gap-x-10 gap-y-3 border-t border-white/10 pt-5 text-sm">
+          {commercial.map((item) => (
+            <div key={item.label}>
+              <dt className="text-[var(--text-secondary)]">{item.label}</dt>
+              <dd className="mt-0.5 font-semibold text-white">{item.value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
     </section>
   );
 }

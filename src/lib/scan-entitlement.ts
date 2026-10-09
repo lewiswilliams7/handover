@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { churnReplayPreview, type ChurnReplayPreview } from "@/lib/psa/churn-replay";
 import { createServerClient } from "@/lib/supabase/server";
 import {
   scanFindingPreviewsForViewer,
@@ -55,7 +56,10 @@ export function scanResultsForViewer(
 ): StoredScanResults | Pick<
   StoredScanResults,
   "portfolio" | "exposureAvailability" | "scanOutcome" | "suppressedMetricCount"
-> & { findingPreviews: ScanFindingPreview[] } | null {
+> & {
+  findingPreviews: ScanFindingPreview[];
+  churnReplayPreview?: ChurnReplayPreview | null;
+} | null {
   if (!results || entitled) return results;
   return {
     portfolio: results.portfolio,
@@ -63,5 +67,6 @@ export function scanResultsForViewer(
     scanOutcome: results.scanOutcome,
     suppressedMetricCount: results.suppressedMetricCount,
     findingPreviews: scanFindingPreviewsForViewer(results),
+    churnReplayPreview: churnReplayPreview(results.churnReplay),
   };
 }

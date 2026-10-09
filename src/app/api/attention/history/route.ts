@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { getClaimedScanForUser } from "@/lib/psa/scan-session";
+import { computeSavedRevenue } from "@/lib/revenue/revenue-signals";
 import { requireScanDetailsEntitlement } from "@/lib/scan-entitlement";
 import type {
   ScanFindingLedgerRow,
@@ -140,6 +142,31 @@ export async function GET(request: Request) {
   });
   const visibleRows = rows.filter((row) => matchesHistoryStatus(row, status));
   const latest = latestRows(rows);
+  // Saved Revenue is account-wide: it ignores the client filter on this request.
+  let savedRevenueRows = rows;
+  if (clientId !== null) {
+    const { data: allRows } = await admin
+      .from("scan_finding_dismissals")
+      .select("client_id,monthly_value,actioned,action_type,outcome_status")
+      .eq("user_id", user.id)
+      .limit(5000);
+    savedRevenueRows = (allRows ?? []).flatMap((value) => {
+      const row = toLedgerRow({
+        id: "summary",
+        user_id: user.id,
+        finding_type: "summary",
+        raised_at: "",
+        outcome_due_at: "",
+        ...value,
+      });
+      return row ? [row] : [];
+    });
+  }
+  const latestScan = await getClaimedScanForUser(user.id).catch(() => null);
+  const lostClientIds = new Set(
+    (latestScan?.results?.churnReplay?.clients ?? []).map((client) => client.clientId),
+  );
+  const savedRevenue = computeSavedRevenue(savedRevenueRows, lostClientIds);
   return NextResponse.json({
     ok: true,
     rows: visibleRows,
@@ -150,6 +177,8 @@ export async function GET(request: Request) {
         (row) => !row.actioned && row.outcome_status !== "resolved",
       ).length,
       resolved: rows.filter((row) => row.outcome_status === "resolved").length,
+      savedRevenueAnnual: savedRevenue.annualValue,
+      savedRevenueClients: savedRevenue.clients,
     },
   });
 }

@@ -581,3 +581,42 @@ export function buildChurnReplay(input: BuildChurnReplayInput): ChurnReplayResul
     },
   };
 }
+
+/** A lost client with nothing that identifies the client or the MSP's records. */
+export type ChurnReplayPreviewClient = {
+  lossSignal: ChurnLossSignal;
+  /** Month only (YYYY-MM), so a lost client cannot be identified by date. */
+  lossMonth: string;
+  monthlyValue: number | null;
+  outcome: ChurnReplayOutcome;
+  daysWarning: number | null;
+  findingTypes: FindingType[];
+};
+
+export type ChurnReplayPreview = Omit<ChurnReplayResult, "clients"> & {
+  clients: ChurnReplayPreviewClient[];
+};
+
+/**
+ * Strip names, ids, exact dates and driver text for viewers without access to
+ * details. Returns undefined for scans that predate Churn Replay (so the UI can
+ * ask for a refresh) and null when the replay failed.
+ */
+export function churnReplayPreview(
+  result: ChurnReplayResult | null | undefined,
+): ChurnReplayPreview | null | undefined {
+  if (result === undefined) return undefined;
+  if (!result || result.version !== 1 || !Array.isArray(result.clients)) return null;
+  const { clients, ...rest } = result;
+  return {
+    ...rest,
+    clients: clients.map((client) => ({
+      lossSignal: client.lossSignal,
+      lossMonth: client.lossDate.slice(0, 7),
+      monthlyValue: client.monthlyValue,
+      outcome: client.outcome,
+      daysWarning: client.daysWarning,
+      findingTypes: client.findings.map((finding) => finding.type),
+    })),
+  };
+}

@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { SignOutButton } from "@/app/onboarding/sign-out-button";
+import { ChurnReplayPanel } from "@/components/churn-replay-panel";
 import { buildHaloScanEvidenceDeepLink } from "@/lib/psa/scan-deep-links";
 import {
   findingCountSentence,
@@ -15,6 +16,7 @@ import {
 } from "@/lib/psa/scan-finding-copy";
 import { parseScanEvidence, type ScanEvidenceRef } from "@/lib/psa/scan-evidence";
 import { BOOK_DEMO_CALENDLY_URL } from "@/lib/book-demo";
+import type { ChurnReplayPreview, ChurnReplayResult } from "@/lib/psa/churn-replay";
 
 type AnonymousScanStatus = {
   status: string;
@@ -50,6 +52,8 @@ type AnonymousScanStatus = {
   clientNames?: Record<string, string>;
   psaType?: "halo" | "connectwise";
   instanceUrl?: string | null;
+  churnReplay?: ChurnReplayResult | null;
+  churnReplayPreview?: ChurnReplayPreview | null;
 };
 
 type ClaimState = {
@@ -135,6 +139,8 @@ type ScanResultsPayload = {
   clientNames?: Record<string, string>;
   psaType?: "halo" | "connectwise";
   instanceUrl?: string | null;
+  churnReplay?: ChurnReplayResult | null;
+  churnReplayPreview?: ChurnReplayPreview | null;
 };
 
 function statusFromResults(
@@ -173,6 +179,8 @@ function statusFromResults(
     clientNames: results.clientNames,
     psaType: results.psaType,
     instanceUrl: results.instanceUrl,
+    churnReplay: results.churnReplay,
+    churnReplayPreview: results.churnReplayPreview,
   };
 }
 
@@ -935,6 +943,10 @@ export function ScanResults() {
           </>
         )}
 
+        {!outcome && !failure ? (
+          <ScanChurnReplay scan={scan} entitled={claimState?.entitled === true} claimed={claimState !== null || scan.status === "claimed"} />
+        ) : null}
+
         {!failure && claimState?.entitled && hasFindings ? (
           <DetailedFindings scan={scan} />
         ) : !failure && hasFindings ? (
@@ -1022,6 +1034,45 @@ export function ScanResults() {
         ) : null}
       </div>
     </main>
+  );
+}
+
+/** Churn Replay on the scan results: full for entitled viewers, redacted otherwise. */
+function ScanChurnReplay({
+  scan,
+  entitled,
+  claimed,
+}: {
+  scan: AnonymousScanStatus;
+  entitled: boolean;
+  claimed: boolean;
+}) {
+  const showFull = entitled && "churnReplay" in scan;
+  const replay = showFull ? scan.churnReplay : scan.churnReplayPreview;
+  // Anonymous previews from scans that predate Churn Replay carry neither field;
+  // there is nothing useful to say to a first-time visitor in that case.
+  if (replay === undefined && !claimed) return null;
+  return (
+    <ChurnReplayPanel
+      className="mt-8"
+      replay={replay}
+      redacted={!showFull}
+      redactionNote={
+        claimed ? (
+          <>
+            Client names and the signals behind each warning are part of Handover.{" "}
+            <Link
+              href="/pricing"
+              className="font-semibold text-cyan-200 underline decoration-cyan-200/30 underline-offset-4 hover:text-cyan-100"
+            >
+              See pricing
+            </Link>
+          </>
+        ) : (
+          "Set a password above to save this scan. Client names and the signals behind each warning stay private until then."
+        )
+      }
+    />
   );
 }
 

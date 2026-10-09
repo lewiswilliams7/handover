@@ -32,7 +32,12 @@ import {
   type ScanProjectInput,
   type ScanTicketInput,
 } from "@/lib/psa/scan-aggregate";
-import { buildChurnReplay, type ChurnReplayResult } from "@/lib/psa/churn-replay";
+import {
+  buildChurnReplay,
+  churnReplayPreview,
+  type ChurnReplayPreview,
+  type ChurnReplayResult,
+} from "@/lib/psa/churn-replay";
 import type { ScanEvidenceSource } from "@/lib/psa/scan-evidence";
 import {
   FieldProvenanceAccumulator,
@@ -139,6 +144,8 @@ export type PublicScanStatus = {
   revenueConcentrationPct: number | null;
   revenueConcentrationSuppressedReason: string | null;
   findingPreviews: ScanFindingPreview[];
+  /** Redacted Churn Replay™ summary, safe for anonymous viewers. */
+  churnReplayPreview?: ChurnReplayPreview | null;
   exposureAvailability:
     | "available_value"
     | "available_zero"
@@ -706,6 +713,7 @@ export async function getPublicScanStatus(
         revenueConcentrationPct: null,
         revenueConcentrationSuppressedReason: null,
         findingPreviews: [],
+        churnReplayPreview: null,
         exposureAvailability: null,
         errorCode: "session_expired",
       },
@@ -759,6 +767,7 @@ export async function getPublicScanStatus(
       revenueConcentrationSuppressedReason:
         portfolio?.revenueConcentrationSuppressedReason ?? null,
       findingPreviews: scanFindingPreviewsForViewer(results),
+      churnReplayPreview: churnReplayPreview(results?.churnReplay),
       exposureAvailability: results?.exposureAvailability ?? null,
       errorCode: session.error_reason,
     },
