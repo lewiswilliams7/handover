@@ -7,9 +7,9 @@ import { MarketingRelatedPages } from "@/components/marketing-related-pages";
 import { MarketingPageLayout } from "@/components/marketing-page-layout";
 
 export const metadata: Metadata = {
-  title: "Handover for Service Desk Managers | Turn Your Ticket Queue Into Client-Ready Reports Instantly",
+  title: "Handover for Service Desk Managers | Spot Service Slipping Before the Client Does",
   description:
-    "Handover connects to HaloPSA and ConnectWise and generates automated service desk reports from your live ticket data. Give your clients visibility without giving them access to your PSA.",
+    "Handover connects to HaloPSA and ConnectWise, flags clients whose response times, backlog or ticket patterns have changed, and turns live ticket data into client-ready reporting.",
   alternates: {
     canonical: "https://gethandover.uk/solutions/service-desk-managers",
   },
@@ -35,18 +35,19 @@ export default function SolutionsServiceDeskManagersPage() {
               Solutions · Service Desk Managers
             </p>
             <h1 className="mt-2 text-3xl font-semibold leading-tight text-white md:text-5xl">
-              Your service desk is running. Your clients just cannot see it.
+              Spot service slipping for a client before they do.
             </h1>
             <p className="mt-4 max-w-3xl text-[15px] leading-relaxed text-white/75">
-              Handover converts live ticket activity into consistent client-ready reporting so clients get visibility
-              without direct PSA access.
+              Handover checks every client&apos;s response times, resolution times, backlog and ticket patterns
+              against their own history, and tells you which ones have changed. Then it turns the same data into
+              reporting your clients can read.
             </p>
             <div className="mt-6">
               <Link
                 href="/onboarding/connect"
                 className="inline-flex items-center rounded-[var(--radius)] bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]"
               >
-                Run the free PSA scan
+                Run your free scan
               </Link>
             </div>
           </div>
@@ -127,6 +128,10 @@ export default function SolutionsServiceDeskManagersPage() {
           <section className="rounded-[var(--radius-lg)] border border-white/[0.08] border-l-[3px] border-l-[#0EA5E9] bg-white/[0.04] backdrop-blur-sm p-6">
             <h3 className="text-xl font-semibold text-[var(--text-primary)]">Features that power this</h3>
             <p className="mt-2 text-sm">
+              <a href="/features/revenue-at-risk" className="text-[var(--accent)] hover:underline">Revenue at Risk</a>
+              {" · "}
+              <a href="/features/save-plays" className="text-[var(--accent)] hover:underline">Save Plays</a>
+              {" · "}
               <a href="/features/automated-reports" className="text-[var(--accent)] hover:underline">Automated Reports</a>
               {" · "}
               <a href="/features/health-dashboard" className="text-[var(--accent)] hover:underline">Delivery Health Dashboard</a>

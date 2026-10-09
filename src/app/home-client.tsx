@@ -13261,26 +13261,26 @@ export default function Home() {
                     Why it matters
                   </p>
                   <h2 className="text-2xl font-semibold text-white md:text-3xl">
-                    Know which accounts moved before the call
+                    Know which clients moved before the call
                   </h2>
                   <p className="mx-auto mt-3 max-w-[520px] text-[14px] text-white/50">
-                    Commercial, service and relationship signals, measured against each client&apos;s normal.
+                    Service, commercial and relationship signals, each measured against that client&apos;s own normal.
                   </p>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-3">
                   {[
                     {
-                      title: "Service load vs baseline",
-                      body: "Ticket volume, reopen rates and priority mix that have moved materially against that client's own history, not a portfolio average.",
+                      title: "Service slipping",
+                      body: "First response and resolution times drifting, backlogs growing and tickets left open, compared with that client's own history rather than a portfolio average.",
                     },
                     {
-                      title: "Commercial activity change",
-                      body: "Quotes, projects and billing signals that suggest expansion, contraction or stalled work before it shows up in a QBR slide.",
+                      title: "Commercial signals",
+                      body: "Renewals coming up, quotes left unapproved, orders drying up and contracts that no longer match the work, all with a pound value attached.",
                     },
                     {
                       title: "Relationship risk",
-                      body: "Sentiment, escalation patterns and silence that mark an account drifting, with the evidence attached for the next conversation.",
+                      body: "Busy clients going quiet, everything raised by one contact, accounts with no named owner. The quiet signs that a client is drifting, with the evidence attached.",
                     },
                   ].map((card) => (
                     <div
@@ -13353,8 +13353,8 @@ export default function Home() {
 
                 <div className="mt-6 rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
                   <p className="mx-auto max-w-[680px] text-center text-[13px] leading-relaxed text-white/60">
-                    Client Intelligence surfaces deteriorating accounts before they become a churn conversation, with
-                    the evidence attached.
+                    Revenue at Risk shows which clients are drifting and what they are worth, while there is still time
+                    to change their mind. Save Plays tell you what to do next.
                   </p>
                 </div>
 
@@ -13478,12 +13478,12 @@ export default function Home() {
             </motion.section>
 
             <p className="px-4 pb-2 text-center text-sm text-[var(--text-secondary)] md:px-6">
-              Want to see the output side?{" "}
+              Want to see how you prove value to clients?{" "}
               <Link
                 href="/solutions/qbr-and-reporting"
                 className="font-semibold text-[var(--accent)] underline-offset-4 hover:underline"
               >
-                See QBR and reporting.
+                See service reviews and QBRs.
               </Link>
             </p>
 
@@ -13497,7 +13497,7 @@ export default function Home() {
             >
               <ScrollRevealItem index={0} className="text-center">
                 <h2 className="text-xl font-semibold tracking-tight text-white md:text-3xl">
-                  From PSA to knowing who needs you in three <span className="text-cyan-400">steps.</span>
+                  From PSA to saved client in three <span className="text-cyan-400">steps.</span>
                 </h2>
               </ScrollRevealItem>
 
@@ -13508,25 +13508,25 @@ export default function Home() {
                   </span>
                   <p className="mt-4 font-bold text-[var(--text-primary)]">Connect your PSA once.</p>
                   <p className="mt-2 text-sm text-[var(--text-secondary)]">
-                    Link HaloPSA or ConnectWise in under a minute. Handover pulls your live tickets, projects, and client data automatically - no exports, no copy-pasting.
+                    Link HaloPSA or ConnectWise read-only in under a minute. Handover reads your tickets, contracts and billing directly. No exports, no copy-pasting.
                   </p>
                 </ScrollRevealItem>
                 <ScrollRevealItem index={2} className="flex w-full max-w-md flex-col items-center text-center">
                   <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-sm">
                     <Sparkles className="size-[22px] shrink-0 text-[var(--accent)]" strokeWidth={1.75} aria-hidden />
                   </span>
-                  <p className="mt-4 font-bold text-[var(--text-primary)]">See what changed across the base.</p>
+                  <p className="mt-4 font-bold text-[var(--text-primary)]">See who is slipping, in pounds.</p>
                   <p className="mt-2 text-sm text-[var(--text-secondary)]">
-                    Handover scores commercial, service and relationship signals against each client&apos;s own baseline and surfaces the accounts that moved.
+                    Handover checks every client against its own history and ranks the ones that changed by the revenue they hold.
                   </p>
                 </ScrollRevealItem>
                 <ScrollRevealItem index={3} className="flex w-full max-w-md flex-col items-center text-center">
                   <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-sm">
                     <Send className="size-[22px] shrink-0 text-[var(--accent)]" strokeWidth={1.75} aria-hidden />
                   </span>
-                  <p className="mt-4 font-bold text-[var(--text-primary)]">Act with evidence.</p>
+                  <p className="mt-4 font-bold text-[var(--text-primary)]">Run the Save Play.</p>
                   <p className="mt-2 text-sm text-[var(--text-secondary)]">
-                    Open the brief, generate a QBR, or schedule the update with the reason for attention attached.
+                    Follow the steps, send the email to the decision-maker, and Handover tracks whether the client recovers.
                   </p>
                 </ScrollRevealItem>
               </div>
@@ -13541,7 +13541,7 @@ export default function Home() {
                   </span>
                   <p className="mt-4 font-bold text-[var(--text-primary)]">Connect your PSA once.</p>
                   <p className="mt-1 flex-1 text-sm text-[var(--text-secondary)]">
-                    Link HaloPSA or ConnectWise in under a minute. Handover pulls your live tickets, projects, and client data automatically - no exports, no copy-pasting.
+                    Link HaloPSA or ConnectWise read-only in under a minute. Handover reads your tickets, contracts and billing directly. No exports, no copy-pasting.
                   </p>
                 </ScrollRevealItem>
                 <div
@@ -13556,9 +13556,9 @@ export default function Home() {
                   <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-sm">
                     <Sparkles className="size-[22px] shrink-0 text-[var(--accent)]" strokeWidth={1.75} aria-hidden />
                   </span>
-                  <p className="mt-4 font-bold text-[var(--text-primary)]">See what changed across the base.</p>
+                  <p className="mt-4 font-bold text-[var(--text-primary)]">See who is slipping, in pounds.</p>
                   <p className="mt-1 flex-1 text-sm text-[var(--text-secondary)]">
-                    Handover scores commercial, service and relationship signals against each client&apos;s own baseline and surfaces the accounts that moved.
+                    Handover checks every client against its own history and ranks the ones that changed by the revenue they hold.
                   </p>
                 </ScrollRevealItem>
                 <div
@@ -13573,9 +13573,9 @@ export default function Home() {
                   <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm shadow-sm">
                     <Send className="size-[22px] shrink-0 text-[var(--accent)]" strokeWidth={1.75} aria-hidden />
                   </span>
-                  <p className="mt-4 font-bold text-[var(--text-primary)]">Act with evidence.</p>
+                  <p className="mt-4 font-bold text-[var(--text-primary)]">Run the Save Play.</p>
                   <p className="mt-1 flex-1 text-sm text-[var(--text-secondary)]">
-                    Open the brief, generate a QBR, or schedule the update with the reason for attention attached.
+                    Follow the steps, send the email to the decision-maker, and Handover tracks whether the client recovers.
                   </p>
                 </ScrollRevealItem>
               </div>

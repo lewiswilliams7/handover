@@ -17,9 +17,9 @@ import { MarketingPageLayout } from "@/components/marketing-page-layout";
 
 export const metadata: Metadata = {
   title:
-    "Handover for Account Managers | Stop Writing QBRs. Start Having Better Client Conversations.",
+    "Handover for Account Managers | Know Which Clients Need a Call This Week",
   description:
-    "Handover pulls live data from your PSA and generates client-ready QBR packs, account updates, and service reports in seconds. Built for MSP account managers who'd rather be in front of clients than behind a keyboard.",
+    "Handover shows MSP account managers which clients are slipping and what they are worth, gives you the play to run, and builds the QBR pack from live PSA data.",
   alternates: {
     canonical: "https://gethandover.uk/solutions/account-managers",
   },
@@ -45,18 +45,18 @@ export default function SolutionsAccountManagersPage() {
               Solutions · Account Managers
             </p>
             <h1 className="mt-2 text-3xl font-semibold leading-tight text-white md:text-5xl">
-              You know your clients. You should not have to prove it every quarter with a spreadsheet.
+              Know which of your clients need a call this week, before they ask for one.
             </h1>
             <p className="mt-4 max-w-3xl text-[15px] leading-relaxed text-white/75">
-              Handover turns live HaloPSA and ConnectWise data into client-ready QBR packs and account reports in
-              seconds, so you can spend more time leading conversations and less time formatting slides.
+              Handover reads HaloPSA or ConnectWise and shows which of your accounts have changed, what they are
+              worth and what to do about it. When it is time to prove your value, it builds the QBR pack too.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Link
                 href="/onboarding/connect"
                 className="inline-flex items-center rounded-[var(--radius)] bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]"
               >
-                Generate your first QBR pack free
+                Run your free scan
               </Link>
               <Link
                 href="/features"
@@ -83,6 +83,22 @@ export default function SolutionsAccountManagersPage() {
             </p>
             <p>Handover gives you that four hours back. Every time.</p>
           </div>
+
+          <section>
+            <h2 className="text-2xl font-semibold text-[var(--text-primary)]">Your week starts with who to call</h2>
+            <p className="mt-3 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
+              <Link href="/features/revenue-at-risk" className="text-[var(--accent)] hover:underline">
+                Revenue at Risk
+              </Link>{" "}
+              lists every client whose service or relationship has changed against its own history, ranked by
+              the revenue it holds. Each one comes with a{" "}
+              <Link href="/features/save-plays" className="text-[var(--accent)] hover:underline">
+                Save Play
+              </Link>
+              : the steps to take and an email to the decision-maker, ready to send. When the client recovers,
+              it counts towards your Saved Revenue.
+            </p>
+          </section>
 
           <section>
             <h2 className="text-2xl font-semibold text-[var(--text-primary)]">What Handover does for account managers</h2>
@@ -183,6 +199,10 @@ export default function SolutionsAccountManagersPage() {
           <section className="rounded-[var(--radius-lg)] border border-white/[0.08] border-l-[3px] border-l-[#0EA5E9] bg-white/[0.04] backdrop-blur-sm p-6">
             <h3 className="text-xl font-semibold text-[var(--text-primary)]">Features that power this</h3>
             <p className="mt-2 text-sm">
+              <a href="/features/revenue-at-risk" className="text-[var(--accent)] hover:underline">Revenue at Risk</a>
+              {" · "}
+              <a href="/features/save-plays" className="text-[var(--accent)] hover:underline">Save Plays</a>
+              {" · "}
               <a href="/features/qbr-generator" className="text-[var(--accent)] hover:underline">QBR Pack Generator</a>
               {" · "}
               <a href="/features/exports" className="text-[var(--accent)] hover:underline">Exports</a>
