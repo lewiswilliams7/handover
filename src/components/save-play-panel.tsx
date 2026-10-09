@@ -173,7 +173,7 @@ export function SavePlayPanel({ findingType, clientName, senderName, onComplete 
                   <textarea
                     value={body}
                     onChange={(event) => setBody(event.target.value)}
-                    rows={9}
+                    rows={11}
                     className="w-full resize-y rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm leading-6 text-white outline-none focus:border-cyan-300/50"
                   />
                 </label>

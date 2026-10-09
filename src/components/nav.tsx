@@ -626,16 +626,7 @@ export function Nav() {
 
   if (!isSignedIn) {
     return (
-      <div
-        className="
-        relative z-50
-        w-full px-4 pt-4
-        md:fixed md:top-4
-        md:left-1/2
-        md:-translate-x-1/2
-        md:w-[90%] md:max-w-5xl
-        md:px-0 md:pt-0"
-      >
+      <div className="relative z-50 w-full px-4 pt-4 md:fixed md:left-1/2 md:top-4 md:w-[90%] md:max-w-5xl md:-translate-x-1/2 md:px-0 md:pt-0">
         {navInner}
       </div>
     );
