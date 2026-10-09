@@ -172,7 +172,7 @@ function DemoPortalClientsList({
   return (
     <div className="space-y-4">
       <div className="rounded-[var(--radius-lg)] border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-[12px] leading-relaxed text-amber-100">
-        Demo mode — showing what a client portal looks like. Set up your real portal URL in{" "}
+        Demo mode: this is what a client portal looks like. Set up your real portal URL in{" "}
         <button
           type="button"
           className="font-medium text-[var(--accent)] underline-offset-2 hover:underline"
@@ -1924,7 +1924,7 @@ export function EnterprisePortalClientsSection(props: {
                 <div className="relative shrink-0 border-b border-[var(--border)] px-4 py-3 pr-14">
                   <div className="flex flex-wrap items-center gap-2 pr-2">
                     <h2 id="portal-preview-title" className="text-[15px] font-semibold text-[var(--text-primary)]">
-                      Portal preview — {previewClient}
+                      Portal preview: {previewClient}
                     </h2>
                     <span className="rounded-full border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-200">
                       Demo data

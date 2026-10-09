@@ -20,7 +20,7 @@ const ACME_LEGAL_DATA: PortalData = {
   tickets: [
     {
       id: 1014,
-      summary: "Osprey case management upgrade — SQL migration",
+      summary: "Osprey case management upgrade: SQL migration",
       status: "Awaiting Client",
       priority: "High",
       engineer: "Jamie Clarke",
@@ -40,7 +40,7 @@ const ACME_LEGAL_DATA: PortalData = {
     },
     {
       id: 1015,
-      summary: "Ransomware alert — isolated endpoint investigation",
+      summary: "Ransomware alert: isolated endpoint investigation",
       status: "Resolved",
       priority: "Critical",
       engineer: "Alex Thompson",
@@ -50,13 +50,13 @@ const ACME_LEGAL_DATA: PortalData = {
           date: daysAgoIso(2),
           author: "Alex Thompson",
           content:
-            "Confirmed false positive — legitimate Osprey process flagged by updated AV signatures. Endpoint restored.",
+            "Confirmed false positive: legitimate Osprey process flagged by updated AV signatures. Endpoint restored.",
         },
       ],
     },
     {
       id: 1017,
-      summary: "Document management — iManage Cloud migration planning",
+      summary: "Document management: iManage Cloud migration planning",
       status: "In Progress",
       priority: "Low",
       engineer: "Alex Thompson",
@@ -71,7 +71,7 @@ const ACME_LEGAL_DATA: PortalData = {
     },
     {
       id: 1018,
-      summary: "Email encryption — Mimecast deployment",
+      summary: "Email encryption: Mimecast deployment",
       status: "Scheduled",
       priority: "Medium",
       engineer: "Jamie Clarke",
@@ -86,7 +86,7 @@ const ACME_LEGAL_DATA: PortalData = {
     },
     {
       id: 1016,
-      summary: "Remote access setup — new paralegal",
+      summary: "Remote access setup: new paralegal",
       status: "Resolved",
       priority: "Medium",
       engineer: "Jamie Clarke",
@@ -156,7 +156,7 @@ const ACME_LEGAL_DATA: PortalData = {
     {
       date: daysAgoIso(1),
       author: "Jamie Clarke",
-      summary: "Staging migration completed for Osprey upgrade — awaiting partner sign-off",
+      summary: "Staging migration completed for Osprey upgrade: awaiting partner sign-off",
     },
     {
       date: daysAgoIso(2),
@@ -166,7 +166,7 @@ const ACME_LEGAL_DATA: PortalData = {
     {
       date: daysAgoIso(4),
       author: "Alex Thompson",
-      summary: "iManage Cloud discovery meeting held — 4TB data estate confirmed",
+      summary: "iManage Cloud discovery meeting held: 4TB data estate confirmed",
     },
   ],
 };
@@ -197,7 +197,7 @@ const DEFAULT_PORTAL_DATA: PortalData = {
     },
     {
       id: 1002,
-      summary: "MFA rollout — hardware tokens for remote workers",
+      summary: "MFA rollout: hardware tokens for remote workers",
       status: "Awaiting Client",
       priority: "Medium",
       engineer: "Jamie Clarke",
@@ -212,7 +212,7 @@ const DEFAULT_PORTAL_DATA: PortalData = {
     },
     {
       id: 1003,
-      summary: "SharePoint Phase 2 migration — archive library",
+      summary: "SharePoint Phase 2 migration: archive library",
       status: "Scheduled",
       priority: "Medium",
       engineer: "Alex Thompson",
@@ -227,7 +227,7 @@ const DEFAULT_PORTAL_DATA: PortalData = {
     },
     {
       id: 1004,
-      summary: "Printer offline — production floor",
+      summary: "Printer offline: production floor",
       status: "Resolved",
       priority: "High",
       engineer: "Jamie Clarke",
@@ -258,7 +258,7 @@ const DEFAULT_PORTAL_DATA: PortalData = {
         {
           date: daysAgoIso(1),
           author: "Alex Thompson",
-          content: "Archive library scan complete — estimated 1.2TB for Phase 2.",
+          content: "Archive library scan complete: estimated 1.2TB for Phase 2.",
         },
       ],
     },
@@ -287,7 +287,7 @@ const DEFAULT_PORTAL_DATA: PortalData = {
     {
       date: daysAgoIso(2),
       author: "Alex Thompson",
-      summary: "SPF record updated — monitoring outbound email delivery",
+      summary: "SPF record updated: monitoring outbound email delivery",
     },
   ],
 };
@@ -295,7 +295,7 @@ const DEFAULT_PORTAL_DATA: PortalData = {
 const DEMO_REPORTS: PortalReportRow[] = [
   {
     id: "demo-1",
-    title: "Monthly Service Review — May 2026",
+    title: "Monthly Service Review: May 2026",
     created_at: daysAgoIso(5),
     content: {
       period: "May 2026",
@@ -305,10 +305,10 @@ const DEMO_REPORTS: PortalReportRow[] = [
       key_achievements: [
         "SharePoint Phase 1 migration (847GB) completed and permissions validated",
         "Office 365 outbound email delivery restored following SPF record update",
-        "NAS backup restored after VSS writer error — two consecutive successful overnight runs confirmed",
+        "NAS backup restored after VSS writer error: two consecutive successful overnight runs confirmed",
       ],
       open_risks: [
-        "MFA hardware token delivery pending — three remote users remain without secure MFA until approval and delivery confirmed",
+        "MFA hardware token delivery pending: three remote users remain without secure MFA until approval and delivery confirmed",
       ],
       recommended_actions: [
         "Confirm hardware token delivery date and chase procurement approval",
@@ -318,7 +318,7 @@ const DEMO_REPORTS: PortalReportRow[] = [
   },
   {
     id: "demo-2",
-    title: "QBR Summary — Q2 2026",
+    title: "QBR Summary: Q2 2026",
     created_at: daysAgoIso(20),
     content: {
       period: "Q2 2026",
@@ -331,7 +331,7 @@ const DEMO_REPORTS: PortalReportRow[] = [
         "Two major infrastructure projects delivered on schedule",
       ],
       open_risks: [
-        "MFA rollout incomplete — remote users remain exposed until hardware tokens delivered and configured",
+        "MFA rollout incomplete: remote users remain exposed until hardware tokens delivered and configured",
       ],
       recommended_actions: [
         "Complete MFA rollout before end of Q3 to close security gap",
@@ -344,7 +344,7 @@ const DEMO_REPORTS: PortalReportRow[] = [
 const ACME_REPORTS: PortalReportRow[] = [
   {
     id: "demo-acme-1",
-    title: "Monthly Service Review — May 2026",
+    title: "Monthly Service Review: May 2026",
     created_at: daysAgoIso(7),
     created_by: "Handover",
     content: {
@@ -355,10 +355,10 @@ const ACME_REPORTS: PortalReportRow[] = [
       key_achievements: [
         "Osprey case management staging migration completed and performance tested successfully",
         "Mimecast encryption licences procured and pilot group of five fee earners identified",
-        "iManage Cloud migration discovery phase completed — data volumes and integration requirements confirmed",
+        "iManage Cloud migration discovery phase completed: data volumes and integration requirements confirmed",
       ],
       open_risks: [
-        "Osprey SQL migration blocked pending partner sign-off — production window at risk of further delay",
+        "Osprey SQL migration blocked pending partner sign-off: production window at risk of further delay",
         "Cyber Essentials recertification deadline approaching with MFA outstanding on admin accounts",
       ],
       recommended_actions: [

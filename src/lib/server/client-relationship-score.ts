@@ -145,9 +145,9 @@ export function relationshipScoreLabelColour(total: number): string {
 }
 
 function cadenceDetail(days: number): string {
-  if (days <= 7) return `Last report ${days === 0 ? "today" : `${days} day(s) ago`} — on cadence.`;
-  if (days <= 21) return `Last report ${days} days ago — reporting gap widening.`;
-  return `Last report ${days} days ago — well past a healthy weekly cadence.`;
+  if (days <= 7) return `Last report ${days === 0 ? "today" : `${days} day(s) ago`}, on cadence.`;
+  if (days <= 21) return `Last report ${days} days ago. The reporting gap is widening.`;
+  return `Last report ${days} days ago, well past a healthy weekly cadence.`;
 }
 
 export function getRelationshipScoreBreakdown(
@@ -204,7 +204,7 @@ export function getRelationshipScoreBreakdown(
       label: "Reporting infrastructure",
       detail: input.hasScheduled
         ? "Automated scheduled reports are active for this client."
-        : "No automated schedule — relies on manual report generation.",
+        : "No automated schedule. Relies on manual report generation.",
     },
   ];
 

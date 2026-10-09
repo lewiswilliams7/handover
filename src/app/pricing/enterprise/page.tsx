@@ -39,7 +39,7 @@ export default function EnterprisePricingPage() {
               Your portfolio sets the shape.
             </h1>
             <p className="mt-5 text-base leading-7 text-white/65">
-              Above 150 managed clients, the portfolio — not the plan — determines the shape.
+              Above 150 managed clients, the portfolio, not the plan, determines the shape.
               We&apos;ll work with you to make Handover fit how your team actually operates.
             </p>
             <div className="mt-8 border-y border-white/10 py-6">

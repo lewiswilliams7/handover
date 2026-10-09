@@ -300,7 +300,7 @@ function calculateInputQuality(tickets: HaloTicket[]): {
   if (tickets.length < 3) {
     score -= 20;
     reasons.push(
-      `Only ${tickets.length} ticket${tickets.length === 1 ? "" : "s"} selected — outputs may be limited`,
+      `Only ${tickets.length} ticket${tickets.length === 1 ? "" : "s"} selected. Outputs may be limited`,
     );
   }
 

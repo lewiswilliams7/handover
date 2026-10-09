@@ -1177,16 +1177,16 @@ const ONBOARDING_STAGED_COMPARE_RESULT: CompareResultPayload = {
   what_changed:
     "Since the last Northwood report, the Office 365 SPF email delivery issue was resolved and monitoring is ongoing. MFA hardware token procurement has progressed to awaiting finance approval. SharePoint Phase 2 active data migration completed over the weekend; archive phase is now scheduled.",
   resolved: [
-    "Office 365 outbound email delivery failure (SPF misconfiguration) — resolved since last report",
+    "Office 365 outbound email delivery failure (SPF misconfiguration), resolved since last report",
   ],
   new_items: [
     "MFA hardware token procurement moved from Open to Awaiting Approval",
     "SharePoint Phase 2 active data cutover (847GB) completed over the weekend",
   ],
   still_open: [
-    "MFA rollout — 3 remote users still without hardware token coverage pending finance sign-off",
-    "SharePoint Phase 2 archive migration (~2TB legacy folders) — scheduled to begin next week",
-    "Warehouse floor 2 Wi-Fi coverage gap — site survey booked for next Thursday",
+    "MFA rollout: 3 remote users still without hardware token coverage pending finance sign-off",
+    "SharePoint Phase 2 archive migration (~2TB legacy folders), scheduled to begin next week",
+    "Warehouse floor 2 Wi-Fi coverage gap: site survey booked for next Thursday",
   ],
   trend: "improving",
   trend_justification:
@@ -7320,7 +7320,7 @@ export default function Home() {
         } else if (action === "approve_and_stop") {
           toast({
             message:
-              "Report sent — future reports from this schedule will send automatically",
+              "Report sent. Future reports from this schedule will send automatically.",
             durationMs: 4000,
           });
           void refreshCampaigns();
@@ -7545,7 +7545,7 @@ export default function Home() {
       toast({
         variant: "achievement",
         message: "Achievement Unlocked 🏆",
-        subtitle: "You've completed the Handover tour — you're ready to go.",
+        subtitle: "You've completed the Handover tour. You're ready to go.",
         durationMs: 5000,
       });
     } catch {
@@ -15914,8 +15914,8 @@ export default function Home() {
                       Handover feature
                     </span>
                     <span className="text-[12px] text-white/60">
-                      Client Intelligence is included with Handover. You&apos;re viewing a demo —
-                      move to Handover to use it on your real client data.
+                      Client Intelligence is included with Handover. You&apos;re viewing a demo.
+                      Move to Handover to use it on your real client data.
                     </span>
                     <Link
                       href="/pricing"
@@ -16236,7 +16236,7 @@ export default function Home() {
                           How would you like to start?
                         </h2>
                         <p className="animate-in fade-in duration-500 mx-auto mb-2 max-w-xl text-center text-[length:var(--t-body-sm)] text-[var(--text-secondary)]">
-                          Connect your PSA, paste notes, or try a demo — takes under a minute.
+                          Connect your PSA, paste notes, or try a demo. It takes under a minute.
                         </p>
                         <div
                           data-tour="generate-chooser"
@@ -17750,7 +17750,7 @@ export default function Home() {
                   <div className="space-y-4">
                     {stagedCompareExample ? (
                       <p className="text-[12px] text-[var(--text-muted)]">
-                        Example comparison — real reports compare against your previous report
+                        Example comparison. Real reports compare against your previous report
                         automatically
                       </p>
                     ) : null}

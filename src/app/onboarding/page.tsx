@@ -1494,7 +1494,7 @@ export default function OnboardingPage() {
                   : "Take the tour."}
               </h1>
               <p className="ho-sub" data-anim style={{ "--d": 3 } as React.CSSProperties}>
-                We&apos;ll generate a sample report together, then show you around — takes
+                We&apos;ll generate a sample report together, then show you around. It takes
                 about a minute.
               </p>
               <div className="ho-client-grid" style={{ marginTop: "1.25rem" }}>

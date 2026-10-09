@@ -92,7 +92,7 @@ function breakdownBucketName(t: QbrTicketLike & Record<string, unknown>): string
     const type = String(t.cwType ?? "").trim();
     const sub = String(t.cwSubType ?? "").trim();
     const cat = typeof t.category === "string" ? t.category.trim() : "";
-    if (type && sub) return `${type} — ${sub}`;
+    if (type && sub) return `${type}: ${sub}`;
     if (cat) return cat;
     if (type) return type;
     if (sub) return sub;
@@ -104,7 +104,7 @@ function breakdownBucketName(t: QbrTicketLike & Record<string, unknown>): string
       : "");
   const c1 = String(t.category_1 ?? "").trim();
   const c2 = String(t.category_2 ?? "").trim();
-  if (c1 && c2) return `${c1} — ${c2}`;
+  if (c1 && c2) return `${c1}: ${c2}`;
   if (c1) return c1;
   if (c2) return c2;
   if (typeName) return typeName;
@@ -401,6 +401,6 @@ export function applySectionValidationToToggles<T extends QbrSectionsLike>(
 
 export function countSectionsAvailable(snapshot: QbrValidationSnapshot): number {
   let n = QBR_DATA_DRIVEN_SECTION_IDS.filter((k) => snapshot.flags[k].ok).length;
-  n += 3; // executive summary, risks/actions, next steps — always selectable; gated after AI
+  n += 3; // executive summary, risks/actions, next steps: always selectable; gated after AI
   return n;
 }

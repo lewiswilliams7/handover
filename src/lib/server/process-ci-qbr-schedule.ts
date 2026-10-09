@@ -161,7 +161,7 @@ export async function processCiQbrSchedule(
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
       <div style="width:10px;height:10px;border-radius:50%;background:${healthColour};flex-shrink:0;"></div>
       <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:${healthColour};">
-        ${qbr.relationshipHealth.charAt(0).toUpperCase() + qbr.relationshipHealth.slice(1)} — Relationship Health
+        ${qbr.relationshipHealth.charAt(0).toUpperCase() + qbr.relationshipHealth.slice(1)} relationship health
       </span>
     </div>
     <p style="font-size:13px;color:#374151;line-height:1.6;margin:0;">
@@ -225,11 +225,11 @@ export async function processCiQbrSchedule(
       return { scheduleId: schedule.id, success: false, error: "No email_to" };
     }
 
-    const subject = `${qbr.clientName} — QBR · ${qbr.periodLabel}`;
+    const subject = `${qbr.clientName}: QBR, ${qbr.periodLabel}`;
     const fromHeader = `${brandName} <reports@gethandover.uk>`;
     const emailText =
       stripHtmlToPlainText(emailHtml) ||
-      [qbr.clientName, qbr.executiveSummary].filter(Boolean).join(" — ");
+      [qbr.clientName, qbr.executiveSummary].filter(Boolean).join(": ");
 
     if (schedule.hold_for_review === true) {
       const nowIso = now.toISOString();

@@ -199,7 +199,7 @@ const DEMO_GENERATIONS: Record<string, Generation[]> = {
           },
         ],
         client_email:
-          "Hi [Contact],\n\nHope you're well. Here's your weekly update from the Handover team.\n\nThis week we've made strong progress on the M365 migration — 80% of mailboxes are now complete. The remaining 20% are scheduled for completion by end of next week.\n\nThe one open item requiring your attention is the MFA rollout for 3 remote users. Hardware tokens are on order and should arrive this week.\n\nKind regards,\nLewis Williams\nHandover",
+          "Hi [Contact],\n\nHope you're well. Here's your weekly update from the Handover team.\n\nThis week we've made strong progress on the M365 migration: 80% of mailboxes are now complete. The remaining 20% are scheduled for completion by end of next week.\n\nThe one open item requiring your attention is the MFA rollout for 3 remote users. Hardware tokens are on order and should arrive this week.\n\nKind regards,\nLewis Williams\nHandover",
       },
     },
     {
@@ -239,7 +239,7 @@ const DEMO_GENERATIONS: Record<string, Generation[]> = {
           },
         ],
         client_email:
-          "Hi [Contact],\n\nGreat news — phase 2 of the M365 migration is underway. Pilot group migrations are progressing smoothly.\n\nKind regards,\nLewis Williams",
+          "Hi [Contact],\n\nGreat news: phase 2 of the M365 migration is underway. Pilot group migrations are progressing smoothly.\n\nKind regards,\nLewis Williams",
       },
     },
   ],
@@ -259,7 +259,7 @@ const DEMO_GENERATIONS: Record<string, Generation[]> = {
           "The Osprey case management SQL migration remains blocked pending partner sign-off. This is the third consecutive week the migration has been held at this stage, creating escalating delivery risk. Mimecast deployment is on track with pilot group identified.",
         actions: [
           {
-            task: "Escalate Osprey sign-off to senior partner — deadline end of week",
+            task: "Escalate Osprey sign-off to senior partner by end of week",
             suggested_owner: "Lewis Williams",
             priority: "High",
           },
@@ -285,7 +285,7 @@ const DEMO_GENERATIONS: Record<string, Generation[]> = {
           },
         ],
         client_email:
-          "Hi [Contact],\n\nThis week's update — the Osprey migration remains on hold pending formal sign-off from your senior partner. We've now been waiting three weeks and this is creating downstream risk.\n\nWe'd like to escalate this — could you facilitate a direct conversation?\n\nKind regards,\nLewis Williams",
+          "Hi [Contact],\n\nThis week's update: the Osprey migration remains on hold pending formal sign-off from your senior partner. We've now been waiting three weeks and this is creating downstream risk.\n\nWe'd like to escalate this. Could you facilitate a direct conversation?\n\nKind regards,\nLewis Williams",
       },
     },
   ],
@@ -350,8 +350,8 @@ const DEMO_INTELLIGENCE: Record<string, IntelligenceSummary> = {
       "Schedule post-migration security review for July",
     ],
     qbr_talking_points: [
-      "M365 migration on track — completion expected end of June",
-      "MFA gap resolution — tokens arriving this week",
+      "M365 migration on track, completion expected end of June",
+      "MFA gap resolution: tokens arriving this week",
       "No security incidents across the quarter",
       "Propose network infrastructure review as Q3 priority",
     ],
@@ -368,7 +368,7 @@ const DEMO_INTELLIGENCE: Record<string, IntelligenceSummary> = {
       "iManage Cloud discovery phase completed",
     ],
     open_risks: [
-      "Osprey migration blocked for 3 weeks — delivery timeline at risk",
+      "Osprey migration blocked for 3 weeks, delivery timeline at risk",
       "Pattern of informal approvals without written confirmation creates governance risk",
     ],
     relationship_health: "red",
@@ -380,8 +380,8 @@ const DEMO_INTELLIGENCE: Record<string, IntelligenceSummary> = {
       "Schedule account review call with client MD within 2 weeks",
     ],
     qbr_talking_points: [
-      "Osprey migration delay — root cause and resolution plan",
-      "Sign-off process improvement — proposed formal approval workflow",
+      "Osprey migration delay: root cause and resolution plan",
+      "Sign-off process improvement: proposed formal approval workflow",
       "Mimecast deployment progress and timeline",
       "iManage Cloud migration next steps",
     ],
@@ -396,7 +396,7 @@ const DEMO_ATTENTION = {
       clientName: "Acme Legal LLP",
       priority: "high",
       issue:
-        "Osprey SQL migration blocked by partner sign-off for 3 consecutive weeks — delivery timeline at risk",
+        "Osprey SQL migration blocked by partner sign-off for 3 consecutive weeks, delivery timeline at risk",
       action: "Escalate to senior partner with hard deadline by end of this week",
       type: "risk",
     },
@@ -411,7 +411,7 @@ const DEMO_ATTENTION = {
     {
       clientName: "Northwood Manufacturing",
       priority: "low",
-      issue: "MFA hardware tokens not yet delivered — remote users remain uncovered",
+      issue: "MFA hardware tokens not yet delivered, remote users remain uncovered",
       action: "Confirm delivery date with supplier today",
       type: "overdue",
     },
@@ -484,7 +484,7 @@ function enrichClientWithRelationshipScore(client: Client): Client {
 
 function formatScoreBreakdownTooltip(breakdown: RelationshipScoreBreakdown): string {
   const lines = breakdown.components.map(
-    (c) => `${c.label}: ${c.score}/100 — ${c.detail}`,
+    (c) => `${c.label}: ${c.score}/100. ${c.detail}`,
   );
   if (breakdown.aiHealthSignal?.fresh) {
     lines.push(breakdown.aiHealthSignal.detail);
@@ -598,7 +598,7 @@ function ClientBriefModal({
 
   const copyText = brief
     ? [
-        `Client brief — ${clientName}`,
+        `Client brief: ${clientName}`,
         "",
         "Current status",
         brief.currentStatus,
@@ -1335,7 +1335,7 @@ No markdown, no preamble, valid JSON only.`,
         };
 
         setActionEmailSubject(
-          parsed.subject ?? `${item.clientName} — action required`,
+          parsed.subject ?? `${item.clientName}: action required`,
         );
 
         const aiBody =
@@ -1355,7 +1355,7 @@ No markdown, no preamble, valid JSON only.`,
         );
       } catch (e) {
         console.error("[action email]", e);
-        setActionEmailSubject(`${item.clientName} — action required`);
+        setActionEmailSubject(`${item.clientName}: action required`);
         setActionEmailBody(
           `Hi,\n\n` +
             `I wanted to follow up regarding the following:\n\n` +
@@ -2213,7 +2213,7 @@ No markdown, no preamble, valid JSON only.`,
                                 .charAt(0)
                                 .toUpperCase() +
                                 summary.relationship_health.slice(1)}{" "}
-                              — Relationship Health
+                              relationship health
                             </p>
                             <p className="text-[12px] text-[var(--text-secondary)]">
                               {summary.health_justification}
@@ -2282,7 +2282,7 @@ No markdown, no preamble, valid JSON only.`,
                                 <div className="relative rounded-md border border-[var(--border)] bg-[var(--surface-1)] px-3 py-2 shadow-[var(--shadow-sm)]">
                                   <p className="text-[12px] leading-snug text-[var(--text-secondary)]">
                                     These risks were identified from your recent reports
-                                    and haven&apos;t been resolved yet — review them below
+                                    and haven&apos;t been resolved yet. Review them below
                                     before they affect delivery.
                                   </p>
                                   <span
@@ -2529,7 +2529,7 @@ No markdown, no preamble, valid JSON only.`,
                             {String(a.task ?? "")}
                             {a.suggested_owner ? (
                               <span className="ml-2 text-[var(--text-muted)]">
-                                — {String(a.suggested_owner)}
+                                Owner: {String(a.suggested_owner)}
                               </span>
                             ) : null}
                           </span>

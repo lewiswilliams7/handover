@@ -68,7 +68,7 @@ export function PricingEnquiryForm({ type }: Props) {
       <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.08] p-6 text-sm leading-7 text-emerald-50">
         <p className="flex items-center gap-2 font-semibold">
           <Check className="size-4" aria-hidden />
-          Thanks — we&apos;ve received your enquiry.
+          Thanks, we&apos;ve received your enquiry.
         </p>
         <p className="mt-2 text-emerald-50/75">
           We&apos;ll review the details and get back to you within one business day.
