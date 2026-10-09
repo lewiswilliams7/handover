@@ -69,6 +69,11 @@ type RefreshState = {
 type Filter = "all" | "needs_attention" | "opportunities";
 type AttentionTab = "attention" | "history" | "replay";
 
+type ConnectionState =
+  | { status: "checking" }
+  | { status: "connected"; psaType: "halo" | "connectwise" | null }
+  | { status: "none" };
+
 function tabFromParam(value: string | null): AttentionTab {
   return value === "history" || value === "replay" ? value : "attention";
 }
@@ -307,6 +312,7 @@ export function AttentionClient({
     total: 3,
   });
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [connection, setConnection] = useState<ConnectionState>({ status: "checking" });
   const refreshCancelledRef = useRef(false);
 
   const allFindings = useMemo(
@@ -527,6 +533,31 @@ export function AttentionClient({
     [sessionId],
   );
 
+  // Only needed for the empty state: tells us whether to offer a scan or a PSA connection.
+  useEffect(() => {
+    if (results) return;
+    let cancelled = false;
+    void fetch("/onboarding/scan/start-stored", { credentials: "include", cache: "no-store" })
+      .then(async (response) => {
+        const data = (await response.json().catch(() => ({}))) as {
+          hasStoredConnection?: boolean;
+          psaType?: "halo" | "connectwise" | null;
+        };
+        if (cancelled) return;
+        setConnection(
+          response.ok && data.hasStoredConnection
+            ? { status: "connected", psaType: data.psaType ?? null }
+            : { status: "none" },
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setConnection({ status: "none" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [results]);
+
   const revenueAtRisk = useMemo(() => computeRevenueAtRisk(findings), [findings]);
   const commercial = results ? commercialContext(results, findings) : [];
   const clientsWithFindings = new Set(supportedFindings.map((finding) => finding.clientId)).size;
@@ -610,13 +641,19 @@ export function AttentionClient({
                 ? clientsWithFindings > 0
                   ? `${clientsWithFindings} account${clientsWithFindings === 1 ? "" : "s"} need a look`
                   : "No accounts need a look"
-                : "Your attention report"}
+                : "See which clients are slipping"}
             </h1>
-            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm text-[var(--text-secondary)]">
-              <span>Week of {formatDate(syncedAt)}</span>
-              <span>Last synced {lastSyncedLabel}</span>
-              <span>{results?.portfolio.clientsAnalysed ?? 0} clients monitored</span>
-            </div>
+            {results ? (
+              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm text-[var(--text-secondary)]">
+                <span>Week of {formatDate(syncedAt)}</span>
+                <span>Last synced {lastSyncedLabel}</span>
+                <span>{results.portfolio.clientsAnalysed} clients monitored</span>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-[var(--text-secondary)]">
+                Your first scan sets the baseline for every client.
+              </p>
+            )}
           </div>
           <button
             type="button"
@@ -674,13 +711,14 @@ export function AttentionClient({
         {activeTab === "replay" ? (
           results ? (
             <ChurnReplayPanel className="mt-8" replay={results.churnReplay} />
+          ) : refreshState.active ? (
+            <ScanProgress refreshState={refreshState} />
           ) : (
-            <section className="mt-10 rounded-2xl border border-white/10 bg-white/[0.03] p-8">
-              <h2 className="text-xl font-semibold">No completed scan is saved yet.</h2>
-              <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--text-secondary)]">
-                Refresh the scan to replay the clients you lost in the last 12 months.
-              </p>
-            </section>
+            <ScanEmptyState
+              connection={connection}
+              onRun={() => void refresh()}
+              focus="replay"
+            />
           )
         ) : activeTab === "history" ? (
           <HistoryPanel
@@ -709,30 +747,7 @@ export function AttentionClient({
           </div>
         ) : null}
 
-        {refreshState.active ? (
-          <section className="mt-6 rounded-2xl border border-cyan-300/20 bg-cyan-300/[0.06] p-5" aria-live="polite">
-            <div className="flex items-center justify-between gap-4 text-sm">
-              <span className="font-semibold text-cyan-100">Refreshing your PSA scan</span>
-              <span className="text-cyan-100/65">
-                {Math.min(refreshState.completed, refreshState.total)} of {refreshState.total}
-              </span>
-            </div>
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-              <div
-                className="h-full rounded-full bg-cyan-300 transition-all"
-                style={{ width: `${Math.max(8, (refreshState.completed / refreshState.total) * 100)}%` }}
-              />
-            </div>
-            <p className="mt-3 text-sm text-[var(--text-secondary)]">
-              {refreshState.stage === "tickets"
-                ? "Reading historical tickets…"
-                : refreshState.stage === "contracts"
-                  ? "Reading contracts and agreements…"
-                  : "Analysing delivery patterns…"}
-              {" "}This usually takes 20–60 seconds.
-            </p>
-          </section>
-        ) : null}
+        {refreshState.active ? <ScanProgress refreshState={refreshState} /> : null}
 
         {refreshError ? (
           <div className="mt-6 rounded-xl border border-red-300/25 bg-red-300/[0.08] px-4 py-3 text-sm text-red-100" role="alert">
@@ -754,12 +769,7 @@ export function AttentionClient({
         ) : null}
 
         {!results && !refreshState.active ? (
-          <section className="mt-10 rounded-2xl border border-white/10 bg-white/[0.03] p-8">
-            <h2 className="text-xl font-semibold">No completed scan is saved yet.</h2>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--text-secondary)]">
-              Refresh to scan your saved PSA connection. Your Revenue at Risk and Churn Replay appear here once it finishes.
-            </p>
-          </section>
+          <ScanEmptyState connection={connection} onRun={() => void refresh()} focus="risk" />
         ) : null}
 
         {results ? (
@@ -1560,6 +1570,117 @@ function RevenueAtRiskSummary({
           ))}
         </dl>
       ) : null}
+    </section>
+  );
+}
+
+function ScanProgress({ refreshState }: { refreshState: RefreshState }) {
+  return (
+    <section className="mt-6 rounded-2xl border border-cyan-300/20 bg-cyan-300/[0.06] p-5" aria-live="polite">
+      <div className="flex items-center justify-between gap-4 text-sm">
+        <span className="font-semibold text-cyan-100">Scanning your PSA</span>
+        <span className="text-cyan-100/65">
+          {Math.min(refreshState.completed, refreshState.total)} of {refreshState.total}
+        </span>
+      </div>
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+        <div
+          className="h-full rounded-full bg-cyan-300 transition-all"
+          style={{ width: `${Math.max(8, (refreshState.completed / refreshState.total) * 100)}%` }}
+        />
+      </div>
+      <p className="mt-3 text-sm text-[var(--text-secondary)]">
+        {refreshState.stage === "tickets"
+          ? "Reading 12 months of tickets."
+          : refreshState.stage === "contracts"
+            ? "Reading contracts and recurring billing."
+            : "Checking every client against its own history."}{" "}
+        This usually takes 20 to 60 seconds.
+      </p>
+    </section>
+  );
+}
+
+/**
+ * Shown before the first scan. Offers the one action that will work: run a scan
+ * on the saved connection, or connect a PSA first.
+ */
+function ScanEmptyState({
+  connection,
+  onRun,
+  focus,
+}: {
+  connection: ConnectionState;
+  onRun: () => void;
+  focus: "risk" | "replay";
+}) {
+  const psaName =
+    connection.status === "connected"
+      ? connection.psaType === "connectwise"
+        ? "ConnectWise Manage"
+        : connection.psaType === "halo"
+          ? "HaloPSA"
+          : "your PSA"
+      : "your PSA";
+  const outcome =
+    focus === "replay"
+      ? "replay the clients you lost in the last 12 months"
+      : "show which clients have changed and what they are worth";
+
+  return (
+    <section className="mt-8 rounded-2xl border border-white/10 bg-white/[0.03] p-6 sm:p-8">
+      {connection.status === "checking" ? (
+        <div className="space-y-3" aria-busy="true" aria-label="Checking your PSA connection">
+          <div className="h-5 w-56 animate-pulse rounded bg-white/10" />
+          <div className="h-4 w-full max-w-lg animate-pulse rounded bg-white/[0.06]" />
+          <div className="h-10 w-40 animate-pulse rounded-lg bg-white/10" />
+        </div>
+      ) : connection.status === "connected" ? (
+        <>
+          <h2 className="text-xl font-semibold">Run your first scan</h2>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--text-secondary)]">
+            Handover will read 12 months of tickets, contracts and billing from {psaName} and{" "}
+            {outcome}. It takes 20 to 60 seconds and never writes to your PSA.
+          </p>
+          <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3">
+            <button
+              type="button"
+              onClick={onRun}
+              className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-[#07111f] transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300"
+            >
+              <RefreshCw className="size-4" aria-hidden /> Run scan now
+            </button>
+            <Link
+              href="/?openSettings=integrations"
+              className="text-sm font-semibold text-[var(--text-secondary)] underline-offset-4 hover:text-white hover:underline"
+            >
+              Manage PSA connection
+            </Link>
+          </div>
+        </>
+      ) : (
+        <>
+          <h2 className="text-xl font-semibold">Connect your PSA to get started</h2>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--text-secondary)]">
+            Handover needs read-only access to HaloPSA or ConnectWise Manage to {outcome}. Nothing
+            is ever written back during a scan.
+          </p>
+          <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3">
+            <Link
+              href="/?openSettings=integrations"
+              className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-[#07111f] transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300"
+            >
+              Connect your PSA
+            </Link>
+            <Link
+              href="/onboarding/connect"
+              className="text-sm font-semibold text-[var(--text-secondary)] underline-offset-4 hover:text-white hover:underline"
+            >
+              Use the guided setup instead
+            </Link>
+          </div>
+        </>
+      )}
     </section>
   );
 }

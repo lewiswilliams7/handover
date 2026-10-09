@@ -13614,7 +13614,7 @@ export default function Home() {
           </>
         ) : null) : (
           userEmail && mainView === "approvals" ? (
-            <div key="approvals" className="min-h-full bg-[var(--bg-secondary)] animate-in fade-in duration-300">
+            <div key="approvals" className="min-h-full animate-in fade-in duration-300">
               <div className="w-full px-6 py-6">
                 <PageHeader
                   title="Approvals"
