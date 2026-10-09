@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   BarChart3,
   Building2,
@@ -737,6 +737,16 @@ function AppShellContent({ children }: { children: ReactNode }) {
         : "border-transparent text-[var(--text-secondary)] hover:bg-white/5 hover:text-white",
     ].join(" ");
   };
+  const router = useRouter();
+  // The full settings panels are rendered by the main app view on "/". On any
+  // other signed-in route, open settings there rather than showing an empty panel.
+  const openSettings = useCallback(() => {
+    if (pathname === "/") {
+      settings.setOpen(true);
+      return;
+    }
+    router.push(`/?openSettings=1&tab=${encodeURIComponent(settings.tab)}`);
+  }, [pathname, router, settings]);
   const sectionLabelClass = `mt-4 mb-1 px-3 text-[9.5px] font-medium uppercase tracking-[0.16em] text-white/30 ${!expanded ? "md:hidden" : ""}`;
   const contentOffsetClass =
     pathname === "/"
@@ -797,13 +807,13 @@ function AppShellContent({ children }: { children: ReactNode }) {
           </div>
           <div className="shrink-0 border-t border-white/[0.08] p-2.5">
             <Link href="/?view=changelog" onClick={closeMobile} className={navClass("changelog")}><Sparkles className="size-3.5" /><span className={labelClass}>What&apos;s new</span></Link>
-            <button type="button" className="mt-2 flex w-full items-center gap-2 rounded-[var(--radius)] p-2.5 hover:bg-white/[0.06]" onClick={() => settings.setOpen(true)}><div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-[11px] font-semibold text-white">{userFirstName?.[0]?.toUpperCase() || userEmail?.[0]?.toUpperCase() || "U"}</div><span className={`min-w-0 flex-1 truncate text-left text-[12px] text-white ${labelClass}`}><span className="block">{userFirstName || userEmail || "Account"}</span><span className="text-[9px] text-[var(--accent)]">{planLabel}</span></span><Settings className="size-[14px] shrink-0 text-white/30" /></button>
+            <button type="button" className="mt-2 flex w-full items-center gap-2 rounded-[var(--radius)] p-2.5 hover:bg-white/[0.06]" onClick={openSettings}><div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-[11px] font-semibold text-white">{userFirstName?.[0]?.toUpperCase() || userEmail?.[0]?.toUpperCase() || "U"}</div><span className={`min-w-0 flex-1 truncate text-left text-[12px] text-white ${labelClass}`}><span className="block">{userFirstName || userEmail || "Account"}</span><span className="text-[9px] text-[var(--accent)]">{planLabel}</span></span><Settings className="size-[14px] shrink-0 text-white/30" /></button>
             {!entitlement.hasProAccess ? <Link href="/pricing?upgrade=true" onClick={closeMobile} className={`mb-2 flex w-full items-center justify-center rounded-[var(--radius)] border border-[var(--accent)] px-3 py-2 text-[12px] text-[var(--accent)] ${!expanded ? "md:hidden" : ""}`}>Upgrade plan</Link> : null}
             <a href="https://handover.canny.io" target="_blank" rel="noreferrer" className={`text-[11px] text-white/30 hover:text-white/60 ${!expanded ? "md:hidden" : ""}`}>Suggest a feature →</a>
           </div>
         </aside>
       ) : null}
-      {showSidebar && authChecked ? <div className="fixed top-0 z-30 flex h-[var(--app-header-height)] items-center justify-between px-4 max-md:!left-0" style={{ left: offset, right: 0, background: "radial-gradient(ellipse at top right, rgba(14,165,233,0.04) 0%, transparent 60%), var(--bg-primary)" }}><div className="flex min-w-0 items-center gap-2"><button type="button" className="inline-flex size-8 shrink-0 items-center justify-center rounded-[var(--radius)] text-[var(--text-secondary)] hover:bg-white/[0.06] md:hidden" onClick={() => setSidebarOpenMobile(true)} aria-label="Open sidebar"><Menu className="size-[18px]" /></button><span className="truncate text-[14px] font-medium text-white">{pageTitle}</span></div><div className="flex items-center"><button type="button" onClick={toggleTheme} className="flex size-7 items-center justify-center text-[var(--text-secondary)]" aria-label="Toggle theme">{theme === "dark" ? <Sun className="size-[14px]" /> : <Moon className="size-[14px]" />}</button><button type="button" className="ml-1 flex size-7 items-center justify-center rounded-full bg-[var(--accent)] text-[10px] text-white" onClick={() => settings.setOpen(true)} aria-label="Open settings">{userFirstName?.[0]?.toUpperCase() || userEmail?.[0]?.toUpperCase() || "U"}</button><button type="button" className="ml-1 flex size-7 items-center justify-center text-[var(--text-secondary)]" onClick={() => settings.setOpen(true)} aria-label="Open settings"><Settings className="size-[14px]" /></button></div></div> : null}
+      {showSidebar && authChecked ? <div className="fixed top-0 z-30 flex h-[var(--app-header-height)] items-center justify-between px-4 max-md:!left-0" style={{ left: offset, right: 0, background: "radial-gradient(ellipse at top right, rgba(14,165,233,0.04) 0%, transparent 60%), var(--bg-primary)" }}><div className="flex min-w-0 items-center gap-2"><button type="button" className="inline-flex size-8 shrink-0 items-center justify-center rounded-[var(--radius)] text-[var(--text-secondary)] hover:bg-white/[0.06] md:hidden" onClick={() => setSidebarOpenMobile(true)} aria-label="Open sidebar"><Menu className="size-[18px]" /></button><span className="truncate text-[14px] font-medium text-white">{pageTitle}</span></div><div className="flex items-center"><button type="button" onClick={toggleTheme} className="flex size-7 items-center justify-center text-[var(--text-secondary)]" aria-label="Toggle theme">{theme === "dark" ? <Sun className="size-[14px]" /> : <Moon className="size-[14px]" />}</button><button type="button" className="ml-1 flex size-7 items-center justify-center rounded-full bg-[var(--accent)] text-[10px] text-white" onClick={openSettings} aria-label="Open settings">{userFirstName?.[0]?.toUpperCase() || userEmail?.[0]?.toUpperCase() || "U"}</button><button type="button" className="ml-1 flex size-7 items-center justify-center text-[var(--text-secondary)]" onClick={openSettings} aria-label="Open settings"><Settings className="size-[14px]" /></button></div></div> : null}
       {authChecked && entitlement.paymentPastDue ? <div className="fixed top-[var(--app-header-height)] right-0 z-20 flex min-h-[var(--app-past-due-banner-height)] items-center justify-between gap-3 border-b border-amber-300/35 bg-amber-950/95 px-4 py-2 text-amber-50 max-md:!left-0" style={{ left: offset }} role="status"><p className="text-[12px]">Your latest payment needs attention. Update your payment method to keep your Handover access active.</p><Link href="/api/stripe/portal" className="shrink-0 rounded border border-amber-200/40 px-3 py-1.5 text-[12px] font-semibold">Update payment</Link></div> : null}
       {/* The signed-in content area carries the page background so the gap between the
           fixed header and the content offset never shows the darker body colour. */}

@@ -2849,6 +2849,18 @@ export default function Home() {
     window.dispatchEvent(new Event("handover:view-change"));
   }, [mainView]);
 
+  // The old Overview dashboard is retired: signed-in users land on Revenue at
+  // Risk. Wait while settings are open (they render here) or a post-checkout
+  // banner is showing, so neither is lost.
+  useEffect(() => {
+    if (!authChecked || !userEmail) return;
+    if (mainView !== "overview") return;
+    if (settings.open || showSuccessBanner) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("openSettings") || params.get("success")) return;
+    router.replace("/attention");
+  }, [authChecked, userEmail, mainView, settings.open, showSuccessBanner, router]);
+
   const [reportsSubView, setReportsSubView] = useState<
     "service-review" | "qbr"
   >("service-review");
@@ -12876,10 +12888,8 @@ export default function Home() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.5, delay: 0.16, ease: [0.25, 0.46, 0.45, 0.94] }}
                   >
-                    Handover reads your HaloPSA or ConnectWise history, puts a
-                    pound value on every client that has changed, tells you what
-                    to do about it, and proves it on the clients you have
-                    already lost.
+                    Handover reads your HaloPSA or ConnectWise data and tells you
+                    which clients to call this week, and why.
                   </motion.p>
                   <motion.p
                     className="mt-1.5 text-[13px] leading-relaxed text-white/60 md:text-[15px] md:leading-normal"
@@ -12887,7 +12897,7 @@ export default function Home() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.5, delay: 0.2, ease: [0.25, 0.46, 0.45, 0.94] }}
                   >
-                    Free scan, read-only, about a minute. Then £499 a month or £4,990 a year, everything included.
+                    Free, read-only scan. Results in about a minute.
                   </motion.p>
 
                   <motion.div
