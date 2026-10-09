@@ -11,36 +11,36 @@ import { createClient } from "@/lib/supabase";
 
 type BillingPeriod = "monthly" | "annual";
 
-const FEATURE_GROUPS = [
+type FeatureItem = { label: string; href?: string };
+
+const FEATURE_GROUPS: ReadonlyArray<{ title: string; items: ReadonlyArray<FeatureItem> }> = [
   {
-    title: "Client intelligence",
+    title: "Revenue protection",
     items: [
-      "Portfolio scan",
-      "Change detection against each client’s own baseline",
-      "Commercial, service and relationship signals",
-      "Weekly digest",
+      { label: "Revenue at Risk™ across your whole client base", href: "/features/revenue-at-risk" },
+      { label: "Churn Replay™ on the clients you have already lost", href: "/features/churn-replay" },
+      { label: "Saved Revenue tracking", href: "/features/revenue-at-risk#saved-revenue" },
+      { label: "Handover Client Intelligence™ signals and weekly digest", href: "/features/client-intelligence" },
     ],
   },
   {
-    title: "Reporting suite",
+    title: "Proof for your clients",
     items: [
-      "Service reviews",
-      "QBR packs",
-      "Scheduled reports",
-      "PPTX, PDF and Excel export",
-      "Push back to the PSA",
-      "Approval queue",
+      { label: "Service reviews and QBR packs", href: "/features/qbr-generator" },
+      { label: "Scheduled reports with an approval step", href: "/features/scheduled-reports" },
+      { label: "PowerPoint, PDF and Excel export", href: "/features/exports" },
+      { label: "White-labelled client portal", href: "/features/white-label" },
+      { label: "Notes pushed back to the PSA", href: "/features/psa-push" },
     ],
-  },
-  {
-    title: "Client portal",
-    items: ["White-labelled, per-client access"],
   },
   {
     title: "Platform",
-    items: ["HaloPSA and ConnectWise", "Unlimited users"],
+    items: [
+      { label: "HaloPSA and ConnectWise Manage", href: "/integrations" },
+      { label: "Unlimited users" },
+    ],
   },
-] as const;
+];
 
 export function PricingPageClient() {
   const router = useRouter();
@@ -127,14 +127,14 @@ export function PricingPageClient() {
       <div className="mx-auto max-w-5xl">
         <section className="mx-auto max-w-3xl text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">
-            One plan for MSP delivery
+            One plan, everything included
           </p>
           <h1 className="mt-4 text-4xl font-semibold tracking-tight sm:text-6xl">
-            See what changed across your client base, before the next conversation.
+            Costs less than one lost client a year.
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-white/60 sm:text-lg">
-            One Handover workspace for seeing what changed, deciding what matters, and showing
-            clients you are on top of it.
+            Handover shows which clients are slipping and what they are worth, proves the value you
+            deliver to the people who renew, and counts the revenue you keep.
           </p>
         </section>
 
@@ -244,9 +244,18 @@ export function PricingPageClient() {
                 </h3>
                 <ul className="mt-3 space-y-2.5">
                   {group.items.map((feature) => (
-                    <li key={feature} className="flex items-start gap-3 text-sm leading-6 text-white/70">
+                    <li key={feature.label} className="flex items-start gap-3 text-sm leading-6 text-white/70">
                       <Check className="mt-1 size-4 shrink-0 text-cyan-300" aria-hidden />
-                      <span>{feature}</span>
+                      {feature.href ? (
+                        <Link
+                          href={feature.href}
+                          className="underline decoration-white/15 underline-offset-4 transition-colors hover:text-white hover:decoration-cyan-300/60"
+                        >
+                          {feature.label}
+                        </Link>
+                      ) : (
+                        <span>{feature.label}</span>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -260,7 +269,8 @@ export function PricingPageClient() {
             Start with the evidence
           </p>
           <p className="mx-auto mt-3 max-w-xl text-base leading-7 text-white/65">
-            Connect your PSA and see what&apos;s in your client base before you commit.
+            Connect your PSA read-only. See your Revenue at Risk and replay the clients you lost in the
+            last 12 months before you pay anything.
           </p>
           <Link
             href="/onboarding/connect"

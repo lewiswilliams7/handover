@@ -35,7 +35,7 @@ export function MarketingFooter() {
               <span className="text-[18px] font-bold text-white">Handover</span>
             </Link>
             <p className="mt-2 text-sm leading-relaxed text-[var(--sidebar-text)]">
-              Know which clients need your attention, and why.
+              See which clients are slipping, and what they&apos;re worth.
             </p>
             <a
               href="mailto:hello@gethandover.uk"
@@ -53,6 +53,16 @@ export function MarketingFooter() {
               <li>
                 <Link href="/blog" className={linkClass}>
                   Blog
+                </Link>
+              </li>
+              <li>
+                <Link href="/features/revenue-at-risk" className={linkClass}>
+                  Revenue at Risk™
+                </Link>
+              </li>
+              <li>
+                <Link href="/features/churn-replay" className={linkClass}>
+                  Churn Replay™
                 </Link>
               </li>
               <li>

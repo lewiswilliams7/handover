@@ -186,6 +186,18 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.95,
     },
     {
+      url: "https://gethandover.uk/features/revenue-at-risk",
+      lastModified: new Date(),
+      changeFrequency: "weekly" as const,
+      priority: 0.9,
+    },
+    {
+      url: "https://gethandover.uk/features/churn-replay",
+      lastModified: new Date(),
+      changeFrequency: "weekly" as const,
+      priority: 0.9,
+    },
+    {
       url: "https://gethandover.uk/features/client-intelligence",
       lastModified: new Date(),
       changeFrequency: "weekly" as const,

@@ -18,9 +18,9 @@ const siteUrl = siteUrlRaw.replace(/\/$/, "");
 
 /** ≤155 chars for Google SERP; synced across meta, Open Graph, and Twitter. */
 const META_DESCRIPTION =
-  "Handover connects to HaloPSA or ConnectWise and surfaces the client accounts where commercial, service or relationship behaviour has materially changed. Built for MSPs.";
+  "Handover connects to HaloPSA or ConnectWise, puts a pound value on every client whose service or relationship has changed, and replays the clients you have lost to show it would have warned you. Built for MSPs.";
 
-const META_TITLE = "Handover - Know Which Clients Need Your Attention";
+const META_TITLE = "Handover - See Which Clients Are Slipping, in Pounds";
 
 export const metadata: Metadata = {
   title: META_TITLE,
@@ -56,15 +56,15 @@ export const metadata: Metadata = {
   keywords: [
     "MSP",
     "managed service provider",
-    "project management",
+    "MSP client retention",
+    "MSP churn",
+    "revenue at risk",
+    "client health",
     "service delivery",
-    "IT project manager",
-    "client email",
-    "status report",
-    "action log",
     "HaloPSA",
-    "MSP tools",
-    "delivery management",
+    "ConnectWise Manage",
+    "QBR",
+    "service review",
   ],
 };
 

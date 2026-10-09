@@ -4,17 +4,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
-  Activity,
   BarChart3,
   Brain,
   CalendarClock,
   ChevronDown,
   ClipboardCheck,
-  ClipboardList,
   Menu,
   Moon,
+  PoundSterling,
   Presentation,
   RefreshCw,
+  Rewind,
   Settings,
   Sun,
   X,
@@ -44,27 +44,27 @@ type MegaNavItem = {
 
 const CLIENT_INTELLIGENCE_NAV: MegaNavItem[] = [
   {
-    label: "Client intelligence",
+    label: "Revenue at Risk™",
+    href: "/features/revenue-at-risk",
+    description: "Every client that has changed, ranked by the revenue it holds.",
+    Icon: PoundSterling,
+  },
+  {
+    label: "Churn Replay™",
+    href: "/features/churn-replay",
+    description: "See whether Handover would have warned you about clients you lost.",
+    Icon: Rewind,
+  },
+  {
+    label: "Client Intelligence™",
     href: "/features/client-intelligence",
-    description: "Account health and attention signals across your portfolio.",
+    description: "The signals behind every flag, against each client's own history.",
     Icon: Brain,
   },
   {
-    label: "Know which clients need attention",
-    href: "/features/health-dashboard",
-    description: "Delivery health dashboard and proactive risk flagging.",
-    Icon: Activity,
-  },
-  {
-    label: "Account memory",
-    href: "/solutions/client-intelligence",
-    description: "Structured history from every report and client touchpoint.",
-    Icon: ClipboardList,
-  },
-  {
-    label: "Client retention",
+    label: "For MSP owners",
     href: "/solutions/msp-directors",
-    description: "Prove value, retain clients, and scale reporting.",
+    description: "Protect recurring revenue and prove value at renewal.",
     Icon: BarChart3,
   },
 ];
@@ -405,7 +405,7 @@ export function Nav() {
                       <div className="grid grid-cols-2 gap-x-3">
                         <div>
                           <p className="px-2.5 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6B7280] dark:text-slate-400">
-                            Client intelligence
+                            Revenue protection
                           </p>
                           <div className="space-y-1">
                             {CLIENT_INTELLIGENCE_NAV.map((item) => (
@@ -415,7 +415,7 @@ export function Nav() {
                         </div>
                         <div>
                           <p className="px-2.5 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6B7280] dark:text-slate-400">
-                            Reporting
+                            Proof for clients
                           </p>
                           <div className="space-y-1">
                             {REPORTING_NAV.map((item) => (
@@ -513,7 +513,7 @@ export function Nav() {
                           <div className="space-y-3 border-t border-[var(--border)] px-3 pb-3 pt-2">
                             <div>
                               <p className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6B7280] dark:text-slate-400">
-                                Client intelligence
+                                Revenue protection
                               </p>
                               <div className="space-y-1">
                                 {CLIENT_INTELLIGENCE_NAV.map((item) => (
@@ -527,7 +527,7 @@ export function Nav() {
                             </div>
                             <div>
                               <p className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6B7280] dark:text-slate-400">
-                                Reporting
+                                Proof for clients
                               </p>
                               <div className="space-y-1">
                                 {REPORTING_NAV.map((item) => (

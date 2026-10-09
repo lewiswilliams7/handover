@@ -12866,7 +12866,7 @@ export default function Home() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.5, delay: 0.08, ease: [0.25, 0.46, 0.45, 0.94] }}
                   >
-                    Know which clients need your attention, and why.
+                    See which clients are slipping, and what they&apos;re worth.
                   </motion.h1>
 
                   <motion.p
@@ -12875,10 +12875,10 @@ export default function Home() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.5, delay: 0.16, ease: [0.25, 0.46, 0.45, 0.94] }}
                   >
-                    Handover connects to HaloPSA or ConnectWise and finds the
-                    client accounts where commercial, service or relationship
-                    behaviour has materially changed, with the evidence
-                    before your next conversation.
+                    Handover reads your HaloPSA or ConnectWise history, puts a
+                    pound value on every client whose service or relationship
+                    has changed, and replays the clients you have already lost
+                    to show it would have warned you.
                   </motion.p>
                   <motion.p
                     className="mt-1.5 text-[13px] leading-relaxed text-white/60 md:text-[15px] md:leading-normal"
@@ -12886,7 +12886,7 @@ export default function Home() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.5, delay: 0.2, ease: [0.25, 0.46, 0.45, 0.94] }}
                   >
-                    Run the free PSA scan first. Handover is £499/month or £4,990/year.
+                    The free scan includes your Revenue at Risk and a Churn Replay. Handover is £499/month or £4,990/year.
                   </motion.p>
 
                   <motion.div
@@ -12899,7 +12899,7 @@ export default function Home() {
                       href="/onboarding/connect"
                       className="bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] hover:from-[var(--accent-hover)] hover:to-[var(--accent)] text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-[color-mix(in_srgb,var(--accent)_25%,transparent)] hover:shadow-[color-mix(in_srgb,var(--accent)_35%,transparent)] transition-all duration-300 transform hover:scale-[1.02] inline-flex w-full items-center justify-center text-sm active:scale-[0.99] md:w-auto"
                     >
-                      See what&apos;s in your client base
+                      Run your free scan
                     </Link>
                     <Link
                       href="/demo"
@@ -13394,29 +13394,32 @@ export default function Home() {
               >
               <div className="mb-16 text-center">
                 <h2 className="text-3xl font-bold text-white sm:text-4xl">
-                  Three things happen when MSPs use Handover
+                  One loop, from the first warning to the renewal
                 </h2>
                 <p className="mx-auto mt-4 max-w-2xl text-[16px] text-[#94a3b8]">
-                  You know which clients need attention, you walk in with evidence, and reporting stays available when you&apos;re ready to act.
+                  Handover finds the clients that are drifting, proves it on your own history, puts your value in front of the people who renew, and counts what you keep.
                 </p>
               </div>
               <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
                 {(
                   [
                     {
-                      title: "Know who needs you this week.",
-                      body: "Handover connects to HaloPSA or ConnectWise and finds the accounts where commercial, service or relationship behaviour has materially changed, so your week starts with a clear attention list, not a blank inbox.",
-                      punchline: "Attention with a reason attached.",
+                      title: "Spot it, in pounds.",
+                      body: "Every client whose service or relationship has changed against its own history, ranked by the annual revenue it holds. Your week starts with who to call, not a blank inbox.",
+                      punchline: "Revenue at Risk™",
+                      href: "/features/revenue-at-risk",
                     },
                     {
-                      title: "Walk in with evidence, not a black-box score.",
-                      body: "Every flag comes with the signals behind it: what moved, against that client's own baseline. No opaque health score. Just the evidence you need before the next conversation.",
-                      punchline: "Evidence, not a black-box score.",
+                      title: "Prove it would have worked.",
+                      body: "Handover rewinds your PSA to before each client you lost and shows whether it would have warned you, and how early. You see it on your own data before you pay anything.",
+                      punchline: "Churn Replay™",
+                      href: "/features/churn-replay",
                     },
                     {
-                      title: "Keep the reporting you already trust.",
-                      body: "Client updates, QBR packs, and scheduled reviews stay in the product as the follow-through once you know who needs you, not as the only reason to open Handover.",
-                      punchline: "Intelligence first. Reporting when you're ready.",
+                      title: "Show your value, count what you keep.",
+                      body: "Service reviews, QBR packs and the client portal put your work in front of the people who renew. When a flagged client recovers, its value is added to your Saved Revenue.",
+                      punchline: "Saved Revenue",
+                      href: "/features/revenue-at-risk#saved-revenue",
                     },
                   ] as const
                 ).map((card, i) => (
@@ -13437,9 +13440,12 @@ export default function Home() {
                       </span>
                       <h3 className="mb-3 text-xl font-bold text-white">{card.title}</h3>
                       <p className="mb-5 text-[15px] leading-relaxed text-[#94a3b8]">{card.body}</p>
-                      <p className="text-cyan-300 text-sm font-semibold not-italic tracking-[-0.01em]">
+                      <Link
+                        href={card.href}
+                        className="text-cyan-300 text-sm font-semibold not-italic tracking-[-0.01em] underline decoration-cyan-300/30 underline-offset-4 transition-colors hover:text-cyan-200 hover:decoration-cyan-200/60"
+                      >
                         {card.punchline}
-                      </p>
+                      </Link>
                     </motion.div>
                   ))}
               </div>
@@ -13595,17 +13601,17 @@ export default function Home() {
                 }}
               >
                 <h2 className="text-xl font-semibold text-white md:text-[28px]">
-                  Know which clients need your attention.
+                  Find out which of last year&apos;s losses you could have kept.
                 </h2>
                 <p className="mt-3 text-sm leading-relaxed text-white/75 md:text-base">
-                  Connect HaloPSA or ConnectWise and see where commercial, service or relationship behaviour has materially changed, with the evidence.
+                  Connect HaloPSA or ConnectWise read-only. In about a minute you see your Revenue at Risk and a Churn Replay of the clients you lost, on your own data.
                 </p>
                 <div className="mt-8 flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
                   <Link
                     href="/onboarding/connect"
                     className="bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] hover:from-[var(--accent-hover)] hover:to-[var(--accent)] text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-[color-mix(in_srgb,var(--accent)_25%,transparent)] hover:shadow-[color-mix(in_srgb,var(--accent)_35%,transparent)] transition-all duration-300 transform hover:scale-[1.02] inline-flex w-full flex-1 items-center justify-center text-sm active:scale-[0.98] md:w-auto"
                   >
-                    See what&apos;s in your client base
+                    Run your free scan
                   </Link>
                   <Link
                     href="/pricing"
