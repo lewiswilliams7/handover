@@ -1573,7 +1573,7 @@ export async function exportFullReport(
   };
   try {
     if (!isProOrTeam(plan)) {
-      throw new Error("Pro plan required");
+      throw new Error("An active Handover plan is required");
     }
 
     const normalized = normalizeFullReportInputs(outputs);

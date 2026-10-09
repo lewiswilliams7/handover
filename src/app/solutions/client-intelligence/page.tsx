@@ -141,7 +141,7 @@ export default function ClientIntelligencePage() {
                     href="/onboarding/connect"
                     className="rounded-lg bg-[#38bdf8] px-5 py-2.5 text-[13px] font-semibold text-[#06091a] transition-all hover:scale-[1.02]"
                   >
-                    Run the free PSA scan →
+                    Run your free scan
                   </Link>
                   <Link
                     href="/pricing"
@@ -472,13 +472,13 @@ export default function ClientIntelligencePage() {
                   href="/onboarding/connect"
                   className="rounded-lg bg-[#38bdf8] px-6 py-3 text-[14px] font-semibold text-[#06091a] transition-all hover:scale-[1.02]"
                 >
-                  Run the free PSA scan →
+                  Run your free scan
                 </Link>
                 <Link
                   href="/pricing"
                   className="rounded-lg border border-white/[0.15] px-6 py-3 text-[14px] font-medium text-white/70 transition-all hover:border-white/30 hover:text-white"
                 >
-                  View Growth plan
+                  See pricing
                 </Link>
               </div>
             </ScrollRevealItem>

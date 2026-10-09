@@ -29,7 +29,7 @@ export const metadata: Metadata = {
 };
 
 const brightGaugeRows = [
-  { feature: "Pricing", handover: "From £49/mo (Starter)", competitor: "Typically higher per-seat dashboards" },
+  { feature: "Pricing", handover: "£499/mo or £4,990/year, everything included", competitor: "Typically higher per-seat dashboards" },
   { feature: "PSA integration", handover: "Native HaloPSA & ConnectWise", competitor: "Broad integrations; dashboard-first" },
   {
     feature: "Report generation",

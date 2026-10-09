@@ -52,7 +52,7 @@ export async function GET() {
     const msg = e instanceof Error ? e.message : "error";
     if (msg === "unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (msg === "growth_required" || msg === "enterprise_required") {
-      return NextResponse.json({ error: "Growth plan or above required." }, { status: 403 });
+      return NextResponse.json({ error: "An active Handover plan is required." }, { status: 403 });
     }
     console.error("[portal/clients GET]", e);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
@@ -133,7 +133,7 @@ export async function POST(request: Request) {
     const msg = e instanceof Error ? e.message : "error";
     if (msg === "unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (msg === "growth_required" || msg === "enterprise_required") {
-      return NextResponse.json({ error: "Growth plan or above required." }, { status: 403 });
+      return NextResponse.json({ error: "An active Handover plan is required." }, { status: 403 });
     }
     console.error("[portal/clients POST]", e);
     return NextResponse.json({ error: "Server error" }, { status: 500 });

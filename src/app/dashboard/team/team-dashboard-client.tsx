@@ -1294,7 +1294,7 @@ export function TeamDashboardClient() {
                   href="/pricing?tab=team"
                   className="mt-3 inline-flex text-sm font-semibold text-[var(--accent)] underline-offset-4 hover:underline"
                 >
-                  View Growth plan & upgrade →
+                  See Handover pricing
                 </Link>
               </div>
             )}

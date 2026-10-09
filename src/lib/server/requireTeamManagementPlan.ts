@@ -17,7 +17,7 @@ export async function requireTeamManagementPlanTier(
     return NextResponse.json(
       {
         error: "team_plan_required",
-        message: "This action requires a Growth plan or higher.",
+        message: "This action needs an active Handover plan.",
       },
       { status: 403 },
     );

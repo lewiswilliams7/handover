@@ -212,7 +212,7 @@ export async function PUT(req: Request) {
       return NextResponse.json(
         {
           error: "upgrade_required",
-          message: "Scheduled reports require an active Starter plan or higher.",
+          message: "Scheduled reports need an active Handover plan.",
         },
         { status: 403 },
       );

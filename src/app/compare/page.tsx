@@ -24,7 +24,8 @@ const manualRows: [string, string, string][] = [
   ["Excel report pack", "Hours to build", "Generated automatically"],
   ["Risk flagging", "Easy to miss", "Surfaced automatically"],
   ["Audit trail", "Lives in sent emails", "Complete ticket history"],
-  ["Cost per week (at £50/hr)", "£50-100", "£5.75 (Pro plan, annual)"],
+  ["Clients at risk", "Found after they complain", "Ranked by revenue every week"],
+  ["Cost", "£50-100 a week in staff time (at £50/hr)", "£499 a month, everything included"],
 ];
 
 const aiRows: [string, string, string][] = [
@@ -168,9 +169,12 @@ export default function ComparePage() {
                 <span className="font-bold text-red-600 dark:text-red-400">£13,000</span> in PM time.
               </p>
               <p className="mt-6 text-[15px] text-[var(--text-secondary)] md:text-lg">
-                Handover Pro ≈ <span className="font-semibold text-[var(--accent)]">£300/year</span>
+                Handover annual ≈ <span className="font-semibold text-[var(--accent)]">£4,990/year</span>
                 <span className="mx-2 text-[var(--text-muted)]">→</span>
-                <span className="font-bold text-emerald-600 dark:text-emerald-400">Saving ≈ £12,700</span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400">Saving ≈ £8,010</span>
+                <span className="mt-2 block text-[13px] text-[var(--text-muted)] md:text-[14px]">
+                  Before counting a single client kept with Revenue at Risk.
+                </span>
               </p>
             </div>
           </ScrollRevealItem>

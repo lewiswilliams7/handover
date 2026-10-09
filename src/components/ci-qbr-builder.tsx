@@ -227,7 +227,7 @@ export function CiQbrBuilder({
       <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
         <Brain className="size-10 text-[var(--accent)] opacity-40" />
         <p className="max-w-xs text-[13px] text-[var(--text-muted)]">
-          Intelligence-powered QBR packs require a Starter plan or above.
+          Intelligence-powered QBR packs need an active Handover plan.
         </p>
         <button
           type="button"

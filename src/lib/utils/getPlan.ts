@@ -368,7 +368,7 @@ export function isTeamPlan(plan: string): boolean {
 
 /** Shown when solo Professional SKUs attempt to invite colleagues. */
 export const TEAM_MEMBER_INVITES_BLOCKED_MESSAGE =
-  "Team members are available on the Growth plan and above. Upgrade to add your team.";
+  "Team members are included with an active Handover plan. Upgrade to add your team.";
 
 /**
  * True when the user's profile is a Professional solo SKU (paid, legacy column trial, or in-app

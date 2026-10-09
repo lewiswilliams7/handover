@@ -16912,7 +16912,7 @@ export default function Home() {
                 {showProTeamRecommendation ? (
                   <div className="flex flex-col gap-2 rounded-[var(--radius)] border border-amber-500/35 bg-amber-500/10 px-3 py-2.5 text-[13px] text-amber-100 sm:flex-row sm:items-center sm:justify-between">
                     <p>
-                      Based on your usage, Growth plan would save you hitting limits.
+                      You're close to your monthly limit. Handover removes it.
                     </p>
                     <Button
                       type="button"
@@ -16924,7 +16924,7 @@ export default function Home() {
                         void startCheckout(STRIPE_PRO_MONTHLY_PRICE_ID);
                       }}
                     >
-                      See Growth plan →
+                      See Handover
                     </Button>
                   </div>
                 ) : null}

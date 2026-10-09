@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 export const metadata: Metadata = {
   title: "Product Roadmap | Handover",
   description:
-    "See what's coming to Handover - new PSA integrations, report types, and delivery features.",
+    "What Handover has shipped, what we are building now and what comes next, for protecting MSP recurring revenue and proving value.",
   alternates: {
     canonical: "https://gethandover.uk/roadmap",
   },
@@ -22,38 +22,81 @@ const cannyUrl = "https://handover.canny.io";
 type RoadmapItem = {
   title: string;
   desc: string;
-  badge: "Integration" | "Core" | "Pro" | "Export";
+  badge: "Protect" | "Prove" | "Integration";
 };
 
 const shipped: RoadmapItem[] = [
-  { title: "HaloPSA integration", desc: "Connect and import tickets in one click.", badge: "Integration" },
-  { title: "Excel export pack", desc: "Full report workbook export for Pro.", badge: "Export" },
-  { title: "Custom writing style", desc: "Match your preferred email/report style.", badge: "Pro" },
-  { title: "Email client integration", desc: "Open ready-to-send outputs quickly.", badge: "Core" },
-  { title: "Configurable export columns", desc: "Choose what appears in CSV/Excel exports.", badge: "Export" },
   {
-    title: "Scheduled weekly reports",
-    desc: "Set your schedule and clients; reports generate, email, and push to HaloPSA automatically.",
-    badge: "Core",
+    title: "Revenue at Risk™",
+    desc: "Every client whose service or relationship has changed, ranked by the annual revenue it holds.",
+    badge: "Protect",
   },
   {
-    title: "Push outputs back to HaloPSA",
-    desc: "Post generated handover content to tickets and projects as notes - no copy-paste.",
-    badge: "Pro",
+    title: "Churn Replay™",
+    desc: "Rewinds your PSA to before each lost client and shows whether Handover would have warned you.",
+    badge: "Protect",
+  },
+  {
+    title: "Save Plays™",
+    desc: "The steps to take on every flag, with an email to the client's decision-maker ready to send.",
+    badge: "Protect",
+  },
+  {
+    title: "Saved Revenue",
+    desc: "Counts the annual value of clients that recovered after someone acted on a flag.",
+    badge: "Protect",
+  },
+  {
+    title: "Service reviews and QBR packs",
+    desc: "Branded packs from live PSA data, exported to PowerPoint, PDF or Excel.",
+    badge: "Prove",
+  },
+  {
+    title: "Scheduled reports with approvals",
+    desc: "Reports run on schedule, with an optional sign-off before anything is sent.",
+    badge: "Prove",
+  },
+  {
+    title: "White-labelled client portal",
+    desc: "Each client gets their own branded view of service, tickets and reports.",
+    badge: "Prove",
+  },
+  {
+    title: "HaloPSA and ConnectWise Manage",
+    desc: "Native, read-only connections, listed on both marketplaces.",
+    badge: "Integration",
   },
 ];
 
 const inProgress: RoadmapItem[] = [
-  { title: "ConnectWise integration", desc: "Native import from ConnectWise Manage.", badge: "Integration" },
-  { title: "Growth plans", desc: "Shared workspaces and admin controls.", badge: "Pro" },
-  { title: "NPS and feedback system", desc: "Lightweight in-app feedback loop.", badge: "Core" },
+  {
+    title: "Value Receipts",
+    desc: "A one-page monthly summary for each client's decision-maker: what we did, what we prevented, what it was worth.",
+    badge: "Prove",
+  },
+  {
+    title: "Client Margin",
+    desc: "Hours delivered against contract value for every client, so you can see who to protect and who to reprice.",
+    badge: "Protect",
+  },
 ];
 
 const comingSoon: RoadmapItem[] = [
-  { title: "Autotask integration", desc: "Native import from Autotask PSA.", badge: "Integration" },
-  { title: "Client portal", desc: "Share updates securely with clients.", badge: "Pro" },
-  { title: "Mobile app", desc: "Quick capture and generation on the go.", badge: "Core" },
-  { title: "QBR generator", desc: "Quarterly business review packs in minutes.", badge: "Pro" },
+  {
+    title: "Autotask PSA",
+    desc: "The same read-only connection for MSPs on Autotask.",
+    badge: "Integration",
+  },
+  {
+    title: "Microsoft 365 signals",
+    desc: "Changes in who you talk to at a client, and how quickly they reply, as early warning signs.",
+    badge: "Protect",
+  },
+  {
+    title: "Benchmarks",
+    desc: "See how a client compares with similar clients across other MSPs, anonymised.",
+    badge: "Protect",
+  },
 ];
 
 function Badge({ label }: { label: RoadmapItem["badge"] }) {
@@ -178,7 +221,7 @@ export default function RoadmapPage() {
               rel="noopener noreferrer"
               className="mt-4 inline-block text-[15px] font-medium text-[var(--accent)] underline-offset-4 hover:underline"
             >
-              Vote on features →
+              Vote on features
             </Link>
           </div>
         </div>
@@ -197,15 +240,12 @@ export default function RoadmapPage() {
             variant="shipped"
             legend={
               <>
-                <span className="font-semibold text-[var(--text-primary)]">Badge legend: </span>
+                <span className="font-medium text-[var(--text-primary)]">Protect</span>
+                {": find and keep the clients at risk. "}
+                <span className="font-medium text-[var(--text-primary)]">Prove</span>
+                {": show your value to the people who renew. "}
                 <span className="font-medium text-[var(--text-primary)]">Integration</span>
-                {" = PSA/tool integration feature · "}
-                <span className="font-medium text-[var(--text-primary)]">Export</span>
-                {" = report or file export feature · "}
-                <span className="font-medium text-[var(--text-primary)]">Pro</span>
-                {" = Pro plan feature · "}
-                <span className="font-medium text-[var(--text-primary)]">Core</span>
-                {" = available on all plans."}
+                {": connections to your PSA and other tools. Every feature is included in the one Handover plan."}
               </>
             }
           />
@@ -233,7 +273,7 @@ export default function RoadmapPage() {
         <div className="mx-auto w-full max-w-[1100px]">
         <ScrollRevealItem index={0} className="block">
         <div className="flex flex-col items-center gap-3 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-primary)] px-6 py-8">
-          <p className="text-[15px] text-[var(--text-secondary)]">Have an idea that would save you time?</p>
+          <p className="text-[15px] text-[var(--text-secondary)]">Is there something that would help you keep more clients?</p>
           <a href={cannyUrl} target="_blank" rel="noopener noreferrer">
             <Button className="rounded-[var(--radius)] bg-[var(--accent)] px-5 text-white hover:bg-[var(--accent-hover)]">
               Suggest a feature
