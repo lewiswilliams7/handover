@@ -499,6 +499,7 @@ import { FirstRunOnboardingOverlay } from "@/components/first-run-onboarding";
 import { ChatsModal } from "@/components/chats-modal";
 import { FirstGenerationCelebrationModal } from "@/components/first-generation-celebration-modal";
 import { SendClientEmailModal } from "@/components/send-client-email-modal";
+import { HandoverLoopDiagram } from "@/components/marketing/handover-loop-diagram";
 import { SmartActionsPanel } from "@/components/smart-actions-panel";
 import {
   GettingStartedChecklistWidget,
@@ -13389,55 +13390,7 @@ export default function Home() {
                   Handover finds the clients that are drifting, proves it on your own history, puts your value in front of the people who renew, and counts what you keep.
                 </p>
               </div>
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-                {(
-                  [
-                    {
-                      title: "Spot it, in pounds.",
-                      body: "Every client whose service or relationship has changed against its own history, ranked by the annual revenue it holds. Your week starts with who to call, not a blank inbox.",
-                      punchline: "Revenue at Risk™",
-                      href: "/features/revenue-at-risk",
-                    },
-                    {
-                      title: "Prove it would have worked.",
-                      body: "Handover rewinds your PSA to before each client you lost and shows whether it would have warned you, and how early. You see it on your own data before you pay anything.",
-                      punchline: "Churn Replay™",
-                      href: "/features/churn-replay",
-                    },
-                    {
-                      title: "Show your value, count what you keep.",
-                      body: "Service reviews, QBR packs and the client portal put your work in front of the people who renew. When a flagged client recovers, its value is added to your Saved Revenue.",
-                      punchline: "Saved Revenue",
-                      href: "/features/revenue-at-risk#saved-revenue",
-                    },
-                  ] as const
-                ).map((card, i) => (
-                    <motion.div
-                      key={card.title}
-                      initial={{ opacity: 0, y: 20 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ duration: 0.5, delay: i * 0.1 }}
-                      whileHover={{ y: -6 }}
-                      className={cn(
-                        "group min-w-0 w-full rounded-2xl border border-white/[0.08] border-t border-t-[color-mix(in_srgb,var(--accent)_30%,transparent)] bg-white/[0.04] p-8 backdrop-blur-sm transition-all duration-300 hover:border-[color-mix(in_srgb,var(--accent)_20%,transparent)] hover:bg-white/[0.08] hover:shadow-[0_0_40px_-8px_color-mix(in_srgb,var(--accent)_18%,transparent)]",
-                        i === 1 && "bg-[rgba(56,189,248,0.03)] border-[rgba(56,189,248,0.15)]",
-                      )}
-                    >
-                      <span className="text-[56px] font-bold leading-none text-white/[0.08] tabular-nums select-none">
-                        {String(i + 1).padStart(2, "0")}
-                      </span>
-                      <h3 className="mb-3 text-xl font-bold text-white">{card.title}</h3>
-                      <p className="mb-5 text-[15px] leading-relaxed text-[#94a3b8]">{card.body}</p>
-                      <Link
-                        href={card.href}
-                        className="text-cyan-300 text-sm font-semibold not-italic tracking-[-0.01em] underline decoration-cyan-300/30 underline-offset-4 transition-colors hover:text-cyan-200 hover:decoration-cyan-200/60"
-                      >
-                        {card.punchline}
-                      </Link>
-                    </motion.div>
-                  ))}
-              </div>
+              <HandoverLoopDiagram />
               </motion.section>
             </section>
 
