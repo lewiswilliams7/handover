@@ -4,10 +4,8 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   BarChart3,
-  Bell,
   Building2,
   Calendar,
-  ChevronDown,
   ClipboardCheck,
   CreditCard,
   Gift,
@@ -18,6 +16,8 @@ import {
   Palette,
   Pin,
   PinOff,
+  PoundSterling,
+  Rewind,
   Settings,
   Shield,
   Sliders,
@@ -635,14 +635,14 @@ export function useAppShell(): AppShellContextValue {
 
 const titles: Record<string, string> = {
   overview: "Overview",
-  generate: "Generate",
+  generate: "Quick update",
   reports: "Reports",
   delivery: "Delivery Health",
   scheduled: "Scheduled",
   configuration: "Configuration",
-  organisation: "Organisation",
+  organisation: "Client portal",
   changelog: "What's new",
-  "client-intelligence": "Client Intelligence",
+  "client-intelligence": "Clients",
   approvals: "Approvals",
 };
 
@@ -663,15 +663,6 @@ function AppShellContent({ children }: { children: ReactNode }) {
     theme, setTheme, settings, settingsBodyContainer, setSettingsBodyContainer, invokeOnSignOut, signOutRegistered,
   } = useAppShell();
   const [confirmSignOut, setConfirmSignOut] = useState(false);
-  const [reportingExpanded, setReportingExpanded] = useState(() => {
-    if (typeof window === "undefined") return true;
-    try {
-      const stored = window.localStorage.getItem("handover-reporting-nav-expanded");
-      return stored == null ? true : stored === "true";
-    } catch {
-      return true;
-    }
-  });
   const [activeView, setActiveView] = useState<MainView>(() => {
     if (typeof window === "undefined") return "overview";
     const value = new URLSearchParams(window.location.search).get("view");
@@ -722,12 +713,30 @@ function AppShellContent({ children }: { children: ReactNode }) {
   ].join(" ");
   const labelClass = `overflow-hidden whitespace-nowrap transition-opacity duration-150 ${expanded ? "md:w-auto md:opacity-100" : "md:w-0 md:opacity-0"}`;
   const showSidebar = Boolean(userEmail);
+  const attentionTab = pathname === "/attention" ? params.get("tab") : null;
   const pageTitle =
     settings.open
       ? "Settings"
       : pathname === "/attention" || pathname === "/attention-placeholder"
-        ? "Attention"
+        ? attentionTab === "replay"
+          ? "Churn Replay"
+          : attentionTab === "history"
+            ? "History"
+            : "Revenue at Risk"
         : titles[activeView] ?? "Handover";
+  const attentionNavClass = (tab: "risk" | "replay") => {
+    const onTab =
+      pathname === "/attention" &&
+      (tab === "replay" ? attentionTab === "replay" : attentionTab !== "replay");
+    return [
+      "relative flex h-8 w-full items-center rounded-[var(--radius)] border-l-2 text-[12px] transition-all duration-[120ms]",
+      expanded ? "gap-1.5 px-2.5" : "justify-center px-0",
+      onTab && !settings.open
+        ? "border-[var(--accent)] bg-[var(--accent)]/15 font-medium text-white"
+        : "border-transparent text-[var(--text-secondary)] hover:bg-white/5 hover:text-white",
+    ].join(" ");
+  };
+  const sectionLabelClass = `mt-4 mb-1 px-3 text-[9.5px] font-medium uppercase tracking-[0.16em] text-white/30 ${!expanded ? "md:hidden" : ""}`;
   const contentOffsetClass =
     pathname === "/"
       ? ""
@@ -739,21 +748,6 @@ function AppShellContent({ children }: { children: ReactNode }) {
     trial_plan: profileTrialPlan,
   });
   const closeMobile = () => setSidebarOpenMobile(false);
-  const toggleReporting = () => {
-    setReportingExpanded((current) => {
-      const next = !current;
-      try {
-        window.localStorage.setItem(
-          "handover-reporting-nav-expanded",
-          next ? "true" : "false",
-        );
-      } catch {
-        // Ignore unavailable local storage.
-      }
-      return next;
-    });
-  };
-
   useEffect(() => {
     if (!settings.open) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -779,25 +773,21 @@ function AppShellContent({ children }: { children: ReactNode }) {
           <div className="sidebar-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 md:overscroll-auto">
             <nav className="mb-4 flex flex-col gap-2" aria-label="Main navigation">
               <div className="space-y-0.5">
-                <Link href="/attention" onClick={closeMobile} className={`relative flex h-8 w-full items-center rounded-[var(--radius)] border-l-2 text-[12px] transition-all duration-[120ms] ${expanded ? "gap-1.5 px-2.5" : "justify-center px-0"} ${pathname === "/attention" && !settings.open ? "border-[var(--accent)] bg-[var(--accent)]/15 font-medium text-white" : "border-transparent text-[var(--text-secondary)] hover:bg-white/5 hover:text-white"}`}><Bell className="size-[14px]" /><span className={labelClass}>Attention</span></Link>
-                <button type="button" onClick={toggleReporting} aria-expanded={reportingExpanded} className={`flex h-8 w-full items-center rounded-[var(--radius)] border-l-2 text-left text-[12px] transition-all duration-[120ms] ${expanded ? "gap-1.5 px-2.5" : "justify-center px-0"} border-transparent text-[var(--text-secondary)] hover:bg-white/5 hover:text-white`}>
-                  <LayoutTemplate className="size-[14px]" />
-                  <span className={labelClass}>Reporting</span>
-                  {expanded ? <ChevronDown className={`ml-auto size-3.5 transition-transform ${reportingExpanded ? "rotate-180" : ""}`} /> : null}
-                </button>
-                {reportingExpanded ? (
-                  <div className="mt-1 space-y-0.5 border-l border-white/10 pl-2">
-                    <Link href="/?view=generate" onClick={closeMobile} className={navClass("generate")}><Zap className="size-[14px]" /><span className={labelClass}>Generate</span></Link>
-                    <Link href="/?view=reports" onClick={closeMobile} className={navClass("reports")}><LayoutTemplate className="size-[14px]" /><span className={labelClass}>Reports</span></Link>
-                    <Link href="/?view=scheduled" onClick={closeMobile} className={navClass("scheduled")}><Calendar className="size-[14px]" /><span className={labelClass}>Scheduled</span></Link>
-                    <Link href="/?view=approvals" onClick={closeMobile} className={navClass("approvals")}><ClipboardCheck className="size-[14px]" /><span className={labelClass}>Approvals</span></Link>
-                  </div>
-                ) : null}
-                <Link href="/?view=client-intelligence" onClick={closeMobile} className={navClass("client-intelligence")}><Users className="size-[14px]" /><span className={labelClass}>Clients</span></Link>
-                {entitlement.hasProAccess && teamVisibility.deliveryAccess !== "none" ? <Link href="/?view=delivery" onClick={closeMobile} className={navClass("delivery")}><BarChart3 className="size-[14px]" /><span className={labelClass}>Delivery health</span></Link> : null}
-                {entitlement.hasProAccess ? <Link href="/?view=organisation" onClick={closeMobile} className={navClass("organisation")}><Building2 className="size-[14px]" /><span className={labelClass}>Portal</span></Link> : null}
+                <div className={sectionLabelClass.replace("mt-4 ", "mt-1 ")}>Protect</div>
+                <Link href="/attention" data-tour="nav-revenue-at-risk" onClick={closeMobile} className={attentionNavClass("risk")} title="Revenue at Risk"><PoundSterling className="size-[14px]" /><span className={labelClass}>Revenue at Risk</span></Link>
+                <Link href="/attention?tab=replay" data-tour="nav-churn-replay" onClick={closeMobile} className={attentionNavClass("replay")} title="Churn Replay"><Rewind className="size-[14px]" /><span className={labelClass}>Churn Replay</span></Link>
+                <Link href="/?view=client-intelligence" data-tour="nav-client-intelligence" onClick={closeMobile} className={navClass("client-intelligence")} title="Clients"><Users className="size-[14px]" /><span className={labelClass}>Clients</span></Link>
+                {entitlement.hasProAccess && teamVisibility.deliveryAccess !== "none" ? <Link href="/?view=delivery" onClick={closeMobile} className={navClass("delivery")} title="Delivery health"><BarChart3 className="size-[14px]" /><span className={labelClass}>Delivery health</span></Link> : null}
               </div>
-              <div><div className={`mt-4 mb-1 px-3 text-[9.5px] font-medium uppercase tracking-[0.16em] text-white/30 ${!expanded ? "md:hidden" : ""}`}>SETTINGS</div>
+              <div className="space-y-0.5">
+                <div className={sectionLabelClass}>Prove</div>
+                <Link href="/?view=reports" onClick={closeMobile} className={navClass("reports")} title="Reports"><LayoutTemplate className="size-[14px]" /><span className={labelClass}>Reports</span></Link>
+                <Link href="/?view=scheduled" data-tour="nav-scheduled" onClick={closeMobile} className={navClass("scheduled")} title="Scheduled"><Calendar className="size-[14px]" /><span className={labelClass}>Scheduled</span></Link>
+                <Link href="/?view=approvals" onClick={closeMobile} className={navClass("approvals")} title="Approvals"><ClipboardCheck className="size-[14px]" /><span className={labelClass}>Approvals</span></Link>
+                {entitlement.hasProAccess ? <Link href="/?view=organisation" onClick={closeMobile} className={navClass("organisation")} title="Client portal"><Building2 className="size-[14px]" /><span className={labelClass}>Client portal</span></Link> : null}
+                <Link href="/?view=generate" onClick={closeMobile} className={navClass("generate")} title="Quick update"><Zap className="size-[14px]" /><span className={labelClass}>Quick update</span></Link>
+              </div>
+              <div><div className={sectionLabelClass}>Settings</div>
                 <Link href="/?view=configuration" onClick={closeMobile} className={navClass("configuration")}><Settings className="size-[14px]" /><span className={labelClass}>Configuration</span></Link>
               </div>
             </nav>

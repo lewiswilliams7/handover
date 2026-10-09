@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { ChurnReplayPanel } from "@/components/churn-replay-panel";
 import { computeRevenueAtRisk } from "@/lib/revenue/revenue-signals";
@@ -65,6 +66,11 @@ type RefreshState = {
 };
 
 type Filter = "all" | "needs_attention" | "opportunities";
+type AttentionTab = "attention" | "history" | "replay";
+
+function tabFromParam(value: string | null): AttentionTab {
+  return value === "history" || value === "replay" ? value : "attention";
+}
 type HistoryStatus = "all" | "actioned" | "open" | "resolved";
 
 type HistorySummary = {
@@ -264,7 +270,27 @@ export function AttentionClient({
   const [expandedFinding, setExpandedFinding] = useState<string | null>(null);
   const [dismissedFindings, setDismissedFindings] = useState<Set<string>>(new Set());
   const [dismissalError, setDismissalError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"attention" | "history" | "replay">("attention");
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const tabFromUrl = tabFromParam(searchParams.get("tab"));
+  const [activeTab, setActiveTabState] = useState<AttentionTab>(tabFromUrl);
+  // The sidebar links to /attention?tab=replay while this page is mounted, so
+  // follow the URL as well as local clicks.
+  useEffect(() => {
+    setActiveTabState(tabFromUrl);
+  }, [tabFromUrl]);
+  const setActiveTab = useCallback(
+    (tab: AttentionTab) => {
+      setActiveTabState(tab);
+      const next = new URLSearchParams(searchParams.toString());
+      if (tab === "attention") next.delete("tab");
+      else next.set("tab", tab);
+      const query = next.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
   const [historyStatus, setHistoryStatus] = useState<HistoryStatus>("all");
   const [historyClientId, setHistoryClientId] = useState("all");
   const [historyRows, setHistoryRows] = useState<ScanFindingLedgerRow[]>([]);
@@ -570,10 +596,12 @@ export function AttentionClient({
         <header className="flex flex-wrap items-start justify-between gap-5">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
-              Attention
+              {activeTab === "replay" ? "Churn Replay" : activeTab === "history" ? "History" : "Revenue at Risk"}
             </p>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
-              {comparison
+              {activeTab === "replay"
+                ? "The clients you lost, replayed"
+                : comparison
                 ? "What changed since your last scan"
                 : results
                 ? clientsWithFindings > 0
@@ -598,7 +626,7 @@ export function AttentionClient({
           </button>
         </header>
 
-        <div className="mt-6 flex gap-1 border-b border-white/10" role="tablist" aria-label="Attention views">
+        <div className="mt-6 flex gap-1 overflow-x-auto border-b border-white/10" role="tablist" aria-label="Revenue at Risk views">
           <button
             type="button"
             role="tab"
@@ -610,7 +638,7 @@ export function AttentionClient({
                 : "border-transparent text-[var(--text-secondary)] hover:text-white"
             }`}
           >
-            <CircleHelp className="size-4" /> Attention
+            <CircleHelp className="size-4" /> This week
           </button>
           <button
             type="button"
@@ -726,7 +754,7 @@ export function AttentionClient({
           <section className="mt-10 rounded-2xl border border-white/10 bg-white/[0.03] p-8">
             <h2 className="text-xl font-semibold">No completed scan is saved yet.</h2>
             <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--text-secondary)]">
-              Run a scan with your stored PSA connection to populate Attention. The scan will not run automatically when this page loads.
+              Refresh to scan your saved PSA connection. Your Revenue at Risk and Churn Replay appear here once it finishes.
             </p>
           </section>
         ) : null}
