@@ -717,7 +717,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const pageTitle =
     settings.open
       ? "Settings"
-      : pathname === "/attention" || pathname === "/attention-placeholder"
+      : pathname === "/attention"
         ? attentionTab === "replay"
           ? "Churn Replay"
           : attentionTab === "history"

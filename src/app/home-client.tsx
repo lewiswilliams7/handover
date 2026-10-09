@@ -12859,7 +12859,7 @@ export default function Home() {
               </div>
               <div className="relative z-10 grid w-full min-h-0 flex-1 grid-cols-1 gap-6 overflow-visible lg:overflow-hidden px-4 pt-2 pb-3 md:px-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:items-center lg:gap-6 lg:px-8 lg:pb-4">
                 <div className="flex min-w-0 flex-col justify-center overflow-x-hidden overflow-y-visible pr-0 md:pr-8">
-                  <div className="max-w-full md:max-w-[520px]">
+                  <div className="max-w-full md:max-w-[600px]">
                   <motion.h1
                     className="mt-3 text-2xl font-semibold leading-[0.95] tracking-tight text-white sm:text-3xl md:text-5xl lg:text-6xl"
                     initial={{ opacity: 0, y: 20 }}
@@ -12876,9 +12876,9 @@ export default function Home() {
                     transition={{ duration: 0.5, delay: 0.16, ease: [0.25, 0.46, 0.45, 0.94] }}
                   >
                     Handover reads your HaloPSA or ConnectWise history, puts a
-                    pound value on every client whose service or relationship
-                    has changed, and replays the clients you have already lost
-                    to show it would have warned you.
+                    pound value on every client that has changed, tells you what
+                    to do about it, and proves it on the clients you have
+                    already lost.
                   </motion.p>
                   <motion.p
                     className="mt-1.5 text-[13px] leading-relaxed text-white/60 md:text-[15px] md:leading-normal"
@@ -12886,7 +12886,7 @@ export default function Home() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.5, delay: 0.2, ease: [0.25, 0.46, 0.45, 0.94] }}
                   >
-                    The free scan includes your Revenue at Risk and a Churn Replay. Handover is £499/month or £4,990/year.
+                    Free scan, read-only, about a minute. Then £499 a month or £4,990 a year, everything included.
                   </motion.p>
 
                   <motion.div
