@@ -333,13 +333,6 @@ export function PricingPageClient() {
                 ConnectWise Marketplace
               </span>
             </a>
-            <span className="hidden text-white/15 sm:block">·</span>
-            <Link
-              href="/blog/pitchit-2026-handover-msp-accelerator"
-              className="text-[11px] font-medium uppercase tracking-wide text-white/40 transition-colors hover:text-white/60"
-            >
-              PitchIT 2026
-            </Link>
           </div>
         </section>
       </div>

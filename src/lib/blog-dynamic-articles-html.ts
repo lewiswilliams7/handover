@@ -5,8 +5,6 @@ import { HOW_MSPS_LOSE_CLIENTS_COMMUNICATION_HTML } from "@/lib/blog-articles/ho
 import { HOW_TO_WRITE_MSP_WEEKLY_CLIENT_REPORT_HTML } from "@/lib/blog-articles/how-to-write-msp-weekly-client-report-html";
 import { MSP_CLIENT_PORTAL_GUIDE_HTML } from "@/lib/blog-articles/msp-client-portal-guide-html";
 import { MSP_QBR_AUTOMATION_HTML } from "@/lib/blog-articles/msp-qbr-automation-html";
-import { PITCHIT_2026_BUILDING_MSP_SAAS_HTML } from "@/lib/blog-articles/pitchit-2026-building-msp-saas-html";
-import { PITCHIT_2026_HANDOVER_MSP_ACCELERATOR_HTML } from "@/lib/blog-articles/pitchit-2026-handover-msp-accelerator-html";
 import { WHAT_MSPS_TOLD_US_ABOUT_CLIENT_REPORTING_HTML } from "@/lib/blog-articles/what-msps-told-us-about-client-reporting-html";
 import { WHAT_SHOULD_A_QBR_INCLUDE_MSP_TEMPLATE_HTML } from "@/lib/blog-articles/what-should-a-qbr-include-msp-template-html";
 
@@ -178,8 +176,6 @@ export const ARTICLE_HTML: Record<string, string> = {
   "msp-qbr-automation": MSP_QBR_AUTOMATION_HTML,
   "msp-reporting-hidden-cost": mspReportingHiddenCost,
   "handover-halopsa-marketplace": handoverHalopsaMarketplace,
-  "pitchit-2026-building-msp-saas": PITCHIT_2026_BUILDING_MSP_SAAS_HTML,
-  "pitchit-2026-handover-msp-accelerator": PITCHIT_2026_HANDOVER_MSP_ACCELERATOR_HTML,
   "sap-n8n-msp-automation": sapN8nMspAutomation,
   "what-msps-told-us-about-client-reporting": WHAT_MSPS_TOLD_US_ABOUT_CLIENT_REPORTING_HTML,
 };

@@ -25,7 +25,7 @@ export async function ensureTeamWorkspaceForTeamTrialOwner(userId: string): Prom
 
   const { data: p, error } = await admin
     .from("profiles")
-    .select("id, plan, team_id, trial_ends_at, trial_plan, company_name, brand_name")
+    .select("id, plan, team_id, trial_ends_at, trial_plan, company_name, brand_name, subscription_status")
     .eq("id", userId)
     .maybeSingle();
 
@@ -50,6 +50,68 @@ export async function ensureTeamWorkspaceForTeamTrialOwner(userId: string): Prom
 
   if (tid) {
     await ensureOwnerMembershipRow(admin, userId, tid);
+    return true;
+  }
+
+  // Auto-provision a workspace for Handover / Starter Programme owners with no
+  // team yet. These plans include unlimited users, so there is no seat cap.
+  if (
+    !needsTeamTrialWorkspace &&
+    (planNorm === "handover" || planNorm === "starter_programme") &&
+    !tid
+  ) {
+    const name =
+      typeof p.company_name === "string" && p.company_name.trim()
+        ? p.company_name.trim()
+        : typeof p.brand_name === "string" && p.brand_name.trim()
+          ? p.brand_name.trim()
+          : "My Team";
+    const subscriptionStatus =
+      typeof p.subscription_status === "string" && p.subscription_status.trim()
+        ? p.subscription_status.trim()
+        : "active";
+
+    const { data: team, error: insErr } = await admin
+      .from("teams")
+      .insert({
+        name,
+        plan: planNorm,
+        owner_id: userId,
+        generation_limit: 999999,
+        seat_limit: 9999,
+        subscription_status: subscriptionStatus,
+      })
+      .select("id")
+      .single();
+
+    if (insErr || !team?.id) {
+      console.error("[ensureTeamTrialWorkspace] handover teams insert:", insErr);
+      return false;
+    }
+
+    const { error: memErr } = await admin.from("team_members").insert({
+      team_id: team.id,
+      user_id: userId,
+      role: "owner",
+      invited_by: userId,
+      permissions: {},
+    });
+    if (memErr) {
+      console.error("[ensureTeamTrialWorkspace] handover owner membership:", memErr);
+      await admin.from("teams").delete().eq("id", team.id);
+      return false;
+    }
+
+    const { error: profErr } = await admin
+      .from("profiles")
+      .update({ team_id: team.id })
+      .eq("id", userId);
+    if (profErr) {
+      console.error("[ensureTeamTrialWorkspace] handover profile link:", profErr);
+      await admin.from("team_members").delete().eq("team_id", team.id);
+      await admin.from("teams").delete().eq("id", team.id);
+      return false;
+    }
     return true;
   }
 

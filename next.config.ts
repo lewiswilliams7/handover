@@ -14,6 +14,9 @@ const nextConfig: NextConfig = {
     return [
       // Zapier was retired in Oct 2026. Keep old links and search results landing somewhere useful.
       { source: "/integrations/zapier", destination: "/integrations", permanent: true },
+      // PitchIT posts retired in Oct 2026.
+      { source: "/blog/pitchit-2026-handover-msp-accelerator", destination: "/blog", permanent: true },
+      { source: "/blog/pitchit-2026-building-msp-saas", destination: "/blog", permanent: true },
     ];
   },
   compiler: {

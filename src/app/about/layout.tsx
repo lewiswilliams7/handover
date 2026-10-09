@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 const ABOUT_PAGE_TITLE = "Lewis Williams - Founder of Handover | AI Reporting for MSPs";
 const ABOUT_PAGE_DESCRIPTION =
-  "Lewis Williams is the 18-year-old founder of Handover, an AI-powered client reporting tool for MSPs built on HaloPSA and ConnectWise. Accepted into PitchIT 2026.";
+  "Lewis Williams is the 18-year-old founder of Handover, an AI-powered client reporting tool for MSPs built on HaloPSA and ConnectWise.";
 
 const PERSON_JSON_LD = {
   "@context": "https://schema.org",
@@ -16,7 +16,7 @@ const PERSON_JSON_LD = {
     url: "https://gethandover.uk",
   },
   description:
-    "18-year-old founder of Handover, AI-powered client reporting for MSPs. Technical Project Manager, HaloITSM Certified, PitchIT 2026.",
+    "18-year-old founder of Handover, AI-powered client reporting for MSPs. Technical Project Manager, HaloITSM Certified.",
   url: "https://gethandover.uk/about",
 };
 

@@ -9,6 +9,7 @@ import {
   profilePlanBlocksTeamMemberInvites,
   teamGenerationLimitForSeats,
   teamWorkspaceAllowsMemberInvites,
+  teamWorkspaceHasUnlimitedSeats,
 } from "@/lib/utils/getPlan";
 import { buildHandoverResendFromHeader } from "@/lib/resend-from-header";
 import { requireTeamManagementPlanTier } from "@/lib/server/requireTeamManagementPlan";
@@ -20,7 +21,7 @@ export const runtime = "nodejs";
 type Body = {
   email?: string;
   role?: string;
-  /** User confirmed adding a billable seat when the team is at capacity on a paid Growth plan. */
+  /** Legacy `team` workspaces only: confirmed adding a billable seat at capacity. Handover plans have unlimited users. */
   confirmPaidSeat?: boolean;
 };
 
@@ -181,8 +182,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: TEAM_MEMBER_INVITES_BLOCKED_MESSAGE }, { status: 403 });
     }
 
-    const seatLimit =
-      typeof team.seat_limit === "number" && team.seat_limit >= 3 ? team.seat_limit : 3;
+    const unlimitedSeats = teamWorkspaceHasUnlimitedSeats(team.plan ?? null);
+    const seatLimit = unlimitedSeats
+      ? Number.POSITIVE_INFINITY
+      : typeof team.seat_limit === "number" && team.seat_limit >= 3
+        ? team.seat_limit
+        : 3;
 
     const { count: memberCount, error: cErr } = await admin
       .from("team_members")

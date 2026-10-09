@@ -131,11 +131,18 @@ export async function POST(request: Request) {
 
     const ownerPlan = normalizePlanLabel(ownerProf?.plan ?? "");
     const teamTrialWorkspace = ownerPlan === "team_trial";
+    const workspacePlan = normalizePlanLabel(teamRow.plan ?? "");
+    // Members of a Handover workspace get the same plan as the workspace.
+    const memberPlan = teamTrialWorkspace
+      ? "team_trial"
+      : workspacePlan === "handover" || workspacePlan === "starter_programme"
+        ? workspacePlan
+        : "team";
 
     const { error: profErr } = await admin
       .from("profiles")
       .update({
-        plan: teamTrialWorkspace ? "team_trial" : "team",
+        plan: memberPlan,
         team_id: inv.team_id,
         trial_ends_at:
           typeof ownerProf?.trial_ends_at === "string" && ownerProf.trial_ends_at.trim()

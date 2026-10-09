@@ -12,7 +12,7 @@ const PATH = "/features/connectwise-reporting";
 const CANONICAL = `https://gethandover.uk${PATH}`;
 const TITLE = "ConnectWise Reporting Tool - Automate ConnectWise Client Reports";
 const DESCRIPTION =
-  "ConnectWise Manage reporting for MSPs: automate ConnectWise reports, weekly client updates, and QBR packs. Native integration, marketplace listing, accepted into PitchIT 2026.";
+  "ConnectWise Manage reporting for MSPs: automate ConnectWise reports, weekly client updates, and QBR packs. Native integration and ConnectWise marketplace listing.";
 
 export const metadata: Metadata = {
   title: `${TITLE} | Handover`,
@@ -40,10 +40,6 @@ const faqs = [
     q: "Is Handover on the ConnectWise marketplace?",
     a: "Yes. Handover is listed on the ConnectWise marketplace. APAC MSPs and UK partners on ConnectWise reseller programmes can connect through the standard integration flow.",
   },
-  {
-    q: "What is PitchIT 2026?",
-    a: "PitchIT is ConnectWise’s startup programme. Handover was accepted into PitchIT 2026, reflecting our focus on ConnectWise Manage reporting and service delivery outcomes for MSPs.",
-  },
 ];
 
 export default function ConnectWiseReportingFeaturePage() {
@@ -67,9 +63,6 @@ export default function ConnectWiseReportingFeaturePage() {
             <div className="mt-2 flex flex-wrap gap-2">
               <span className="inline-flex items-center rounded-full border border-[rgba(34,197,94,0.4)] bg-[rgba(34,197,94,0.12)] px-3 py-1 text-[11px] font-semibold text-[#86efac]">
                 ConnectWise Manage integration
-              </span>
-              <span className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/80">
-                PitchIT 2026
               </span>
             </div>
             <h1 className="mt-3 text-3xl font-semibold leading-tight text-white md:text-5xl">
@@ -124,8 +117,7 @@ export default function ConnectWiseReportingFeaturePage() {
               <li>Delivery health dashboard across your ConnectWise portfolio</li>
             </ul>
             <p className="mt-3">
-              Handover was <strong className="text-[var(--text-primary)]">accepted into PitchIT 2026</strong> and is
-              listed on the{" "}
+              Handover is listed on the{" "}
               <Link href="/partners/connectwise" className="text-[var(--accent)] hover:underline">
                 ConnectWise marketplace
               </Link>

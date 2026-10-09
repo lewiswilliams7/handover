@@ -224,26 +224,6 @@ export const BLOG_POSTS: BlogPostMeta[] = [
     readMinutesOverride: 8,
   },
   {
-    slug: "pitchit-2026-handover-msp-accelerator",
-    routePath: "/blog/pitchit-2026-handover-msp-accelerator",
-    title: "Handover is joining PitchIT 2026 — here's why we applied",
-    dateISO: "2026-05-21T10:00:00.000Z",
-    dateDisplay: "21 May 2026",
-    author: "Lewis Williams",
-    tags: ["Product", "Automation"],
-    description:
-      "Handover has been accepted into PitchIT 2026, ConnectWise's global accelerator for MSP software companies. Here's the problem we're solving and what we're building.",
-    kind: "dynamic",
-    readMinutesOverride: 5,
-    toc: [
-      { id: "what-is-pitchit", label: "What is PitchIT?" },
-      { id: "the-problem-were-solving", label: "The problem we're solving" },
-      { id: "what-handover-does", label: "What Handover does" },
-      { id: "why-we-applied-to-pitchit", label: "Why we applied to PitchIT" },
-      { id: "whats-next", label: "What's next" },
-    ],
-  },
-  {
     slug: "sap-n8n-msp-automation",
     routePath: "/blog/sap-n8n-msp-automation",
     title: "What SAP's $5.2B investment in n8n means for MSP automation",
@@ -314,26 +294,6 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       { id: "what-to-include-and-leave-out", label: "What to include (and leave out)" },
       { id: "how-handovers-client-portal-works", label: "How Handover's portal works" },
       { id: "why-visibility-builds-retention", label: "Why visibility builds retention" },
-    ],
-  },
-  {
-    slug: "pitchit-2026-building-msp-saas",
-    routePath: "/blog/pitchit-2026-building-msp-saas",
-    title: "Building an MSP SaaS at 18: Handover's PitchIT 2026 Journey",
-    dateISO: "2026-05-08T12:00:00.000Z",
-    dateDisplay: "8 May 2026",
-    author: "Lewis Williams",
-    tags: ["Product", "Automation"],
-    description:
-      "Handover has been accepted into PitchIT 2026 — ConnectWise's global MSP accelerator. Here's the story of building an MSP SaaS product while working full time as a TPM.",
-    kind: "dynamic",
-    readMinutesOverride: 6,
-    toc: [
-      { id: "what-is-pitchit", label: "What is PitchIT?" },
-      { id: "how-handover-started", label: "How Handover started" },
-      { id: "what-were-building", label: "What we're building" },
-      { id: "what-pitchit-means-for-handover", label: "What PitchIT means" },
-      { id: "whats-next", label: "What's next" },
     ],
   },
   {

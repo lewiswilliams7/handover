@@ -23,6 +23,7 @@ import {
   Sliders,
   Sparkles,
   Sun,
+  UserPlus,
   Users,
   X,
   Zap,
@@ -789,6 +790,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
               </div>
               <div><div className={sectionLabelClass}>Settings</div>
                 <Link href="/?view=configuration" onClick={closeMobile} className={navClass("configuration")}><Settings className="size-[14px]" /><span className={labelClass}>Configuration</span></Link>
+                {entitlement.hasProAccess ? <Link href="/dashboard/team" onClick={closeMobile} title="Team" className={`relative flex h-8 w-full items-center rounded-[var(--radius)] border-l-2 text-[12px] transition-all duration-[120ms] ${expanded ? "gap-1.5 px-2.5" : "justify-center px-0"} ${pathname.startsWith("/dashboard/team") && !settings.open ? "border-[var(--accent)] bg-[var(--accent)]/15 font-medium text-white" : "border-transparent text-[var(--text-secondary)] hover:bg-white/5 hover:text-white"}`}><UserPlus className="size-[14px]" /><span className={labelClass}>Team</span></Link> : null}
               </div>
             </nav>
             {!entitlement.hasProAccess && usage.monthCount != null ? <div className={`mb-3 rounded-[var(--radius)] border border-[var(--sidebar-border)] bg-white/[0.04] px-2.5 py-2 ${!expanded ? "md:hidden" : ""}`}><div className="flex justify-between text-[10px] uppercase text-white/40"><span>Basic plan</span><span>{usage.monthCount}/{entitlement.generationLimit ?? FREE_MONTHLY_GENERATION_LIMIT}</span></div><p className="mt-0.5 text-[11px] text-[var(--sidebar-text)]">Generations used</p></div> : null}

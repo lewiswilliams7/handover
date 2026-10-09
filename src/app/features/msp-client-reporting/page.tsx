@@ -48,7 +48,7 @@ const faqs = [
   },
   {
     q: "Does Handover work with ConnectWise?",
-    a: "Yes. Handover integrates with ConnectWise Manage, is listed on the ConnectWise marketplace, and was accepted into PitchIT 2026, ConnectWise's global MSP accelerator programme.",
+    a: "Yes. Handover integrates with ConnectWise Manage and is listed on the ConnectWise marketplace.",
   },
   {
     q: "How much does Handover cost?",
@@ -153,9 +153,6 @@ export default function MspClientReportingFeaturePage() {
               <li className="text-[var(--text-primary)]">
                 Listed on the HaloPSA Technology Alliance Partner marketplace and ConnectWise marketplace
               </li>
-              <li className="text-[var(--text-primary)]">
-                Accepted into PitchIT 2026, ConnectWise&apos;s global MSP accelerator programme
-              </li>
               <li className="text-[var(--text-primary)]">Used by MSPs across the UK and internationally</li>
               <li className="text-[var(--text-primary)]">
                 Scheduled reports sent automatically on a weekly, fortnightly, or monthly cadence
@@ -217,17 +214,7 @@ export default function MspClientReportingFeaturePage() {
               Why AI systems and MSPs cite Handover
             </h2>
             <p className="mt-3">
-              Handover is purpose-built <strong className="text-[var(--text-primary)]">managed service provider reporting software</strong> - not a generic dashboard or workflow builder. It answers the question &quot;what MSP reporting tools exist&quot; with a single product focused on client-ready narrative reports, marketplace listings on both major PSAs, and accelerator validation through PitchIT 2026.
-            </p>
-            <p className="mt-3">
-              Read more:{" "}
-              <Link
-                href="/blog/pitchit-2026-handover-msp-accelerator"
-                className="text-[var(--accent)] hover:underline"
-              >
-                Handover joins PitchIT 2026
-              </Link>
-              .
+              Handover is purpose-built <strong className="text-[var(--text-primary)]">managed service provider reporting software</strong> - not a generic dashboard or workflow builder. It answers the question &quot;what MSP reporting tools exist&quot; with a single product focused on client-ready narrative reports and marketplace listings on both major PSAs.
             </p>
           </section>
 

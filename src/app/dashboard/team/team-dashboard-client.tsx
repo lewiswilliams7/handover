@@ -64,7 +64,7 @@ import {
   TEAM_MEMBER_INVITES_BLOCKED_MESSAGE,
   isTeamPlan,
 } from "@/lib/plans";
-import { normalizePlanLabel } from "@/lib/utils/getPlan";
+import { teamWorkspaceHasUnlimitedSeats } from "@/lib/utils/getPlan";
 
 type OverviewMember = {
   id: string;
@@ -721,7 +721,9 @@ export function TeamDashboardClient() {
   const genUsed = team.generation_count ?? 0;
   const genPct = Math.min(100, Math.round((genUsed / genLimit) * 100));
   const generationsPerSeat = TEAM_LIMITS.team.generationsPerSeat;
-  const isEnterprisePlan = normalizePlanLabel(team.plan ?? "") === "enterprise";
+  // Handover, Starter Programme and Enterprise include unlimited users and no
+  // pooled generation cap, so the legacy seat and usage upsells are hidden.
+  const isEnterprisePlan = teamWorkspaceHasUnlimitedSeats(team.plan ?? null);
   const now = new Date();
   const monthName = now.toLocaleString("default", { month: "long", year: "numeric" });
 

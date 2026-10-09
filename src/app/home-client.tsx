@@ -13215,17 +13215,6 @@ export default function Home() {
                       ConnectWise Marketplace
                     </span>
                   </a>
-
-                  <span className="hidden text-white/15 sm:block">·</span>
-
-                  <a
-                    href="/blog/pitchit-2026-handover-msp-accelerator"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[11px] font-medium uppercase tracking-wide text-white/40 transition-colors hover:text-white/60"
-                  >
-                    PitchIT 2026
-                  </a>
                 </div>
               </div>
 

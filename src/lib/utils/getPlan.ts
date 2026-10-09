@@ -151,7 +151,7 @@ function normalizeTrialPlanSku(raw: string | null | undefined): "professional" |
 export function getPlanTierFromFields(fields: UserPlanFields): 0 | 1 | 2 | 3 {
   if (typeof fields.team_id === "string" && fields.team_id.trim().length > 0) {
     const wp = normalizePlanLabel(fields.plan ?? "");
-    if (wp === "enterprise") return 3;
+    if (wp === "enterprise" || wp === "handover" || wp === "starter_programme") return 3;
     /** Team workspace (any non-Enterprise seat) uses Team-tier product limits. */
     return 2;
   }
@@ -405,7 +405,23 @@ export function profilePlanBlocksTeamMemberInvites(row: {
 /** Team workspace is on a multi-seat product (Team / Enterprise), not solo Professional. */
 export function teamWorkspaceAllowsMemberInvites(teamPlanRaw: string | null | undefined): boolean {
   const p = normalizePlanLabel(teamPlanRaw ?? "");
-  return p === "team" || p === "team_trial" || p === "enterprise";
+  return (
+    p === "team" ||
+    p === "team_trial" ||
+    p === "enterprise" ||
+    p === "handover" ||
+    p === "starter_programme"
+  );
+}
+
+/**
+ * The current Handover plan (and the Starter Programme and Enterprise) include
+ * unlimited users: no seat cap and no per-seat charge. Legacy `team` workspaces
+ * keep their paid-seat behaviour until they are migrated.
+ */
+export function teamWorkspaceHasUnlimitedSeats(teamPlanRaw: string | null | undefined): boolean {
+  const p = normalizePlanLabel(teamPlanRaw ?? "");
+  return p === "handover" || p === "starter_programme" || p === "enterprise";
 }
 
 /** Stripe-style team billing states that may use pooled generations and scheduled reports. */
