@@ -32,6 +32,7 @@ import {
   type ScanProjectInput,
   type ScanTicketInput,
 } from "@/lib/psa/scan-aggregate";
+import { buildChurnReplay, type ChurnReplayResult } from "@/lib/psa/churn-replay";
 import type { ScanEvidenceSource } from "@/lib/psa/scan-evidence";
 import {
   FieldProvenanceAccumulator,
@@ -191,6 +192,8 @@ export type StoredScanResults = {
   instanceUrl?: string | null;
   /** True only when project findings were calculated from identified parent projects. */
   projectOverrunReliable?: boolean;
+  /** Churn Replay™ backtest over clients lost in the scan window. Absent on older scans. */
+  churnReplay?: ChurnReplayResult | null;
 };
 
 export type ScanFindingPreview = {
@@ -965,6 +968,21 @@ function dateWindow(): { dateFrom: string; dateTo: string } {
   };
 }
 
+/**
+ * Churn Replay runs after the live checks and must never fail a scan: any
+ * error leaves `churnReplay` null and the rest of the results intact.
+ */
+function safeChurnReplay(
+  input: Parameters<typeof buildChurnReplay>[0],
+): ChurnReplayResult | null {
+  try {
+    return buildChurnReplay(input);
+  } catch (error) {
+    console.error("[scan] churn replay failed", error);
+    return null;
+  }
+}
+
 async function runHaloSync(
   credentials: HaloScanCredentials,
   sessionId: string,
@@ -1053,10 +1071,19 @@ async function runHaloSync(
   let contractSummary: unknown = null;
   let exposureAvailability: StoredScanResults["exposureAvailability"] =
     "unavailable";
+  let historicalContracts: NormalisedContractRecord[] | undefined;
   try {
     const contractResult = await getHaloContracts(token, credentials.haloUrl);
     contracts = contractResult.records;
     contractSummary = { clientContracts: contractResult.summary };
+    try {
+      // Ended contracts are only used by Churn Replay to find clients that left.
+      historicalContracts = (
+        await getHaloContracts(token, credentials.haloUrl, { includeinactive: true })
+      ).records;
+    } catch {
+      historicalContracts = contracts;
+    }
   } catch {
     // End dates remain unavailable when ClientContract permission is absent.
   }
@@ -1117,6 +1144,16 @@ async function runHaloSync(
     clientNames,
     evidenceSource: "halo",
   });
+  const churnReplay = safeChurnReplay({
+    tickets: scanTickets,
+    contracts: historicalContracts,
+    recurringInvoices: recurringInvoicesLoaded ? recurringInvoices : undefined,
+    quotations,
+    salesOrders,
+    fieldMapping: fetchMeta.fieldMapping ?? null,
+    clientNames,
+    windowStart: window.dateFrom,
+  });
   const scanOutcome =
     findings.portfolio.clientsAnalysed === 0
       ? "no_clients"
@@ -1158,6 +1195,7 @@ async function runHaloSync(
     psaType: "halo",
     instanceUrl: credentials.haloUrl.replace(/\/+$/, ""),
     projectOverrunReliable: true,
+    churnReplay,
   };
 }
 
@@ -1188,9 +1226,18 @@ async function runConnectWiseSync(
   let contractSummary: unknown = null;
   let exposureAvailability: StoredScanResults["exposureAvailability"] =
     "unavailable";
+  let historicalContracts: NormalisedContractRecord[] | undefined;
   try {
     const result = await getCwAgreements(connection);
     contracts = result.records;
+    try {
+      // Cancelled agreements are only used by Churn Replay to find clients that left.
+      historicalContracts = (
+        await getCwAgreements(connection, { includeCancelled: true })
+      ).records;
+    } catch {
+      historicalContracts = contracts;
+    }
     contractSummary = result.summary;
     const totalMonthlyValue = contracts.reduce(
       (sum, contract) =>
@@ -1220,6 +1267,13 @@ async function runConnectWiseSync(
     fieldMapping,
     clientNames,
   });
+  const churnReplay = safeChurnReplay({
+    tickets,
+    contracts: historicalContracts,
+    fieldMapping,
+    clientNames,
+    windowStart: window.dateFrom,
+  });
   const scanOutcome =
     findings.portfolio.clientsAnalysed === 0
       ? "no_clients"
@@ -1243,6 +1297,7 @@ async function runConnectWiseSync(
     psaType: "connectwise",
     instanceUrl: normalizeConnectWiseSiteUrl(connection.siteUrl),
     projectOverrunReliable: false,
+    churnReplay,
   };
 }
 

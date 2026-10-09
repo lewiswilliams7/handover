@@ -408,8 +408,11 @@ function normaliseCwAgreementRow(row: Record<string, unknown>): NormalisedContra
   const clientId = parseCompanyId(row);
   if (clientId == null) return null;
 
-  const endDate = strOrNull(row.endDate) ?? strOrNull(row.end_date);
-  const noEnding = row.noEndingDateFlag === true;
+  const cancelled = row.cancelledFlag === true;
+  const endDate = cancelled
+    ? (strOrNull(row.dateCancelled) ?? strOrNull(row.endDate) ?? strOrNull(row.end_date))
+    : (strOrNull(row.endDate) ?? strOrNull(row.end_date));
+  const noEnding = !cancelled && row.noEndingDateFlag === true;
 
   const cycle =
     row.billingCycle && typeof row.billingCycle === "object"
@@ -554,10 +557,16 @@ function buildCwAuthHeader(conn: ConnectWiseConnection): string {
 export type GetCwAgreementsOpts = {
   maxPages?: number;
   pageSize?: number;
+  /**
+   * Include cancelled agreements. A cancelled agreement's end date becomes its
+   * cancellation date. Used by Churn Replay to find clients that have left.
+   */
+  includeCancelled?: boolean;
 };
 
 /**
- * Fetch active finance agreements from ConnectWise Manage.
+ * Fetch finance agreements from ConnectWise Manage (active only unless
+ * `includeCancelled` is set).
  * Requires API role with Finance > Agreements read.
  */
 export async function getCwAgreements(
@@ -567,10 +576,13 @@ export async function getCwAgreements(
   const base = normalizeConnectWiseSiteUrl(connection.siteUrl);
   const pageSize = opts?.pageSize ?? CW_AGREEMENTS_PAGE_SIZE;
   const maxPages = opts?.maxPages ?? CW_AGREEMENTS_MAX_PAGES;
+  const includeCancelled = opts?.includeCancelled === true;
   const fields = encodeURIComponent(
-    "id,company/id,billAmount,billingCycle/name,endDate,noEndingDateFlag",
+    "id,company/id,billAmount,billingCycle/name,endDate,noEndingDateFlag,cancelledFlag,dateCancelled",
   );
-  const conditions = encodeURIComponent("cancelledFlag=false");
+  const conditionsQuery = includeCancelled
+    ? ""
+    : `conditions=${encodeURIComponent("cancelledFlag=false")}&`;
   const headers = {
     Authorization: buildCwAuthHeader(connection),
     clientId: connection.clientId,
@@ -579,7 +591,7 @@ export async function getCwAgreements(
 
   const allRaw: unknown[] = [];
   for (let page = 1; page <= maxPages; page += 1) {
-    const url = `${base}/v4_6_release/apis/3.0/finance/agreements?conditions=${conditions}&page=${page}&pageSize=${pageSize}&fields=${fields}`;
+    const url = `${base}/v4_6_release/apis/3.0/finance/agreements?${conditionsQuery}page=${page}&pageSize=${pageSize}&fields=${fields}`;
     const res = await fetch(url, { headers, cache: "no-store" });
     if (!res.ok) {
       const body = await res.text().catch(() => "");

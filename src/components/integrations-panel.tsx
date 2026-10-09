@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, ChevronLeft, Cog, Copy, EyeOff, Loader2, Lock, Plus, Shield, X } from "lucide-react";
+import { Check, ChevronLeft, EyeOff, Lock, Plus, Shield, X } from "lucide-react";
 
 import { CardMouseSpotlight } from "@/components/card-mouse-spotlight";
 import { HaloCredentialsFields } from "@/components/halo-credentials-fields";

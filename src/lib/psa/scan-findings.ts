@@ -114,6 +114,11 @@ export type BuildScanFindingsInput = {
   clientNames?: Record<string, string>;
   evidenceSource?: ScanEvidenceSource;
   opts?: BuildScanFindingsOpts;
+  /**
+   * Point in time the checks are evaluated at. Defaults to now. Churn Replay
+   * passes a past date so the same checks run against history as it stood then.
+   */
+  asOfMs?: number;
 };
 
 export type BuildScanFindingsOpts = {
@@ -872,7 +877,7 @@ export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsRe
   const contractsByClient = buildContractRecordsByClient(input.contracts);
   const findings: ScanFinding[] = [];
   const insufficientData: InsufficientDataClient[] = [];
-  const nowMs = Date.now();
+  const nowMs = input.asOfMs ?? Date.now();
   const activeContractClientIds = new Set(contractsByClient.keys());
   const clientIds = new Set<number>([
     ...Object.keys(input.byClient).map(Number),
@@ -1120,7 +1125,7 @@ export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsRe
 
     if (statusOpenAvailable && !dateClosedFailed) {
       const baselineResolution = medianResolutionForMonths(clientTickets, baseline);
-      const now = Date.now();
+      const now = nowMs;
       const recentTickets = ticketsInMonths(clientTickets, recent);
       const baselineTickets = ticketsInMonths(clientTickets, baseline);
       const ageing = clientTickets.filter((ticket) => {
