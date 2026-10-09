@@ -13586,7 +13586,7 @@ export default function Home() {
               style={{
                 background: "transparent",
               }}
-              aria-label="See what's in your client base"
+              aria-label="Run your free scan"
               initial={{ opacity: 0, y: 24 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-60px" }}

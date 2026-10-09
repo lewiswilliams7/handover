@@ -455,7 +455,7 @@ export function Nav() {
                   </Link>
                   <Link href="/onboarding/connect">
                     <Button className="h-8 whitespace-nowrap bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] hover:from-[var(--accent-hover)] hover:to-[var(--accent)] px-3.5 text-[13px] font-semibold text-white shadow-md shadow-[#0EA5E9]/20 transition-all duration-300 hover:scale-[1.02]">
-                      See what&apos;s in your client base
+                      Run your free scan
                     </Button>
                   </Link>
                 </div>
@@ -572,7 +572,7 @@ export function Nav() {
                         onClick={() => setGuestMenuOpen(false)}
                       >
                         <Button className="h-10 w-full whitespace-nowrap bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] hover:from-[var(--accent-hover)] hover:to-[var(--accent)] px-4 text-[13px] font-semibold text-white shadow-md shadow-[#0EA5E9]/20 transition-all duration-300">
-                          See what&apos;s in your client base
+                          Run your free scan
                         </Button>
                       </Link>
                     </div>

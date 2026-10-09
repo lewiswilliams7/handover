@@ -231,7 +231,7 @@ export default async function DynamicBlogArticlePage({ params }: PageProps) {
               {slug === "what-msps-told-us-about-client-reporting" ? (
                 <div className="mt-12 rounded-xl border border-[rgba(56,189,248,0.2)] bg-[rgba(56,189,248,0.05)] p-6">
                   <h2 className="text-[24px] font-bold text-[var(--text-primary)]">
-                    See what&apos;s in your client base
+                    Run your free scan
                   </h2>
                   <p className="mt-2 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
                     Connect HaloPSA or ConnectWise with a read-only key.
@@ -244,7 +244,7 @@ export default async function DynamicBlogArticlePage({ params }: PageProps) {
                       href="/onboarding/connect"
                       className="inline-flex items-center rounded-[var(--radius)] bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]"
                     >
-                      See what&apos;s in your client base →
+                      Run your free scan
                     </Link>
                   </div>
                 </div>

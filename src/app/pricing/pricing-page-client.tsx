@@ -276,7 +276,7 @@ export function PricingPageClient() {
             href="/onboarding/connect"
             className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-cyan-300 px-6 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-950/25 transition hover:bg-cyan-200 sm:w-auto"
           >
-            See what&apos;s in your client base first
+            Run your free scan
             <ArrowRight className="ml-2 size-4" aria-hidden />
           </Link>
           <p className="mt-3 text-xs text-white/45">No card, no trial.</p>

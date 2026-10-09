@@ -839,7 +839,7 @@ export function HandoverDemoSection({ onStartTrial }: { onStartTrial?: () => voi
               className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] px-4 py-1.5 text-sm font-semibold text-white shadow-md transition-all hover:scale-[1.02] hover:shadow-lg"
             >
               <LightningBoltIcon className="text-[#0f172a]" />
-              See what&apos;s in your client base →
+              Run your free scan
             </button>
           </div>
         </div>
