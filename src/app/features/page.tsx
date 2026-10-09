@@ -9,6 +9,7 @@ import {
   LayoutTemplate,
   Paintbrush,
   PiggyBank,
+  LifeBuoy,
   Plug,
   PoundSterling,
   Rewind,
@@ -49,6 +50,12 @@ const PROTECT: FeatureCard[] = [
     body: "Rewinds your PSA to before each client you lost and shows whether Handover would have warned you, and how early.",
     href: "/features/churn-replay",
     Icon: Rewind,
+  },
+  {
+    title: "Save Plays™",
+    body: "Every flag comes with the steps to take and an email to the client's decision-maker, ready to send.",
+    href: "/features/save-plays",
+    Icon: LifeBuoy,
   },
   {
     title: "Handover Client Intelligence™",
@@ -106,10 +113,10 @@ const CONNECT: FeatureCard[] = [
   },
 ];
 
-function FeatureGrid({ cards, columns }: { cards: FeatureCard[]; columns: 2 | 4 }) {
+function FeatureGrid({ cards, columns }: { cards: FeatureCard[]; columns: 2 | 3 | 4 }) {
   return (
     <div
-      className={`mt-8 grid gap-5 sm:grid-cols-2 ${columns === 4 ? "lg:grid-cols-4" : ""}`}
+      className={`mt-8 grid gap-5 sm:grid-cols-2 ${columns === 4 ? "lg:grid-cols-4" : columns === 3 ? "lg:grid-cols-3" : ""}`}
     >
       {cards.map((card, index) => (
         <ScrollRevealItem key={card.href} index={index} className="min-w-0">
@@ -213,7 +220,7 @@ export default function FeaturesPage() {
           title="Protect revenue"
           intro="Find the clients that are slipping while there is still time, and prove the warnings are real on your own history."
         >
-          <FeatureGrid cards={PROTECT} columns={4} />
+          <FeatureGrid cards={PROTECT} columns={3} />
         </Section>
 
         <Section

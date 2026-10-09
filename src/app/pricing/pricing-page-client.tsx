@@ -19,6 +19,7 @@ const FEATURE_GROUPS: ReadonlyArray<{ title: string; items: ReadonlyArray<Featur
     items: [
       { label: "Revenue at Risk™ across your whole client base", href: "/features/revenue-at-risk" },
       { label: "Churn Replay™ on the clients you have already lost", href: "/features/churn-replay" },
+      { label: "Save Plays™ with a ready-to-send email for every flag", href: "/features/save-plays" },
       { label: "Saved Revenue tracking", href: "/features/revenue-at-risk#saved-revenue" },
       { label: "Handover Client Intelligence™ signals and weekly digest", href: "/features/client-intelligence" },
     ],

@@ -7,6 +7,17 @@ export const runtime = "nodejs";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createServerClient();
@@ -34,6 +45,14 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
+    if (
+      typeof to !== "string" ||
+      !EMAIL_PATTERN.test(to.trim()) ||
+      subject.length > 300 ||
+      emailBody.length > 20_000
+    ) {
+      return NextResponse.json({ error: "Invalid email" }, { status: 400 });
+    }
 
     const { data: profile } = await supabase
       .from("profiles")
@@ -48,14 +67,16 @@ export async function POST(req: NextRequest) {
 
     await resend.emails.send({
       from: `${fromName} <reports@gethandover.uk>`,
-      to,
+      to: to.trim(),
+      // Replies go to the person who sent it, not the shared sending address.
+      ...(user.email ? { replyTo: user.email } : {}),
       subject,
       text: emailBody,
       html: emailBody
         .split("\n")
         .map((line) =>
           line
-            ? `<p style="margin:0 0 8px;font-family:-apple-system,sans-serif;font-size:14px;color:#374151;line-height:1.6;">${line}</p>`
+            ? `<p style="margin:0 0 8px;font-family:-apple-system,sans-serif;font-size:14px;color:#374151;line-height:1.6;">${escapeHtml(line)}</p>`
             : "<br/>",
         )
         .join(""),

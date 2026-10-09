@@ -6,7 +6,6 @@ import {
   CircleHelp,
   CheckCircle2,
   Clock3,
-  Eye,
   History,
   Info,
   ListPlus,
@@ -17,7 +16,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
+import { useAppShell } from "@/components/app-shell";
 import { ChurnReplayPanel } from "@/components/churn-replay-panel";
+import { SavePlayPanel } from "@/components/save-play-panel";
 import { computeRevenueAtRisk } from "@/lib/revenue/revenue-signals";
 import { buildHaloScanEvidenceDeepLink } from "@/lib/psa/scan-deep-links";
 import type { ScanComparison } from "@/lib/psa/scan-comparison";
@@ -270,6 +271,8 @@ export function AttentionClient({
   const [expandedFinding, setExpandedFinding] = useState<string | null>(null);
   const [dismissedFindings, setDismissedFindings] = useState<Set<string>>(new Set());
   const [dismissalError, setDismissalError] = useState<string | null>(null);
+  const { userFirstName } = useAppShell();
+  const senderName = userFirstName?.trim() ?? "";
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -822,6 +825,7 @@ export function AttentionClient({
               expandedFinding={expandedFinding}
               onExpand={setExpandedFinding}
               onAction={actionFinding}
+              senderName={senderName}
             />
             <FindingGroup
               title="Service detail"
@@ -830,6 +834,7 @@ export function AttentionClient({
               expandedFinding={expandedFinding}
               onExpand={setExpandedFinding}
               onAction={actionFinding}
+              senderName={senderName}
             />
 
             <section className="mt-8 rounded-2xl border border-white/10 bg-white/[0.025] p-6">
@@ -1199,6 +1204,7 @@ function FindingGroup({
   expandedFinding,
   onExpand,
   onAction,
+  senderName,
 }: {
   title: string;
   findings: Finding[];
@@ -1210,6 +1216,7 @@ function FindingGroup({
     action: ScanFindingActionType,
     note?: string,
   ) => Promise<void>;
+  senderName: string;
 }) {
   return (
     <section className="mt-8">
@@ -1233,6 +1240,7 @@ function FindingGroup({
                 onExpand(expandedFinding === findingKey(finding) ? null : findingKey(finding))
               }
               onAction={onAction}
+              senderName={senderName}
             />
           ))}
         </div>
@@ -1247,6 +1255,7 @@ function FindingCard({
   expanded,
   onExpand,
   onAction,
+  senderName,
 }: {
   finding: Finding;
   results: StoredScanResults;
@@ -1257,6 +1266,7 @@ function FindingCard({
     action: ScanFindingActionType,
     note?: string,
   ) => Promise<void>;
+  senderName: string;
 }) {
   const [handling, setHandling] = useState(false);
   const [handlingNote, setHandlingNote] = useState("");
@@ -1317,6 +1327,12 @@ function FindingCard({
         ))}
       </ul>
       <EvidenceLinks finding={finding} results={results} />
+      <SavePlayPanel
+        findingType={finding.type}
+        clientName={nameFor(results, finding.clientId)}
+        senderName={senderName}
+        onComplete={(note) => onAction(finding, "handled", note)}
+      />
       {expanded ? (
         <div className="mt-4 rounded-xl border border-cyan-300/15 bg-cyan-300/[0.05] p-4">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cyan-100/70">
@@ -1335,9 +1351,6 @@ function FindingCard({
         </div>
       ) : null}
       <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/10 pt-4 text-xs">
-        <button type="button" disabled title="Account detail is not available yet" className="inline-flex items-center gap-1.5 text-[var(--text-muted)] disabled:cursor-not-allowed">
-          <Eye className="size-3.5" /> View account
-        </button>
         <button
           type="button"
           onClick={() => void onAction(finding, "add_to_qbr")}

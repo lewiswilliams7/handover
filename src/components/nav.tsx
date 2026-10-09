@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
-  BarChart3,
   Brain,
   CalendarClock,
   ChevronDown,
@@ -15,6 +14,7 @@ import {
   Presentation,
   RefreshCw,
   Rewind,
+  LifeBuoy,
   Settings,
   Sun,
   X,
@@ -56,16 +56,16 @@ const CLIENT_INTELLIGENCE_NAV: MegaNavItem[] = [
     Icon: Rewind,
   },
   {
+    label: "Save Plays™",
+    href: "/features/save-plays",
+    description: "The steps to take on every flag, with an email ready to send.",
+    Icon: LifeBuoy,
+  },
+  {
     label: "Client Intelligence™",
     href: "/features/client-intelligence",
     description: "The signals behind every flag, against each client's own history.",
     Icon: Brain,
-  },
-  {
-    label: "For MSP owners",
-    href: "/solutions/msp-directors",
-    description: "Protect recurring revenue and prove value at renewal.",
-    Icon: BarChart3,
   },
 ];
 

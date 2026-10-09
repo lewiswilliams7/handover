@@ -192,6 +192,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.9,
     },
     {
+      url: "https://gethandover.uk/features/save-plays",
+      lastModified: new Date(),
+      changeFrequency: "weekly" as const,
+      priority: 0.9,
+    },
+    {
       url: "https://gethandover.uk/features/churn-replay",
       lastModified: new Date(),
       changeFrequency: "weekly" as const,

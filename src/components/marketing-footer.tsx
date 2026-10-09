@@ -66,6 +66,11 @@ export function MarketingFooter() {
                 </Link>
               </li>
               <li>
+                <Link href="/features/save-plays" className={linkClass}>
+                  Save Plays™
+                </Link>
+              </li>
+              <li>
                 <Link href="/features" className={linkClass}>
                   Features
                 </Link>
