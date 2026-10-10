@@ -67,7 +67,7 @@ export function computeNextRunUtc(
   const candidate = new Date(fromUtc);
   candidate.setUTCHours(hours, minutes, 0, 0);
 
-  let addDays = (dow - candidate.getUTCDay() + 7) % 7;
+  const addDays = (dow - candidate.getUTCDay() + 7) % 7;
   candidate.setUTCDate(candidate.getUTCDate() + addDays);
 
   if (candidate.getTime() <= fromUtc.getTime()) {

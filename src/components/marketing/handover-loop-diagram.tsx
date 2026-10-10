@@ -42,9 +42,9 @@ const STAGES: Stage[] = [
   {
     step: 4,
     verb: "Prove",
-    name: "Saved Revenue",
-    body: "When a flagged client recovers, its annual value is counted. The return on Handover, in pounds.",
-    href: "/features/revenue-at-risk#saved-revenue",
+    name: "Value Receipts™",
+    body: "Each client's decision-maker sees what you did every month. When a flagged client recovers, its value is counted as Saved Revenue.",
+    href: "/features/value-receipts",
   },
 ];
 

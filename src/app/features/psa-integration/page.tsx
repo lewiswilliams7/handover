@@ -51,7 +51,7 @@ export default function PsaIntegrationFeaturePage() {
           <p>Autotask is next on the roadmap. If you run a PSA we do not support yet, <a href="/contact" className="text-[var(--accent)] hover:underline">tell us which one</a>. We build integrations in the order MSPs ask for them.</p>
           <div className="rounded-[var(--radius-lg)] border border-[var(--border)] border-l-[3px] border-l-[#0EA5E9] p-5">
             <h3 className="text-lg font-semibold text-[var(--text-primary)]">Who uses this</h3>
-            <p className="mt-2 text-sm">Best fit for <a href="/solutions/halopsa" className="text-[var(--accent)] hover:underline">HaloPSA Users</a>, <a href="/solutions/connectwise" className="text-[var(--accent)] hover:underline">ConnectWise Users</a>, and <a href="/solutions/msp-directors" className="text-[var(--accent)] hover:underline">MSP Directors</a>.</p>
+            <p className="mt-2 text-sm">Best fit for <Link href="/solutions/halopsa" className="text-[var(--accent)] hover:underline">HaloPSA Users</Link>, <Link href="/solutions/connectwise" className="text-[var(--accent)] hover:underline">ConnectWise Users</Link>, and <Link href="/solutions/msp-directors" className="text-[var(--accent)] hover:underline">MSP Directors</Link>.</p>
           </div>
         </div>
       </section>

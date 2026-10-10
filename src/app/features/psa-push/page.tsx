@@ -47,7 +47,7 @@ export default function PsaPushFeaturePage() {
           <p>Handover&apos;s PSA push ensures that your client communication history lives where your team actually works, inside the PSA, alongside the operational data that drives service delivery.</p>
           <div className="rounded-[var(--radius-lg)] border border-[var(--border)] border-l-[3px] border-l-[#0EA5E9] p-5">
             <h3 className="text-lg font-semibold text-[var(--text-primary)]">Who uses this</h3>
-            <p className="mt-2 text-sm">Best fit for <a href="/solutions/project-managers" className="text-[var(--accent)] hover:underline">Project Managers</a>, <a href="/solutions/account-managers" className="text-[var(--accent)] hover:underline">Account Managers</a>, and <a href="/solutions/connectwise" className="text-[var(--accent)] hover:underline">ConnectWise Users</a>.</p>
+            <p className="mt-2 text-sm">Best fit for <Link href="/solutions/project-managers" className="text-[var(--accent)] hover:underline">Project Managers</Link>, <Link href="/solutions/account-managers" className="text-[var(--accent)] hover:underline">Account Managers</Link>, and <Link href="/solutions/connectwise" className="text-[var(--accent)] hover:underline">ConnectWise Users</Link>.</p>
           </div>
         </div>
       </section>

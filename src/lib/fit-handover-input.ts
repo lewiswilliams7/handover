@@ -91,7 +91,7 @@ function dropOldestTicketBlock(s: string): string | null {
 
 function truncateAtParagraphBoundary(s: string, maxChars: number): string {
   if (s.length <= maxChars) return s;
-  let cut = s.slice(0, maxChars);
+  const cut = s.slice(0, maxChars);
   const lastPara = cut.lastIndexOf("\n\n");
   if (lastPara > maxChars * 0.45) {
     return (

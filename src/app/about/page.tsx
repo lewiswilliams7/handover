@@ -26,18 +26,18 @@ const FOUNDER_LINKEDIN_HREF = "https://www.linkedin.com/in/lewiswilliams7";
 const values = [
   {
     icon: Users,
-    title: "Built for practitioners",
-    body: "Every feature is validated against real MSP delivery workflows. If it doesn't save time in a real team, it doesn't ship.",
+    title: "Built from real PSAs",
+    body: "Every signal comes from data your team already logs. If it doesn't hold up against a real HaloPSA or ConnectWise instance, it doesn't ship.",
   },
   {
     icon: Scale,
     title: "Honest and transparent",
-    body: "No fake testimonials, no inflated claims. The product speaks for itself or it doesn't. We'd rather under-promise and over-deliver.",
+    body: "No fake testimonials, no inflated numbers. Where the data isn't good enough to say something, Handover tells you instead of guessing.",
   },
   {
     icon: Lock,
-    title: "Privacy by default",
-    body: "Your ticket data is processed to generate outputs and never stored. Your clients' information stays yours.",
+    title: "Read-only, always",
+    body: "Handover never writes to your PSA. Scans keep per-client counts and timings, not the contents of your tickets.",
   },
 ] as const;
 
@@ -110,8 +110,8 @@ export default function AboutPage() {
                     Built by someone who lives the problem
                   </h1>
                   <p className="mx-auto mt-6 max-w-[720px] text-[17px] leading-relaxed text-[var(--text-secondary)]">
-                    Handover was created by a Technical Project Manager working inside an MSP - because the
-                    reporting problem is real, and no existing tool solved it properly.
+                    Handover was built by someone who works in HaloPSA every day, and kept seeing MSPs lose
+                    clients they could have kept.
                   </p>
                 </div>
               </section>
@@ -157,27 +157,30 @@ export default function AboutPage() {
               Lewis Williams
             </h2>
             <p className="mt-2 text-lg font-medium text-[var(--text-secondary)]">
-              Technical Project Manager &amp; Founder
+              ESM Consultant &amp; Founder
             </p>
             <div className="mt-8 space-y-4 text-[15px] leading-[1.75] text-[var(--text-secondary)]">
               <p>
-                I started Handover because I was spending every Friday afternoon doing the same thing - pulling
-                ticket data from HaloPSA, writing client update emails, compiling action logs, updating risk
-                registers.
-              </p>
-              <p>The same work, every week, for every client. Hours of it.</p>
-              <p>
-                I looked for a tool that understood MSP delivery workflows, integrated with HaloPSA, and produced
-                outputs that actually sounded like a real PM wrote them. Nothing existed.
-              </p>
-              <p className="font-medium text-[var(--text-primary)]">So I built it.</p>
-              <p>
-                Handover is what I use every week at work. Every feature exists because it solved a real problem in
-                a real MSP delivery team.
+                I started in IT at 17 as a junior technician at a HaloPSA partner. Today I&apos;m an ESM
+                Consultant, implementing HaloPSA and HaloITSM for a living.
               </p>
               <p>
-                I&apos;m 18. I work full time as a Technical Project Manager at Panacea Group in Birmingham. I built
-                Handover in the evenings and weekends because the problem was worth solving.
+                Every PSA I&apos;ve worked in has the same thing buried in it: the early signs that a client is
+                drifting. Tickets tail off. The person who used to raise them goes quiet. Response times creep up.
+                A contract rolls towards renewal and nobody&apos;s looking.
+              </p>
+              <p>
+                Nobody reads it, because nobody has time. Most MSPs find out a client was unhappy when the notice
+                email lands.
+              </p>
+              <p className="font-medium text-[var(--text-primary)]">So I built Handover to read it for them.</p>
+              <p>
+                It checks your PSA every week, shows you which clients are slipping and what they&apos;re worth,
+                tells you what to do about it, and proves your value to the clients who stay.
+              </p>
+              <p>
+                I&apos;m 19 and based in Birmingham. I build Handover in the evenings and at weekends, and every
+                feature has to earn its place in a real MSP.
               </p>
             </div>
             <a
@@ -211,12 +214,11 @@ export default function AboutPage() {
                 backgroundClip: "text",
               }}
             >
-              &ldquo;Every MSP delivery team deserves to spend their time delivering - not writing about
-              delivering.&rdquo;
+              &ldquo;No MSP should find out a client was unhappy from their notice email.&rdquo;
             </p>
             <p className="mx-auto mt-8 max-w-[600px] text-[15px] leading-relaxed text-[var(--text-secondary)]">
-              Handover exists to eliminate the administrative burden of MSP reporting. Not to replace project
-              managers - to give them their Friday afternoons back.
+              Handover gives MSP owners the warning, the play and the proof while there&apos;s still time to
+              act.
             </p>
           </ScrollRevealItem>
         </div>
@@ -261,14 +263,14 @@ export default function AboutPage() {
       >
         <div className="mx-auto max-w-[640px]">
           <ScrollRevealItem index={0} className="block">
-            <h2 className="text-3xl font-bold text-white md:text-4xl">Want to see it in action?</h2>
+            <h2 className="text-3xl font-bold text-white md:text-4xl">See what your PSA already knows</h2>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
               <Link href="/onboarding/connect" className="inline-flex sm:flex-1 sm:max-w-[260px]">
                 <Button
                   size="lg"
                   className="w-full bg-[var(--accent)] px-8 font-semibold text-white hover:bg-[var(--accent-hover)]"
                 >
-                  Run the free PSA scan →
+                  Run your free scan →
                 </Button>
               </Link>
               <Link href="/integrations/halopsa" className="inline-flex sm:flex-1 sm:max-w-[320px]">

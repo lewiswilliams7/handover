@@ -50,7 +50,7 @@ export default function WhiteLabelFeaturePage() {
           <p>White label mode is available on Growth and Enterprise plans. Upload your logo and set your brand colour in the settings panel and every output from that point forward carries your identity.</p>
           <div className="rounded-[var(--radius-lg)] border border-[var(--border)] border-l-[3px] border-l-[#0EA5E9] p-5">
             <h3 className="text-lg font-semibold text-[var(--text-primary)]">Who uses this</h3>
-            <p className="mt-2 text-sm">Best fit for <a href="/solutions/account-managers" className="text-[var(--accent)] hover:underline">Account Managers</a>, <a href="/solutions/msp-directors" className="text-[var(--accent)] hover:underline">MSP Directors</a>, and <a href="/solutions/project-managers" className="text-[var(--accent)] hover:underline">Project Managers</a>.</p>
+            <p className="mt-2 text-sm">Best fit for <Link href="/solutions/account-managers" className="text-[var(--accent)] hover:underline">Account Managers</Link>, <Link href="/solutions/msp-directors" className="text-[var(--accent)] hover:underline">MSP Directors</Link>, and <Link href="/solutions/project-managers" className="text-[var(--accent)] hover:underline">Project Managers</Link>.</p>
           </div>
         </div>
       </section>

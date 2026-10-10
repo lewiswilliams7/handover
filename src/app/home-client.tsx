@@ -13354,7 +13354,8 @@ export default function Home() {
                 <div className="mt-6 rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
                   <p className="mx-auto max-w-[680px] text-center text-[13px] leading-relaxed text-white/60">
                     Revenue at Risk shows which clients are drifting and what they are worth, while there is still time
-                    to change their mind. Save Plays tell you what to do next.
+                    to change their mind. Save Plays tell you what to do next. Client Margin shows which clients are
+                    worth keeping on today&apos;s terms.
                   </p>
                 </div>
 
@@ -13430,12 +13431,12 @@ export default function Home() {
             </motion.section>
 
             <p className="px-4 pb-2 text-center text-sm text-[var(--text-secondary)] md:px-6">
-              Want to see how you prove value to clients?{" "}
+              Want every client to see what you did for them this month?{" "}
               <Link
-                href="/solutions/qbr-and-reporting"
+                href="/features/value-receipts"
                 className="font-semibold text-[var(--accent)] underline-offset-4 hover:underline"
               >
-                See service reviews and QBRs.
+                See Value Receipts™.
               </Link>
             </p>
 
@@ -16864,7 +16865,7 @@ export default function Home() {
                 {showProTeamRecommendation ? (
                   <div className="flex flex-col gap-2 rounded-[var(--radius)] border border-amber-500/35 bg-amber-500/10 px-3 py-2.5 text-[13px] text-amber-100 sm:flex-row sm:items-center sm:justify-between">
                     <p>
-                      You're close to your monthly limit. Handover removes it.
+                      You&apos;re close to your monthly limit. Handover removes it.
                     </p>
                     <Button
                       type="button"

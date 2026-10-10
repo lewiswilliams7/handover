@@ -48,7 +48,7 @@ export default function HealthDashboardFeaturePage() {
           <p>The health dashboard pulls from your connected HaloPSA or ConnectWise instance in real time. No manual data entry. No scheduled syncs. No stale snapshots. The status you see reflects what is actually happening in your PSA right now.</p>
           <div className="rounded-[var(--radius-lg)] border border-[var(--border)] border-l-[3px] border-l-[#0EA5E9] p-5">
             <h3 className="text-lg font-semibold text-[var(--text-primary)]">Who uses this</h3>
-            <p className="mt-2 text-sm">Best fit for <a href="/solutions/service-desk-managers" className="text-[var(--accent)] hover:underline">Service Desk Managers</a> and <a href="/solutions/msp-directors" className="text-[var(--accent)] hover:underline">MSP Directors</a>.</p>
+            <p className="mt-2 text-sm">Best fit for <Link href="/solutions/service-desk-managers" className="text-[var(--accent)] hover:underline">Service Desk Managers</Link> and <Link href="/solutions/msp-directors" className="text-[var(--accent)] hover:underline">MSP Directors</Link>.</p>
           </div>
         </div>
       </section>

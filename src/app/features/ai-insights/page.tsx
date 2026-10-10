@@ -48,7 +48,7 @@ export default function AiInsightsFeaturePage() {
           <p>The more you use Handover, the more context the AI has about your clients, your communication style, and your service delivery patterns. Scheduled reports build a history that informs future outputs. Your brand voice becomes consistent across every client communication over time.</p>
           <div className="rounded-[var(--radius-lg)] border border-[var(--border)] border-l-[3px] border-l-[#0EA5E9] p-5">
             <h3 className="text-lg font-semibold text-[var(--text-primary)]">Who uses this</h3>
-            <p className="mt-2 text-sm">Best fit for <a href="/solutions/msp-directors" className="text-[var(--accent)] hover:underline">MSP Directors</a>, <a href="/solutions/account-managers" className="text-[var(--accent)] hover:underline">Account Managers</a>, and <a href="/solutions/service-desk-managers" className="text-[var(--accent)] hover:underline">Service Desk Managers</a>.</p>
+            <p className="mt-2 text-sm">Best fit for <Link href="/solutions/msp-directors" className="text-[var(--accent)] hover:underline">MSP Directors</Link>, <Link href="/solutions/account-managers" className="text-[var(--accent)] hover:underline">Account Managers</Link>, and <Link href="/solutions/service-desk-managers" className="text-[var(--accent)] hover:underline">Service Desk Managers</Link>.</p>
           </div>
         </div>
       </section>

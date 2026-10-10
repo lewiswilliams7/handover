@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { MarketingHeroAmbient } from "@/components/marketing-hero-ambient";
 import { parseTrialQueryParam } from "@/lib/auth/trial-query";
 
@@ -54,7 +55,7 @@ export default async function AuthPage({ searchParams }: AuthPageProps) {
         <MarketingHeroAmbient />
       </div>
       <div className="relative z-[1] mb-4 flex w-full flex-col items-center px-4 pt-10">
-        <a
+        <Link
           href="/"
           style={{
             textDecoration: "none",
@@ -85,7 +86,7 @@ export default async function AuthPage({ searchParams }: AuthPageProps) {
           >
             Handover
           </span>
-        </a>
+        </Link>
         <p className="mt-3 max-w-[320px] text-center text-[15px] font-semibold leading-snug text-[var(--text-primary)]">
           Stop writing reports.{" "}
           <span className="text-gradient-brand">Start delivering.</span>

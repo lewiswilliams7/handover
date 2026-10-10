@@ -687,7 +687,7 @@ function AddMappingForm({
               {psa === "halopsa" ? "Field name in HaloPSA" : "Field name in ConnectWise"}
               {psa === "halopsa" ? (
                 <span className="ml-1 font-normal text-[var(--text-muted)]">
-                  - HaloPSA prefixes custom fields with "CF" e.g. CFCompanyType
+                  - HaloPSA prefixes custom fields with &ldquo;CF&rdquo;, e.g. CFCompanyType
                 </span>
               ) : null}
             </label>

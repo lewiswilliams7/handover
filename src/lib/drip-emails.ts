@@ -372,7 +372,7 @@ export async function runDripEmailCron(): Promise<{
     trial = { attempted: 0, sent: {}, errors: [String(e)] };
   }
 
-  let postGenRetention = await runPostGenerationRetentionEmailCron();
+  const postGenRetention = await runPostGenerationRetentionEmailCron();
   errors.push(...postGenRetention.errors);
 
   return {

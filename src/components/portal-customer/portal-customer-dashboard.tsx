@@ -1035,10 +1035,8 @@ function PortalCustomerDashboardInner({
   if (showReports) tabs.push({ id: "reports", label: "Reports" });
   tabs.push({ id: "timeline", label: "Timeline" });
 
-  const timelineEntries = useMemo(
-    () => buildPortalTimeline(portalReports, data),
-    [portalReports, data],
-  );
+  // Plain computation: this runs after the early returns above, so it must not be a hook.
+  const timelineEntries = buildPortalTimeline(portalReports, data);
 
   const portalRag = (data?.stats?.rag ?? data?.rag ?? null) as PortalData["rag"];
   const openTickets = data?.stats?.openTickets ?? data?.tickets?.length ?? 0;

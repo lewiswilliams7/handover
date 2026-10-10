@@ -58,7 +58,7 @@ export default function AutomatedReportsFeaturePage() {
           <p>Connect your PSA and generate your first report today. Nothing to configure. Nothing to install. Nothing to learn.</p>
           <div className="rounded-[var(--radius-lg)] border border-[var(--border)] border-l-[3px] border-l-[#0EA5E9] p-5">
             <h3 className="text-lg font-semibold text-[var(--text-primary)]">Who uses this</h3>
-            <p className="mt-2 text-sm">Best fit for <a href="/solutions/service-desk-managers" className="text-[var(--accent)] hover:underline">Service Desk Managers</a>, <a href="/solutions/account-managers" className="text-[var(--accent)] hover:underline">Account Managers</a>, and <a href="/solutions/msp-directors" className="text-[var(--accent)] hover:underline">MSP Directors</a>.</p>
+            <p className="mt-2 text-sm">Best fit for <Link href="/solutions/service-desk-managers" className="text-[var(--accent)] hover:underline">Service Desk Managers</Link>, <Link href="/solutions/account-managers" className="text-[var(--accent)] hover:underline">Account Managers</Link>, and <Link href="/solutions/msp-directors" className="text-[var(--accent)] hover:underline">MSP Directors</Link>.</p>
           </div>
         </div>
       </section>

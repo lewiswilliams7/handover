@@ -117,11 +117,13 @@ export async function POST(req: Request) {
 
       for (const cid of clientIds) {
         counts[String(cid)] = allProjects.filter((p) => {
-          const pid =
-            (p as any).clientId ??
-            (p as any).client_id ??
-            (p as any).clientid ??
-            (p as any).client?.id;
+          const row = p as unknown as {
+            clientId?: unknown;
+            client_id?: unknown;
+            clientid?: unknown;
+            client?: { id?: unknown } | null;
+          };
+          const pid = row.clientId ?? row.client_id ?? row.clientid ?? row.client?.id;
           return pid != null && Number(pid) === cid;
         }).length;
       }

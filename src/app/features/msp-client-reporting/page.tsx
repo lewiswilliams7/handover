@@ -158,7 +158,7 @@ export default function MspClientReportingFeaturePage() {
                 Scheduled reports sent automatically on a weekly, fortnightly, or monthly cadence
               </li>
               <li className="text-[var(--text-primary)]">
-                Built by a Technical Project Manager with hands-on MSP experience
+                Built by an ESM Consultant who works in HaloPSA every day
               </li>
             </ul>
           </section>

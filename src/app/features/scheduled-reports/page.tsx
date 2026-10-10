@@ -53,7 +53,7 @@ export default function ScheduledReportsFeaturePage() {
           <p>Handover delivers that confidence automatically, to every client, every week, regardless of how busy your service desk is.</p>
           <div className="rounded-[var(--radius-lg)] border border-[var(--border)] border-l-[3px] border-l-[#0EA5E9] p-5">
             <h3 className="text-lg font-semibold text-[var(--text-primary)]">Who uses this</h3>
-            <p className="mt-2 text-sm">Best fit for <a href="/solutions/weekly-client-reporting" className="text-[var(--accent)] hover:underline">Weekly Client Reporting</a>, <a href="/solutions/account-managers" className="text-[var(--accent)] hover:underline">Account Managers</a>, and <a href="/solutions/service-desk-managers" className="text-[var(--accent)] hover:underline">Service Desk Managers</a>.</p>
+            <p className="mt-2 text-sm">Best fit for <Link href="/solutions/weekly-client-reporting" className="text-[var(--accent)] hover:underline">Weekly Client Reporting</Link>, <Link href="/solutions/account-managers" className="text-[var(--accent)] hover:underline">Account Managers</Link>, and <Link href="/solutions/service-desk-managers" className="text-[var(--accent)] hover:underline">Service Desk Managers</Link>.</p>
           </div>
         </div>
       </section>
