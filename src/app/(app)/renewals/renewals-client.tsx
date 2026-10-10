@@ -245,6 +245,14 @@ function RenewalCard({ row, median }: { row: RenewalRow; median: number | null }
               )}
             </dd>
           </div>
+          {row.revenuePerHour == null && row.marginUnmeasuredReason ? (
+            <div>
+              <dt className="text-xs text-[var(--text-muted)]">Margin</dt>
+              <dd className="mt-1 text-[var(--text-secondary)]">
+                Not measured: {row.marginUnmeasuredReason.charAt(0).toLowerCase() + row.marginUnmeasuredReason.slice(1)}
+              </dd>
+            </div>
+          ) : null}
           {row.revenuePerHour != null ? (
             <div>
               <dt className="text-xs text-[var(--text-muted)]">Margin</dt>

@@ -129,6 +129,7 @@ export function getFindingCopy(type: string): FindingCopy {
 
 export function findingCountSentence(type: string, count: number): string {
   const noun = count === 1 ? "account" : "accounts";
+  const has = count === 1 ? "has" : "have";
   switch (type) {
     case "volume_shift":
       return `${count} ${noun} had a material change in ticket volume compared with their usual pattern.`;
@@ -139,11 +140,11 @@ export function findingCountSentence(type: string, count: number): string {
     case "contact_gap":
       return `${count} ${noun} had materially less ticket activity than in their earlier pattern.`;
     case "data_quality":
-      return `${count} ${noun} have incomplete service timestamps, so service reporting is incomplete.`;
+      return `${count} ${noun} ${has} incomplete service timestamps, so service reporting is incomplete.`;
     case "backlog_growth":
       return `${count} ${noun} had more open tickets than in their earlier pattern.`;
     case "ageing_tickets":
-      return `${count} ${noun} have open tickets staying open longer than usual.`;
+      return `${count} ${noun} ${has} open tickets staying open longer than usual.`;
     case "contact_gap_absolute":
       return `${count} ${noun} ${count === 1 ? "has" : "have"} an active contract but ${count === 1 ? "has" : "have"} had no activity in over 60 days.`;
     case "contract_expiring":
@@ -165,11 +166,11 @@ export function findingCountSentence(type: string, count: number): string {
     case "quote_acceptance_drop":
       return `${count} ${noun} accepted fewer recent quotes than in their earlier quote history.`;
     case "quote_value_at_stake":
-      return `${count} ${noun} have unapproved quotes past expiry with a combined quoted value.`;
+      return `${count} ${noun} ${has} unapproved quotes past expiry with a combined quoted value.`;
     case "quote_stalled":
-      return `${count} ${noun} have unapproved quotes open longer than their usual decision window.`;
+      return `${count} ${noun} ${has} unapproved quotes open longer than their usual decision window.`;
     case "order_gap":
-      return `${count} ${noun} have gone beyond their typical ordering interval.`;
+      return `${count} ${noun} ${has} gone beyond their typical ordering interval.`;
     case "order_value_drop":
       return `${count} ${noun} had lower recent order value than their earlier 12-month pattern.`;
     default: {

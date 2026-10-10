@@ -35,6 +35,8 @@ export type RenewalRow = {
   repriceTarget: number | null;
   /** Average hours a month logged for this client, when measured. */
   hoursPerMonth: number | null;
+  /** Why margin is missing, when it could not be measured. */
+  marginUnmeasuredReason: string | null;
   move: RenewalMove;
 };
 
@@ -143,6 +145,9 @@ export function buildRenewalRadar(input: {
           ? Math.round((margin.monthlyValue + margin.repriceMonthlyGap) / 10) * 10
           : null,
       hoursPerMonth: margin?.group ? margin.hoursPerMonth : null,
+      marginUnmeasuredReason: margin?.group
+        ? null
+        : (margin?.unmeasuredReason ?? "No tickets closed in the last three months"),
       move,
     };
   });

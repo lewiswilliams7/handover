@@ -51,7 +51,7 @@ const HALO_TICKETS_MINIMAL_HISTORICAL_FIELDS =
   "contact,contact_id,contactname,contact_name,openedby,opened_by,createdby," +
   "summary,subject,tickettype,tickettype_id,category,category_id,category_1,category_2," +
   "fixbydate,respondbydate,respondby_date,fix_by_date,hasbeenclosed,isclosed,isopen,open,closed," +
-  "timetaken,timetakenhours,time_taken,totaltime,lastactiondate,last_action_date,datelastaction";
+  "timetaken,timetakenhours,time_taken,totaltime,chargehours,nonchargehours,lastactiondate,last_action_date,datelastaction";
 
 const HALO_TICKETS_DATESEARCH_FIELD = "dateoccurred";
 
@@ -85,6 +85,8 @@ function applyHaloTicketsListEnrichment(
   opts: { minimalTicketPayload?: boolean; minimalHistoricalPayload?: boolean },
 ): void {
   if (opts.minimalTicketPayload) return;
+  // Halo's ticket list only returns "Time Recorded" (timetaken) when asked for it.
+  url.searchParams.set("includetimetaken", "true");
   if (opts.minimalHistoricalPayload) {
     url.searchParams.set("fields", HALO_TICKETS_MINIMAL_HISTORICAL_FIELDS);
     return;
@@ -1006,6 +1008,8 @@ export function mapTicket(
     0,
     ...[
       ticket.timetaken,
+      // Billable plus non-billable, when Halo splits them.
+      numField(ticket.chargehours) + numField(ticket.nonchargehours),
       ticket.timetakenhours,
       ticket.time_taken,
       ticket.time_logged,

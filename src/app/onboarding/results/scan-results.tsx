@@ -1,6 +1,9 @@
 "use client";
 
 import { ArrowRight, LockKeyhole, RotateCcw } from "lucide-react";
+
+import { EvidenceChips } from "@/components/evidence-chips";
+import { HOUSEKEEPING_FINDING_TYPES } from "@/lib/revenue/revenue-signals";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -8,13 +11,12 @@ import { useEffect, useRef, useState } from "react";
 
 import { SignOutButton } from "@/app/onboarding/sign-out-button";
 import { ChurnReplayPanel } from "@/components/churn-replay-panel";
-import { buildHaloScanEvidenceDeepLink } from "@/lib/psa/scan-deep-links";
 import {
   findingCountSentence,
   getFindingCopy,
   insufficientDataReason,
 } from "@/lib/psa/scan-finding-copy";
-import { parseScanEvidence, type ScanEvidenceRef } from "@/lib/psa/scan-evidence";
+import { type ScanEvidenceRef } from "@/lib/psa/scan-evidence";
 import { BOOK_DEMO_CALENDLY_URL } from "@/lib/book-demo";
 import type { ChurnReplayPreview, ChurnReplayResult } from "@/lib/psa/churn-replay";
 
@@ -101,8 +103,13 @@ const SERVICE_DETAIL_TYPES = new Set([
 
 function splitFindingGroups(findings: ScanFindingView[]) {
   return {
-    worthAttention: findings.filter((finding) => !SERVICE_DETAIL_TYPES.has(finding.type)),
-    serviceDetail: findings.filter((finding) => SERVICE_DETAIL_TYPES.has(finding.type)),
+    worthAttention: findings.filter(
+      (finding) => !SERVICE_DETAIL_TYPES.has(finding.type) && !HOUSEKEEPING_FINDING_TYPES.has(finding.type),
+    ),
+    serviceDetail: findings.filter(
+      (finding) => SERVICE_DETAIL_TYPES.has(finding.type) && !HOUSEKEEPING_FINDING_TYPES.has(finding.type),
+    ),
+    housekeeping: findings.filter((finding) => HOUSEKEEPING_FINDING_TYPES.has(finding.type)),
   };
 }
 
@@ -356,7 +363,7 @@ function formatCurrency(value: number): string {
 function monthlyValueLabel(value: number | null): string {
   return value != null && value > 0
     ? `${formatCurrency(value)}/mo`
-    : "No recurring invoice found";
+    : "No contract value in the PSA";
 }
 
 function findingAccentClass(
@@ -1081,13 +1088,13 @@ function DetailedFindings({ scan }: { scan: AnonymousScanStatus }) {
   const findings = scan.findings ?? [];
   const names = scan.clientNames ?? {};
   const insufficient = scan.insufficientData ?? [];
-  const { worthAttention, serviceDetail } = splitFindingGroups(findings);
+  const { worthAttention, serviceDetail, housekeeping } = splitFindingGroups(findings);
 
   return (
     <>
       <FindingGroup
         title="Worth your attention"
-        description="Account-level changes, ownership gaps, contact concentration, contract changes, and other signals with commercial context."
+        description="Changes in how each client uses you, renewals coming up, and other signals with commercial context."
         findings={worthAttention}
         names={names}
         instanceUrl={scan.instanceUrl}
@@ -1099,6 +1106,15 @@ function DetailedFindings({ scan }: { scan: AnonymousScanStatus }) {
         names={names}
         instanceUrl={scan.instanceUrl}
       />
+      {housekeeping.length > 0 ? (
+        <FindingGroup
+          title="Housekeeping"
+          description="Gaps in how your PSA is set up: no named owner, one contact raising everything, missing timestamps. They do not mean a client is unhappy and never count towards Revenue at Risk, but fixing them makes every other number more reliable."
+          findings={housekeeping}
+          names={names}
+          instanceUrl={scan.instanceUrl}
+        />
+      ) : null}
 
       <section className="mt-6 rounded-3xl border border-white/10 bg-white/[0.025] p-6 sm:p-8">
         <p className="text-xs uppercase tracking-[0.14em] text-white/40">Insufficient data</p>
@@ -1203,27 +1219,7 @@ function EvidenceLinks({
   evidenceIds: unknown;
   instanceUrl: string | null | undefined;
 }) {
-  const links = parseScanEvidence(evidenceIds).flatMap((ref) => {
-    const href = buildHaloScanEvidenceDeepLink(instanceUrl, ref);
-    return href ? [{ href, kind: ref.kind }] : [];
-  });
-  if (links.length === 0) return null;
-
-  return (
-    <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs">
-      {links.map((link, index) => (
-        <a
-          key={`${link.href}-${index}`}
-          href={link.href}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="font-semibold text-cyan-200 hover:text-cyan-100"
-        >
-          View in HaloPSA <span className="font-normal text-cyan-200/60">({link.kind})</span>
-        </a>
-      ))}
-    </div>
-  );
+  return <EvidenceChips evidenceIds={evidenceIds} instanceUrl={instanceUrl} />;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {

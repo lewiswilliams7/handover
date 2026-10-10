@@ -18,9 +18,9 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { useAppShell } from "@/components/app-shell";
 import { ChurnReplayPanel } from "@/components/churn-replay-panel";
+import { EvidenceChips } from "@/components/evidence-chips";
 import { SavePlayPanel } from "@/components/save-play-panel";
 import { HOUSEKEEPING_FINDING_TYPES, computeRevenueAtRisk } from "@/lib/revenue/revenue-signals";
-import { buildHaloScanEvidenceDeepLink } from "@/lib/psa/scan-deep-links";
 import type { ScanComparison } from "@/lib/psa/scan-comparison";
 import type {
   ScanFindingActionType,
@@ -1464,42 +1464,12 @@ function EvidenceLinks({
   finding: Finding;
   results: StoredScanResults;
 }) {
-  const [showAll, setShowAll] = useState(false);
-  const links = finding.evidenceIds.flatMap((ref) => {
-    const href = buildHaloScanEvidenceDeepLink(results.instanceUrl, ref);
-    return href ? [{ href, kind: ref.kind, id: ref.id }] : [];
-  });
-  if (links.length === 0) return null;
-  const visible = showAll ? links : links.slice(0, 5);
-  const psaName = results.psaType === "connectwise" ? "ConnectWise" : "HaloPSA";
-  const kindLabel = (kind: string) => (kind === "project" ? "Project" : kind === "quote" ? "Quote" : "Ticket");
-
   return (
-    <div className="mt-4 flex flex-wrap items-center gap-1.5 text-xs">
-      <span className="mr-1 text-[var(--text-muted)]">Evidence in {psaName}:</span>
-      {visible.map((link, index) => (
-        <a
-          key={`${link.href}-${index}`}
-          href={link.href}
-          target="_blank"
-          rel="noopener noreferrer"
-          title={`Open ${kindLabel(link.kind).toLowerCase()} ${link.id} in ${psaName}`}
-          className="rounded-md border border-cyan-300/25 bg-cyan-300/[0.06] px-2 py-0.5 font-mono font-semibold text-cyan-100 transition-colors hover:border-cyan-200/60 hover:bg-cyan-300/15"
-        >
-          {link.kind === "ticket" ? "#" : `${kindLabel(link.kind)} `}
-          {link.id}
-        </a>
-      ))}
-      {links.length > 5 ? (
-        <button
-          type="button"
-          onClick={() => setShowAll((value) => !value)}
-          className="rounded-md px-1.5 py-0.5 font-semibold text-[var(--text-secondary)] hover:text-white"
-        >
-          {showAll ? "Show fewer" : `+${links.length - 5} more`}
-        </button>
-      ) : null}
-    </div>
+    <EvidenceChips
+      evidenceIds={finding.evidenceIds}
+      instanceUrl={results.instanceUrl}
+      psaName={results.psaType === "connectwise" ? "ConnectWise" : "HaloPSA"}
+    />
   );
 }
 

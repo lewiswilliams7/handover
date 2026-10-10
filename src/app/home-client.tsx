@@ -2840,8 +2840,15 @@ export default function Home() {
     }
 
     const url = new URL(window.location.href);
-    if (url.searchParams.get("view") === mainView) return;
-    url.searchParams.set("view", mainView);
+    // Never put the retired Overview in the address bar.
+    if (mainView === "overview") {
+      if (!url.searchParams.has("view") && !url.searchParams.has("reportsSubview")) return;
+      url.searchParams.delete("view");
+      url.searchParams.delete("reportsSubview");
+    } else {
+      if (url.searchParams.get("view") === mainView) return;
+      url.searchParams.set("view", mainView);
+    }
 
     const query = url.searchParams.toString();
     const nextUrl = `${url.pathname}${query ? `?${query}` : ""}${url.hash}`;
@@ -2884,6 +2891,8 @@ export default function Home() {
 
   useEffect(() => {
     if (!reportsSubviewUrlHydratedRef.current) return;
+    // The sub-view only means something on the Reports screen.
+    if (mainView !== "reports") return;
     if (reportsSubviewChangedFromUrlRef.current) {
       reportsSubviewChangedFromUrlRef.current = false;
       return;
@@ -2895,7 +2904,7 @@ export default function Home() {
     const query = url.searchParams.toString();
     const nextUrl = `${url.pathname}${query ? `?${query}` : ""}${url.hash}`;
     window.history.replaceState(window.history.state, "", nextUrl);
-  }, [reportsSubView]);
+  }, [reportsSubView, mainView]);
   const [qbrIntelligenceContext, setQbrIntelligenceContext] = useState<{
     clientName: string;
     accountNarrative: string;
