@@ -81,6 +81,11 @@ export function MarketingFooter() {
                 </Link>
               </li>
               <li>
+                <Link href="/features/renewal-radar" className={linkClass}>
+                  Renewal Radar
+                </Link>
+              </li>
+              <li>
                 <Link href="/features" className={linkClass}>
                   Features
                 </Link>

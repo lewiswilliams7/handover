@@ -57,6 +57,11 @@ const shipped: RoadmapItem[] = [
     badge: "Prove",
   },
   {
+    title: "Renewal Radar",
+    desc: "Every contract ending in the next year with its client's signals and margin, and the move to make.",
+    badge: "Protect",
+  },
+  {
     title: "Service reviews and QBR packs",
     desc: "Branded packs from live PSA data, exported to PowerPoint, PDF or Excel.",
     badge: "Prove",

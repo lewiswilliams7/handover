@@ -51,7 +51,7 @@ const HALO_TICKETS_MINIMAL_HISTORICAL_FIELDS =
   "contact,contact_id,contactname,contact_name,openedby,opened_by,createdby," +
   "summary,subject,tickettype,tickettype_id,category,category_id,category_1,category_2," +
   "fixbydate,respondbydate,respondby_date,fix_by_date,hasbeenclosed,isclosed,isopen,open,closed," +
-  "timetaken";
+  "timetaken,timetakenhours,time_taken,totaltime,lastactiondate,last_action_date,datelastaction";
 
 const HALO_TICKETS_DATESEARCH_FIELD = "dateoccurred";
 
@@ -655,6 +655,16 @@ function pickTargetDateSkippingHaloNullSentinels(
   return td;
 }
 
+/** Hours from a number, a numeric string, or an "HH:MM" duration string. */
+function hoursField(v: unknown): number {
+  if (typeof v === "string") {
+    const hm = /^\s*(\d+):(\d{2})(?::\d{2})?\s*$/.exec(v);
+    if (hm) return Number(hm[1]) + Number(hm[2]) / 60;
+  }
+  const n = numField(v);
+  return n > 0 ? n : 0;
+}
+
 function numField(v: unknown): number {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string") {
@@ -989,9 +999,26 @@ export function mapTicket(
 
   opts?.fieldProvenance?.recordTicket(ticket);
 
-  const timetaken = numField(
-    ticket.projecttimeactual ?? ticket.act_time ?? ticket.timetaken ?? ticket.time_taken ?? ticket.time_logged ?? ticket.totaltime,
+  // Halo returns several time fields; non-project tickets carry projecttimeactual = 0,
+  // which used to win the ?? chain and hide the real "Time Recorded". Take the
+  // largest recorded value instead.
+  const timetaken = Math.max(
+    0,
+    ...[
+      ticket.timetaken,
+      ticket.timetakenhours,
+      ticket.time_taken,
+      ticket.time_logged,
+      ticket.totaltime,
+      ticket.projecttimeactual,
+      ticket.act_time,
+    ].map(hoursField),
   );
+  const lastactiondate =
+    strField(ticket.lastactiondate) ??
+    strField(ticket.last_action_date) ??
+    strField(ticket.datelastaction) ??
+    null;
 
   const notesRaw = ticket.notes ?? ticket.actions;
   const notes = sortHaloNotesOldestFirst(
@@ -1090,6 +1117,7 @@ export function mapTicket(
     dateclosed,
     targetdate,
     timetaken,
+    lastactiondate,
     flagged: Boolean(ticket.flagged ?? false),
     onhold: Boolean(ticket.onhold ?? false),
     team: team ?? undefined,
@@ -1416,6 +1444,8 @@ export interface HaloTicket {
   dateclosed?: string | null;
   targetdate?: string | null;
   timetaken?: number | null;
+  /** When the last action was added; used to repair impossible close stamps. */
+  lastactiondate?: string | null;
   flagged?: boolean | null;
   onhold?: boolean | null;
   team?: string | null;

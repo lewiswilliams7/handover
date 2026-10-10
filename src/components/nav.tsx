@@ -70,6 +70,12 @@ const CLIENT_INTELLIGENCE_NAV: MegaNavItem[] = [
     Icon: Scale,
   },
   {
+    label: "Renewal Radar",
+    href: "/features/renewal-radar",
+    description: "Every renewal in the next year, with the move to make.",
+    Icon: CalendarClock,
+  },
+  {
     label: "Client Intelligence™",
     href: "/features/client-intelligence",
     description: "The signals behind every flag, against each client's own history.",

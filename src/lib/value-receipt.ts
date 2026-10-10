@@ -152,18 +152,24 @@ export function buildValueReceipt(input: {
       value: formatHoursWorked(stats.hours),
     });
   }
-  receiptStats.push({
-    key: "response",
-    label: "Typical first response",
-    value: formatDuration(stats.firstResponseHours),
-    note: speedNote(stats.firstResponseHours, baselineResponse),
-  });
-  receiptStats.push({
-    key: "resolution",
-    label: "Typical time to resolve",
-    value: formatDuration(stats.resolutionHours),
-    note: speedNote(stats.resolutionHours, baselineResolution),
-  });
+  // Timing stats only appear when enough of the month's tickets were measured
+  // (see client-monthly.ts); a receipt never shows a number it cannot back up.
+  if (stats.firstResponseHours != null) {
+    receiptStats.push({
+      key: "response",
+      label: "Typical first response",
+      value: formatDuration(stats.firstResponseHours),
+      note: speedNote(stats.firstResponseHours, baselineResponse),
+    });
+  }
+  if (stats.resolutionHours != null) {
+    receiptStats.push({
+      key: "resolution",
+      label: "Typical time to resolve",
+      value: formatDuration(stats.resolutionHours),
+      note: speedNote(stats.resolutionHours, baselineResolution),
+    });
+  }
   if (stats.peopleHelped > 0) {
     receiptStats.push({
       key: "people",

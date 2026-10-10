@@ -36,6 +36,11 @@ export type ClientMarginRow = {
   group: MarginGroup | null;
   /** Why a client could not be measured, when group is null. */
   unmeasuredReason: string | null;
+  /**
+   * For thin-margin clients: the extra monthly value that would bring them up
+   * to your typical revenue per hour, at the hours they take today.
+   */
+  repriceMonthlyGap: number | null;
 };
 
 export type ClientMargin = {
@@ -47,6 +52,8 @@ export type ClientMargin = {
   rows: ClientMarginRow[];
   /** True when contract values were available from the PSA. */
   valuesAvailable: boolean;
+  /** Sum of repriceMonthlyGap across thin-margin clients, per year. */
+  repriceAnnualTotal: number;
 };
 
 function median(values: number[]): number | null {
@@ -117,11 +124,16 @@ export function buildClientMargin(input: {
           ? Math.round((row.revenuePerHour / medianRevenuePerHour) * 100) / 100
           : null;
       let group: MarginGroup | null = null;
+      let repriceMonthlyGap: number | null = null;
       if (vsMedian != null) {
         const thin = vsMedian < THIN_MARGIN_RATIO;
         group = row.atRisk ? (thin ? "fix" : "save") : thin ? "reprice" : "protect";
+        if (thin && medianRevenuePerHour && row.monthlyValue != null) {
+          const gap = medianRevenuePerHour * row.hoursPerMonth - row.monthlyValue;
+          repriceMonthlyGap = gap > 0 ? Math.round(gap / 10) * 10 : null;
+        }
       }
-      return { ...row, vsMedian, group };
+      return { ...row, vsMedian, group, repriceMonthlyGap };
     })
     .sort(
       (a, b) =>
@@ -137,6 +149,7 @@ export function buildClientMargin(input: {
     ),
     rows,
     valuesAvailable: Boolean(clientValues && Object.keys(clientValues).length > 0),
+    repriceAnnualTotal: rows.reduce((sum, row) => sum + (row.repriceMonthlyGap ?? 0), 0) * 12,
   };
 }
 

@@ -30,6 +30,7 @@ import {
 } from "@/lib/psa/connectwise";
 import {
   aggregateByClientPeriod,
+  repairTicketTimings,
   type ScanProjectInput,
   type ScanTicketInput,
 } from "@/lib/psa/scan-aggregate";
@@ -159,6 +160,33 @@ export type PublicScanStatus = {
   errorCode: string | null;
 };
 
+export type ScanRenewal = {
+  clientId: number;
+  /** ISO end date of the contract. */
+  endDate: string;
+  monthlyValue: number | null;
+};
+
+const RENEWAL_HORIZON_MS = 365 * 24 * 60 * 60 * 1000;
+
+/** Live contracts ending within a year, soonest first, one row per contract. */
+function upcomingRenewals(
+  contracts: NormalisedContractRecord[] | undefined,
+  nowMs: number = Date.now(),
+): ScanRenewal[] {
+  return (contracts ?? [])
+    .flatMap((contract) => {
+      const end = contract.endDate ? Date.parse(contract.endDate) : Number.NaN;
+      if (!Number.isFinite(end) || end <= nowMs || end - nowMs > RENEWAL_HORIZON_MS) return [];
+      return [{
+        clientId: contract.clientId,
+        endDate: new Date(end).toISOString(),
+        monthlyValue: contract.hasValue && contract.monthlyValue != null ? contract.monthlyValue : null,
+      }];
+    })
+    .sort((a, b) => Date.parse(a.endDate) - Date.parse(b.endDate));
+}
+
 export type StoredScanResults = {
   byClient: Record<string, unknown>;
   findings: ScanFinding[];
@@ -208,6 +236,8 @@ export type StoredScanResults = {
   clientMonthly?: ClientMonthlyResult | null;
   /** Current monthly recurring value per client id, for Client Margin. Absent on older scans. */
   clientValues?: Record<string, number> | null;
+  /** Live contracts ending in the next 12 months, for Renewal Radar. */
+  renewals?: ScanRenewal[] | null;
 };
 
 export type ScanFindingPreview = {
@@ -828,6 +858,14 @@ function haloTicketToScanInput(
   statusNames: Map<number, string>,
   typeNames: Map<number, string> = new Map(),
 ): ScanTicketInput {
+  return repairTicketTimings(haloTicketToRawScanInput(ticket, statusNames, typeNames), ticket.lastactiondate);
+}
+
+function haloTicketToRawScanInput(
+  ticket: HaloTicket,
+  statusNames: Map<number, string>,
+  typeNames: Map<number, string>,
+): ScanTicketInput {
   const attrs = ticket.scanAttributes;
   const statusOpen =
     ticket.status_id != null
@@ -963,7 +1001,7 @@ async function fetchCwScanTickets(
       };
       fieldProvenance.recordTicket(provenanceRow);
       const status = (provenanceRow.status as string | null)?.toLowerCase() ?? "";
-      result.push({
+      result.push(repairTicketTimings({
         ticketId: Number.isSafeInteger(Number(row.id)) ? Number(row.id) : null,
         clientId,
         dateEntered: typeof row.dateEntered === "string" ? row.dateEntered : null,
@@ -986,7 +1024,7 @@ async function fetchCwScanTickets(
           typeof row.actualHours === "number" && Number.isFinite(row.actualHours) && row.actualHours >= 0
             ? row.actualHours
             : null,
-      });
+      }));
     }
     if (rows.length < 100) break;
   }
@@ -1265,6 +1303,7 @@ async function runHaloSync(
     churnReplay,
     clientMonthly,
     clientValues,
+    renewals: upcomingRenewals(contracts),
   };
 }
 
@@ -1372,6 +1411,7 @@ async function runConnectWiseSync(
     churnReplay,
     clientMonthly,
     clientValues,
+    renewals: upcomingRenewals(contracts),
   };
 }
 

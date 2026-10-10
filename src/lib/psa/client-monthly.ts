@@ -89,6 +89,11 @@ function median(values: number[]): number | null {
   return Math.round(value * 10) / 10;
 }
 
+/** At least 3 measured tickets, covering at least half of the month's tickets. */
+function enoughSamples(measured: number, total: number): boolean {
+  return measured >= 3 && total > 0 && measured / total >= 0.5;
+}
+
 function isUrgent(priority: string | null | undefined): boolean {
   const p = (priority ?? "").trim().toLowerCase();
   if (!p) return false;
@@ -198,7 +203,7 @@ export function buildClientMonthly(
         if (isOutOfHours(entered)) b.outOfHours += 1;
         if (requester) b.people.add(requester);
         if (closed == null && ticket.statusOpen === false) b.closedUndated += 1;
-        const responded = parseMs(ticket.dateResponded);
+        const responded = ticket.responseReliable === false ? null : parseMs(ticket.dateResponded);
         if (responded != null && responded >= entered) {
           b.responses.push((responded - entered) / HOUR_MS);
         }
@@ -211,7 +216,7 @@ export function buildClientMonthly(
         const b = bucket(ticket.clientId, key);
         b.closed += 1;
         if (isUrgent(ticket.priority)) b.urgentClosed += 1;
-        if (entered != null && closed >= entered) {
+        if (entered != null && closed >= entered && ticket.resolutionReliable !== false) {
           b.resolutions.push((closed - entered) / HOUR_MS);
         }
         const hours = ticket.hoursLogged;
@@ -247,8 +252,9 @@ export function buildClientMonthly(
           opened: b?.opened ?? 0,
           closed: b?.closed ?? 0,
           urgentClosed: b?.urgentClosed ?? 0,
-          firstResponseHours: b ? median(b.responses) : null,
-          resolutionHours: b ? median(b.resolutions) : null,
+          // Only report a typical time when enough of the month's tickets were measured.
+          firstResponseHours: b && enoughSamples(b.responses.length, b.opened) ? median(b.responses) : null,
+          resolutionHours: b && enoughSamples(b.resolutions.length, b.closed) ? median(b.resolutions) : null,
           outOfHours: b?.outOfHours ?? 0,
           peopleHelped: b?.people.size ?? 0,
           hours: b ? Math.round(b.hours * 10) / 10 : 0,

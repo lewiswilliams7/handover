@@ -77,6 +77,12 @@ const PROTECT: FeatureCard[] = [
     href: "/features/client-margin",
     Icon: Scale,
   },
+  {
+    title: "Renewal Radar",
+    body: "Every contract ending in the next year, with service signals and margin side by side: save, reprice or renew early.",
+    href: "/features/renewal-radar",
+    Icon: CalendarClock,
+  },
 ];
 
 const PROVE: FeatureCard[] = [

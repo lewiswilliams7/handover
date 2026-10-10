@@ -22,6 +22,7 @@ const FEATURE_GROUPS: ReadonlyArray<{ title: string; items: ReadonlyArray<Featur
       { label: "Save Plays™ with a ready-to-send email for every flag", href: "/features/save-plays" },
       { label: "Saved Revenue tracking", href: "/features/revenue-at-risk#saved-revenue" },
       { label: "Client Margin: revenue per hour for every client", href: "/features/client-margin" },
+      { label: "Renewal Radar: every renewal, planned months ahead", href: "/features/renewal-radar" },
       { label: "Handover Client Intelligence™ signals and weekly digest", href: "/features/client-intelligence" },
     ],
   },

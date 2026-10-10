@@ -19,7 +19,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAppShell } from "@/components/app-shell";
 import { ChurnReplayPanel } from "@/components/churn-replay-panel";
 import { SavePlayPanel } from "@/components/save-play-panel";
-import { computeRevenueAtRisk } from "@/lib/revenue/revenue-signals";
+import { HOUSEKEEPING_FINDING_TYPES, computeRevenueAtRisk } from "@/lib/revenue/revenue-signals";
 import { buildHaloScanEvidenceDeepLink } from "@/lib/psa/scan-deep-links";
 import type { ScanComparison } from "@/lib/psa/scan-comparison";
 import type {
@@ -198,8 +198,13 @@ function findingGroups(findings: Finding[], filter: Filter) {
             : !OPPORTUNITY_TYPES.has(finding.type),
         );
   return {
-    worthAttention: filtered.filter((finding) => !SERVICE_DETAIL_TYPES.has(finding.type)),
-    serviceDetail: filtered.filter((finding) => SERVICE_DETAIL_TYPES.has(finding.type)),
+    worthAttention: filtered.filter(
+      (finding) => !SERVICE_DETAIL_TYPES.has(finding.type) && !HOUSEKEEPING_FINDING_TYPES.has(finding.type),
+    ),
+    serviceDetail: filtered.filter(
+      (finding) => SERVICE_DETAIL_TYPES.has(finding.type) && !HOUSEKEEPING_FINDING_TYPES.has(finding.type),
+    ),
+    housekeeping: filtered.filter((finding) => HOUSEKEEPING_FINDING_TYPES.has(finding.type)),
   };
 }
 
@@ -207,8 +212,8 @@ function findingGroups(findings: Finding[], filter: Filter) {
 function commercialContext(
   results: StoredScanResults,
   findings: Finding[],
-): Array<{ label: string; value: string }> {
-  const items: Array<{ label: string; value: string }> = [];
+): Array<{ label: string; value: string; href?: string }> {
+  const items: Array<{ label: string; value: string; href?: string }> = [];
   const expiringValue = results.portfolio.expiringContractValue;
   const expiringCount = results.portfolio.expiringContractCount ?? 0;
   if (expiringCount > 0) {
@@ -218,6 +223,7 @@ function commercialContext(
         expiringValue != null && expiringValue > 0
           ? `${formatCurrency(expiringValue * 12)} a year`
           : "Value not recorded",
+      href: "/renewals",
     });
   }
   const quoteValue = findings
@@ -851,6 +857,18 @@ export function AttentionClient({
               onAction={actionFinding}
               senderName={senderName}
             />
+            {groups.housekeeping.length > 0 ? (
+              <FindingGroup
+                title="Housekeeping"
+                description="Gaps in how your PSA is set up. They do not mean a client is unhappy and never count towards Revenue at Risk, but fixing them makes every other number more reliable."
+                findings={groups.housekeeping}
+                results={results}
+                expandedFinding={expandedFinding}
+                onExpand={setExpandedFinding}
+                onAction={actionFinding}
+                senderName={senderName}
+              />
+            ) : null}
 
             <section className="mt-8 rounded-2xl border border-white/10 bg-white/[0.025] p-6">
               <h2 className="text-xl font-semibold">Clients with nothing changed</h2>
@@ -1214,6 +1232,7 @@ function ResolvedFindingCard({
 
 function FindingGroup({
   title,
+  description,
   findings,
   results,
   expandedFinding,
@@ -1222,6 +1241,7 @@ function FindingGroup({
   senderName,
 }: {
   title: string;
+  description?: string;
   findings: Finding[];
   results: StoredScanResults;
   expandedFinding: string | null;
@@ -1239,6 +1259,9 @@ function FindingGroup({
         <h2 className="text-2xl font-semibold">{title}</h2>
         <span className="text-xs text-[var(--text-muted)]">{findings.length} shown</span>
       </div>
+      {description ? (
+        <p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">{description}</p>
+      ) : null}
       {findings.length === 0 ? (
         <p className="mt-3 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-4 text-sm text-[var(--text-secondary)]">
           No findings in this group.
@@ -1441,25 +1464,41 @@ function EvidenceLinks({
   finding: Finding;
   results: StoredScanResults;
 }) {
+  const [showAll, setShowAll] = useState(false);
   const links = finding.evidenceIds.flatMap((ref) => {
     const href = buildHaloScanEvidenceDeepLink(results.instanceUrl, ref);
-    return href ? [{ href, kind: ref.kind }] : [];
+    return href ? [{ href, kind: ref.kind, id: ref.id }] : [];
   });
   if (links.length === 0) return null;
+  const visible = showAll ? links : links.slice(0, 5);
+  const psaName = results.psaType === "connectwise" ? "ConnectWise" : "HaloPSA";
+  const kindLabel = (kind: string) => (kind === "project" ? "Project" : kind === "quote" ? "Quote" : "Ticket");
 
   return (
-    <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs">
-      {links.map((link, index) => (
+    <div className="mt-4 flex flex-wrap items-center gap-1.5 text-xs">
+      <span className="mr-1 text-[var(--text-muted)]">Evidence in {psaName}:</span>
+      {visible.map((link, index) => (
         <a
           key={`${link.href}-${index}`}
           href={link.href}
           target="_blank"
           rel="noopener noreferrer"
-          className="font-semibold text-cyan-200 hover:text-cyan-100"
+          title={`Open ${kindLabel(link.kind).toLowerCase()} ${link.id} in ${psaName}`}
+          className="rounded-md border border-cyan-300/25 bg-cyan-300/[0.06] px-2 py-0.5 font-mono font-semibold text-cyan-100 transition-colors hover:border-cyan-200/60 hover:bg-cyan-300/15"
         >
-          View in HaloPSA <span className="font-normal text-cyan-200/60">({link.kind})</span>
+          {link.kind === "ticket" ? "#" : `${kindLabel(link.kind)} `}
+          {link.id}
         </a>
       ))}
+      {links.length > 5 ? (
+        <button
+          type="button"
+          onClick={() => setShowAll((value) => !value)}
+          className="rounded-md px-1.5 py-0.5 font-semibold text-[var(--text-secondary)] hover:text-white"
+        >
+          {showAll ? "Show fewer" : `+${links.length - 5} more`}
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -1523,7 +1562,7 @@ function RevenueAtRiskSummary({
   valuesAvailable,
 }: {
   revenueAtRisk: ReturnType<typeof computeRevenueAtRisk>;
-  commercial: Array<{ label: string; value: string }>;
+  commercial: Array<{ label: string; value: string; href?: string }>;
   valuesAvailable: boolean;
 }) {
   const unvalued = revenueAtRisk.clientsAtRisk - revenueAtRisk.clientsWithValue;
@@ -1571,6 +1610,11 @@ function RevenueAtRiskSummary({
             <div key={item.label}>
               <dt className="text-[var(--text-secondary)]">{item.label}</dt>
               <dd className="mt-0.5 font-semibold text-white">{item.value}</dd>
+              {item.href ? (
+                <Link href={item.href} className="mt-0.5 inline-block text-xs font-semibold text-cyan-200 hover:text-cyan-100">
+                  Plan them in Renewal Radar →
+                </Link>
+              ) : null}
             </div>
           ))}
         </dl>

@@ -431,10 +431,12 @@ function responseMediansForMonths(
   for (const t of clientTickets) {
     const mk = monthKeyFromIso(t.dateEntered);
     if (!mk || !keySet.has(mk)) continue;
+    if (t.responseReliable === false) continue;
     const h = responseHours(t.dateEntered, t.dateResponded);
     if (h != null) hours.push(h);
   }
-  return median(hours);
+  // Too few measured tickets: say nothing rather than compare noise.
+  return hours.length >= MIN_TIMING_SAMPLES ? median(hours) : null;
 }
 
 function durationHours(startIso: string | null, endIso: string | null): number | null {
@@ -460,11 +462,11 @@ function medianResolutionForMonths(
   tickets: ScanTicketInput[],
   monthKeys: string[],
 ): number | null {
-  return median(
-    ticketsInMonths(tickets, monthKeys)
-      .map((ticket) => durationHours(ticket.dateEntered, ticket.dateClosed))
-      .filter((duration): duration is number => duration != null),
-  );
+  const durations = ticketsInMonths(tickets, monthKeys)
+    .filter((ticket) => ticket.resolutionReliable !== false)
+    .map((ticket) => durationHours(ticket.dateEntered, ticket.dateClosed))
+    .filter((duration): duration is number => duration != null);
+  return durations.length >= MIN_TIMING_SAMPLES ? median(durations) : null;
 }
 
 function isAfterHours(iso: string | null): boolean | null {
@@ -706,11 +708,15 @@ function evidenceForFinding(
     case "response_drift":
       // The slowest first responses in the recent window: what changed.
       return rankedTicketEvidence(input.evidenceSource, input.tickets, finding.clientId, (ticket) =>
-        isRecentTicket(ticket.dateEntered, nowMs) ? responseHours(ticket.dateEntered, ticket.dateResponded) : null,
+        isRecentTicket(ticket.dateEntered, nowMs) && ticket.responseReliable !== false
+          ? responseHours(ticket.dateEntered, ticket.dateResponded)
+          : null,
       );
     case "resolution_time_trend":
       return rankedTicketEvidence(input.evidenceSource, input.tickets, finding.clientId, (ticket) =>
-        isRecentTicket(ticket.dateClosed, nowMs) ? durationHours(ticket.dateEntered, ticket.dateClosed) : null,
+        isRecentTicket(ticket.dateClosed, nowMs) && ticket.resolutionReliable !== false
+          ? durationHours(ticket.dateEntered, ticket.dateClosed)
+          : null,
       );
     case "data_quality": {
       // Link the tickets that are actually missing the timestamp.
@@ -744,6 +750,9 @@ function formatHoursShort(hours: number): string {
   }
   return `${Math.round(hours / 24)} days`;
 }
+
+/** Fewest measured tickets behind any response or resolution comparison. */
+const MIN_TIMING_SAMPLES = 5;
 
 const RECENT_EVIDENCE_WINDOW_MS = 92 * 24 * 60 * 60 * 1000;
 
@@ -986,13 +995,35 @@ export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsRe
   const insufficientData: InsufficientDataClient[] = [];
   const nowMs = input.asOfMs ?? Date.now();
   const activeContractClientIds = new Set(contractsByClient.keys());
-  const clientIds = new Set<number>([
+  const allClientIds = new Set<number>([
     ...Object.keys(input.byClient).map(Number),
     ...input.tickets.map((t) => t.clientId),
     ...activeContractClientIds,
     ...(input.quotations ?? []).map((quote) => quote.clientId),
     ...(input.salesOrders ?? []).map((order) => order.clientId),
   ]);
+  // A client with no live contract and nothing raised for 120 days has gone.
+  // Flagging it as "drifting" would be noise; Churn Replay covers departures.
+  const departedAfterMs = 120 * 86_400_000;
+  const latestTicketMs = new Map<number, number>();
+  for (const ticket of input.tickets) {
+    const at = Math.max(
+      ...[ticket.dateEntered, ticket.dateClosed]
+        .map((value) => (value ? Date.parse(value) : Number.NaN))
+        .filter((value) => Number.isFinite(value) && value <= nowMs),
+      Number.NEGATIVE_INFINITY,
+    );
+    if (at > (latestTicketMs.get(ticket.clientId) ?? Number.NEGATIVE_INFINITY)) {
+      latestTicketMs.set(ticket.clientId, at);
+    }
+  }
+  const clientIds = new Set(
+    [...allClientIds].filter((clientId) => {
+      if (activeContractClientIds.has(clientId) || contractByClient.has(clientId)) return true;
+      const latest = latestTicketMs.get(clientId);
+      return latest == null || !Number.isFinite(latest) || nowMs - latest < departedAfterMs;
+    }),
+  );
 
   const dateEnteredFailed = mappingFailed(input.fieldMapping, "dateEntered");
   const dateRespondedFailed = mappingFailed(input.fieldMapping, "dateResponded");
@@ -1337,8 +1368,8 @@ export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsRe
         recentMedian != null &&
         baselineMedian != null &&
         baselineMedian > 0 &&
-        measuredCoverage(ticketsInMonths(clientTickets, recent), (ticket) => ticket.dateClosed != null) >= 70 &&
-        measuredCoverage(ticketsInMonths(clientTickets, baseline), (ticket) => ticket.dateClosed != null) >= 70 &&
+        measuredCoverage(ticketsInMonths(clientTickets, recent), (ticket) => ticket.dateClosed != null && ticket.resolutionReliable !== false) >= 70 &&
+        measuredCoverage(ticketsInMonths(clientTickets, baseline), (ticket) => ticket.dateClosed != null && ticket.resolutionReliable !== false) >= 70 &&
         recentMedian >= baselineMedian * opts.resolutionTimeRatio
       ) {
         const drivers: FindingDriver[] = [];

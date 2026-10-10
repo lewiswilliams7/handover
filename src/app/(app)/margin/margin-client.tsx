@@ -84,7 +84,7 @@ export function MarginClient({ state, margin, scannedAt }: Props) {
           </section>
         ) : (
           <>
-            <dl className="mt-8 grid gap-3 sm:grid-cols-3">
+            <dl className={`mt-8 grid gap-3 sm:grid-cols-2 ${margin.repriceAnnualTotal > 0 ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
               <div className="rounded-xl border border-white/10 bg-white/[0.035] px-4 py-3">
                 <dt className="text-xs text-[var(--text-secondary)]">Typical revenue per hour</dt>
                 <dd className="mt-1 text-2xl font-semibold text-white">
@@ -102,6 +102,18 @@ export function MarginClient({ state, margin, scannedAt }: Props) {
                 <dt className="text-xs text-[var(--text-secondary)]">Tickets with time logged</dt>
                 <dd className="mt-1 text-2xl font-semibold text-white">{coveragePct}%</dd>
               </div>
+              {margin.repriceAnnualTotal > 0 ? (
+                <div className="rounded-xl border border-amber-300/30 bg-amber-300/[0.06] px-4 py-3">
+                  <dt className="text-xs text-amber-100/80">Margin gap</dt>
+                  <dd className="mt-1 text-2xl font-semibold text-white">
+                    {money(margin.repriceAnnualTotal)}
+                    <span className="text-base font-medium text-[var(--text-muted)]"> a year</span>
+                  </dd>
+                  <p className="mt-1 text-[11px] leading-4 text-[var(--text-muted)]">
+                    What thin-margin clients would pay at your typical rate for the hours they take, minus what they pay now
+                  </p>
+                </div>
+              ) : null}
             </dl>
 
             {!margin.valuesAvailable ? (
@@ -216,6 +228,11 @@ function MarginGroupCard({ group, rows }: { group: MarginGroup; rows: ClientMarg
                     {row.vsMedian != null ? (
                       <span className={`ml-1.5 text-xs ${row.vsMedian < 0.75 ? "text-amber-200" : "text-[var(--text-muted)]"}`}>
                         {Math.round(row.vsMedian * 100)}%
+                      </span>
+                    ) : null}
+                    {row.repriceMonthlyGap ? (
+                      <span className="block text-[11px] font-normal text-amber-200/90">
+                        +{money(row.repriceMonthlyGap)}/mo to match typical
                       </span>
                     ) : null}
                   </td>

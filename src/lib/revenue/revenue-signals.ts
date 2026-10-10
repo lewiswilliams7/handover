@@ -16,8 +16,23 @@ export const OPPORTUNITY_FINDING_TYPES: ReadonlySet<string> = new Set([
   "contract_vs_usage",
 ]);
 
-/** Data-coverage findings say nothing about the client relationship. */
-const NON_RISK_FINDING_TYPES: ReadonlySet<string> = new Set(["data_quality"]);
+/**
+ * Setup and data gaps: true for many clients who are perfectly happy, so they
+ * never count towards Revenue at Risk (the same rule Churn Replay uses). They
+ * are still shown, as housekeeping.
+ */
+export const HOUSEKEEPING_FINDING_TYPES: ReadonlySet<string> = new Set([
+  "data_quality",
+  "unowned_account",
+  "high_value_unowned",
+  "contact_concentration",
+]);
+
+/** Not a change in behaviour: renewals live in Renewal Radar, gaps in housekeeping. */
+const NON_RISK_FINDING_TYPES: ReadonlySet<string> = new Set([
+  ...HOUSEKEEPING_FINDING_TYPES,
+  "contract_expiring",
+]);
 
 export type RiskFindingInput = {
   clientId: number;

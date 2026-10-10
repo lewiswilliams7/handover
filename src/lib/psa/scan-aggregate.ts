@@ -25,7 +25,58 @@ export type ScanTicketInput = {
   slaDueDate?: string | null;
   /** Total hours logged against the ticket, when the PSA records it. */
   hoursLogged?: number | null;
+  /**
+   * False when the response stamp cannot be trusted (e.g. stamped by a bulk
+   * import at creation). The ticket still counts as responded for coverage,
+   * but is left out of response-time figures.
+   */
+  responseReliable?: boolean;
+  /** False when the close stamp cannot be trusted for resolution times. */
+  resolutionReliable?: boolean;
 };
+
+const MINUTE_MS = 60_000;
+
+/**
+ * Catch close and response stamps that cannot be true, so no figure is built
+ * on them. The test is physical: a ticket cannot be closed sooner than the
+ * time logged against it. That happens when tickets are bulk-imported as
+ * closed, or logged after the work was done; in both cases the PSA's
+ * creation-to-close time says nothing about how quickly the client was helped.
+ *
+ * When the PSA also gives the date of the last action, and that date is a
+ * believable close (after the logged work, within 90 days), it is used as the
+ * close date instead.
+ */
+export function repairTicketTimings(
+  ticket: ScanTicketInput,
+  lastActionIso?: string | null,
+): ScanTicketInput {
+  const entered = ticket.dateEntered ? Date.parse(ticket.dateEntered) : Number.NaN;
+  const closed = ticket.dateClosed ? Date.parse(ticket.dateClosed) : Number.NaN;
+  const hours = typeof ticket.hoursLogged === "number" && ticket.hoursLogged > 0 ? ticket.hoursLogged : 0;
+  if (!Number.isFinite(entered) || !Number.isFinite(closed) || hours <= 0) return ticket;
+
+  const elapsedMs = closed - entered;
+  const loggedMs = hours * 3_600_000;
+  if (elapsedMs + 15 * MINUTE_MS >= loggedMs) return ticket;
+
+  const responded = ticket.dateResponded ? Date.parse(ticket.dateResponded) : Number.NaN;
+  const responseStampedAtCreation = Number.isFinite(responded) && responded - entered < MINUTE_MS;
+  const lastAction = lastActionIso ? Date.parse(lastActionIso) : Number.NaN;
+  const lastActionBelievable =
+    Number.isFinite(lastAction) &&
+    lastAction - entered + 15 * MINUTE_MS >= loggedMs &&
+    lastAction - entered <= 90 * 24 * 3_600_000;
+
+  return {
+    ...ticket,
+    ...(lastActionBelievable
+      ? { dateClosed: new Date(lastAction).toISOString(), resolutionReliable: true }
+      : { resolutionReliable: false }),
+    ...(responseStampedAtCreation ? { responseReliable: false } : {}),
+  };
+}
 
 export type ScanProjectInput = {
   projectId: number | null;
@@ -186,7 +237,7 @@ export function aggregateByClientPeriod(
 
     if (t.dateResponded?.trim()) {
       b.withResponse += 1;
-      const hrs = responseHours(t.dateEntered, t.dateResponded);
+      const hrs = t.responseReliable === false ? null : responseHours(t.dateEntered, t.dateResponded);
       if (hrs != null) b.responseHours.push(hrs);
     }
 
