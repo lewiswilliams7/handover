@@ -19,6 +19,14 @@
     {
       "path": "/api/cron/drip-emails",
       "schedule": "30 8 * * *"
+    },
+    {
+      "path": "/api/cron/weekly-scan",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/send-value-receipts",
+      "schedule": "0 9 * * *"
     }
   ]
 }

@@ -50,7 +50,8 @@ const HALO_TICKETS_MINIMAL_HISTORICAL_FIELDS =
   "user,user_name,useremail,username,requester,requester_id,clientcontact,client_contact," +
   "contact,contact_id,contactname,contact_name,openedby,opened_by,createdby," +
   "summary,subject,tickettype,tickettype_id,category,category_id,category_1,category_2," +
-  "fixbydate,respondbydate,respondby_date,fix_by_date,hasbeenclosed,isclosed,isopen,open,closed";
+  "fixbydate,respondbydate,respondby_date,fix_by_date,hasbeenclosed,isclosed,isopen,open,closed," +
+  "timetaken";
 
 const HALO_TICKETS_DATESEARCH_FIELD = "dateoccurred";
 

@@ -17,6 +17,7 @@ import {
   Pin,
   PinOff,
   PoundSterling,
+  ReceiptText,
   Rewind,
   Settings,
   Shield,
@@ -724,7 +725,9 @@ function AppShellContent({ children }: { children: ReactNode }) {
           : attentionTab === "history"
             ? "History"
             : "Revenue at Risk"
-        : titles[activeView] ?? "Handover";
+        : pathname === "/receipts"
+          ? "Value Receipts"
+          : titles[activeView] ?? "Handover";
   const attentionNavClass = (tab: "risk" | "replay") => {
     const onTab =
       pathname === "/attention" &&
@@ -792,6 +795,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
               </div>
               <div className="space-y-0.5">
                 <div className={sectionLabelClass}>Prove</div>
+                <Link href="/receipts" onClick={closeMobile} title="Value Receipts" className={`relative flex h-8 w-full items-center rounded-[var(--radius)] border-l-2 text-[12px] transition-all duration-[120ms] ${expanded ? "gap-1.5 px-2.5" : "justify-center px-0"} ${pathname === "/receipts" && !settings.open ? "border-[var(--accent)] bg-[var(--accent)]/15 font-medium text-white" : "border-transparent text-[var(--text-secondary)] hover:bg-white/5 hover:text-white"}`}><ReceiptText className="size-[14px]" /><span className={labelClass}>Value Receipts</span></Link>
                 <Link href="/?view=reports" onClick={closeMobile} className={navClass("reports")} title="Reports"><LayoutTemplate className="size-[14px]" /><span className={labelClass}>Reports</span></Link>
                 <Link href="/?view=scheduled" data-tour="nav-scheduled" onClick={closeMobile} className={navClass("scheduled")} title="Scheduled"><Calendar className="size-[14px]" /><span className={labelClass}>Scheduled</span></Link>
                 <Link href="/?view=approvals" onClick={closeMobile} className={navClass("approvals")} title="Approvals"><ClipboardCheck className="size-[14px]" /><span className={labelClass}>Approvals</span></Link>

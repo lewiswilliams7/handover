@@ -32,6 +32,7 @@ import {
   type ScanProjectInput,
   type ScanTicketInput,
 } from "@/lib/psa/scan-aggregate";
+import { buildClientMonthly, type ClientMonthlyResult } from "@/lib/psa/client-monthly";
 import {
   buildChurnReplay,
   churnReplayPreview,
@@ -201,6 +202,8 @@ export type StoredScanResults = {
   projectOverrunReliable?: boolean;
   /** Churn Replay™ backtest over clients lost in the scan window. Absent on older scans. */
   churnReplay?: ChurnReplayResult | null;
+  /** Per-client monthly service summary for Value Receipts™ and Client Margin. Absent on older scans. */
+  clientMonthly?: ClientMonthlyResult | null;
 };
 
 export type ScanFindingPreview = {
@@ -830,6 +833,10 @@ function haloTicketToScanInput(
     requester: attrs?.requester ?? null,
     ticketType: attrs?.ticketType ?? null,
     slaDueDate: attrs?.slaDueDate ?? null,
+    hoursLogged:
+      typeof ticket.timetaken === "number" && Number.isFinite(ticket.timetaken) && ticket.timetaken >= 0
+        ? ticket.timetaken
+        : null,
   };
 }
 
@@ -891,7 +898,7 @@ async function fetchCwScanTickets(
   );
   const fields = encodeURIComponent(
     "id,company/id,dateEntered,dateResponded,closedDate,summary,priority/name,status/name," +
-      "owner/name,contact/name,type/name,respondByDate,resolveByDate",
+      "owner/name,contact/name,type/name,respondByDate,resolveByDate,actualHours",
   );
   const headers = {
     Authorization: cwAuth(connection),
@@ -959,6 +966,10 @@ async function fetchCwScanTickets(
         requester: provenanceRow.contact as string | null,
         ticketType: provenanceRow.tickettype as string | null,
         slaDueDate: provenanceRow.fixbydate as string | null,
+        hoursLogged:
+          typeof row.actualHours === "number" && Number.isFinite(row.actualHours) && row.actualHours >= 0
+            ? row.actualHours
+            : null,
       });
     }
     if (rows.length < 100) break;
@@ -981,6 +992,15 @@ function dateWindow(): { dateFrom: string; dateTo: string } {
  * Churn Replay runs after the live checks and must never fail a scan: any
  * error leaves `churnReplay` null and the rest of the results intact.
  */
+function safeClientMonthly(tickets: ScanTicketInput[]): ClientMonthlyResult | null {
+  try {
+    return buildClientMonthly(tickets);
+  } catch (error) {
+    console.error("[scan] client monthly summary failed", error);
+    return null;
+  }
+}
+
 function safeChurnReplay(
   input: Parameters<typeof buildChurnReplay>[0],
 ): ChurnReplayResult | null {
@@ -1163,6 +1183,7 @@ async function runHaloSync(
     clientNames,
     windowStart: window.dateFrom,
   });
+  const clientMonthly = safeClientMonthly(scanTickets);
   const scanOutcome =
     findings.portfolio.clientsAnalysed === 0
       ? "no_clients"
@@ -1205,6 +1226,7 @@ async function runHaloSync(
     instanceUrl: credentials.haloUrl.replace(/\/+$/, ""),
     projectOverrunReliable: true,
     churnReplay,
+    clientMonthly,
   };
 }
 
@@ -1283,6 +1305,7 @@ async function runConnectWiseSync(
     clientNames,
     windowStart: window.dateFrom,
   });
+  const clientMonthly = safeClientMonthly(tickets);
   const scanOutcome =
     findings.portfolio.clientsAnalysed === 0
       ? "no_clients"
@@ -1307,6 +1330,7 @@ async function runConnectWiseSync(
     instanceUrl: normalizeConnectWiseSiteUrl(connection.siteUrl),
     projectOverrunReliable: false,
     churnReplay,
+    clientMonthly,
   };
 }
 

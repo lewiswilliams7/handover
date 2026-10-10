@@ -23,6 +23,8 @@ export type ScanTicketInput = {
   requester?: string | null;
   ticketType?: string | null;
   slaDueDate?: string | null;
+  /** Total hours logged against the ticket, when the PSA records it. */
+  hoursLogged?: number | null;
 };
 
 export type ScanProjectInput = {
