@@ -960,6 +960,19 @@ function addCommercialFindings(
  */
 export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsResult {
   const opts = { ...DEFAULT_OPTS, ...input.opts };
+  const asOf = input.asOfMs ?? Date.now();
+  // A contract or recurring invoice that has already ended is not revenue at
+  // risk: that client has gone (Churn Replay covers them). Count only live ones.
+  const isLive = (endDate: string | null | undefined) => {
+    if (!endDate) return true;
+    const end = Date.parse(endDate);
+    return Number.isNaN(end) || end > asOf;
+  };
+  input = {
+    ...input,
+    contracts: input.contracts?.filter((contract) => isLive(contract.endDate)),
+    recurringInvoices: input.recurringInvoices?.filter((invoice) => isLive(invoice.endDate)),
+  };
   // Recurring invoices win when they carry values; otherwise contract values
   // (Halo shops that bill from contracts would otherwise show no amounts).
   const recurringValues = input.recurringInvoices
@@ -1165,7 +1178,7 @@ export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsRe
         const drivers: FindingDriver[] = [];
         pushDriver(
           drivers,
-          `${round1(observedPerMonth)} tickets per month against an expected ${round1(expectedPerMonth)} based on the portfolio median of ${round1(portfolioUsageRatio)} tickets per month per £1 of monthly contract value`,
+          `${round1(observedPerMonth)} tickets a month on a ${formatMonthlyValue(monthlyValue)} contract, where your typical client at that value raises about ${round1(expectedPerMonth)}`,
           observedPerMonth,
           expectedPerMonth,
           "tickets_per_month",
@@ -1348,7 +1361,12 @@ export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsRe
     }
 
     if (!dateEnteredFailed) {
-      const recentAfterHours = rate(ticketsInMonths(clientTickets, recent), (ticket) => isAfterHours(ticket.dateEntered));
+      const recentTicketsForHours = ticketsInMonths(clientTickets, recent);
+      // A handful of tickets swings a percentage wildly; need enough to mean something.
+      const recentAfterHours =
+        recentTicketsForHours.length >= 10
+          ? rate(recentTicketsForHours, (ticket) => isAfterHours(ticket.dateEntered))
+          : null;
       const baselineAfterHours = rate(ticketsInMonths(clientTickets, baseline), (ticket) => isAfterHours(ticket.dateEntered));
       if (
         recentAfterHours != null &&
