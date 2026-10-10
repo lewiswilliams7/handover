@@ -47,6 +47,16 @@ const shipped: RoadmapItem[] = [
     badge: "Protect",
   },
   {
+    title: "Client Margin",
+    desc: "Revenue per hour for every client, grouped with Revenue at Risk: save, fix, reprice or protect.",
+    badge: "Protect",
+  },
+  {
+    title: "Value Receipts™",
+    desc: "A one-page monthly summary for each client's decision-maker, sent automatically.",
+    badge: "Prove",
+  },
+  {
     title: "Service reviews and QBR packs",
     desc: "Branded packs from live PSA data, exported to PowerPoint, PDF or Excel.",
     badge: "Prove",
@@ -66,20 +76,14 @@ const shipped: RoadmapItem[] = [
     desc: "Native, read-only connections, listed on both marketplaces.",
     badge: "Integration",
   },
-];
-
-const inProgress: RoadmapItem[] = [
   {
-    title: "Value Receipts",
-    desc: "A one-page monthly summary for each client's decision-maker: what we did, what we prevented, what it was worth.",
-    badge: "Prove",
-  },
-  {
-    title: "Client Margin",
-    desc: "Hours delivered against contract value for every client, so you can see who to protect and who to reprice.",
+    title: "Weekly automatic scan",
+    desc: "Every client is re-checked each week without anyone pressing a button.",
     badge: "Protect",
   },
 ];
+
+const inProgress: RoadmapItem[] = [];
 
 const comingSoon: RoadmapItem[] = [
   {
@@ -249,13 +253,15 @@ export default function RoadmapPage() {
               </>
             }
           />
-          <Section
-            title="In progress"
-            dotColor="var(--accent)"
-            items={inProgress}
-            sectionIndex={1}
-            variant="progress"
-          />
+          {inProgress.length > 0 ? (
+            <Section
+              title="In progress"
+              dotColor="var(--accent)"
+              items={inProgress}
+              sectionIndex={1}
+              variant="progress"
+            />
+          ) : null}
           <Section
             title="Coming soon"
             dotColor="var(--text-muted)"

@@ -71,6 +71,16 @@ export function MarketingFooter() {
                 </Link>
               </li>
               <li>
+                <Link href="/features/value-receipts" className={linkClass}>
+                  Value Receipts™
+                </Link>
+              </li>
+              <li>
+                <Link href="/features/client-margin" className={linkClass}>
+                  Client Margin
+                </Link>
+              </li>
+              <li>
                 <Link href="/features" className={linkClass}>
                   Features
                 </Link>

@@ -12,9 +12,11 @@ import {
   Moon,
   PoundSterling,
   Presentation,
+  ReceiptText,
   RefreshCw,
   Rewind,
   LifeBuoy,
+  Scale,
   Settings,
   Sun,
   X,
@@ -62,6 +64,12 @@ const CLIENT_INTELLIGENCE_NAV: MegaNavItem[] = [
     Icon: LifeBuoy,
   },
   {
+    label: "Client Margin",
+    href: "/features/client-margin",
+    description: "Revenue per hour for every client: who to save, fix or reprice.",
+    Icon: Scale,
+  },
+  {
     label: "Client Intelligence™",
     href: "/features/client-intelligence",
     description: "The signals behind every flag, against each client's own history.",
@@ -70,6 +78,12 @@ const CLIENT_INTELLIGENCE_NAV: MegaNavItem[] = [
 ];
 
 const REPORTING_NAV: MegaNavItem[] = [
+  {
+    label: "Value Receipts™",
+    href: "/features/value-receipts",
+    description: "A monthly one-page summary for each client's decision-maker.",
+    Icon: ReceiptText,
+  },
   {
     label: "Service reviews",
     href: "/solutions/service-review",

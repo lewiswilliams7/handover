@@ -9,6 +9,8 @@ import {
   LayoutTemplate,
   Paintbrush,
   PiggyBank,
+  ReceiptText,
+  Scale,
   LifeBuoy,
   Plug,
   PoundSterling,
@@ -69,9 +71,21 @@ const PROTECT: FeatureCard[] = [
     href: "/features/revenue-at-risk#saved-revenue",
     Icon: PiggyBank,
   },
+  {
+    title: "Client Margin",
+    body: "Revenue per hour for every client, so you know who to save, who to fix and who to reprice at renewal.",
+    href: "/features/client-margin",
+    Icon: Scale,
+  },
 ];
 
 const PROVE: FeatureCard[] = [
+  {
+    title: "Value Receipts™",
+    body: "A one-page monthly summary for each client's decision-maker: what you resolved, how quickly, what's in progress.",
+    href: "/features/value-receipts",
+    Icon: ReceiptText,
+  },
   {
     title: "Service reviews and QBR packs",
     body: "Branded packs built from live PSA data, exported to PowerPoint, PDF or Excel, ready for the person who signs the renewal.",

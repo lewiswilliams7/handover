@@ -21,12 +21,14 @@ const FEATURE_GROUPS: ReadonlyArray<{ title: string; items: ReadonlyArray<Featur
       { label: "Churn Replay™ on the clients you have already lost", href: "/features/churn-replay" },
       { label: "Save Plays™ with a ready-to-send email for every flag", href: "/features/save-plays" },
       { label: "Saved Revenue tracking", href: "/features/revenue-at-risk#saved-revenue" },
+      { label: "Client Margin: revenue per hour for every client", href: "/features/client-margin" },
       { label: "Handover Client Intelligence™ signals and weekly digest", href: "/features/client-intelligence" },
     ],
   },
   {
     title: "Proof for your clients",
     items: [
+      { label: "Value Receipts™ sent to each client every month", href: "/features/value-receipts" },
       { label: "Service reviews and QBR packs", href: "/features/qbr-generator" },
       { label: "Scheduled reports with an approval step", href: "/features/scheduled-reports" },
       { label: "PowerPoint, PDF and Excel export", href: "/features/exports" },
