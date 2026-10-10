@@ -38,6 +38,8 @@ export type ValueReceipt = {
   unsendableReason: string | null;
   /** True when hours are recorded on most closed tickets, so the hours stat is shown. */
   hoursTracked: boolean;
+  /** Data gaps for the MSP to fix in their PSA. Shown in the app, never on the receipt. */
+  dataWarnings: string[];
 };
 
 const MONTH_NAMES = [
@@ -165,7 +167,7 @@ export function buildValueReceipt(input: {
   if (stats.peopleHelped > 0) {
     receiptStats.push({
       key: "people",
-      label: "People in your team we helped",
+      label: "People who asked us for help",
       value: stats.peopleHelped.toLocaleString("en-GB"),
     });
   }
@@ -191,7 +193,7 @@ export function buildValueReceipt(input: {
         responseNote?.startsWith("Faster")
           ? ", quicker than in recent months"
           : responseNote?.startsWith("Slower")
-            ? ". That is slower than in recent months, and we are looking at why"
+            ? ", a little slower than in recent months"
             : ""
       }.`,
     );
@@ -220,12 +222,25 @@ export function buildValueReceipt(input: {
     headline,
     stats: receiptStats,
     summary,
-    workTypes: stats.topTypes,
+    // Older scans stored Halo type ids ("1"); never show a bare number as a kind of work.
+    workTypes: stats.topTypes.filter((entry) => !/^\d+$/.test(entry.type.trim())),
     inProgress: stats.openAtEnd,
     sendable,
     unsendableReason,
     hoursTracked,
+    dataWarnings: receiptDataWarnings(stats),
   };
+}
+
+function receiptDataWarnings(stats: ClientMonthStats): string[] {
+  const warnings: string[] = [];
+  const undated = stats.closedUndated ?? 0;
+  if (undated > 0) {
+    warnings.push(
+      `${plural(undated, "request", "requests")} raised this month ${undated === 1 ? "is" : "are"} closed in your PSA but ${undated === 1 ? "has" : "have"} no close date, so ${undated === 1 ? "it is" : "they are"} not counted as resolved. Make sure tickets get a close date when they are closed, then refresh.`,
+    );
+  }
+  return warnings;
 }
 
 /** Plain-text version for email and copying. */

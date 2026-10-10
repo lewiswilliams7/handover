@@ -6,6 +6,7 @@ import {
   getHaloTickets,
   getHaloToken,
   getHaloTicketStatuses,
+  getHaloTicketTypeNames,
   type HaloTicket,
 } from "@/lib/halo";
 import { invalidateHaloTokenCache } from "@/lib/halo-token-cache";
@@ -811,9 +812,21 @@ function statusNameToOpen(statusName: string): boolean | null {
   return null;
 }
 
+/**
+ * Halo's lightweight ticket payload carries the type as an id ("1"). Swap it
+ * for the type's name; drop bare ids we cannot name, so nothing reads "1".
+ */
+function haloTicketTypeLabel(raw: string | null | undefined, typeNames: Map<number, string>): string | null {
+  const value = raw?.trim();
+  if (!value) return null;
+  if (/^\d+$/.test(value)) return typeNames.get(Number(value)) ?? null;
+  return value;
+}
+
 function haloTicketToScanInput(
   ticket: HaloTicket,
   statusNames: Map<number, string>,
+  typeNames: Map<number, string> = new Map(),
 ): ScanTicketInput {
   const attrs = ticket.scanAttributes;
   const statusOpen =
@@ -834,7 +847,7 @@ function haloTicketToScanInput(
       (attrs?.hasBeenClosed == null ? null : !attrs.hasBeenClosed),
     owner: attrs?.owner ?? null,
     requester: attrs?.requester ?? null,
-    ticketType: attrs?.ticketType ?? null,
+    ticketType: haloTicketTypeLabel(attrs?.ticketType, typeNames),
     slaDueDate: attrs?.slaDueDate ?? null,
     hoursLogged:
       typeof ticket.timetaken === "number" && Number.isFinite(ticket.timetaken) && ticket.timetaken >= 0
@@ -1042,7 +1055,13 @@ async function runHaloSync(
   } catch {
     // Status checks remain suppressed when the PSA does not expose its catalogue.
   }
-  const scanTickets = tickets.map((ticket) => haloTicketToScanInput(ticket, statusNames));
+  let typeNames = new Map<number, string>();
+  try {
+    typeNames = await getHaloTicketTypeNames(credentials.haloUrl, token);
+  } catch {
+    // Type labels are cosmetic; receipts simply omit the work breakdown.
+  }
+  const scanTickets = tickets.map((ticket) => haloTicketToScanInput(ticket, statusNames, typeNames));
   const clientNames: Record<string, string> = {};
   const scanClientIds = [
     ...new Set(

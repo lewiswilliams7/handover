@@ -814,7 +814,8 @@ export function ScanResults() {
           </h1>
           {scan.checksRun != null && scan.clientsAnalysed != null ? (
             <p className="mt-3 text-sm font-medium text-white/55">
-              {scan.checksRun} checks across {scan.clientsAnalysed} accounts,{" "}
+              {scan.checksRun} checks across {scan.clientsAnalysed}{" "}
+              {scan.clientsAnalysed === 1 ? "account" : "accounts"},{" "}
               {scan.clientsWithFindings ? `${scan.clientsWithFindings} flagged.` : "no accounts flagged."}
             </p>
           ) : null}

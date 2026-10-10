@@ -248,6 +248,15 @@ export function ReceiptsClient({ monthly, clientNames, scannedAt }: Props) {
                       {receipt.unsendableReason}
                     </p>
                   ) : null}
+                  {receipt.dataWarnings.map((warning) => (
+                    <p
+                      key={warning}
+                      className="mb-4 rounded-xl border border-amber-300/25 bg-amber-300/[0.07] px-4 py-3 text-sm text-amber-100"
+                    >
+                      <span className="font-semibold">Only you can see this. </span>
+                      {warning}
+                    </p>
+                  ))}
                   <AutoSendControl
                     key={selected.client.clientId}
                     clientId={selected.client.clientId}

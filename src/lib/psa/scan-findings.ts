@@ -700,9 +700,69 @@ function evidenceForFinding(
         finding.clientId,
         (ticket) => !hasAssignedOwner(ticket.owner),
       );
+    case "response_drift":
+      // The slowest first responses in the recent window: what changed.
+      return rankedTicketEvidence(input.evidenceSource, input.tickets, finding.clientId, (ticket) =>
+        isRecentTicket(ticket.dateEntered, nowMs) ? responseHours(ticket.dateEntered, ticket.dateResponded) : null,
+      );
+    case "resolution_time_trend":
+      return rankedTicketEvidence(input.evidenceSource, input.tickets, finding.clientId, (ticket) =>
+        isRecentTicket(ticket.dateClosed, nowMs) ? durationHours(ticket.dateEntered, ticket.dateClosed) : null,
+      );
+    case "data_quality": {
+      // Link the tickets that are actually missing the timestamp.
+      const unit = finding.drivers[0]?.unit;
+      if (unit === "percent_without_response_timestamp") {
+        return ticketEvidence(
+          input.evidenceSource,
+          input.tickets,
+          finding.clientId,
+          (ticket) => !ticket.dateResponded?.trim(),
+        );
+      }
+      return ticketEvidence(
+        input.evidenceSource,
+        input.tickets,
+        finding.clientId,
+        (ticket) => !ticket.dateClosed?.trim() && ticket.statusOpen !== true,
+      );
+    }
     default:
       return ticketEvidence(input.evidenceSource, input.tickets, finding.clientId);
   }
+}
+
+/** "45 min", "2 hr", "1.4 hr", "3 days": readable durations for finding text. */
+function formatHoursShort(hours: number): string {
+  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))} min`;
+  if (hours < 48) {
+    const rounded = Math.round(hours * 10) / 10;
+    return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)} hr`;
+  }
+  return `${Math.round(hours / 24)} days`;
+}
+
+const RECENT_EVIDENCE_WINDOW_MS = 92 * 24 * 60 * 60 * 1000;
+
+function isRecentTicket(iso: string | null | undefined, nowMs: number): boolean {
+  const at = iso ? Date.parse(iso) : Number.NaN;
+  return Number.isFinite(at) && at <= nowMs && nowMs - at <= RECENT_EVIDENCE_WINDOW_MS;
+}
+
+/** Tickets for a client ranked by a score, highest first; null scores are left out. */
+function rankedTicketEvidence(
+  source: ScanEvidenceSource | undefined,
+  tickets: ScanTicketInput[],
+  clientId: number,
+  score: (ticket: ScanTicketInput) => number | null,
+): ScanEvidenceRef[] {
+  if (!source) return [];
+  return tickets
+    .filter((ticket) => ticket.clientId === clientId && ticket.ticketId != null)
+    .map((ticket) => ({ ticket, value: score(ticket) }))
+    .filter((row): row is { ticket: ScanTicketInput; value: number } => row.value != null)
+    .sort((left, right) => right.value - left.value)
+    .map(({ ticket }) => ({ source, kind: "ticket" as const, id: ticket.ticketId! }));
 }
 
 function addCommercialFindings(
@@ -1173,7 +1233,7 @@ export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsRe
         const drivers: FindingDriver[] = [];
         pushDriver(
           drivers,
-          `${ageing.length} open ticket${ageing.length === 1 ? "" : "s"} older than ${round1(baselineResolution * opts.ageingMultiplier)}h against a ${round1(baselineResolution)}h median close time across the ${baseline.length}-month baseline`,
+          `${ageing.length} open ticket${ageing.length === 1 ? "" : "s"} older than ${formatHoursShort(baselineResolution * opts.ageingMultiplier)}, when this client's tickets usually close within ${formatHoursShort(baselineResolution)}`,
           ageing.length,
           baselineResolution,
           "ageing_tickets",
@@ -1263,7 +1323,7 @@ export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsRe
         const drivers: FindingDriver[] = [];
         pushDriver(
           drivers,
-          `${round1(recentMedian)}h median resolution time in the last ${recent.length} months against ${round1(baselineMedian)}h across the ${baseline.length}-month baseline`,
+          `Typical time to resolve of ${formatHoursShort(recentMedian)} over the last ${recent.length} months, against ${formatHoursShort(baselineMedian)} over the previous ${baseline.length} months`,
           recentMedian,
           baselineMedian,
           "resolution_time_hours",
@@ -1372,7 +1432,7 @@ export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsRe
         const drivers: FindingDriver[] = [];
         pushDriver(
           drivers,
-          `${recentMedian}h median response in the last ${recent.length} month${recent.length === 1 ? "" : "s"} against their 12-month baseline of ${baselineMedian}h`,
+          `Typical first response of ${formatHoursShort(recentMedian)} over the last ${recent.length} month${recent.length === 1 ? "" : "s"}, against ${formatHoursShort(baselineMedian)} over the previous 12 months`,
           recentMedian,
           baselineMedian,
           "hours",
@@ -1415,7 +1475,7 @@ export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsRe
         const drivers: FindingDriver[] = [];
         pushDriver(
           drivers,
-          `${gapPct}% of tickets (${withoutClose} of ${ticketCount}) close without a resolution timestamp against full close coverage baseline of 100%`,
+          `${withoutClose.toLocaleString("en-GB")} of ${ticketCount.toLocaleString("en-GB")} tickets (${gapPct}%) were closed without a close date`,
           gapPct,
           0,
           "percent_without_close_timestamp",
@@ -1443,7 +1503,7 @@ export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsRe
         const drivers: FindingDriver[] = [];
         pushDriver(
           drivers,
-          `${gapPct}% of tickets (${withoutResponse} of ${ticketCount}) lack a response timestamp against full response coverage baseline of 100%`,
+          `${withoutResponse.toLocaleString("en-GB")} of ${ticketCount.toLocaleString("en-GB")} tickets (${gapPct}%) have no first response recorded`,
           gapPct,
           0,
           "percent_without_response_timestamp",

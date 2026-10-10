@@ -34,7 +34,7 @@ export type ClientMonthStats = {
   resolutionHours: number | null;
   /** Tickets entered outside 08:00 to 18:00 on weekdays (UTC). */
   outOfHours: number;
-  /** Distinct people who raised or had a ticket closed this month. */
+  /** Distinct people who raised a ticket this month. */
   peopleHelped: number;
   /** Hours logged on tickets closed this month. */
   hours: number;
@@ -42,6 +42,11 @@ export type ClientMonthStats = {
   closedWithHours: number;
   /** Tickets still open at the end of the month. */
   openAtEnd: number;
+  /**
+   * Tickets raised this month that the PSA shows as closed but with no close
+   * date. They cannot be placed in a month, so they are not counted as resolved.
+   */
+  closedUndated?: number;
   /** Most common ticket types closed this month, most frequent first. */
   topTypes: Array<{ type: string; count: number }>;
 };
@@ -139,6 +144,7 @@ export function buildClientMonthly(
     people: Set<string>;
     hours: number;
     closedWithHours: number;
+    closedUndated: number;
     types: Map<string, number>;
   };
   const byClient = new Map<number, Map<string, Bucket>>();
@@ -162,6 +168,7 @@ export function buildClientMonthly(
         people: new Set(),
         hours: 0,
         closedWithHours: 0,
+        closedUndated: 0,
         types: new Map(),
       };
       months.set(key, b);
@@ -190,6 +197,7 @@ export function buildClientMonthly(
         b.opened += 1;
         if (isOutOfHours(entered)) b.outOfHours += 1;
         if (requester) b.people.add(requester);
+        if (closed == null && ticket.statusOpen === false) b.closedUndated += 1;
         const responded = parseMs(ticket.dateResponded);
         if (responded != null && responded >= entered) {
           b.responses.push((responded - entered) / HOUR_MS);
@@ -203,7 +211,6 @@ export function buildClientMonthly(
         const b = bucket(ticket.clientId, key);
         b.closed += 1;
         if (isUrgent(ticket.priority)) b.urgentClosed += 1;
-        if (requester) b.people.add(requester);
         if (entered != null && closed >= entered) {
           b.resolutions.push((closed - entered) / HOUR_MS);
         }
@@ -231,7 +238,9 @@ export function buildClientMonthly(
           if (entered == null || entered > endMs) return false;
           const closed = parseMs(ticket.dateClosed);
           if (closed != null) return closed > endMs;
-          return ticket.statusOpen !== false;
+          // No close date: only count it when the PSA positively says it is
+          // still open. Closed-without-a-date tickets must not inflate this.
+          return ticket.statusOpen === true;
         }).length;
         return {
           month: key,
@@ -245,6 +254,7 @@ export function buildClientMonthly(
           hours: b ? Math.round(b.hours * 10) / 10 : 0,
           closedWithHours: b?.closedWithHours ?? 0,
           openAtEnd,
+          closedUndated: b?.closedUndated ?? 0,
           topTypes: b
             ? [...b.types.entries()]
                 .sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0]))

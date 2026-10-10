@@ -1245,20 +1245,18 @@ export { TICKET_SECTION_RULE };
 export type HaloTicketTypeEntry = { name: string; use: string };
 
 const TICKET_TYPES_CACHE_TTL_MS = 30 * 60 * 1000;
-let ticketTypesCache: Record<number, HaloTicketTypeEntry> | null = null;
-let ticketTypesCacheTime = 0;
+/** Keyed by Halo instance URL so one customer's ticket types never leak into another's. */
+const ticketTypesCache = new Map<string, { at: number; types: Record<number, HaloTicketTypeEntry> }>();
 
 async function getTicketTypes(
   baseUrl: string,
   token: string,
 ): Promise<Record<number, HaloTicketTypeEntry>> {
-  if (
-    ticketTypesCache != null &&
-    Date.now() - ticketTypesCacheTime < TICKET_TYPES_CACHE_TTL_MS
-  ) {
-    return ticketTypesCache;
+  const cacheKey = baseUrl.trim().toLowerCase().replace(/\/+$/, "");
+  const cached = ticketTypesCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < TICKET_TYPES_CACHE_TTL_MS) {
+    return cached.types;
   }
-  ticketTypesCache = null;
 
   try {
     const res = await haloPsaFetch(`${baseUrl}/api/TicketType`, {
@@ -1304,13 +1302,25 @@ async function getTicketTypes(
       };
     }
 
-    ticketTypesCache = typeMap;
-    ticketTypesCacheTime = Date.now();
+    ticketTypesCache.set(cacheKey, { at: Date.now(), types: typeMap });
     return typeMap;
   } catch (err) {
     console.error("[ticketTypes] error:", err);
     return {};
   }
+}
+
+/** Ticket type id to display name, for labelling scan output. Empty when unavailable. */
+export async function getHaloTicketTypeNames(
+  baseUrl: string,
+  token: string,
+): Promise<Map<number, string>> {
+  const types = await getTicketTypes(baseUrl, token);
+  return new Map(
+    Object.entries(types)
+      .filter(([, entry]) => entry.name.trim())
+      .map(([id, entry]) => [Number(id), entry.name.trim()]),
+  );
 }
 
 /** Row from Halo ticket status list endpoints (used for QBR resolved matching by id + name). */

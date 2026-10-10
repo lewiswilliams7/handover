@@ -119,7 +119,11 @@ function normaliseFinding(value: unknown): Finding | null {
   const drivers = Array.isArray(value.drivers)
     ? value.drivers.flatMap((driver) => {
         if (!isRecord(driver)) return [];
-        const fact = typeof driver.fact === "string" ? driver.fact : "";
+        // Scans before Oct 2026 stored raw floats ("1.4166666666666667h"); round them for display.
+        const fact =
+          typeof driver.fact === "string"
+            ? driver.fact.replace(/\d+\.\d{3,}/g, (raw) => String(Math.round(Number(raw) * 10) / 10))
+            : "";
         const valueNumber = Number(driver.value);
         const baseline = Number(driver.baseline);
         const unit = typeof driver.unit === "string" ? driver.unit : "";
@@ -639,7 +643,7 @@ export function AttentionClient({
                 ? "What changed since your last scan"
                 : results
                 ? clientsWithFindings > 0
-                  ? `${clientsWithFindings} account${clientsWithFindings === 1 ? "" : "s"} need a look`
+                  ? `${clientsWithFindings} ${clientsWithFindings === 1 ? "account needs" : "accounts need"} a look`
                   : "No accounts need a look"
                 : "See which clients are slipping"}
             </h1>
@@ -796,7 +800,8 @@ export function AttentionClient({
             />
 
             <p className="mt-6 text-sm font-medium text-[var(--text-secondary)]">
-              {results.portfolio.checksRun} checks across {results.portfolio.clientsAnalysed} accounts,{" "}
+              {results.portfolio.checksRun} checks across {results.portfolio.clientsAnalysed}{" "}
+              {results.portfolio.clientsAnalysed === 1 ? "account" : "accounts"},{" "}
               {clientsWithFindings > 0 ? `${clientsWithFindings} flagged.` : "no accounts flagged."}
             </p>
             {results.exposureAvailability === "unavailable" ? (
