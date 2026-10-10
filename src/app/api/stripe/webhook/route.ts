@@ -16,6 +16,7 @@ import {
   verifyOrApplySubscriptionCoupon,
 } from "@/lib/stripe-referral-coupons";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
+import { mirrorWorkspaceBillingForCustomer } from "@/lib/server/workspace-billing";
 import { getStripe } from "@/lib/stripe";
 
 export const runtime = "nodejs";
@@ -241,6 +242,7 @@ export async function POST(request: Request) {
                     ? "starter_programme"
                     : "handover",
                 stripe_customer_id: customerId,
+                subscription_status: "active",
                 trial_ends_at: null,
                 trial_plan: null,
               })
@@ -248,6 +250,18 @@ export async function POST(request: Request) {
 
             if (error) {
               console.error("profiles update (checkout):", error);
+              return NextResponse.json(
+                { error: "Database update failed" },
+                { status: 500 },
+              );
+            }
+            // A returning owner restores access for their whole workspace.
+            const checkoutMirrorError = await mirrorWorkspaceBillingForCustomer(
+              supabase,
+              customerId,
+            );
+            if (checkoutMirrorError) {
+              console.error("[webhook] checkout workspace mirror:", checkoutMirrorError);
               return NextResponse.json(
                 { error: "Database update failed" },
                 { status: 500 },
@@ -455,6 +469,15 @@ export async function POST(request: Request) {
           );
         }
 
+        const failedMirrorError = await mirrorWorkspaceBillingForCustomer(supabase, customerId);
+        if (failedMirrorError) {
+          console.error("[webhook] invoice.payment_failed workspace mirror:", failedMirrorError);
+          return NextResponse.json(
+            { error: "Database update failed" },
+            { status: 500 },
+          );
+        }
+
         const failedInvoiceSubscription =
           invoice.parent?.type === "subscription_details"
             ? invoice.parent.subscription_details?.subscription ?? null
@@ -615,6 +638,18 @@ export async function POST(request: Request) {
 
           if (error) {
             console.error("profiles update (subscription deleted):", error);
+            return NextResponse.json(
+              { error: "Database update failed" },
+              { status: 500 },
+            );
+          }
+          // Members of the owner's Handover workspace lose access with the owner.
+          const deletedMirrorError = await mirrorWorkspaceBillingForCustomer(
+            supabase,
+            customerId,
+          );
+          if (deletedMirrorError) {
+            console.error("[webhook] subscription deleted workspace mirror:", deletedMirrorError);
             return NextResponse.json(
               { error: "Database update failed" },
               { status: 500 },

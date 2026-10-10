@@ -151,9 +151,21 @@ function normalizeTrialPlanSku(raw: string | null | undefined): "professional" |
 export function getPlanTierFromFields(fields: UserPlanFields): 0 | 1 | 2 | 3 {
   if (typeof fields.team_id === "string" && fields.team_id.trim().length > 0) {
     const wp = normalizePlanLabel(fields.plan ?? "");
-    if (wp === "enterprise" || wp === "handover" || wp === "starter_programme") return 3;
-    /** Team workspace (any non-Enterprise seat) uses Team-tier product limits. */
-    return 2;
+    /**
+     * Handover workspaces follow the owner's subscription: the webhook mirrors
+     * the owner's `subscription_status` onto every member, so a cancelled or
+     * unpaid owner subscription removes access for the whole workspace.
+     */
+    if (wp === "handover" || wp === "starter_programme") {
+      return isSoloSubscriptionLive(fields.subscription_status) ? 3 : 0;
+    }
+    if (wp === "enterprise") return 3;
+    /**
+     * A team row with no paid plan on the profile (cancelled Handover owner, or a
+     * Team trial owner on `free` + `trial_plan`) is decided by the solo rules
+     * below, which check trial dates. Legacy Team seats keep Team-tier limits.
+     */
+    if (wp && wp !== "free" && wp !== "basic") return 2;
   }
 
   const p = normalizePlanLabel(fields.plan ?? "");
@@ -199,14 +211,25 @@ export function getPlanTierFromFields(fields: UserPlanFields): 0 | 1 | 2 | 3 {
  * active trials remain accepted while existing accounts are migrated.
  */
 export function hasHandoverEntitlement(fields: UserPlanFields): boolean {
-  if (fields.team_id?.trim()) return true;
-
   const canon = canonicalPlanId(fields.plan);
   if (canon === "handover" || canon === "starter_programme") {
+    // Solo owners and workspace members alike: members carry the owner's
+    // mirrored subscription status (see workspace-billing.ts).
     return isSoloSubscriptionLive(fields.subscription_status);
   }
 
   return getPlanTierFromFields(fields) >= 1;
+}
+
+/**
+ * True when the user belongs to a Handover workspace whose subscription has
+ * ended. Used to explain lost access to members, who cannot pay themselves.
+ */
+export function workspaceSubscriptionEnded(fields: UserPlanFields): boolean {
+  if (!fields.team_id?.trim()) return false;
+  const canon = canonicalPlanId(fields.plan);
+  if (canon !== "handover" && canon !== "starter_programme") return false;
+  return !isSoloSubscriptionLive(fields.subscription_status);
 }
 
 /**
@@ -249,7 +272,9 @@ export function isTrialExpired(user: {
  * Team members are never blocked here (team billing applies on the team row).
  */
 export function isSoloGenerationBlockedByPlan(fields: UserPlanFields): boolean {
-  if (typeof fields.team_id === "string" && fields.team_id.trim()) return false;
+  if (typeof fields.team_id === "string" && fields.team_id.trim()) {
+    return workspaceSubscriptionEnded(fields);
+  }
   const p = normalizePlanLabel(fields.plan ?? "");
   if (p === "basic") return true;
   if (isTrialExpired(fields)) return true;
@@ -293,7 +318,10 @@ export function profilePlanToUiTier(fields: UserPlanFields): "free" | "pro" | "t
   if (hasTeamId) {
     if (p === "team" || p === "team_trial") return "team";
     if (p === "enterprise") return "enterprise";
-    return "pro";
+    if (p === "handover" || p === "starter_programme") {
+      return isSoloSubscriptionLive(fields.subscription_status) ? "pro" : "free";
+    }
+    if (p && p !== "free" && p !== "basic") return "pro";
   }
 
   if (

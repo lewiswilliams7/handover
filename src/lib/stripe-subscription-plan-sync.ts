@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
 
+import { mirrorOwnerBillingToWorkspaces } from "@/lib/server/workspace-billing";
+
 import {
   isKnownEnterpriseStripePriceId,
   STRIPE_PRICE_IDS,
@@ -167,12 +169,9 @@ export async function syncProfilesPlanFromStripeSubscription(
   if (!profileId) {
     const { data: prof } = await supabase
       .from("profiles")
-      .select("id, team_id")
+      .select("id")
       .eq("stripe_customer_id", customerId)
       .maybeSingle();
-    if (prof?.team_id) {
-      return;
-    }
     profileId = typeof prof?.id === "string" ? prof.id : null;
   }
 
@@ -185,7 +184,15 @@ export async function syncProfilesPlanFromStripeSubscription(
     .maybeSingle();
 
   if (!profile?.id) return;
-  if (profile.team_id) {
+  /**
+   * Profiles on a workspace are skipped (their access comes from the workspace),
+   * except the owner of a Handover workspace: they pay for it, so their own
+   * subscription drives their profile and, via the mirror, every member.
+   */
+  const ownsHandoverWorkspace = profile.team_id
+    ? await profileOwnsHandoverWorkspace(supabase, profileId, String(profile.team_id))
+    : false;
+  if (profile.team_id && !ownsHandoverWorkspace) {
     return;
   }
 
@@ -216,8 +223,8 @@ export async function syncProfilesPlanFromStripeSubscription(
         trial_ends_at: isTrialing ? stripeTrialEndsAtIso(subscription) : null,
         trial_plan: isTrialing ? "professional" : null,
       })
-      .eq("id", profileId)
-      .is("team_id", null);
+      .eq("id", profileId);
+    await mirrorOwnerBillingOrThrow(supabase, profileId);
     console.log("[stripe plan sync] solo subscription → profiles.plan", {
       subscriptionId: subscription.id,
       profileId,
@@ -247,8 +254,8 @@ export async function syncProfilesPlanFromStripeSubscription(
       plan: "free",
       subscription_status: "inactive",
     })
-    .eq("id", profileId)
-    .is("team_id", null);
+    .eq("id", profileId);
+  await mirrorOwnerBillingOrThrow(supabase, profileId);
   console.log("[stripe plan sync] solo subscription ended → profiles.plan=free", {
     subscriptionId: subscription.id,
     profileId,
@@ -324,4 +331,27 @@ export async function reconcileUserPlanWithStripe(
     plan: refetched.plan,
     team_id: refetched.team_id,
   };
+}
+
+async function profileOwnsHandoverWorkspace(
+  supabase: SupabaseClient,
+  profileId: string,
+  teamId: string,
+): Promise<boolean> {
+  const { data: team } = await supabase
+    .from("teams")
+    .select("owner_id, plan")
+    .eq("id", teamId)
+    .maybeSingle();
+  const plan = typeof team?.plan === "string" ? team.plan.trim().toLowerCase() : "";
+  return team?.owner_id === profileId && (plan === "handover" || plan === "starter_programme");
+}
+
+/** Throws so the webhook returns 500 and Stripe retries the event. */
+async function mirrorOwnerBillingOrThrow(
+  supabase: SupabaseClient,
+  ownerId: string,
+): Promise<void> {
+  const error = await mirrorOwnerBillingToWorkspaces(supabase, [ownerId]);
+  if (error) throw new Error(`[stripe plan sync] workspace mirror failed: ${error}`);
 }

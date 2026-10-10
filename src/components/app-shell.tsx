@@ -46,7 +46,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
-import { getPlanLabel, getPlanTierFromFields, getUserPlan, hasProTierAccess, isSoloGenerationBlockedByPlan, planFieldsFromProfileRow, profilePlanToUiTier, qbrPackUsageHintCopy } from "@/lib/plans";
+import { getPlanLabel, getPlanTierFromFields, getUserPlan, hasProTierAccess, isSoloGenerationBlockedByPlan, planFieldsFromProfileRow, workspaceSubscriptionEnded, profilePlanToUiTier, qbrPackUsageHintCopy } from "@/lib/plans";
 import { FREE_MONTHLY_GENERATION_LIMIT, GROWTH_MONTHLY_GENERATION_LIMIT, STARTER_MONTHLY_GENERATION_LIMIT, STARTER_MONTHLY_REPORT_LIMIT } from "@/lib/plan-limits";
 import { createClient } from "@/lib/supabase";
 import { normalizeTeamDashboardPermission, type TeamDashboardPermission } from "@/lib/team-dashboard-permission";
@@ -142,6 +142,8 @@ export type AppShellContextValue = {
     reportLimit: number | null;
     isPaidPlan: boolean;
     paymentPastDue: boolean;
+    /** Member of a Handover workspace whose owner's subscription has ended. */
+    workspaceEnded: boolean;
   };
   usage: {
     monthCount: number | null;
@@ -608,6 +610,7 @@ export function AppShellProvider({ children }: { children: ReactNode }) {
     reportLimit: billingTier >= 2 ? null : billingTier >= 1 ? STARTER_MONTHLY_REPORT_LIMIT : 0,
     isPaidPlan: ["professional", "handover", "starter_programme", "team", "enterprise"].includes((profileDbPlan ?? "").toLowerCase()),
     paymentPastDue: profileSubscriptionStatus?.trim().toLowerCase() === "past_due",
+    workspaceEnded: workspaceSubscriptionEnded(planFields),
   }), [billingTier, generationLimitOverride, hasProAccess, planFields, profileDbPlan, profileSubscriptionStatus, trialEndsAt]);
   const deliveryAccess: TeamDashboardPermission = !hasProAccess || !userTeamId || teamMemberRole === "owner" || teamMemberRole === "admin" || !teamMemberRole ? "full" : dashboardPermission;
 
@@ -816,7 +819,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
           <div className="shrink-0 border-t border-white/[0.08] p-2.5">
             <Link href="/?view=changelog" onClick={closeMobile} className={navClass("changelog")}><Sparkles className="size-3.5" /><span className={labelClass}>What&apos;s new</span></Link>
             <button type="button" className="mt-2 flex w-full items-center gap-2 rounded-[var(--radius)] p-2.5 hover:bg-white/[0.06]" onClick={openSettings}><div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-[11px] font-semibold text-white">{userFirstName?.[0]?.toUpperCase() || userEmail?.[0]?.toUpperCase() || "U"}</div><span className={`min-w-0 flex-1 truncate text-left text-[12px] text-white ${labelClass}`}><span className="block">{userFirstName || userEmail || "Account"}</span><span className="text-[9px] text-[var(--accent)]">{planLabel}</span></span><Settings className="size-[14px] shrink-0 text-white/30" /></button>
-            {!entitlement.hasProAccess ? <Link href="/pricing?upgrade=true" onClick={closeMobile} className={`mb-2 flex w-full items-center justify-center rounded-[var(--radius)] border border-[var(--accent)] px-3 py-2 text-[12px] text-[var(--accent)] ${!expanded ? "md:hidden" : ""}`}>Upgrade plan</Link> : null}
+            {!entitlement.hasProAccess && entitlement.workspaceEnded && teamVisibility.teamMemberRole !== "owner" ? <p className={`mb-2 rounded-[var(--radius)] border border-amber-300/25 bg-amber-300/[0.07] px-3 py-2 text-[11px] leading-4 text-amber-100 ${!expanded ? "md:hidden" : ""}`}>Your workspace&apos;s Handover subscription has ended. Ask the owner to renew it from Billing to restore access for the team.</p> : !entitlement.hasProAccess ? <Link href="/pricing?upgrade=true" onClick={closeMobile} className={`mb-2 flex w-full items-center justify-center rounded-[var(--radius)] border border-[var(--accent)] px-3 py-2 text-[12px] text-[var(--accent)] ${!expanded ? "md:hidden" : ""}`}>Upgrade plan</Link> : null}
             <a href="https://handover.canny.io" target="_blank" rel="noreferrer" className={`text-[11px] text-white/30 hover:text-white/60 ${!expanded ? "md:hidden" : ""}`}>Suggest a feature →</a>
           </div>
         </aside>

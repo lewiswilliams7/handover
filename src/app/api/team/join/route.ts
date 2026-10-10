@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { memberStatusForOwner } from "@/lib/server/workspace-billing";
 import {
   TEAM_MEMBER_INVITES_BLOCKED_MESSAGE,
   normalizePlanLabel,
@@ -124,7 +125,7 @@ export async function POST(request: Request) {
     const { data: ownerProf } = ownerId
       ? await admin
           .from("profiles")
-          .select("trial_ends_at, trial_plan, plan")
+          .select("trial_ends_at, trial_plan, plan, subscription_status")
           .eq("id", ownerId)
           .maybeSingle()
       : { data: null };
@@ -144,6 +145,11 @@ export async function POST(request: Request) {
       .update({
         plan: memberPlan,
         team_id: inv.team_id,
+        // Members of a Handover workspace carry the owner's subscription status,
+        // kept in sync by the Stripe webhook (see workspace-billing.ts).
+        ...(memberPlan === "handover" || memberPlan === "starter_programme"
+          ? { subscription_status: memberStatusForOwner(ownerProf ?? { plan: null, subscription_status: null }) }
+          : {}),
         trial_ends_at:
           typeof ownerProf?.trial_ends_at === "string" && ownerProf.trial_ends_at.trim()
             ? ownerProf.trial_ends_at.trim()
