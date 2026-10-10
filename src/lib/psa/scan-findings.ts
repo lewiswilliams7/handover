@@ -363,6 +363,32 @@ function buildRecurringValueByClient(
   }
   return map;
 }
+/**
+ * Current monthly recurring value per client, for Client Margin. Uses recurring
+ * invoices when the PSA provides them (as the findings do), otherwise contract
+ * values, and ignores records that have already ended.
+ */
+export function currentMonthlyValueByClient(input: {
+  recurringInvoices?: NormalisedRecurringInvoiceRecord[];
+  contracts?: NormalisedContractRecord[];
+  nowMs?: number;
+}): Record<string, number> {
+  const nowMs = input.nowMs ?? Date.now();
+  const current = (endDate: string | null) => {
+    if (!endDate) return true;
+    const end = Date.parse(endDate);
+    return Number.isNaN(end) || end > nowMs;
+  };
+  const map = input.recurringInvoices
+    ? buildRecurringValueByClient(input.recurringInvoices.filter((invoice) => current(invoice.endDate)))
+    : buildContractValueByClient(input.contracts?.filter((contract) => current(contract.endDate)));
+  const out: Record<string, number> = {};
+  for (const [clientId, value] of map) {
+    if (value > 0) out[String(clientId)] = Math.round(value * 100) / 100;
+  }
+  return out;
+}
+
 function buildContractRecordsByClient(
   contracts: NormalisedContractRecord[] | undefined,
 ): Map<number, NormalisedContractRecord[]> {

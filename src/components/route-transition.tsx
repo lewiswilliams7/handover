@@ -113,7 +113,8 @@ export function RouteTransition({ children }: { children: React.ReactNode }) {
   const isAuthenticatedAppRoute =
     pathname === "/" ||
     pathname === "/attention" ||
-    pathname === "/receipts";
+    pathname === "/receipts" ||
+    pathname === "/margin";
   const isWelcomeRoute = pathname === "/welcome";
   const isAuthRoute = pathname === "/auth" || pathname.startsWith("/auth/");
   const isOnboardingRoute = pathname === "/onboarding" || pathname.startsWith("/onboarding/");

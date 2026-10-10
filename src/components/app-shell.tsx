@@ -19,6 +19,7 @@ import {
   PoundSterling,
   ReceiptText,
   Rewind,
+  Scale,
   Settings,
   Shield,
   Sliders,
@@ -727,7 +728,9 @@ function AppShellContent({ children }: { children: ReactNode }) {
             : "Revenue at Risk"
         : pathname === "/receipts"
           ? "Value Receipts"
-          : titles[activeView] ?? "Handover";
+          : pathname === "/margin"
+            ? "Client Margin"
+            : titles[activeView] ?? "Handover";
   const attentionNavClass = (tab: "risk" | "replay") => {
     const onTab =
       pathname === "/attention" &&
@@ -790,6 +793,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                 <div className={sectionLabelClass.replace("mt-4 ", "mt-1 ")}>Protect</div>
                 <Link href="/attention" data-tour="nav-revenue-at-risk" onClick={closeMobile} className={attentionNavClass("risk")} title="Revenue at Risk"><PoundSterling className="size-[14px]" /><span className={labelClass}>Revenue at Risk</span></Link>
                 <Link href="/attention?tab=replay" data-tour="nav-churn-replay" onClick={closeMobile} className={attentionNavClass("replay")} title="Churn Replay"><Rewind className="size-[14px]" /><span className={labelClass}>Churn Replay</span></Link>
+                <Link href="/margin" onClick={closeMobile} title="Client Margin" className={`relative flex h-8 w-full items-center rounded-[var(--radius)] border-l-2 text-[12px] transition-all duration-[120ms] ${expanded ? "gap-1.5 px-2.5" : "justify-center px-0"} ${pathname === "/margin" && !settings.open ? "border-[var(--accent)] bg-[var(--accent)]/15 font-medium text-white" : "border-transparent text-[var(--text-secondary)] hover:bg-white/5 hover:text-white"}`}><Scale className="size-[14px]" /><span className={labelClass}>Client Margin</span></Link>
                 <Link href="/?view=client-intelligence" data-tour="nav-client-intelligence" onClick={closeMobile} className={navClass("client-intelligence")} title="Clients"><Users className="size-[14px]" /><span className={labelClass}>Clients</span></Link>
                 {entitlement.hasProAccess && teamVisibility.deliveryAccess !== "none" ? <Link href="/?view=delivery" onClick={closeMobile} className={navClass("delivery")} title="Delivery health"><BarChart3 className="size-[14px]" /><span className={labelClass}>Delivery health</span></Link> : null}
               </div>

@@ -46,6 +46,7 @@ import {
 } from "@/lib/psa/halo-field-provenance";
 import {
   buildScanFindings,
+  currentMonthlyValueByClient,
   type ScanFinding,
 } from "@/lib/psa/scan-findings";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
@@ -204,6 +205,8 @@ export type StoredScanResults = {
   churnReplay?: ChurnReplayResult | null;
   /** Per-client monthly service summary for Value Receipts™ and Client Margin. Absent on older scans. */
   clientMonthly?: ClientMonthlyResult | null;
+  /** Current monthly recurring value per client id, for Client Margin. Absent on older scans. */
+  clientValues?: Record<string, number> | null;
 };
 
 export type ScanFindingPreview = {
@@ -1184,6 +1187,13 @@ async function runHaloSync(
     windowStart: window.dateFrom,
   });
   const clientMonthly = safeClientMonthly(scanTickets);
+  const clientValues =
+    recurringInvoicesLoaded || contracts.length > 0
+      ? currentMonthlyValueByClient({
+          recurringInvoices: recurringInvoicesLoaded ? recurringInvoices : undefined,
+          contracts,
+        })
+      : null;
   const scanOutcome =
     findings.portfolio.clientsAnalysed === 0
       ? "no_clients"
@@ -1227,6 +1237,7 @@ async function runHaloSync(
     projectOverrunReliable: true,
     churnReplay,
     clientMonthly,
+    clientValues,
   };
 }
 
@@ -1306,6 +1317,8 @@ async function runConnectWiseSync(
     windowStart: window.dateFrom,
   });
   const clientMonthly = safeClientMonthly(tickets);
+  const clientValues =
+    exposureAvailability === "unavailable" ? null : currentMonthlyValueByClient({ contracts });
   const scanOutcome =
     findings.portfolio.clientsAnalysed === 0
       ? "no_clients"
@@ -1331,6 +1344,7 @@ async function runConnectWiseSync(
     projectOverrunReliable: false,
     churnReplay,
     clientMonthly,
+    clientValues,
   };
 }
 
