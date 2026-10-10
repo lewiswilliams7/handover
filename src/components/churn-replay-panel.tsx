@@ -50,7 +50,9 @@ function formatCurrency(value: number): string {
 function formatDay(iso: string): string {
   const ms = Date.parse(iso);
   if (Number.isNaN(ms)) return iso;
-  return new Date(ms).toLocaleDateString("en-GB", {
+  // PSAs store a date like "31 May" as local midnight, which arrives in UTC as
+  // 30 May 23:00 during BST. Round to the nearest day so it reads as entered.
+  return new Date(ms + 12 * 3_600_000).toLocaleDateString("en-GB", {
     day: "numeric",
     month: "short",
     year: "numeric",

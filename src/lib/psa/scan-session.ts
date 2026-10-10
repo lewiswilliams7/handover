@@ -1167,6 +1167,14 @@ async function runHaloSync(
     // Ticket findings remain useful when recurring invoice permission is absent.
     exposureAvailability = "unavailable";
   }
+  // Many Halo MSPs bill from contracts rather than recurring invoices. When the
+  // invoices give no values but contracts do, use the contracts for amounts.
+  if (
+    exposureAvailability !== "available_value" &&
+    contracts.some((contract) => contract.monthlyValue != null && contract.monthlyValue > 0)
+  ) {
+    exposureAvailability = "available_value";
+  }
   try {
     const commercialResult = await getHaloCommercialData(token, credentials.haloUrl);
     quotations = commercialResult.quotations;

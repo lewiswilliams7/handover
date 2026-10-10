@@ -379,8 +379,11 @@ export function currentMonthlyValueByClient(input: {
     const end = Date.parse(endDate);
     return Number.isNaN(end) || end > nowMs;
   };
-  const map = input.recurringInvoices
+  const recurring = input.recurringInvoices
     ? buildRecurringValueByClient(input.recurringInvoices.filter((invoice) => current(invoice.endDate)))
+    : new Map<number, number>();
+  const map = [...recurring.values()].some((value) => value > 0)
+    ? recurring
     : buildContractValueByClient(input.contracts?.filter((contract) => current(contract.endDate)));
   const out: Record<string, number> = {};
   for (const [clientId, value] of map) {
@@ -870,7 +873,7 @@ function addCommercialFindings(
           clientId,
           type: "quote_stalled",
           drivers: [{
-            fact: `${stalled.length} sent, unapproved quote${stalled.length === 1 ? "" : "s"} have been open for up to ${round1(oldestDays)} days versus a usual decision window of ${round1(usualDecisionDays)} days.`,
+            fact: `${stalled.length} sent, unapproved quote${stalled.length === 1 ? " has" : "s have"} been open for up to ${Math.round(oldestDays)} days, against a usual decision window of ${Math.round(usualDecisionDays)} days.`,
             value: oldestDays,
             baseline: threshold,
             unit: "days_since_quote",
@@ -905,7 +908,7 @@ function addCommercialFindings(
           clientId,
           type: "order_gap",
           drivers: [{
-            fact: `${clientNameFor(input, clientId)} has gone ${round1(latestAgeDays)} days since its last order versus a typical purchasing interval of ${round1(usualInterval)} days.`,
+            fact: `${clientNameFor(input, clientId)} has gone ${Math.round(latestAgeDays)} days since its last order, against a typical gap of ${Math.round(usualInterval)} days.`,
             value: latestAgeDays,
             baseline: usualInterval,
             unit: "days_since_order",
@@ -957,8 +960,13 @@ function addCommercialFindings(
  */
 export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsResult {
   const opts = { ...DEFAULT_OPTS, ...input.opts };
-  const contractByClient = input.recurringInvoices
+  // Recurring invoices win when they carry values; otherwise contract values
+  // (Halo shops that bill from contracts would otherwise show no amounts).
+  const recurringValues = input.recurringInvoices
     ? buildRecurringValueByClient(input.recurringInvoices)
+    : new Map<number, number>();
+  const contractByClient = [...recurringValues.values()].some((value) => value > 0)
+    ? recurringValues
     : buildContractValueByClient(input.contracts);
   const contractsByClient = buildContractRecordsByClient(input.contracts);
   const findings: ScanFinding[] = [];
@@ -1046,7 +1054,7 @@ export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsRe
         const drivers: FindingDriver[] = [];
         pushDriver(
           drivers,
-          `No ticket activity for at least ${round1(age)} days against an active contract and a ${opts.absoluteContactGapDays}-day activity threshold`,
+          `No tickets for ${Math.floor(age)} days on an active contract (flagged after ${opts.absoluteContactGapDays} days)`,
           age,
           opts.absoluteContactGapDays,
           "days_since_ticket_activity",
@@ -1082,7 +1090,7 @@ export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsRe
         const drivers: FindingDriver[] = [];
         pushDriver(
           drivers,
-          `${expiringContracts.length} active contract${expiringContracts.length === 1 ? "" : "s"} end within ${opts.contractExpiringDays} days; nearest end date is in ${round1(nearestDays)} days`,
+          `${expiringContracts.length} active contract${expiringContracts.length === 1 ? " ends" : "s end"} within ${opts.contractExpiringDays} days; the nearest in ${Math.max(1, Math.ceil(nearestDays))} day${Math.max(1, Math.ceil(nearestDays)) === 1 ? "" : "s"}`,
           nearestDays,
           opts.contractExpiringDays,
           "days_until_contract_end",
