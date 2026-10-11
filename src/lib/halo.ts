@@ -51,7 +51,7 @@ const HALO_TICKETS_MINIMAL_HISTORICAL_FIELDS =
   "contact,contact_id,contactname,contact_name,openedby,opened_by,createdby," +
   "summary,subject,tickettype,tickettype_id,category,category_id,category_1,category_2," +
   "fixbydate,respondbydate,respondby_date,fix_by_date,hasbeenclosed,isclosed,isopen,open,closed," +
-  "timetaken,timetakenhours,time_taken,totaltime,chargehours,nonchargehours,lastactiondate,last_action_date,datelastaction";
+  "timetaken,timetakenhours,time_taken,totaltime,chargehours,nonchargehours,lastactiondate,last_action_date,datelastaction,emailaddress,user_email";
 
 const HALO_TICKETS_DATESEARCH_FIELD = "dateoccurred";
 
@@ -657,6 +657,13 @@ function pickTargetDateSkippingHaloNullSentinels(
   return td;
 }
 
+/** A plausible email address, lower-cased, or null. */
+function emailField(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const email = v.trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 200 ? email : null;
+}
+
 /** Hours from a number, a numeric string, or an "HH:MM" duration string. */
 function hoursField(v: unknown): number {
   if (typeof v === "string") {
@@ -1166,6 +1173,8 @@ export function mapTicket(
       hasBeenClosed: hasBeenClosedForScan,
       owner: ownerForScan,
       requester: requesterForScan,
+      requesterName: strField(ticket.user_name) ?? strField(ticket.username) ?? strField(ticket.contactname) ?? strField(ticket.contact_name) ?? null,
+      requesterEmail: emailField(ticket.useremail) ?? emailField(ticket.emailaddress) ?? emailField(ticket.user_email) ?? null,
       ticketType: ticketTypeForScan,
       slaDueDate: slaDueDateForScan,
     },
@@ -1488,6 +1497,9 @@ export interface HaloTicket {
     hasBeenClosed?: boolean | null;
     owner: string | null;
     requester: string | null;
+    /** Display name and email of the person who raised the ticket, for contact suggestions. */
+    requesterName?: string | null;
+    requesterEmail?: string | null;
     ticketType: string | null;
     slaDueDate: string | null;
   };

@@ -32,6 +32,8 @@ export type WeekMove = {
   action: string;
   href: string;
   kind: "save" | "renewal";
+  /** For save moves: the finding behind it, so it can be marked handled from email. */
+  findingType?: string;
 };
 
 export type WeekChange = { clientName: string; label: string };
@@ -39,6 +41,7 @@ export type WeekChange = { clientName: string; label: string };
 export type TrendPoint = { at: string; revenueAtRisk: number };
 
 export type PortfolioSummary = {
+  scanSessionId: string;
   scannedAt: string;
   clientsMonitored: number;
   revenueAtRisk: { annual: number; clients: number; clientsWithoutValue: number };
@@ -154,6 +157,7 @@ export async function loadPortfolioSummary(
       action: play?.title ?? "Open the Save Play",
       href: `/attention?finding=${entry.clientId}:${first.type}`,
       kind: "save",
+      findingType: first.type,
     });
   }
   for (const row of radar?.rows ?? []) {
@@ -227,6 +231,7 @@ export async function loadPortfolioSummary(
     .reverse();
 
   return {
+    scanSessionId: scan.sessionId,
     scannedAt: scan.createdAt,
     clientsMonitored,
     revenueAtRisk: {

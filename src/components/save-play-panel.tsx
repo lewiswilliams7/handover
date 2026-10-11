@@ -3,6 +3,8 @@
 import { Check, ChevronDown, Copy, Loader2, Mail, Send } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 
+import { ContactSuggestions } from "@/components/contact-suggestions";
+import type { ClientContact } from "@/lib/psa/scan-session";
 import { buildSavePlayEmail, getSavePlay, playHasEmail } from "@/lib/save-plays";
 
 type Props = {
@@ -13,6 +15,8 @@ type Props = {
   onComplete: (note: string) => Promise<void>;
   /** Open straight away, e.g. when arriving from a link to this finding. */
   defaultOpen?: boolean;
+  /** The client's most active contacts, to pre-fill the recipient. */
+  contacts?: ClientContact[] | null;
 };
 
 type SendState =
@@ -27,7 +31,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * Save Play™ for one finding: the steps to take, a ready-to-send email to the
  * client's decision-maker, and a way to record that the play was run.
  */
-export function SavePlayPanel({ findingType, clientName, senderName, onComplete, defaultOpen = false }: Props) {
+export function SavePlayPanel({ findingType, clientName, senderName, onComplete, defaultOpen = false, contacts }: Props) {
   const play = getSavePlay(findingType);
   const panelId = useId();
   const [open, setOpen] = useState(defaultOpen);
@@ -35,7 +39,7 @@ export function SavePlayPanel({ findingType, clientName, senderName, onComplete,
     () => (play ? buildSavePlayEmail(play, { clientName, senderName }) : null),
     [play, clientName, senderName],
   );
-  const [to, setTo] = useState("");
+  const [to, setTo] = useState(contacts?.[0]?.email ?? "");
   const [subject, setSubject] = useState(initialEmail?.subject ?? "");
   const [body, setBody] = useState(initialEmail?.body ?? "");
   const [sendState, setSendState] = useState<SendState>({ kind: "idle" });
@@ -161,6 +165,7 @@ export function SavePlayPanel({ findingType, clientName, senderName, onComplete,
                     className="w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-white/35 focus:border-cyan-300/50"
                   />
                 </label>
+                <ContactSuggestions contacts={contacts} current={to} onPick={setTo} />
                 <label className="block">
                   <span className="sr-only">Subject</span>
                   <input

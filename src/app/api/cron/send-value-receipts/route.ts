@@ -60,7 +60,7 @@ export async function GET(req: Request) {
     const { data: profile } = await admin
       .from("profiles")
       .select(
-        "plan, team_id, trial_ends_at, trial_plan, subscription_status, first_name, last_name, display_name, company_name, brand_name, brand_colour, white_label_mode",
+        "plan, team_id, trial_ends_at, trial_plan, subscription_status, first_name, last_name, display_name, company_name, brand_name, brand_colour, brand_logo_url, white_label_mode",
       )
       .eq("id", userId)
       .maybeSingle();
@@ -116,6 +116,7 @@ export async function GET(req: Request) {
             mspName,
             senderName,
             accent: typeof profile.brand_colour === "string" ? profile.brand_colour : null,
+            logoUrl: typeof profile.brand_logo_url === "string" ? profile.brand_logo_url : null,
           }),
         });
         await admin

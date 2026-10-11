@@ -40,6 +40,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   Suspense,
   type Dispatch,
   type FormEvent,
@@ -654,6 +655,33 @@ const titles: Record<string, string> = {
   approvals: "Approvals",
 };
 
+const LEGACY_KEY = "handover:show-legacy-tools";
+const LEGACY_EVENT = "handover:legacy-tools";
+function readLegacy(): boolean {
+  try {
+    return window.localStorage.getItem(LEGACY_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function writeLegacy(value: boolean) {
+  try {
+    if (value) window.localStorage.setItem(LEGACY_KEY, "1");
+    else window.localStorage.removeItem(LEGACY_KEY);
+  } catch {
+    // Storage blocked: the change lasts for this page only.
+  }
+  window.dispatchEvent(new Event(LEGACY_EVENT));
+}
+function subscribeLegacy(callback: () => void) {
+  window.addEventListener(LEGACY_EVENT, callback);
+  window.addEventListener("storage", callback);
+  return () => {
+    window.removeEventListener(LEGACY_EVENT, callback);
+    window.removeEventListener("storage", callback);
+  };
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   return (
     <Suspense fallback={<div className="min-h-full">{children}</div>}>
@@ -671,6 +699,13 @@ function AppShellContent({ children }: { children: ReactNode }) {
     theme, setTheme, settings, settingsBodyContainer, setSettingsBodyContainer, invokeOnSignOut, signOutRegistered,
   } = useAppShell();
   const [confirmSignOut, setConfirmSignOut] = useState(false);
+  // Legacy tools (from the old reporting product) are hidden unless switched
+  // on; the switch is remembered in this browser. Opening one by link still works.
+  const legacyView = ["scheduled", "approvals", "organisation", "generate", "delivery"].includes(params.get("view") ?? "");
+  const showLegacyStored = useSyncExternalStore(subscribeLegacy, readLegacy, () => false);
+  // Visiting a legacy tool by link shows the section so you can find your way back.
+  const showLegacy = showLegacyStored || legacyView;
+  const setShowLegacy = (value: boolean) => writeLegacy(value);
   // Legacy tools live under "More", open when the current page is one of them.
   const legacyViews = ["scheduled", "approvals", "organisation", "generate", "delivery"];
   const [moreOpen, setMoreOpen] = useState(() => {
@@ -741,6 +776,8 @@ function AppShellContent({ children }: { children: ReactNode }) {
           ? "Value Receipts"
           : pathname === "/week"
             ? "This week"
+          : pathname.startsWith("/clients")
+            ? "Clients"
           : pathname === "/renewals"
             ? "Renewal Radar"
           : pathname === "/margin"
@@ -813,13 +850,14 @@ function AppShellContent({ children }: { children: ReactNode }) {
                 <Link href="/attention?tab=replay" data-tour="nav-churn-replay" onClick={closeMobile} className={attentionNavClass("replay")} title="Churn Replay"><Rewind className="size-[14px]" /><span className={labelClass}>Churn Replay</span></Link>
                 <Link href="/renewals" onClick={closeMobile} title="Renewal Radar" className={`relative flex h-8 w-full items-center rounded-[var(--radius)] border-l-2 text-[12px] transition-all duration-[120ms] ${expanded ? "gap-1.5 px-2.5" : "justify-center px-0"} ${pathname === "/renewals" && !settings.open ? "border-[var(--accent)] bg-[var(--accent)]/15 font-medium text-white" : "border-transparent text-[var(--text-secondary)] hover:bg-white/5 hover:text-white"}`}><CalendarClock className="size-[14px]" /><span className={labelClass}>Renewal Radar</span></Link>
                 <Link href="/margin" onClick={closeMobile} title="Client Margin" className={`relative flex h-8 w-full items-center rounded-[var(--radius)] border-l-2 text-[12px] transition-all duration-[120ms] ${expanded ? "gap-1.5 px-2.5" : "justify-center px-0"} ${pathname === "/margin" && !settings.open ? "border-[var(--accent)] bg-[var(--accent)]/15 font-medium text-white" : "border-transparent text-[var(--text-secondary)] hover:bg-white/5 hover:text-white"}`}><Scale className="size-[14px]" /><span className={labelClass}>Client Margin</span></Link>
-                <Link href="/?view=client-intelligence" data-tour="nav-client-intelligence" onClick={closeMobile} className={navClass("client-intelligence")} title="Clients"><Users className="size-[14px]" /><span className={labelClass}>Clients</span></Link>
+                <Link href="/clients" data-tour="nav-client-intelligence" onClick={closeMobile} title="Clients" className={`relative flex h-8 w-full items-center rounded-[var(--radius)] border-l-2 text-[12px] transition-all duration-[120ms] ${expanded ? "gap-1.5 px-2.5" : "justify-center px-0"} ${pathname.startsWith("/clients") && !settings.open ? "border-[var(--accent)] bg-[var(--accent)]/15 font-medium text-white" : "border-transparent text-[var(--text-secondary)] hover:bg-white/5 hover:text-white"}`}><Users className="size-[14px]" /><span className={labelClass}>Clients</span></Link>
               </div>
               <div className="space-y-0.5">
                 <div className={sectionLabelClass}>Prove</div>
                 <Link href="/receipts" data-tour="nav-value-receipts" onClick={closeMobile} title="Value Receipts" className={`relative flex h-8 w-full items-center rounded-[var(--radius)] border-l-2 text-[12px] transition-all duration-[120ms] ${expanded ? "gap-1.5 px-2.5" : "justify-center px-0"} ${pathname === "/receipts" && !settings.open ? "border-[var(--accent)] bg-[var(--accent)]/15 font-medium text-white" : "border-transparent text-[var(--text-secondary)] hover:bg-white/5 hover:text-white"}`}><ReceiptText className="size-[14px]" /><span className={labelClass}>Value Receipts</span></Link>
                 <Link href="/?view=reports" onClick={closeMobile} className={navClass("reports")} title="Reports"><LayoutTemplate className="size-[14px]" /><span className={labelClass}>Reports</span></Link>
               </div>
+              {showLegacy ? (
               <div className="space-y-0.5">
                 <button type="button" onClick={() => setMoreOpen((value) => !value)} aria-expanded={moreOpen} className={`${sectionLabelClass} flex min-h-0 w-full items-center justify-between text-left hover:text-white/70`}>
                   <span>More</span>
@@ -835,6 +873,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                   </>
                 ) : null}
               </div>
+              ) : null}
               <div><div className={sectionLabelClass}>Settings</div>
                 <Link href="/?view=configuration" onClick={closeMobile} className={navClass("configuration")}><Settings className="size-[14px]" /><span className={labelClass}>Configuration</span></Link>
                 {entitlement.hasProAccess ? <Link href="/dashboard/team" onClick={closeMobile} title="Team" className={`relative flex h-8 w-full items-center rounded-[var(--radius)] border-l-2 text-[12px] transition-all duration-[120ms] ${expanded ? "gap-1.5 px-2.5" : "justify-center px-0"} ${pathname.startsWith("/dashboard/team") && !settings.open ? "border-[var(--accent)] bg-[var(--accent)]/15 font-medium text-white" : "border-transparent text-[var(--text-secondary)] hover:bg-white/5 hover:text-white"}`}><UserPlus className="size-[14px]" /><span className={labelClass}>Team</span></Link> : null}
@@ -846,7 +885,12 @@ function AppShellContent({ children }: { children: ReactNode }) {
             <Link href="/?view=changelog" onClick={closeMobile} className={navClass("changelog")}><Sparkles className="size-3.5" /><span className={labelClass}>What&apos;s new</span></Link>
             <button type="button" className="mt-2 flex w-full items-center gap-2 rounded-[var(--radius)] p-2.5 hover:bg-white/[0.06]" onClick={openSettings}><div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-[11px] font-semibold text-white">{userFirstName?.[0]?.toUpperCase() || userEmail?.[0]?.toUpperCase() || "U"}</div><span className={`min-w-0 flex-1 truncate text-left text-[12px] text-white ${labelClass}`}><span className="block">{userFirstName || userEmail || "Account"}</span><span className="text-[9px] text-[var(--accent)]">{planLabel}</span></span><Settings className="size-[14px] shrink-0 text-white/30" /></button>
             {!entitlement.hasProAccess && entitlement.workspaceEnded && teamVisibility.teamMemberRole !== "owner" ? <p className={`mb-2 rounded-[var(--radius)] border border-amber-300/25 bg-amber-300/[0.07] px-3 py-2 text-[11px] leading-4 text-amber-100 ${!expanded ? "md:hidden" : ""}`}>Your workspace&apos;s Handover subscription has ended. Ask the owner to renew it from Billing to restore access for the team.</p> : !entitlement.hasProAccess ? <Link href="/pricing?upgrade=true" onClick={closeMobile} className={`mb-2 flex w-full items-center justify-center rounded-[var(--radius)] border border-[var(--accent)] px-3 py-2 text-[12px] text-[var(--accent)] ${!expanded ? "md:hidden" : ""}`}>Upgrade plan</Link> : null}
-            <a href="https://handover.canny.io" target="_blank" rel="noreferrer" className={`text-[11px] text-white/30 hover:text-white/60 ${!expanded ? "md:hidden" : ""}`}>Suggest a feature →</a>
+            <div className={`flex items-center justify-between gap-2 ${!expanded ? "md:hidden" : ""}`}>
+              <a href="https://handover.canny.io" target="_blank" rel="noreferrer" className="text-[11px] text-white/30 hover:text-white/60">Suggest a feature →</a>
+              <button type="button" onClick={() => setShowLegacy(!showLegacy)} className="min-h-0 text-[11px] text-white/25 hover:text-white/60" title="Scheduled reports, approvals, client portal, quick updates and delivery health from earlier versions of Handover">
+                {showLegacy ? "Hide legacy tools" : "Legacy tools"}
+              </button>
+            </div>
           </div>
         </aside>
       ) : null}

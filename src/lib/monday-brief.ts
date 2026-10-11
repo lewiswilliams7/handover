@@ -38,6 +38,27 @@ export function briefUnsubscribeToken(userId: string): string {
   return createHmac("sha256", signingKey()).update(`monday-brief:${userId}`).digest("hex").slice(0, 32);
 }
 
+/** Token for a one-click action on one finding in one scan, for this user only. */
+export function briefActionToken(userId: string, sessionId: string, clientId: number, findingType: string): string {
+  return createHmac("sha256", signingKey())
+    .update(`brief-action:${userId}:${sessionId}:${clientId}:${findingType}`)
+    .digest("hex")
+    .slice(0, 32);
+}
+
+export function verifyBriefActionToken(
+  userId: string,
+  sessionId: string,
+  clientId: number,
+  findingType: string,
+  token: string,
+): boolean {
+  if (!signingKey() || !/^[0-9a-f]{32}$/.test(token)) return false;
+  const expected = Buffer.from(briefActionToken(userId, sessionId, clientId, findingType));
+  const given = Buffer.from(token);
+  return expected.length === given.length && timingSafeEqual(expected, given);
+}
+
 export function verifyBriefUnsubscribeToken(userId: string, token: string): boolean {
   if (!signingKey() || !/^[0-9a-f]{32}$/.test(token)) return false;
   const expected = Buffer.from(briefUnsubscribeToken(userId));
@@ -57,7 +78,7 @@ export function mondayBriefSubject(summary: PortfolioSummary): string {
 
 export function mondayBriefEmail(
   summary: PortfolioSummary,
-  opts: { firstName: string; appOrigin: string; unsubscribeUrl: string },
+  opts: { firstName: string; appOrigin: string; unsubscribeUrl: string; userId?: string },
 ): { subject: string; html: string; text: string } {
   const s = summary;
   const subject = mondayBriefSubject(s);
@@ -92,6 +113,12 @@ export function mondayBriefEmail(
   ];
 
   const link = (path: string) => `${opts.appOrigin}${path}`;
+  const handledUrl = (move: PortfolioSummary["moves"][number]): string | null =>
+    opts.userId && move.kind === "save" && move.findingType
+      ? link(
+          `/api/brief/action?u=${encodeURIComponent(opts.userId)}&s=${encodeURIComponent(s.scanSessionId)}&c=${move.clientId}&f=${encodeURIComponent(move.findingType)}&t=${briefActionToken(opts.userId, s.scanSessionId, move.clientId, move.findingType)}`,
+        )
+      : null;
   const kpiCells = kpis
     .map(
       (kpi) => `<td style="padding:14px 16px;background:#f5f8fc;border-radius:10px;vertical-align:top;width:33%">
@@ -111,7 +138,11 @@ export function mondayBriefEmail(
             : ""
         }</div>
         <div style="font-size:14px;color:#3d4b61;margin-top:2px">${esc(move.reason)}</div>
-        <a href="${esc(link(move.href))}" style="display:inline-block;margin-top:6px;font-size:14px;font-weight:600;color:#0284c7;text-decoration:none">${esc(move.action)} →</a>
+        <a href="${esc(link(move.href))}" style="display:inline-block;margin-top:6px;font-size:14px;font-weight:600;color:#0284c7;text-decoration:none">${esc(move.action)} →</a>${
+          handledUrl(move)
+            ? `<a href="${esc(handledUrl(move)!)}" style="display:inline-block;margin:6px 0 0 16px;font-size:13px;color:#5b6b82;text-decoration:none">Already handled ✓</a>`
+            : ""
+        }
       </td></tr>`,
     )
     .join("");

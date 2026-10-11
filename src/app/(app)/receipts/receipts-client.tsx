@@ -4,6 +4,9 @@ import { CalendarClock, Check, Copy, Loader2, Mail, Printer, Search, Send } from
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { ContactSuggestions } from "@/components/contact-suggestions";
+import type { ClientContact } from "@/lib/psa/scan-session";
+
 import { useAppShell } from "@/components/app-shell";
 import type { ClientMonthlyResult } from "@/lib/psa/client-monthly";
 import {
@@ -23,6 +26,8 @@ type Props = {
   scannedAt: string | null;
   /** Opened from elsewhere (Renewal Radar, This week) for one client. */
   initialClientId?: number | null;
+  /** Each client's most active contacts, to pre-fill recipients. */
+  clientContacts?: Record<string, ClientContact[]>;
 };
 
 type Schedule = {
@@ -55,10 +60,11 @@ function clientLabel(names: Record<string, string>, clientId: number): string {
     : `Client #${clientId}`;
 }
 
-export function ReceiptsClient({ monthly, clientNames, scannedAt, initialClientId }: Props) {
+export function ReceiptsClient({ monthly, clientNames, scannedAt, initialClientId, clientContacts = {} }: Props) {
   const { userFirstName, branding, profileForm } = useAppShell();
   const mspName = profileForm.profileCompanyName.trim() || branding.brandName.trim();
   const accent = HEX_PATTERN.test(branding.brandColour.trim()) ? branding.brandColour.trim() : "#0f1c3f";
+  const logoUrl = /^https:\/\//.test(branding.brandLogoUrl.trim()) ? branding.brandLogoUrl.trim() : null;
 
   const lastCompleteMonth = useMemo(() => {
     if (!monthly) return null;
@@ -137,8 +143,10 @@ export function ReceiptsClient({ monthly, clientNames, scannedAt, initialClientI
       <style>{`@media print {
         body * { visibility: hidden !important; }
         .receipt-print-root, .receipt-print-root * { visibility: visible !important; }
-        .receipt-print-root { position: absolute; inset: 0 auto auto 0; width: 100%; box-shadow: none !important; border: 0 !important; }
-        @page { margin: 16mm; }
+        .receipt-print-root { position: absolute; inset: 0 auto auto 0; width: 100%; box-shadow: none !important; border: 0 !important; border-radius: 0 !important; }
+        .receipt-print-root, .receipt-print-root * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        .receipt-print-root section, .receipt-print-root dl > div { break-inside: avoid; }
+        @page { size: A4; margin: 12mm; }
       }`}</style>
       <div className="mx-auto max-w-6xl">
         <header>
@@ -261,6 +269,8 @@ export function ReceiptsClient({ monthly, clientNames, scannedAt, initialClientI
                       </select>
                     </label>
                     <ReceiptActions
+                      key={`actions-${selected.client.clientId}`}
+                      contacts={clientContacts[String(selected.client.clientId)] ?? null}
                       receipt={receipt}
                       mspName={mspName}
                       senderName={userFirstName?.trim() ?? ""}
@@ -286,8 +296,9 @@ export function ReceiptsClient({ monthly, clientNames, scannedAt, initialClientI
                     clientName={selected.name}
                     state={schedules}
                     onChanged={loadSchedules}
+                    contacts={clientContacts[String(selected.client.clientId)] ?? null}
                   />
-                  <ReceiptPaper receipt={receipt} mspName={mspName} accent={accent} />
+                  <ReceiptPaper receipt={receipt} mspName={mspName} accent={accent} logoUrl={logoUrl} />
                 </>
               ) : (
                 <EmptyCard
@@ -330,66 +341,133 @@ function EmptyCard({
   );
 }
 
-function ReceiptPaper({
+export function ReceiptPaper({
   receipt,
   mspName,
   accent,
+  logoUrl,
 }: {
   receipt: ValueReceipt;
   mspName: string;
   accent: string;
+  logoUrl: string | null;
 }) {
+  const max = Math.max(1, ...receipt.trend.map((point) => point.resolved));
+  const totalTypes = receipt.workTypes.reduce((sum, type) => sum + type.count, 0);
+  const lead = receipt.stats[0];
+  const rest = receipt.stats.slice(1);
   return (
     <article className="receipt-print-root overflow-hidden rounded-2xl bg-white text-slate-900 shadow-2xl shadow-black/30">
-      <div className="h-1.5" style={{ background: accent }} aria-hidden />
+      <div className="h-2" style={{ background: accent }} aria-hidden />
       <div className="p-6 sm:p-10">
-        <div className="flex flex-wrap items-baseline justify-between gap-3 text-sm">
-          <span className="font-semibold text-slate-900">{mspName || "Your IT partner"}</span>
-          <span className="text-slate-500">Service summary, {receipt.periodLabel}</span>
-        </div>
-        <h2 className="mt-8 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-          {receipt.clientName}
-        </h2>
-        <p className="mt-3 max-w-2xl text-lg leading-8 text-slate-700">{receipt.headline}</p>
-
-        <dl className="mt-8 grid gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 sm:grid-cols-2 lg:grid-cols-3">
-          {receipt.stats.map((stat) => (
-            <div key={stat.key} className="bg-white p-5">
-              <dt className="text-sm text-slate-500">{stat.label}</dt>
-              <dd className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{stat.value}</dd>
-              {stat.note ? <dd className="mt-1 text-xs leading-5 text-slate-500">{stat.note}</dd> : null}
-            </div>
-          ))}
-        </dl>
-
-        {receipt.summary.length > 0 ? (
-          <div className="mt-8 max-w-2xl space-y-2 text-[15px] leading-7 text-slate-700">
-            {receipt.summary.map((line) => (
-              <p key={line}>{line}</p>
-            ))}
+        <header className="flex flex-wrap items-center justify-between gap-4">
+          {logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- user-supplied brand logo, printed as-is
+            <img src={logoUrl} alt={mspName || "Logo"} className="h-9 w-auto max-w-[220px] object-contain" />
+          ) : (
+            <span className="text-base font-bold tracking-tight text-slate-900">{mspName || "Your IT partner"}</span>
+          )}
+          <div className="text-right">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Service summary</p>
+            <p className="text-sm font-semibold text-slate-900">{receipt.periodLabel}</p>
           </div>
+        </header>
+
+        <section className="mt-8 grid gap-6 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] sm:items-end">
+          <div>
+            <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-[2.1rem]">{receipt.clientName}</h2>
+            <p className="mt-3 text-[17px] leading-7 text-slate-700">{receipt.headline}</p>
+          </div>
+          {lead ? (
+            <div className="rounded-2xl p-5 text-white" style={{ background: accent }}>
+              <p className="text-sm opacity-80">{lead.label}</p>
+              <p className="mt-1 text-5xl font-semibold tabular-nums tracking-tight">{lead.value}</p>
+              {lead.note ? <p className="mt-1 text-sm opacity-80">{lead.note}</p> : null}
+            </div>
+          ) : null}
+        </section>
+
+        {rest.length > 0 ? (
+          <dl className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {rest.map((stat) => (
+              <div key={stat.key} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <dt className="text-xs font-medium text-slate-500">{stat.label}</dt>
+                <dd className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{stat.value}</dd>
+                {stat.note ? <dd className="mt-1 text-xs leading-5 text-slate-500">{stat.note}</dd> : null}
+              </div>
+            ))}
+          </dl>
         ) : null}
 
-        {receipt.workTypes.length > 0 ? (
-          <div className="mt-8">
-            <h3 className="text-sm font-semibold text-slate-900">Where the work went</h3>
-            <ul className="mt-3 flex flex-wrap gap-2">
-              {receipt.workTypes.map((type) => (
-                <li
-                  key={type.type}
-                  className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-700"
-                >
-                  {type.type} <span className="tabular-nums text-slate-500">{type.count}</span>
+        <div className="mt-8 grid gap-8 md:grid-cols-2">
+          {receipt.trend.length >= 2 ? (
+            <section aria-label="Requests resolved, month by month">
+              <h3 className="text-sm font-semibold text-slate-900">Requests resolved, month by month</h3>
+              <div className="mt-4 flex h-36 items-end gap-2">
+                {receipt.trend.map((point) => (
+                  <div key={point.month} className="flex h-full flex-1 flex-col items-center justify-end">
+                    <span className={`mb-1 text-xs font-semibold tabular-nums ${point.current ? "text-slate-900" : "text-slate-400"}`}>
+                      {point.resolved}
+                    </span>
+                    <div
+                      className="w-full rounded-t-md"
+                      style={{
+                        height: `${Math.max(4, Math.round((point.resolved / max) * 100))}px`,
+                        background: point.current ? accent : "#cbd5e1",
+                      }}
+                    />
+                    <span className="mt-1.5 text-[11px] text-slate-500">{point.label}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {receipt.workTypes.length > 0 ? (
+            <section aria-label="Where the work went">
+              <h3 className="text-sm font-semibold text-slate-900">Where the work went</h3>
+              <ul className="mt-4 space-y-3">
+                {receipt.workTypes.map((type) => {
+                  const pct = totalTypes > 0 ? Math.round((type.count / totalTypes) * 100) : 0;
+                  return (
+                    <li key={type.type}>
+                      <div className="flex items-baseline justify-between text-sm">
+                        <span className="text-slate-700">{type.type}</span>
+                        <span className="tabular-nums text-slate-500">
+                          {type.count} <span className="text-slate-400">· {pct}%</span>
+                        </span>
+                      </div>
+                      <div className="mt-1 h-2 rounded-full bg-slate-200">
+                        <div className="h-2 rounded-full" style={{ width: `${pct}%`, background: accent }} />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ) : null}
+        </div>
+
+        {receipt.summary.length > 0 ? (
+          <section className="mt-8 rounded-xl border border-slate-200 p-5">
+            <h3 className="text-sm font-semibold text-slate-900">In summary</h3>
+            <ul className="mt-3 space-y-2 text-[15px] leading-7 text-slate-700">
+              {receipt.summary.map((line) => (
+                <li key={line} className="flex gap-3">
+                  <span className="mt-[11px] size-1.5 shrink-0 rounded-full" style={{ background: accent }} aria-hidden />
+                  <span>{line}</span>
                 </li>
               ))}
             </ul>
-          </div>
+          </section>
         ) : null}
 
-        <p className="mt-10 border-t border-slate-200 pt-5 text-xs leading-5 text-slate-500">
-          Prepared by {mspName || "your IT partner"} from the service records for {receipt.clientName}.
-          Questions about anything here? Reply to the email this came with.
-        </p>
+        <footer className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-5 text-xs leading-5 text-slate-500">
+          <span>
+            Prepared by {mspName || "your IT partner"} from the service records for {receipt.clientName}.
+          </span>
+          <span>Questions? Just reply to the email this came with.</span>
+        </footer>
       </div>
     </article>
   );
@@ -399,12 +477,14 @@ function ReceiptActions({
   receipt,
   mspName,
   senderName,
+  contacts,
 }: {
   receipt: ValueReceipt;
   mspName: string;
   senderName: string;
+  contacts: ClientContact[] | null;
 }) {
-  const [to, setTo] = useState("");
+  const [to, setTo] = useState(contacts?.[0]?.email ?? "");
   const [composing, setComposing] = useState(false);
   const [sendState, setSendState] = useState<SendState>({ kind: "idle" });
   const [copied, setCopied] = useState(false);
@@ -415,11 +495,12 @@ function ReceiptActions({
     if (!toValid || sendState.kind === "sending") return;
     setSendState({ kind: "sending" });
     try {
-      const response = await fetch("/api/action-email/send", {
+      // Sent as the branded receipt (logo, colour, chart), rendered on the server.
+      const response = await fetch("/api/value-receipts/send", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to: to.trim(), subject: text.subject, body: text.body, clientName: receipt.clientName }),
+        body: JSON.stringify({ to: to.trim(), receipt }),
       });
       if (!response.ok) {
         setSendState({
@@ -477,6 +558,7 @@ function ReceiptActions({
           <label className="block text-xs font-semibold text-[var(--text-secondary)]" htmlFor="receipt-to">
             Send to {receipt.clientName}&apos;s decision-maker
           </label>
+          <ContactSuggestions contacts={contacts} current={to} onPick={setTo} />
           <div className="mt-2 flex gap-2">
             <input
               id="receipt-to"
@@ -525,16 +607,18 @@ function AutoSendControl({
   clientName,
   state,
   onChanged,
+  contacts,
 }: {
   clientId: number;
   clientName: string;
   state: SchedulesState;
   onChanged: () => Promise<void>;
+  contacts: ClientContact[] | null;
 }) {
   const existing =
     state.status === "ready" ? state.schedules.find((schedule) => schedule.client_id === clientId) ?? null : null;
   const [editing, setEditing] = useState(false);
-  const [email, setEmail] = useState(existing?.email_to ?? "");
+  const [email, setEmail] = useState(existing?.email_to ?? contacts?.[0]?.email ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

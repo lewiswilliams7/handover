@@ -87,6 +87,7 @@ export async function GET(req: Request) {
       const email = mondayBriefEmail(summary, {
         firstName: typeof profile.first_name === "string" ? profile.first_name.trim() : "",
         appOrigin: origin,
+        userId,
         unsubscribeUrl: `${origin}/api/monday-brief/unsubscribe?u=${encodeURIComponent(userId)}&t=${briefUnsubscribeToken(userId)}`,
       });
       const { error } = await resend.emails.send({

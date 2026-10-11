@@ -42,6 +42,8 @@ export type ValueReceipt = {
   dataWarnings: string[];
   /** Whether this receipt covers a month or a quarter. */
   period: "month" | "quarter";
+  /** Requests resolved per month, up to and including this period (oldest first). */
+  trend: Array<{ month: string; label: string; resolved: number; current: boolean }>;
 };
 
 const MONTH_NAMES = [
@@ -126,6 +128,8 @@ export function buildValueReceipt(input: {
   /** Overrides for quarterly receipts. */
   periodLabel?: string;
   periodNoun?: "month" | "quarter";
+  /** Real monthly history for the trend chart, and which months are "this period". */
+  trendSource?: { client: ClientMonthly; currentMonths: string[] };
 }): ValueReceipt | null {
   const { client, clientName, month } = input;
   const noun = input.periodNoun ?? "month";
@@ -247,7 +251,25 @@ export function buildValueReceipt(input: {
     hoursTracked,
     dataWarnings: receiptDataWarnings(stats, noun),
     period: noun,
+    trend: receiptTrend(input.trendSource ?? { client, currentMonths: [month] }),
   };
+}
+
+const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** Up to six months ending with the period shown, so the client sees the pattern, not one number. */
+function receiptTrend(source: { client: ClientMonthly; currentMonths: string[] }): ValueReceipt["trend"] {
+  const last = [...source.currentMonths].sort().at(-1);
+  if (!last || !/^\d{4}-\d{2}$/.test(last)) return [];
+  return source.client.months
+    .filter((m) => m.month <= last)
+    .slice(-6)
+    .map((m) => ({
+      month: m.month,
+      label: MONTH_ABBR[Number(m.month.slice(5, 7)) - 1] ?? m.month,
+      resolved: m.closed,
+      current: source.currentMonths.includes(m.month),
+    }));
 }
 
 function receiptDataWarnings(stats: ClientMonthStats, noun: "month" | "quarter" = "month"): string[] {
@@ -315,55 +337,91 @@ function escapeHtml(value: string): string {
  */
 export function valueReceiptHtml(
   receipt: ValueReceipt,
-  opts: { mspName: string; senderName: string; accent?: string | null },
+  opts: { mspName: string; senderName: string; accent?: string | null; logoUrl?: string | null },
 ): string {
   const accent = opts.accent && /^#[0-9a-f]{6}$/i.test(opts.accent) ? opts.accent : "#0f1c3f";
   const msp = escapeHtml(opts.mspName.trim() || "Your IT partner");
-  const statRows = receipt.stats
-    .map(
-      (stat) => `<tr>
-        <td style="padding:12px 0;border-bottom:1px solid #e2e8f0;font:14px/1.4 -apple-system,Segoe UI,Arial,sans-serif;color:#475569;">${escapeHtml(stat.label)}${
-          stat.note
-            ? `<div style="font-size:12px;color:#94a3b8;margin-top:2px;">${escapeHtml(stat.note)}</div>`
-            : ""
-        }</td>
-        <td style="padding:12px 0;border-bottom:1px solid #e2e8f0;font:600 18px/1.4 -apple-system,Segoe UI,Arial,sans-serif;color:#0f172a;text-align:right;white-space:nowrap;">${escapeHtml(stat.value)}</td>
-      </tr>`,
-    )
-    .join("");
-  const summary = receipt.summary
-    .map(
-      (line) =>
-        `<p style="margin:0 0 8px;font:15px/1.6 -apple-system,Segoe UI,Arial,sans-serif;color:#334155;">${escapeHtml(line)}</p>`,
-    )
-    .join("");
+  const font = "-apple-system,Segoe UI,Arial,sans-serif";
+  const logo =
+    opts.logoUrl && /^https:\/\//.test(opts.logoUrl.trim())
+      ? `<img src="${escapeHtml(opts.logoUrl.trim())}" alt="${msp}" height="32" style="display:block;max-height:32px;width:auto;border:0;">`
+      : `<span style="font:700 15px ${font};color:#0f172a;">${msp}</span>`;
+
+  // Two stats per row: label, big value, note.
+  const tiles = receipt.stats.map(
+    (stat) => `<td width="50%" valign="top" style="padding:6px;">
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;">
+        <div style="font:12px ${font};color:#64748b;">${escapeHtml(stat.label)}</div>
+        <div style="font:700 24px/1.2 ${font};color:#0f172a;margin-top:4px;">${escapeHtml(stat.value)}</div>
+        ${stat.note ? `<div style="font:12px/1.4 ${font};color:#64748b;margin-top:4px;">${escapeHtml(stat.note)}</div>` : ""}
+      </div></td>`,
+  );
+  const tileRows: string[] = [];
+  for (let i = 0; i < tiles.length; i += 2) tileRows.push(`<tr>${tiles[i]}${tiles[i + 1] ?? '<td width="50%"></td>'}</tr>`);
+
+  // Bar chart of requests resolved per month, built from table cells so it renders in every inbox.
+  const max = Math.max(1, ...receipt.trend.map((point) => point.resolved));
+  const trend =
+    receipt.trend.length >= 2
+      ? `<tr><td style="padding:20px 32px 0;">
+      <div style="font:600 14px ${font};color:#0f172a;margin-bottom:10px;">Requests resolved, month by month</div>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>${receipt.trend
+        .map((point) => {
+          const height = Math.max(4, Math.round((point.resolved / max) * 72));
+          return `<td valign="bottom" align="center" style="padding:0 4px;">
+            <div style="font:600 12px ${font};color:${point.current ? "#0f172a" : "#94a3b8"};margin-bottom:4px;">${point.resolved}</div>
+            <div style="height:${height}px;background:${point.current ? accent : "#cbd5e1"};border-radius:4px 4px 0 0;"></div>
+            <div style="font:11px ${font};color:#64748b;margin-top:6px;">${escapeHtml(point.label)}</div>
+          </td>`;
+        })
+        .join("")}</tr></table></td></tr>`
+      : "";
+
+  const totalTypes = receipt.workTypes.reduce((sum, type) => sum + type.count, 0);
   const types =
     receipt.workTypes.length > 0
-      ? `<p style="margin:16px 0 0;font:14px/1.6 -apple-system,Segoe UI,Arial,sans-serif;color:#475569;"><strong style="color:#0f172a;">Where the work went:</strong> ${receipt.workTypes
-          .map((type) => `${escapeHtml(type.type)} (${type.count})`)
-          .join(", ")}</p>`
+      ? `<tr><td style="padding:20px 32px 0;">
+      <div style="font:600 14px ${font};color:#0f172a;margin-bottom:10px;">Where the work went</div>
+      ${receipt.workTypes
+        .map((type) => {
+          const pct = totalTypes > 0 ? Math.round((type.count / totalTypes) * 100) : 0;
+          return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;"><tr>
+            <td style="font:13px ${font};color:#334155;width:40%;">${escapeHtml(type.type)}</td>
+            <td style="width:45%;"><div style="background:#e2e8f0;border-radius:4px;height:8px;"><div style="width:${pct}%;background:${accent};height:8px;border-radius:4px;"></div></div></td>
+            <td style="font:600 13px ${font};color:#0f172a;text-align:right;width:15%;">${type.count}</td>
+          </tr></table>`;
+        })
+        .join("")}</td></tr>`
       : "";
-  const signature = escapeHtml(opts.senderName.trim() || opts.mspName.trim() || "The team");
 
-  return `<!doctype html><html><body style="margin:0;padding:24px;background:#f1f5f9;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;">
+  const summary = receipt.summary
+    .map((line) => `<li style="margin:0 0 6px;font:14px/1.6 ${font};color:#334155;">${escapeHtml(line)}</li>`)
+    .join("");
+  const signature = escapeHtml(opts.senderName.trim() || opts.mspName.trim() || "The team");
+  const nextPeriod = receipt.period === "quarter" ? "next quarter" : "next month";
+
+  return `<!doctype html><html><body style="margin:0;padding:24px 12px;background:#f1f5f9;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;">
     <tr><td style="height:6px;background:${accent};"></td></tr>
-    <tr><td style="padding:28px 32px 8px;">
+    <tr><td style="padding:24px 32px 0;">
       <table role="presentation" width="100%"><tr>
-        <td style="font:600 14px -apple-system,Segoe UI,Arial,sans-serif;color:#0f172a;">${msp}</td>
-        <td style="font:13px -apple-system,Segoe UI,Arial,sans-serif;color:#64748b;text-align:right;">Service summary, ${escapeHtml(receipt.periodLabel)}</td>
+        <td valign="middle">${logo}</td>
+        <td valign="middle" style="font:12px ${font};color:#64748b;text-align:right;text-transform:uppercase;letter-spacing:.08em;">Service summary<br><span style="font:600 13px ${font};color:#0f172a;text-transform:none;letter-spacing:0;">${escapeHtml(receipt.periodLabel)}</span></td>
       </tr></table>
-      <h1 style="margin:24px 0 8px;font:600 26px/1.25 -apple-system,Segoe UI,Arial,sans-serif;color:#0f172a;">${escapeHtml(receipt.clientName)}</h1>
-      <p style="margin:0 0 16px;font:17px/1.5 -apple-system,Segoe UI,Arial,sans-serif;color:#334155;">${escapeHtml(receipt.headline)}</p>
+      <div style="font:700 26px/1.25 ${font};color:#0f172a;margin:26px 0 6px;">${escapeHtml(receipt.clientName)}</div>
+      <div style="font:16px/1.55 ${font};color:#334155;">${escapeHtml(receipt.headline)}</div>
     </td></tr>
-    <tr><td style="padding:0 32px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${statRows}</table></td></tr>
-    <tr><td style="padding:20px 32px 8px;">${summary}${types}</td></tr>
-    <tr><td style="padding:16px 32px 28px;">
-      <p style="margin:0 0 12px;font:14px/1.6 -apple-system,Segoe UI,Arial,sans-serif;color:#475569;">If anything here does not match your experience, or there is something you would like us to focus on next month, just reply to this email.</p>
-      <p style="margin:0;font:14px/1.6 -apple-system,Segoe UI,Arial,sans-serif;color:#0f172a;">Best regards,<br>${signature}${
+    <tr><td style="padding:16px 26px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${tileRows.join("")}</table></td></tr>
+    ${trend}
+    ${types}
+    ${summary ? `<tr><td style="padding:20px 32px 0;"><div style="font:600 14px ${font};color:#0f172a;margin-bottom:8px;">In summary</div><ul style="margin:0;padding-left:18px;">${summary}</ul></td></tr>` : ""}
+    <tr><td style="padding:22px 32px 28px;">
+      <p style="margin:0 0 12px;font:14px/1.6 ${font};color:#475569;">If anything here does not match your experience, or there is something you would like us to focus on ${nextPeriod}, just reply to this email.</p>
+      <p style="margin:0;font:14px/1.6 ${font};color:#0f172a;">Best regards,<br>${signature}${
         opts.senderName.trim() && opts.mspName.trim() ? `<br><span style="color:#64748b;">${msp}</span>` : ""
       }</p>
     </td></tr>
+    <tr><td style="padding:12px 32px;background:#f8fafc;font:11px ${font};color:#94a3b8;">Prepared by ${msp} from the service records for ${escapeHtml(receipt.clientName)}.</td></tr>
   </table>
 </body></html>`;
 }
@@ -452,5 +510,6 @@ export function buildQuarterReceipt(input: {
     month: "quarter",
     periodLabel: input.quarter.label,
     periodNoun: "quarter",
+    trendSource: { client: input.client, currentMonths: input.quarter.months },
   });
 }

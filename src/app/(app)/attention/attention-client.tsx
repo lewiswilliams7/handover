@@ -1312,6 +1312,8 @@ function FindingCard({
   // with its Save Play ready: /attention?finding=<clientId>:<type>
   const focused = useSearchParams().get("finding") === findingKey(finding);
   const scrolledRef = useRef(false);
+  // Cards start compact so the page reads as a list; a linked finding opens.
+  const [open, setOpen] = useState(focused);
   const copy = getFindingCopy(finding.type);
   const isUrgent =
     finding.type === "contract_expiring" &&
@@ -1356,7 +1358,11 @@ function FindingCard({
           <p className={`text-xs font-semibold uppercase tracking-[0.12em] ${isUrgent ? "text-red-200" : "text-amber-200"}`}>
             {copy.label}
           </p>
-          <h3 className="mt-1 truncate text-lg font-semibold">{nameFor(results, finding.clientId)}</h3>
+          <h3 className="mt-1 truncate text-lg font-semibold">
+            <Link href={`/clients/${finding.clientId}`} className="hover:text-cyan-100 hover:underline underline-offset-4">
+              {nameFor(results, finding.clientId)}
+            </Link>
+          </h3>
         </div>
         <div className="shrink-0 text-right">
           {finding.monthlyValue != null && finding.monthlyValue > 0 ? (
@@ -1369,6 +1375,15 @@ function FindingCard({
           ) : null}
         </div>
       </div>
+      {/* Collapsed: the one fact that matters. Open: the full picture and the Save Play. */}
+      {!open && finding.drivers[0] ? (
+        <p className="mt-3 flex gap-3 text-sm leading-6 text-[var(--text-primary)]">
+          <span className="mt-2 size-1.5 shrink-0 rounded-full bg-cyan-300" />
+          <span>{finding.drivers[0].fact}</span>
+        </p>
+      ) : null}
+      {open ? (
+        <>
       <p className="mt-4 text-sm leading-6 text-[var(--text-secondary)]">{copy.description}</p>
       <ul className="mt-4 space-y-2">
         {finding.drivers.slice(0, 3).map((driver, index) => (
@@ -1384,8 +1399,11 @@ function FindingCard({
         clientName={nameFor(results, finding.clientId)}
         senderName={senderName}
         onComplete={(note) => onAction(finding, "handled", note)}
-        defaultOpen={focused}
+        defaultOpen
+        contacts={results.clientContacts?.[String(finding.clientId)] ?? null}
       />
+        </>
+      ) : null}
       {expanded ? (
         <div className="mt-4 rounded-xl border border-cyan-300/15 bg-cyan-300/[0.05] p-4">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cyan-100/70">
@@ -1403,7 +1421,15 @@ function FindingCard({
           </p>
         </div>
       ) : null}
+      {open ? (
       <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/10 pt-4 text-xs">
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="inline-flex items-center gap-1.5 font-semibold text-[var(--text-secondary)] hover:text-white"
+        >
+          <ChevronDown className="size-3.5 rotate-180" aria-hidden /> Show less
+        </button>
         <button
           type="button"
           onClick={() => void onAction(finding, "add_to_qbr")}
@@ -1468,6 +1494,24 @@ function FindingCard({
           </button>
         )}
       </div>
+      ) : (
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="inline-flex min-h-0 items-center gap-1.5 rounded-lg bg-[var(--accent)]/15 px-3 py-1.5 text-sm font-semibold text-cyan-100 transition-colors hover:bg-[var(--accent)]/25"
+          >
+            Open the Save Play <ChevronDown className="size-3.5" aria-hidden />
+          </button>
+          <button
+            type="button"
+            onClick={() => void onAction(finding, "normal_for_client")}
+            className="inline-flex min-h-0 items-center gap-1.5 text-xs text-[var(--text-secondary)] hover:text-white"
+          >
+            <Check className="size-3.5" /> Normal for this client
+          </button>
+        </div>
+      )}
     </article>
   );
 }

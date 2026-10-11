@@ -116,7 +116,8 @@ export function RouteTransition({ children }: { children: React.ReactNode }) {
     pathname === "/receipts" ||
     pathname === "/margin" ||
     pathname === "/renewals" ||
-    pathname === "/week";
+    pathname === "/week" ||
+    pathname.startsWith("/clients");
   const isWelcomeRoute = pathname === "/welcome";
   const isAuthRoute = pathname === "/auth" || pathname.startsWith("/auth/");
   const isOnboardingRoute = pathname === "/onboarding" || pathname.startsWith("/onboarding/");

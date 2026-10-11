@@ -208,7 +208,11 @@ function RenewalCard({ row, median }: { row: RenewalRow; median: number | null }
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="truncate text-base font-semibold text-white">{row.clientName}</h3>
+          <h3 className="truncate text-base font-semibold text-white">
+            <Link href={`/clients/${row.clientId}`} className="hover:text-cyan-100 hover:underline underline-offset-4">
+              {row.clientName}
+            </Link>
+          </h3>
           <p className="mt-0.5 text-sm text-[var(--text-secondary)]">
             Ends {day(row.endDate)}
             <span className="text-[var(--text-muted)]"> · in {row.daysLeft} day{row.daysLeft === 1 ? "" : "s"}</span>

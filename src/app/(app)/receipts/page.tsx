@@ -36,6 +36,7 @@ export default async function ReceiptsPage({
     <ReceiptsClient
       monthly={results?.clientMonthly ?? (results ? null : undefined)}
       clientNames={results?.clientNames ?? {}}
+      clientContacts={results?.clientContacts ?? {}}
       scannedAt={scan?.createdAt ?? null}
       initialClientId={Number.isSafeInteger(requestedClient) && requestedClient > 0 ? requestedClient : null}
     />

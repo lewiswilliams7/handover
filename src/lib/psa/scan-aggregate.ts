@@ -21,6 +21,9 @@ export type ScanTicketInput = {
   statusOpen?: boolean | null;
   owner?: string | null;
   requester?: string | null;
+  /** Requester's name and email, kept only to suggest who to send emails to. */
+  requesterName?: string | null;
+  requesterEmail?: string | null;
   ticketType?: string | null;
   slaDueDate?: string | null;
   /** Total hours logged against the ticket, when the PSA records it. */

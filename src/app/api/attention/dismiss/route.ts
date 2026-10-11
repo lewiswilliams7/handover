@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { syncScanFindingLedger } from "@/lib/psa/scan-finding-ledger";
+import { recordFindingAction } from "@/lib/server/finding-actions";
 import { requireScanDetailsEntitlement } from "@/lib/scan-entitlement";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { createServerClient } from "@/lib/supabase/server";
@@ -86,68 +86,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "invalid_request" }, { status: 400 });
   }
 
-  const admin = createServiceRoleClient();
-  const { data: session, error: sessionError } = await admin
-    .from("scan_sessions")
-    .select("id,created_at,results_json")
-    .eq("id", scanSessionId)
-    .eq("claimed_by_user_id", user.id)
-    .eq("status", "claimed")
-    .maybeSingle();
-  if (sessionError || !session) {
-    return NextResponse.json({ ok: false, error: "scan_session_unavailable" }, { status: 404 });
-  }
-
-  const findings = session.results_json &&
-    typeof session.results_json === "object" &&
-    Array.isArray((session.results_json as { findings?: unknown }).findings)
-    ? (session.results_json as { findings: unknown[] }).findings
-    : [];
-  const hasFinding = findings.some((finding) => {
-    if (!finding || typeof finding !== "object") return false;
-    const value = finding as { clientId?: unknown; type?: unknown };
-    return value.clientId === clientId && value.type === findingType;
+  const result = await recordFindingAction(createServiceRoleClient(), {
+    userId: user.id,
+    scanSessionId,
+    clientId,
+    findingType,
+    action,
+    note,
+    reason: typeof body.reason === "string" ? body.reason : undefined,
   });
-  if (!hasFinding) {
-    return NextResponse.json({ ok: false, error: "finding_not_found" }, { status: 404 });
-  }
-
-  try {
-    await syncScanFindingLedger({
-      userId: user.id,
-      sessionId: scanSessionId,
-      createdAt: session.created_at,
-      results: session.results_json,
-    });
-  } catch {
-    return NextResponse.json({ ok: false, error: "ledger_save_failed" }, { status: 500 });
-  }
-
-  const reason =
-    action === "normal_for_client"
-      ? (typeof body.reason === "string" ? body.reason.trim() : "") || "normal_for_client"
-      : action;
-  const { error } = await admin.from("scan_finding_dismissals").upsert(
-    {
-      user_id: user.id,
-      scan_session_id: scanSessionId,
-      client_id: clientId,
-      finding_type: findingType,
-      reason,
-      actioned: true,
-      action_type: action,
-      action_note: note || null,
-      actioned_at: new Date().toISOString(),
-    },
-    { onConflict: "user_id,scan_session_id,client_id,finding_type" },
-  );
-  if (error) {
-    console.error("[attention] could not record finding dismissal", {
-      userId: user.id,
-      scanSessionId,
-      error: error.message,
-    });
-    return NextResponse.json({ ok: false, error: "dismissal_save_failed" }, { status: 500 });
+  if (!result.ok) {
+    const status = result.error === "scan_session_unavailable" || result.error === "finding_not_found" ? 404 : 500;
+    return NextResponse.json({ ok: false, error: result.error }, { status });
   }
 
   return NextResponse.json({ ok: true, action });

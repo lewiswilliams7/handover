@@ -160,6 +160,32 @@ export type PublicScanStatus = {
   errorCode: string | null;
 };
 
+export type ClientContact = { name: string | null; email: string; tickets: number };
+
+const CONTACT_WINDOW_MS = 183 * 24 * 60 * 60 * 1000;
+
+/** Up to three people per client who raised the most tickets recently. */
+function topClientContacts(tickets: ScanTicketInput[], nowMs: number = Date.now()): Record<string, ClientContact[]> {
+  const byClient = new Map<number, Map<string, ClientContact>>();
+  for (const ticket of tickets) {
+    const email = ticket.requesterEmail;
+    if (!email || ticket.clientId <= 0) continue;
+    const at = ticket.dateEntered ? Date.parse(ticket.dateEntered) : Number.NaN;
+    if (!Number.isFinite(at) || nowMs - at > CONTACT_WINDOW_MS) continue;
+    const contacts = byClient.get(ticket.clientId) ?? new Map<string, ClientContact>();
+    const existing = contacts.get(email) ?? { name: ticket.requesterName?.trim() || null, email, tickets: 0 };
+    existing.tickets += 1;
+    if (!existing.name && ticket.requesterName?.trim()) existing.name = ticket.requesterName.trim();
+    contacts.set(email, existing);
+    byClient.set(ticket.clientId, contacts);
+  }
+  const out: Record<string, ClientContact[]> = {};
+  for (const [clientId, contacts] of byClient) {
+    out[String(clientId)] = [...contacts.values()].sort((a, b) => b.tickets - a.tickets).slice(0, 3);
+  }
+  return out;
+}
+
 export type ScanRenewal = {
   clientId: number;
   /** ISO end date of the contract. */
@@ -238,6 +264,8 @@ export type StoredScanResults = {
   clientValues?: Record<string, number> | null;
   /** Live contracts ending in the next 12 months, for Renewal Radar. */
   renewals?: ScanRenewal[] | null;
+  /** Each client's most active contacts in the last six months, to pre-fill emails. */
+  clientContacts?: Record<string, ClientContact[]> | null;
 };
 
 export type ScanFindingPreview = {
@@ -885,6 +913,8 @@ function haloTicketToRawScanInput(
       (attrs?.hasBeenClosed == null ? null : !attrs.hasBeenClosed),
     owner: attrs?.owner ?? null,
     requester: attrs?.requester ?? null,
+    requesterName: attrs?.requesterName ?? null,
+    requesterEmail: attrs?.requesterEmail ?? null,
     ticketType: haloTicketTypeLabel(attrs?.ticketType, typeNames),
     slaDueDate: attrs?.slaDueDate ?? null,
     hoursLogged:
@@ -952,7 +982,7 @@ async function fetchCwScanTickets(
   );
   const fields = encodeURIComponent(
     "id,company/id,dateEntered,dateResponded,closedDate,summary,priority/name,status/name," +
-      "owner/name,contact/name,type/name,respondByDate,resolveByDate,actualHours",
+      "owner/name,contact/name,type/name,respondByDate,resolveByDate,actualHours,contactEmailAddress",
   );
   const headers = {
     Authorization: cwAuth(connection),
@@ -1018,6 +1048,11 @@ async function fetchCwScanTickets(
               : null,
         owner: provenanceRow.owner as string | null,
         requester: provenanceRow.contact as string | null,
+        requesterName: provenanceRow.contact as string | null,
+        requesterEmail:
+          typeof row.contactEmailAddress === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.contactEmailAddress.trim())
+            ? row.contactEmailAddress.trim().toLowerCase()
+            : null,
         ticketType: provenanceRow.tickettype as string | null,
         slaDueDate: provenanceRow.fixbydate as string | null,
         hoursLogged:
@@ -1304,6 +1339,7 @@ async function runHaloSync(
     clientMonthly,
     clientValues,
     renewals: upcomingRenewals(contracts),
+    clientContacts: topClientContacts(scanTickets),
   };
 }
 
@@ -1412,6 +1448,7 @@ async function runConnectWiseSync(
     clientMonthly,
     clientValues,
     renewals: upcomingRenewals(contracts),
+    clientContacts: topClientContacts(tickets),
   };
 }
 
