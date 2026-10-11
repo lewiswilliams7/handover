@@ -40,6 +40,8 @@ export type ValueReceipt = {
   hoursTracked: boolean;
   /** Data gaps for the MSP to fix in their PSA. Shown in the app, never on the receipt. */
   dataWarnings: string[];
+  /** Whether this receipt covers a month or a quarter. */
+  period: "month" | "quarter";
 };
 
 const MONTH_NAMES = [
@@ -96,12 +98,17 @@ function average(values: Array<number | null>): number | null {
  * Compare this month's time with the recent average. Only says "faster" or
  * "slower" when the change is at least 15%, so normal noise reads as steady.
  */
-function speedNote(current: number | null, baseline: number | null): string | undefined {
+function speedNote(
+  current: number | null,
+  baseline: number | null,
+  noun: "month" | "quarter" = "month",
+): string | undefined {
   if (current == null || baseline == null || baseline <= 0) return undefined;
+  const against = noun === "quarter" ? "last quarter" : "recent months";
   const change = (current - baseline) / baseline;
-  if (change <= -0.15) return `Faster than recent months, down from ${formatDuration(baseline)}`;
-  if (change >= 0.15) return `Slower than recent months, up from ${formatDuration(baseline)}`;
-  return "In line with recent months";
+  if (change <= -0.15) return `Faster than ${against}, down from ${formatDuration(baseline)}`;
+  if (change >= 0.15) return `Slower than ${against}, up from ${formatDuration(baseline)}`;
+  return `In line with ${against}`;
 }
 
 /** Complete months available for a receipt, newest first. */
@@ -116,13 +123,17 @@ export function buildValueReceipt(input: {
   client: ClientMonthly;
   clientName: string;
   month: string;
+  /** Overrides for quarterly receipts. */
+  periodLabel?: string;
+  periodNoun?: "month" | "quarter";
 }): ValueReceipt | null {
   const { client, clientName, month } = input;
+  const noun = input.periodNoun ?? "month";
   const index = client.months.findIndex((m) => m.month === month);
   if (index < 0) return null;
   const stats: ClientMonthStats = client.months[index]!;
   const previous = client.months.slice(Math.max(0, index - 3), index);
-  const periodLabel = monthLabel(month);
+  const periodLabel = input.periodLabel ?? monthLabel(month);
 
   const baselineResponse = average(previous.map((m) => m.firstResponseHours));
   const baselineResolution = average(previous.map((m) => m.resolutionHours));
@@ -159,7 +170,7 @@ export function buildValueReceipt(input: {
       key: "response",
       label: "Typical first response",
       value: formatDuration(stats.firstResponseHours),
-      note: speedNote(stats.firstResponseHours, baselineResponse),
+      note: speedNote(stats.firstResponseHours, baselineResponse, noun),
     });
   }
   if (stats.resolutionHours != null) {
@@ -167,7 +178,7 @@ export function buildValueReceipt(input: {
       key: "resolution",
       label: "Typical time to resolve",
       value: formatDuration(stats.resolutionHours),
-      note: speedNote(stats.resolutionHours, baselineResolution),
+      note: speedNote(stats.resolutionHours, baselineResolution, noun),
     });
   }
   if (stats.peopleHelped > 0) {
@@ -192,14 +203,14 @@ export function buildValueReceipt(input: {
   const headline = `${headlineParts.join(", ")}.`;
 
   const summary: string[] = [];
-  const responseNote = speedNote(stats.firstResponseHours, baselineResponse);
+  const responseNote = speedNote(stats.firstResponseHours, baselineResponse, noun);
   if (stats.firstResponseHours != null) {
     summary.push(
       `Your team usually heard back from us within ${formatDuration(stats.firstResponseHours)}${
         responseNote?.startsWith("Faster")
-          ? ", quicker than in recent months"
+          ? `, quicker than ${noun === "quarter" ? "last quarter" : "in recent months"}`
           : responseNote?.startsWith("Slower")
-            ? ", a little slower than in recent months"
+            ? `, a little slower than ${noun === "quarter" ? "last quarter" : "in recent months"}`
             : ""
       }.`,
     );
@@ -214,10 +225,10 @@ export function buildValueReceipt(input: {
   }
   if (stats.openAtEnd > 0) {
     summary.push(
-      `${plural(stats.openAtEnd, "request was", "requests were")} still in progress at the end of the month. We will keep you updated on ${stats.openAtEnd === 1 ? "it" : "each one"}.`,
+      `${plural(stats.openAtEnd, "request was", "requests were")} still in progress at the end of the ${noun}. We will keep you updated on ${stats.openAtEnd === 1 ? "it" : "each one"}.`,
     );
   } else if (stats.closed > 0) {
-    summary.push("Nothing was left outstanding at the end of the month.");
+    summary.push(`Nothing was left outstanding at the end of the ${noun}.`);
   }
 
   return {
@@ -234,16 +245,17 @@ export function buildValueReceipt(input: {
     sendable,
     unsendableReason,
     hoursTracked,
-    dataWarnings: receiptDataWarnings(stats),
+    dataWarnings: receiptDataWarnings(stats, noun),
+    period: noun,
   };
 }
 
-function receiptDataWarnings(stats: ClientMonthStats): string[] {
+function receiptDataWarnings(stats: ClientMonthStats, noun: "month" | "quarter" = "month"): string[] {
   const warnings: string[] = [];
   const undated = stats.closedUndated ?? 0;
   if (undated > 0) {
     warnings.push(
-      `${plural(undated, "request", "requests")} raised this month ${undated === 1 ? "is" : "are"} closed in your PSA but ${undated === 1 ? "has" : "have"} no close date, so ${undated === 1 ? "it is" : "they are"} not counted as resolved. Make sure tickets get a close date when they are closed, then refresh.`,
+      `${plural(undated, "request", "requests")} raised this ${noun} ${undated === 1 ? "is" : "are"} closed in your PSA but ${undated === 1 ? "has" : "have"} no close date, so ${undated === 1 ? "it is" : "they are"} not counted as resolved. Make sure tickets get a close date when they are closed, then refresh.`,
     );
   }
   return warnings;
@@ -267,7 +279,7 @@ export function valueReceiptText(
   if (receipt.workTypes.length > 0) {
     lines.push("");
     lines.push(
-      `Most of the work this month: ${receipt.workTypes
+      `Most of the work this ${receipt.period}: ${receipt.workTypes
         .map((type) => `${type.type} (${type.count})`)
         .join(", ")}.`,
     );
@@ -354,4 +366,91 @@ export function valueReceiptHtml(
     </td></tr>
   </table>
 </body></html>`;
+}
+
+export type ReceiptQuarter = { key: string; label: string; months: string[] };
+
+const MONTH_FULL = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/** Calendar quarters fully covered by complete months, newest first. */
+export function receiptQuarters(client: ClientMonthly, currentMonth: string): ReceiptQuarter[] {
+  const complete = new Set(client.months.map((m) => m.month).filter((m) => m < currentMonth));
+  const quarters = new Map<string, string[]>();
+  for (const key of complete) {
+    const [y, m] = key.split("-").map(Number);
+    const q = Math.floor((m! - 1) / 3);
+    const quarterMonths = [0, 1, 2].map((offset) => `${y}-${String(q * 3 + offset + 1).padStart(2, "0")}`);
+    if (quarterMonths.every((month) => complete.has(month))) quarters.set(`Q:${quarterMonths.join(",")}`, quarterMonths);
+  }
+  return [...quarters.entries()]
+    .sort((a, b) => b[1][0]!.localeCompare(a[1][0]!))
+    .map(([key, months]) => {
+      const [y, first] = months[0]!.split("-").map(Number);
+      const last = Number(months[2]!.split("-")[1]);
+      return { key, months, label: `${MONTH_FULL[first! - 1]} to ${MONTH_FULL[last - 1]} ${y}` };
+    });
+}
+
+function weighted(values: Array<{ value: number | null; weight: number }>): number | null {
+  const usable = values.filter((entry) => entry.value != null && entry.weight > 0);
+  const total = usable.reduce((sum, entry) => sum + entry.weight, 0);
+  if (usable.length === 0 || total === 0) return null;
+  return Math.round((usable.reduce((sum, entry) => sum + entry.value! * entry.weight, 0) / total) * 10) / 10;
+}
+
+/** Several months as one: counts add up, typical times are weighted by volume. */
+function mergeMonths(months: ClientMonthStats[], key: string): ClientMonthStats {
+  const types = new Map<string, number>();
+  for (const month of months) for (const t of month.topTypes) types.set(t.type, (types.get(t.type) ?? 0) + t.count);
+  return {
+    month: key,
+    opened: months.reduce((sum, m) => sum + m.opened, 0),
+    closed: months.reduce((sum, m) => sum + m.closed, 0),
+    urgentClosed: months.reduce((sum, m) => sum + m.urgentClosed, 0),
+    firstResponseHours: weighted(months.map((m) => ({ value: m.firstResponseHours, weight: m.opened }))),
+    resolutionHours: weighted(months.map((m) => ({ value: m.resolutionHours, weight: m.closed }))),
+    outOfHours: months.reduce((sum, m) => sum + m.outOfHours, 0),
+    // People cannot be added across months without double counting, so leave it out.
+    peopleHelped: 0,
+    hours: Math.round(months.reduce((sum, m) => sum + m.hours, 0) * 10) / 10,
+    closedWithHours: months.reduce((sum, m) => sum + m.closedWithHours, 0),
+    openAtEnd: months.at(-1)?.openAtEnd ?? 0,
+    closedUndated: months.reduce((sum, m) => sum + (m.closedUndated ?? 0), 0),
+    topTypes: [...types.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 3)
+      .map(([type, count]) => ({ type, count })),
+  };
+}
+
+/**
+ * A quarterly receipt: three complete months as one page, compared with the
+ * quarter before when the scan holds it. Ready to use as the opening page of a
+ * quarterly business review.
+ */
+export function buildQuarterReceipt(input: {
+  client: ClientMonthly;
+  clientName: string;
+  quarter: ReceiptQuarter;
+}): ValueReceipt | null {
+  const byMonth = new Map(input.client.months.map((m) => [m.month, m]));
+  const current = input.quarter.months.map((m) => byMonth.get(m)).filter((m): m is ClientMonthStats => Boolean(m));
+  if (current.length !== 3) return null;
+  const previousKeys = input.quarter.months.map((m) => {
+    const [y, mo] = m.split("-").map(Number);
+    const d = new Date(Date.UTC(y!, mo! - 1 - 3, 1));
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  });
+  const previous = previousKeys.map((m) => byMonth.get(m)).filter((m): m is ClientMonthStats => Boolean(m));
+  const months = [
+    ...(previous.length === 3 ? [mergeMonths(previous, "previous")] : []),
+    mergeMonths(current, "quarter"),
+  ];
+  return buildValueReceipt({
+    client: { clientId: input.client.clientId, months },
+    clientName: input.clientName,
+    month: "quarter",
+    periodLabel: input.quarter.label,
+    periodNoun: "quarter",
+  });
 }

@@ -12,7 +12,12 @@ export const metadata: Metadata = {
   title: "Value Receipts | Handover",
 };
 
-export default async function ReceiptsPage() {
+export default async function ReceiptsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const requestedClient = Number((await searchParams).client);
   const supabase = await createServerClient();
   const {
     data: { user },
@@ -32,6 +37,7 @@ export default async function ReceiptsPage() {
       monthly={results?.clientMonthly ?? (results ? null : undefined)}
       clientNames={results?.clientNames ?? {}}
       scannedAt={scan?.createdAt ?? null}
+      initialClientId={Number.isSafeInteger(requestedClient) && requestedClient > 0 ? requestedClient : null}
     />
   );
 }

@@ -13,6 +13,11 @@ export const metadata: Metadata = {
   title: "This week | Handover",
 };
 
+/** "lewis" → "Lewis"; leaves "McDonald" and "de Vries" alone. */
+function capitalise(name: string): string {
+  return name ? name.charAt(0).toUpperCase() + name.slice(1) : name;
+}
+
 export default async function WeekPage() {
   const supabase = await createServerClient();
   const {
@@ -34,7 +39,7 @@ export default async function WeekPage() {
   return (
     <WeekClient
       summary={summary}
-      firstName={typeof profile.data?.first_name === "string" ? profile.data.first_name.trim() : ""}
+      firstName={capitalise(typeof profile.data?.first_name === "string" ? profile.data.first_name.trim() : "")}
       briefEnabled={brief.error ? null : (brief.data?.enabled ?? true)}
     />
   );

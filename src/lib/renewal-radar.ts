@@ -27,6 +27,8 @@ export type RenewalRow = {
   contractsEnding: number;
   /** Labels of open Revenue at Risk signals for this client. */
   riskSignals: string[];
+  /** The first open risk signal's type, for linking straight to its Save Play. */
+  topRiskType: string | null;
   marginGroup: MarginGroup | null;
   revenuePerHour: number | null;
   /** Share of your typical revenue per hour, e.g. 0.6. */
@@ -87,8 +89,10 @@ export function buildRenewalRadar(input: {
   const nowMs = input.nowMs ?? Date.now();
   const marginByClient = new Map((input.margin?.rows ?? []).map((row) => [row.clientId, row]));
   const risksByClient = new Map<number, Set<string>>();
+  const topRiskTypeByClient = new Map<number, string>();
   for (const finding of input.findings) {
     if (!isRiskFinding(finding.type)) continue;
+    if (!topRiskTypeByClient.has(finding.clientId)) topRiskTypeByClient.set(finding.clientId, finding.type);
     const set = risksByClient.get(finding.clientId) ?? new Set<string>();
     set.add(getFindingCopy(finding.type).label);
     risksByClient.set(finding.clientId, set);
@@ -137,6 +141,7 @@ export function buildRenewalRadar(input: {
       annualValue: entry.value != null ? Math.round(entry.value * 12) : null,
       contractsEnding: entry.count,
       riskSignals,
+      topRiskType: topRiskTypeByClient.get(clientId) ?? null,
       marginGroup: group,
       revenuePerHour: margin?.revenuePerHour ?? null,
       vsMedian: margin?.vsMedian ?? null,

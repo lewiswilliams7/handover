@@ -56,13 +56,16 @@ export async function sendTopClientAlerts(admin: SupabaseClient, userId: string)
   if (fresh.length === 0) return "none";
 
   const byClient = new Map<number, string[]>();
+  const firstType = new Map<number, string>();
   for (const finding of fresh) {
     const list = byClient.get(finding.clientId) ?? [];
     list.push(getFindingCopy(finding.type).label);
     byClient.set(finding.clientId, list);
+    if (!firstType.has(finding.clientId)) firstType.set(finding.clientId, finding.type);
   }
   const rows = [...byClient.entries()]
     .map(([clientId, labels]) => ({
+      href: `/attention?finding=${clientId}:${firstType.get(clientId)}`,
       name: results.clientNames?.[String(clientId)]?.trim() || `Client #${clientId}`,
       annual: Math.round((values[String(clientId)] ?? 0) * 12),
       labels,
@@ -90,12 +93,12 @@ export async function sendTopClientAlerts(admin: SupabaseClient, userId: string)
 <tr><td style="font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#0284c7">Revenue at Risk alert</td></tr>
 <tr><td style="padding-top:10px;font-size:15px;line-height:22px;color:#0b1730">This week's scan found a new warning sign on ${rows.length === 1 ? "one of your ten most valuable clients" : `${rows.length} of your ten most valuable clients`}:</td></tr>
 <tr><td><ul style="margin:10px 0 0;padding-left:18px;font-size:14px;line-height:21px;color:#0b1730">${list}</ul></td></tr>
-<tr><td style="padding-top:18px"><a href="${origin}/attention" style="display:inline-block;background:#0ea5e9;color:#fff;font-weight:600;font-size:14px;padding:11px 18px;border-radius:8px;text-decoration:none">Open the Save Play</a></td></tr>
+<tr><td style="padding-top:18px"><a href="${origin}${lead.href}" style="display:inline-block;background:#0ea5e9;color:#fff;font-weight:600;font-size:14px;padding:11px 18px;border-radius:8px;text-decoration:none">Open the Save Play</a></td></tr>
 <tr><td style="padding-top:18px;font-size:12px;color:#8a97ab">You get these only for new signals on your top ten clients by value. Turn them off with the Monday Brief on the This week page.</td></tr>
 </table></td></tr></table></body></html>`;
   const text = `This week's scan found a new warning sign on your biggest clients:\n\n${rows
     .map((row) => `- ${row.name} (£${row.annual.toLocaleString("en-GB")} a year): ${row.labels.join(", ")}`)
-    .join("\n")}\n\nOpen the Save Play: ${origin}/attention`;
+    .join("\n")}\n\nOpen the Save Play: ${origin}${lead.href}`;
 
   const { error } = await new Resend(process.env.RESEND_API_KEY).emails.send({
     from: `Handover <${getNoreplyMailbox()}>`,

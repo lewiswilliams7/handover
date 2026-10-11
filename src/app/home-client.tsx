@@ -15774,6 +15774,13 @@ export default function Home() {
                       </span>
                     </button>
                   </div>
+                  <Link
+                    href="/receipts"
+                    className="ml-auto hidden items-center gap-1.5 rounded-lg border border-cyan-300/25 bg-cyan-300/[0.06] px-3 py-1.5 text-[12px] font-medium text-cyan-100 transition-colors hover:border-cyan-200/50 md:inline-flex"
+                    title="A one-page, data-backed summary of each client's quarter, built from your PSA"
+                  >
+                    Need the numbers page for a QBR? Quarterly Value Receipts →
+                  </Link>
                 </div>
 
                 <div className="flex min-h-0 flex-1 overflow-hidden">

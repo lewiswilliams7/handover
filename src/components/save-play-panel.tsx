@@ -11,6 +11,8 @@ type Props = {
   senderName: string;
   /** Records the play as done; the finding leaves the list and is tracked for Saved Revenue. */
   onComplete: (note: string) => Promise<void>;
+  /** Open straight away, e.g. when arriving from a link to this finding. */
+  defaultOpen?: boolean;
 };
 
 type SendState =
@@ -25,10 +27,10 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * Save Play™ for one finding: the steps to take, a ready-to-send email to the
  * client's decision-maker, and a way to record that the play was run.
  */
-export function SavePlayPanel({ findingType, clientName, senderName, onComplete }: Props) {
+export function SavePlayPanel({ findingType, clientName, senderName, onComplete, defaultOpen = false }: Props) {
   const play = getSavePlay(findingType);
   const panelId = useId();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const initialEmail = useMemo(
     () => (play ? buildSavePlayEmail(play, { clientName, senderName }) : null),
     [play, clientName, senderName],

@@ -3,6 +3,7 @@
 import { ArrowRight, CalendarClock } from "lucide-react";
 import Link from "next/link";
 
+import { InfoTip } from "@/components/info-tip";
 import { RENEWAL_MOVE_COPY, type RenewalMove, type RenewalRadar, type RenewalRow } from "@/lib/renewal-radar";
 
 type Props = {
@@ -83,12 +84,14 @@ export function RenewalsClient({ state, radar, contractsReadable, scannedAt }: P
             <dl className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Stat
                 label="Renewing in the next 90 days"
+                tip="The yearly value of every contract that ends in the next 90 days. This is the money being decided on soon, whether or not anyone has started the conversation."
                 value={radar.next90AnnualValue > 0 ? `${money(radar.next90AnnualValue)}` : `${radar.next90Count}`}
                 suffix={radar.next90AnnualValue > 0 ? " a year" : radar.next90Count === 1 ? " client" : " clients"}
                 note={radar.next90AnnualValue > 0 ? `${radar.next90Count} client${radar.next90Count === 1 ? "" : "s"}` : undefined}
               />
               <Stat
                 label="Of that, with warning signs"
+                tip="The part of that renewing value held by clients with an open signal on Revenue at Risk. Fix the service problem before the renewal conversation, not during it."
                 value={money(radar.next90AtRiskAnnualValue)}
                 suffix=" a year"
                 tone={radar.next90AtRiskAnnualValue > 0 ? "warn" : undefined}
@@ -96,6 +99,7 @@ export function RenewalsClient({ state, radar, contractsReadable, scannedAt }: P
               {radar.repriceAnnualUplift > 0 ? (
                 <Stat
                   label="Margin gap on renewals"
+                  tip="For renewing clients who take far more time than they pay for: what they would pay at your typical revenue per hour, minus today's price. A starting point for the renewal, not a demand."
                   value={money(radar.repriceAnnualUplift)}
                   suffix=" a year"
                   note="On thin-margin renewals, at your typical rate"
@@ -165,12 +169,14 @@ function Stat({
   suffix,
   note,
   tone,
+  tip,
 }: {
   label: string;
   value: string;
   suffix?: string;
   note?: string;
   tone?: "warn" | "amber";
+  tip?: string;
 }) {
   const border =
     tone === "warn"
@@ -180,7 +186,10 @@ function Stat({
         : "border-white/10 bg-white/[0.035]";
   return (
     <div className={`rounded-xl border px-4 py-3 ${border}`}>
-      <dt className="text-xs text-[var(--text-secondary)]">{label}</dt>
+      <dt className="flex items-center gap-1 text-xs text-[var(--text-secondary)]">
+        {label}
+        {tip ? <InfoTip label={label}>{tip}</InfoTip> : null}
+      </dt>
       <dd className="mt-1 text-2xl font-semibold text-white">
         {value}
         {suffix ? <span className="text-base font-medium text-[var(--text-muted)]">{suffix}</span> : null}
@@ -193,7 +202,10 @@ function Stat({
 function RenewalCard({ row, median }: { row: RenewalRow; median: number | null }) {
   const copy = RENEWAL_MOVE_COPY[row.move];
   return (
-    <article className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 transition-colors hover:border-white/20">
+    <article
+      id={`client-${row.clientId}`}
+      className="scroll-mt-24 rounded-2xl border border-white/10 bg-white/[0.03] p-5 transition-colors target:border-cyan-300/50 target:ring-1 target:ring-cyan-300/30 hover:border-white/20"
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="truncate text-base font-semibold text-white">{row.clientName}</h3>
@@ -271,12 +283,12 @@ function RenewalCard({ row, median }: { row: RenewalRow; median: number | null }
       </div>
 
       <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-white/[0.06] pt-3 text-sm">
-        {row.riskSignals.length > 0 ? (
-          <Link href="/attention" className="inline-flex items-center gap-1 font-semibold text-cyan-200 hover:text-cyan-100">
+        {row.topRiskType ? (
+          <Link href={`/attention?finding=${row.clientId}:${row.topRiskType}`} className="inline-flex items-center gap-1 font-semibold text-cyan-200 hover:text-cyan-100">
             Open the Save Play <ArrowRight className="size-3.5" aria-hidden />
           </Link>
         ) : null}
-        <Link href="/receipts" className="inline-flex items-center gap-1 font-semibold text-cyan-200 hover:text-cyan-100">
+        <Link href={`/receipts?client=${row.clientId}`} className="inline-flex items-center gap-1 font-semibold text-cyan-200 hover:text-cyan-100">
           Send a Value Receipt <ArrowRight className="size-3.5" aria-hidden />
         </Link>
         {row.marginGroup ? (

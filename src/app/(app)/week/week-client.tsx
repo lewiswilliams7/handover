@@ -13,8 +13,9 @@ import {
   Minus,
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 
+import { InfoTip } from "@/components/info-tip";
 import type { ReadinessLevel } from "@/lib/psa-readiness";
 import type { PortfolioSummary, TrendPoint } from "@/lib/server/portfolio-summary";
 
@@ -91,6 +92,8 @@ export function WeekClient({ summary, firstName, briefEnabled }: Props) {
           </Link>
         </header>
 
+        <HowItWorks />
+
         <dl className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Kpi
             label="Revenue at Risk"
@@ -104,6 +107,7 @@ export function WeekClient({ summary, firstName, briefEnabled }: Props) {
             delta={s.revenueAtRiskChange}
             tone="risk"
             href="/attention"
+            tip="The yearly contract value of clients whose service or relationship has changed against their own history: fewer tickets, a key contact gone quiet, slower responses. It is the money that could walk if nobody acts."
           >
             <Sparkline points={s.trend} />
           </Kpi>
@@ -119,6 +123,7 @@ export function WeekClient({ summary, firstName, briefEnabled }: Props) {
                   : "Nothing renews soon"
             }
             href="/renewals"
+            tip="Contracts ending in the next 90 days, and how much of that sits with clients showing warning signs. Renewals left to the last minute get decided on price, so start these early."
           />
           <Kpi
             label="Saved Revenue"
@@ -131,6 +136,7 @@ export function WeekClient({ summary, firstName, briefEnabled }: Props) {
             }
             tone="good"
             href="/attention?tab=history"
+            tip="Clients you acted on whose warning signs then cleared, and who are still with you, counted at their yearly value. It is the return on Handover, in your own numbers."
           />
           {s.marginGap > 0 ? (
             <Kpi
@@ -140,6 +146,7 @@ export function WeekClient({ summary, firstName, briefEnabled }: Props) {
               note="Thin-margin clients at your typical rate"
               tone="amber"
               href="/margin"
+              tip="What your thin-margin clients would pay at your typical revenue per hour, for the time they take, minus what they pay now. Not money in the bank: a number to bring to their renewal."
             />
           ) : (
             <Kpi
@@ -147,6 +154,7 @@ export function WeekClient({ summary, firstName, briefEnabled }: Props) {
               value={`${s.readiness.readyCount} of ${s.readiness.items.length}`}
               note="Features your data fully supports"
               href="#readiness"
+              tip="How much of Handover your PSA data can fully support today. Each gap below comes with the one change that fixes it."
             />
           )}
         </dl>
@@ -263,6 +271,7 @@ function Kpi({
   delta,
   tone,
   href,
+  tip,
   children,
 }: {
   label: string;
@@ -272,6 +281,8 @@ function Kpi({
   delta?: number | null;
   tone?: "risk" | "good" | "amber";
   href: string;
+  /** Plain-English explanation shown from the "?" next to the label. */
+  tip?: string;
   children?: React.ReactNode;
 }) {
   const ring =
@@ -283,11 +294,13 @@ function Kpi({
           ? "border-amber-300/25 bg-amber-300/[0.05]"
           : "border-white/10 bg-white/[0.035]";
   return (
-    <Link
-      href={href}
-      className={`group relative block overflow-hidden rounded-2xl border px-4 py-4 transition-colors hover:border-white/25 ${ring}`}
-    >
-      <dt className="text-xs text-[var(--text-secondary)]">{label}</dt>
+    <div className={`group relative rounded-2xl border px-4 py-4 transition-colors hover:border-white/25 ${ring}`}>
+      {/* Stretched link: the whole card opens the detail, while the "?" stays clickable. */}
+      <Link href={href} className="absolute inset-0 rounded-2xl" aria-label={`Open ${label}`} />
+      <dt className="flex items-center gap-1 text-xs text-[var(--text-secondary)]">
+        {label}
+        {tip ? <InfoTip label={label}>{tip}</InfoTip> : null}
+      </dt>
       <dd className="mt-1.5 flex items-baseline gap-2">
         <span className="text-2xl font-semibold tracking-tight text-white">
           {value}
@@ -297,7 +310,7 @@ function Kpi({
       </dd>
       {note ? <p className="mt-1 truncate text-xs text-[var(--text-muted)]">{note}</p> : null}
       {children}
-    </Link>
+    </div>
   );
 }
 
@@ -335,7 +348,7 @@ function Sparkline({ points }: { points: TrendPoint[] }) {
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
-      className="absolute bottom-3 right-3 h-7 w-28 text-cyan-300/70"
+      className="pointer-events-none absolute bottom-3 right-3 h-7 w-28 text-cyan-300/70"
       role="img"
       aria-label={`Revenue at Risk over the last ${points.length} scans, from ${money(values[0]!)} on ${shortDate(points[0]!.at)} to ${money(values.at(-1)!)}`}
     >
@@ -497,6 +510,70 @@ function BriefToggle({ initial }: { initial: boolean | null }) {
           />
         </button>
       </div>
+    </section>
+  );
+}
+
+const HOW_IT_WORKS_KEY = "handover:how-it-works-dismissed";
+
+const STEPS: Array<{ verb: string; body: string; href: string; link: string }> = [
+  { verb: "Detect", body: "Every week Handover re-reads your PSA and checks each client against its own history.", href: "/attention", link: "Revenue at Risk" },
+  { verb: "Diagnose", body: "Clients that changed are ranked by what they pay you, with the evidence behind each one.", href: "/renewals", link: "Renewal Radar" },
+  { verb: "Act", body: "Each warning comes with a Save Play: the steps and an email to the client, ready to send.", href: "/attention", link: "Save Plays" },
+  { verb: "Prove", body: "Value Receipts show clients what you did, and Saved Revenue counts the clients you kept.", href: "/receipts", link: "Value Receipts" },
+];
+
+/** First-visit orientation, dismissible and remembered in this browser. */
+function readDismissed(): boolean {
+  try {
+    return window.localStorage.getItem(HOW_IT_WORKS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function HowItWorks() {
+  // Hidden on the server and until the browser says otherwise, so the strip
+  // never flashes for someone who already dismissed it.
+  const storedDismissed = useSyncExternalStore(
+    () => () => {},
+    readDismissed,
+    () => true,
+  );
+  const [dismissedNow, setHidden] = useState(false);
+  if (storedDismissed || dismissedNow) return null;
+  return (
+    <section className="mt-6 rounded-2xl border border-cyan-300/20 bg-cyan-300/[0.04] p-5" aria-label="How Handover works">
+      <div className="flex items-start justify-between gap-4">
+        <h2 className="text-sm font-semibold text-cyan-100">How Handover works</h2>
+        <button
+          type="button"
+          onClick={() => {
+            setHidden(true);
+            try {
+              window.localStorage.setItem(HOW_IT_WORKS_KEY, "1");
+            } catch {
+              // Private windows can block storage; hiding for this visit is enough.
+            }
+          }}
+          className="min-h-0 text-xs font-medium text-[var(--text-muted)] hover:text-white"
+        >
+          Got it, hide this
+        </button>
+      </div>
+      <ol className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {STEPS.map((step, index) => (
+          <li key={step.verb} className="text-sm leading-6">
+            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">
+              {index + 1}. {step.verb}
+            </span>
+            <p className="mt-1 text-[var(--text-secondary)]">{step.body}</p>
+            <Link href={step.href} className="text-xs font-semibold text-cyan-200 hover:text-cyan-100">
+              {step.link} →
+            </Link>
+          </li>
+        ))}
+      </ol>
     </section>
   );
 }

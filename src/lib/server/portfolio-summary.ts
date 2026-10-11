@@ -152,7 +152,7 @@ export async function loadPortfolioSummary(
       annualValue: entry.annualValue,
       reason: getFindingCopy(first.type).label,
       action: play?.title ?? "Open the Save Play",
-      href: "/attention",
+      href: `/attention?finding=${entry.clientId}:${first.type}`,
       kind: "save",
     });
   }
@@ -163,9 +163,15 @@ export async function loadPortfolioSummary(
       clientId: row.clientId,
       clientName: row.clientName,
       annualValue: row.annualValue,
-      reason: `Contract ends in ${row.daysLeft} day${row.daysLeft === 1 ? "" : "s"}`,
-      action: RENEWAL_MOVE_COPY[row.move].title,
-      href: "/renewals",
+      reason: `Contract ends in ${row.daysLeft} day${row.daysLeft === 1 ? "" : "s"} · ${RENEWAL_MOVE_COPY[row.move].title.toLowerCase()}`,
+      action:
+        row.move === "reprice" || row.move === "fix"
+          ? "See the numbers for the renewal"
+          : "Send a Value Receipt before they renew",
+      href:
+        row.move === "reprice" || row.move === "fix"
+          ? `/renewals#client-${row.clientId}`
+          : `/receipts?client=${row.clientId}`,
       kind: "renewal",
     });
   }

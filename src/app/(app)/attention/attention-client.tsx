@@ -1308,6 +1308,10 @@ function FindingCard({
 }) {
   const [handling, setHandling] = useState(false);
   const [handlingNote, setHandlingNote] = useState("");
+  // Links from This week, Renewal Radar and the Monday Brief open one finding
+  // with its Save Play ready: /attention?finding=<clientId>:<type>
+  const focused = useSearchParams().get("finding") === findingKey(finding);
+  const scrolledRef = useRef(false);
   const copy = getFindingCopy(finding.type);
   const isUrgent =
     finding.type === "contract_expiring" &&
@@ -1327,7 +1331,17 @@ function FindingCard({
   ].filter((value): value is string => value !== null);
 
   return (
-    <article className="rounded-2xl border border-white/10 bg-white/[0.035] p-5 shadow-sm">
+    <article
+      ref={(node) => {
+        if (focused && node && !scrolledRef.current) {
+          scrolledRef.current = true;
+          requestAnimationFrame(() => node.scrollIntoView({ behavior: "smooth", block: "start" }));
+        }
+      }}
+      className={`scroll-mt-24 rounded-2xl border p-5 shadow-sm transition-colors ${
+        focused ? "border-cyan-300/50 bg-cyan-300/[0.06] ring-1 ring-cyan-300/30" : "border-white/10 bg-white/[0.035]"
+      }`}
+    >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           {finding.changeStatus ? (
@@ -1370,6 +1384,7 @@ function FindingCard({
         clientName={nameFor(results, finding.clientId)}
         senderName={senderName}
         onComplete={(note) => onAction(finding, "handled", note)}
+        defaultOpen={focused}
       />
       {expanded ? (
         <div className="mt-4 rounded-xl border border-cyan-300/15 bg-cyan-300/[0.05] p-4">

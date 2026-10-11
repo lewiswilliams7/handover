@@ -7,9 +7,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppShell } from "@/components/app-shell";
 import type { ClientMonthlyResult } from "@/lib/psa/client-monthly";
 import {
+  buildQuarterReceipt,
   buildValueReceipt,
   monthLabel,
   receiptMonths,
+  receiptQuarters,
   valueReceiptText,
   type ValueReceipt,
 } from "@/lib/value-receipt";
@@ -19,6 +21,8 @@ type Props = {
   monthly: ClientMonthlyResult | null | undefined;
   clientNames: Record<string, string>;
   scannedAt: string | null;
+  /** Opened from elsewhere (Renewal Radar, This week) for one client. */
+  initialClientId?: number | null;
 };
 
 type Schedule = {
@@ -51,7 +55,7 @@ function clientLabel(names: Record<string, string>, clientId: number): string {
     : `Client #${clientId}`;
 }
 
-export function ReceiptsClient({ monthly, clientNames, scannedAt }: Props) {
+export function ReceiptsClient({ monthly, clientNames, scannedAt, initialClientId }: Props) {
   const { userFirstName, branding, profileForm } = useAppShell();
   const mspName = profileForm.profileCompanyName.trim() || branding.brandName.trim();
   const accent = HEX_PATTERN.test(branding.brandColour.trim()) ? branding.brandColour.trim() : "#0f1c3f";
@@ -104,7 +108,7 @@ export function ReceiptsClient({ monthly, clientNames, scannedAt }: Props) {
   }, [monthly, fetchSchedules]);
 
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(initialClientId ?? null);
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
 
   const visibleClients = useMemo(() => {
@@ -114,11 +118,19 @@ export function ReceiptsClient({ monthly, clientNames, scannedAt }: Props) {
 
   const selected = clients.find((row) => row.client.clientId === selectedId) ?? clients[0] ?? null;
   const months = selected && monthly ? receiptMonths(selected.client, monthly.currentMonth) : [];
-  const month = selectedMonth && months.includes(selectedMonth) ? selectedMonth : (months[0] ?? null);
+  const quarters = selected && monthly ? receiptQuarters(selected.client, monthly.currentMonth) : [];
+  const quarter = quarters.find((q) => q.key === selectedMonth) ?? null;
+  const month = quarter
+    ? quarter.key
+    : selectedMonth && months.includes(selectedMonth)
+      ? selectedMonth
+      : (months[0] ?? null);
   const receipt =
-    selected && month
-      ? buildValueReceipt({ client: selected.client, clientName: selected.name, month })
-      : null;
+    selected && quarter
+      ? buildQuarterReceipt({ client: selected.client, clientName: selected.name, quarter })
+      : selected && month
+        ? buildValueReceipt({ client: selected.client, clientName: selected.name, month })
+        : null;
 
   return (
     <main className="min-h-screen px-4 pb-16 text-[var(--text-primary)] sm:px-6 lg:px-10">
@@ -224,17 +236,28 @@ export function ReceiptsClient({ monthly, clientNames, scannedAt }: Props) {
                 <>
                   <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                     <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-                      <span>Month</span>
+                      <span>Period</span>
                       <select
                         value={month ?? ""}
                         onChange={(event) => setSelectedMonth(event.target.value)}
                         className="rounded-md border border-white/10 bg-[var(--bg-secondary)] px-2.5 py-1.5 text-sm text-white outline-none focus:border-cyan-300/50"
                       >
-                        {months.map((key) => (
-                          <option key={key} value={key}>
-                            {monthLabel(key)}
-                          </option>
-                        ))}
+                        <optgroup label="Month">
+                          {months.map((key) => (
+                            <option key={key} value={key}>
+                              {monthLabel(key)}
+                            </option>
+                          ))}
+                        </optgroup>
+                        {quarters.length > 0 ? (
+                          <optgroup label="Quarter (for QBRs)">
+                            {quarters.map((q) => (
+                              <option key={q.key} value={q.key}>
+                                {q.label}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ) : null}
                       </select>
                     </label>
                     <ReceiptActions

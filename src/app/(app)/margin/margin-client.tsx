@@ -1,6 +1,8 @@
 "use client";
 
 import { Check, ChevronDown, Loader2 } from "lucide-react";
+
+import { InfoTip } from "@/components/info-tip";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -88,7 +90,14 @@ export function MarginClient({ state, margin, manualValues = {}, scannedAt }: Pr
           <>
             <dl className={`mt-8 grid gap-3 sm:grid-cols-2 ${margin.repriceAnnualTotal > 0 ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
               <div className="rounded-xl border border-white/10 bg-white/[0.035] px-4 py-3">
-                <dt className="text-xs text-[var(--text-secondary)]">Typical revenue per hour</dt>
+                <dt className="flex items-center gap-1 text-xs text-[var(--text-secondary)]">
+                  Typical revenue per hour
+                  <InfoTip label="typical revenue per hour">
+                    The middle value across your measured clients: monthly contract value divided by the
+                    hours your team logs for them. Every client is compared with this, so you never need to
+                    enter salaries or overheads.
+                  </InfoTip>
+                </dt>
                 <dd className="mt-1 text-2xl font-semibold text-white">
                   {margin.medianRevenuePerHour != null ? `£${margin.medianRevenuePerHour}` : "Not enough data"}
                 </dd>
@@ -106,7 +115,13 @@ export function MarginClient({ state, margin, manualValues = {}, scannedAt }: Pr
               </div>
               {margin.repriceAnnualTotal > 0 ? (
                 <div className="rounded-xl border border-amber-300/30 bg-amber-300/[0.06] px-4 py-3">
-                  <dt className="text-xs text-amber-100/80">Margin gap</dt>
+                  <dt className="flex items-center gap-1 text-xs text-amber-100/80">
+                    Margin gap
+                    <InfoTip label="margin gap" align="right">
+                      What your thin-margin clients would pay at your typical revenue per hour for the time they
+                      take, minus what they pay now. Bring it to their renewal; even part of it is real money.
+                    </InfoTip>
+                  </dt>
                   <dd className="mt-1 text-2xl font-semibold text-white">
                     {money(margin.repriceAnnualTotal)}
                     <span className="text-base font-medium text-[var(--text-muted)]"> a year</span>
