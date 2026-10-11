@@ -29,3 +29,22 @@ export async function POST(request: Request) {
   if (error) return NextResponse.json({ ok: false, error: "save_failed" }, { status: 500 });
   return NextResponse.json({ ok: true, enabled: body.enabled });
 }
+
+/** Whether the Monday Brief is on for the signed-in user. No row means on. */
+export async function GET() {
+  const supabase = await createServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  const { data, error } = await supabase
+    .from("monday_brief_settings")
+    .select("enabled, last_sent_at")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (isMissingTableError(error)) {
+    return NextResponse.json({ ok: false, error: "brief_unavailable" }, { status: 503 });
+  }
+  if (error) return NextResponse.json({ ok: false, error: "read_failed" }, { status: 500 });
+  return NextResponse.json({ ok: true, enabled: data?.enabled ?? true, lastSentAt: data?.last_sent_at ?? null });
+}

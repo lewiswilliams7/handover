@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { cn } from "@/lib/utils"
-import { Settings, Database, Upload, Download, X, Globe, Check, Loader2, Copy, FlaskConical, Palette, Plug } from "lucide-react"
+import { Settings, Database, Upload, Download, X, Globe, Check, Loader2, Copy, FlaskConical, Palette, Plug, Users, Mail } from "lucide-react"
+import { useShowLegacyTools } from "@/components/app-shell"
+import { ClientsConfigSection, EmailsConfigSection } from "@/components/configuration-essentials"
 import { usePSAStatus } from "@/hooks/usePSAStatus"
 import { PSAEmptyState } from "@/components/psa-empty-state"
 import { useToast } from "@/components/toasts"
@@ -11,6 +13,8 @@ import { createClient } from "@/lib/supabase"
 type DashboardViewMode = "paginated" | "continuous"
 
 type ConfigSection =
+  | "clients"
+  | "emails"
   | "general"
   | "custom-fields"
   | "client-portal"
@@ -66,12 +70,17 @@ const BASE_NAV_ITEMS: Array<{
   icon: React.ElementType
   description: string
 }> = [
-  { id: "general", label: "General", icon: Settings, description: "Workspace preferences and performance" },
-  { id: "integrations", label: "Integrations", icon: Plug, description: "Connect and configure your tools" },
+  { id: "integrations", label: "PSA connection", icon: Plug, description: "Connect HaloPSA or ConnectWise" },
+  { id: "branding", label: "Branding", icon: Palette, description: "Your logo, colour and sender name on Value Receipts, Save Play emails and exports" },
+  { id: "clients", label: "Clients", icon: Users, description: "Fill in missing values and hide clients that aren't really clients" },
+  { id: "emails", label: "Emails", icon: Mail, description: "What Handover sends, and when" },
+  { id: "general", label: "Dashboard view", icon: Settings, description: "How the legacy dashboard lays out tickets" },
   { id: "custom-fields", label: "Custom Fields", icon: Database, description: "Map PSA custom fields to report outputs" },
   { id: "client-portal", label: "Client Portal", icon: Globe, description: "Set and manage your customer portal URL" },
-  { id: "branding", label: "Branding", icon: Palette, description: "Logo, colours, and white label for exports and client-facing output" },
 ]
+
+/** Sections that only serve the legacy tools from earlier versions of Handover. */
+const LEGACY_SECTIONS = new Set<ConfigSection>(["general", "custom-fields", "client-portal", "demo-mode"])
 
 export function ConfigurationPanel({
   hasProAccess,
@@ -89,30 +98,34 @@ export function ConfigurationPanel({
   onDashboardViewModeChange,
 }: Props) {
   const showClientPortal = hasPortalPlanAccess
+  const showLegacy = useShowLegacyTools()
   const navItems = useMemo(
     () => {
       const base = BASE_NAV_ITEMS.filter((item) => {
+        if (!showLegacy && LEGACY_SECTIONS.has(item.id)) return false
         if (item.id === "client-portal") return showClientPortal
         if (item.id === "branding") return hasProAccess && brandingSection != null
         if (item.id === "integrations") return integrationsSection != null
         return true
       })
-      base.push({
-        id: "demo-mode",
-        label: "Demo Mode",
-        icon: FlaskConical,
-        description: "Control sample demo data visibility",
-      })
+      if (showLegacy) {
+        base.push({
+          id: "demo-mode",
+          label: "Demo Mode",
+          icon: FlaskConical,
+          description: "Control sample demo data visibility",
+        })
+      }
       return base
     },
-    [showClientPortal, hasProAccess, brandingSection, integrationsSection],
+    [showClientPortal, hasProAccess, brandingSection, integrationsSection, showLegacy],
   )
-  const [activeSection, setActiveSection] = useState<ConfigSection>("custom-fields")
+  const [activeSection, setActiveSection] = useState<ConfigSection>("integrations")
   const active = navItems.find(n => n.id === activeSection) ?? navItems[0]
 
   useEffect(() => {
     if (!navItems.some((item) => item.id === activeSection)) {
-      setActiveSection(navItems[0]?.id ?? "custom-fields")
+      setActiveSection(navItems[0]?.id ?? "integrations")
     }
   }, [activeSection, navItems])
 
@@ -182,6 +195,8 @@ export function ConfigurationPanel({
               onDashboardViewModeChange={onDashboardViewModeChange}
             />
           ) : null}
+          {activeSection === "clients" ? <ClientsConfigSection /> : null}
+          {activeSection === "emails" ? <EmailsConfigSection /> : null}
           {activeSection === "custom-fields" && <CustomFieldsSection hasProAccess={hasProAccess} />}
           {activeSection === "client-portal" && showClientPortal ? <ClientPortalSection /> : null}
           {activeSection === "branding" && hasProAccess && brandingSection ? brandingSection : null}

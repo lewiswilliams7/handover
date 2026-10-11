@@ -12124,6 +12124,8 @@ export default function Home() {
 
                 {settingsTab === "billing" ? (
                   <div className="space-y-5">
+                    {/* Handover, Starter Programme and Enterprise have no usage limits, so the old meters are hidden. */}
+                    {billingGenerationLimit === null && (billingReportLimit === null || billingReportLimit === 0) ? null : (
                     <div className="space-y-4">
                       {/* Reports meter — QBR packs + service reviews (hidden on free tier) */}
                       {billingReportLimit !== 0 ? (
@@ -12282,9 +12284,10 @@ export default function Home() {
                         </p>
                       </div>
                     </div>
+                    )}
                     <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-1)] p-4">
                       <p className="mb-1 text-[13px] font-semibold text-white/80">Current plan</p>
-                      <p className="mb-4 text-[13px] text-white/50">
+                      <p className="mb-1 text-[13px] text-white/50">
                         {getPlanLabel(profileDbPlan ?? "free", userTeamId, {
                           trial_ends_at: trialEndsAt,
                           trial_plan: profileTrialPlan,
@@ -12295,6 +12298,11 @@ export default function Home() {
                               month: "short",
                             })}`
                           : ""}
+                      </p>
+                      <p className="mb-4 text-[12px] text-white/35">
+                        {hasProAccess
+                          ? "Everything included, unlimited users. Update your card, see invoices or cancel in the billing portal."
+                          : "Handover is one plan with everything included, £499 a month or £4,990 a year."}
                       </p>
                       {hasProAccess ? (
                         <button

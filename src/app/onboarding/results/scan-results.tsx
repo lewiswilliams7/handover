@@ -327,7 +327,11 @@ function resultsHeadline(
   if (atRisk && atRisk.annualValue > 0) {
     return {
       amount: `${formatCurrency(atRisk.annualValue)} a year`,
-      text: `sits with ${atRisk.clients} client${atRisk.clients === 1 ? "" : "s"} whose behaviour has changed against their own history.`,
+      text: `sits with ${atRisk.clients} client${atRisk.clients === 1 ? "" : "s"} whose behaviour has changed against their own history${
+        atRisk.clientsWithoutValue > 0
+          ? `, plus ${atRisk.clientsWithoutValue} with no contract value in your PSA`
+          : ""
+      }.`,
     };
   }
   const quoteHeadline = quoteAtStakeHeadline(scan);
@@ -752,7 +756,10 @@ export function ScanResults() {
   const outcome = outcomeCopy(scan.scanOutcome);
   const failure = scan.status === "failed" ? failureCopy(scan.errorCode) : null;
   const counts = scan.findingsCount ?? {};
-  const findingPreviews = scan.findingPreviews ?? [];
+  const allPreviews = scan.findingPreviews ?? [];
+  // Housekeeping (missing timestamps, no owner) is a data gap, not a warning sign.
+  const findingPreviews = allPreviews.filter((finding) => !HOUSEKEEPING_FINDING_TYPES.has(finding.type));
+  const housekeepingPreviews = allPreviews.filter((finding) => HOUSEKEEPING_FINDING_TYPES.has(finding.type));
   const nonZeroFindingCounts = Object.entries(counts).filter(([, count]) => count > 0);
   const totalFindingCount = Object.values(counts).reduce((sum, count) => sum + count, 0);
   const hasFindings =
@@ -784,6 +791,13 @@ export function ScanResults() {
     scan.clientsInsufficientData != null && scan.clientsInsufficientData > 0
       ? `${scan.clientsInsufficientData} client${scan.clientsInsufficientData === 1 ? "" : "s"} ${scan.clientsInsufficientData === 1 ? "had" : "had"} too little history for a reliable comparison and were left out of trend findings.`
       : null,
+    ...housekeepingPreviews.map((finding) => {
+      const detail = finding.drivers
+        .map((driver) => previewDriverText(driver))
+        .filter((text): text is string => Boolean(text))
+        .join(", ");
+      return `One client: ${detail || getFindingCopy(finding.type).label.toLowerCase()}.`;
+    }),
   ].filter((value): value is string => value != null);
 
   return (
@@ -984,20 +998,12 @@ export function ScanResults() {
           </>
         )}
 
-        {!outcome && !failure && scan.highlights ? (
-          <ProductHighlights highlights={scan.highlights} entitled={claimState?.entitled === true || scan.detailsEntitled === true} />
-        ) : null}
-
-        {!outcome && !failure ? (
-          <ScanChurnReplay scan={scan} entitled={claimState?.entitled === true} claimed={claimState !== null || scan.status === "claimed"} />
-        ) : null}
-
         {!failure && claimState?.entitled && hasFindings ? (
           <DetailedFindings scan={scan} />
         ) : !failure && hasFindings ? (
           <section className="mt-8 min-w-0 overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035] p-5 sm:p-8">
             <div className="min-w-0">
-              <p className="text-xs uppercase tracking-[0.14em] text-white/40">Account-level findings</p>
+              <p className="text-xs uppercase tracking-[0.14em] text-white/40">Warning signs, by client</p>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-white/60">
                 The account names are withheld in this preview. The measured change and its numbers remain visible.
               </p>
@@ -1075,6 +1081,14 @@ export function ScanResults() {
             </a>
           </section>
         ) : null}
+
+        {!outcome && !failure && scan.highlights ? (
+          <ProductHighlights highlights={scan.highlights} entitled={claimState?.entitled === true || scan.detailsEntitled === true} />
+        ) : null}
+
+        {!outcome && !failure ? (
+          <ScanChurnReplay scan={scan} entitled={claimState?.entitled === true} claimed={claimState !== null || scan.status === "claimed"} />
+        ) : null}
       </div>
     </main>
   );
@@ -1102,7 +1116,11 @@ export function ProductHighlights({ highlights, entitled }: { highlights: ScanHi
       body:
         r.next90Count > 0
           ? `renews in the next 90 days across ${r.next90Count} client${r.next90Count === 1 ? "" : "s"}${
-              r.next90AtRiskAnnualValue > 0 ? `, and ${money(r.next90AtRiskAnnualValue)} of it is with clients showing warning signs` : ""
+              r.next90AtRiskAnnualValue >= r.next90AnnualValue && r.next90AtRiskAnnualValue > 0
+                ? ", all of it with clients showing warning signs"
+                : r.next90AtRiskAnnualValue > 0
+                  ? `, and ${money(r.next90AtRiskAnnualValue)} of it is with clients showing warning signs`
+                  : ""
             }. Each one comes with what to do before the conversation.`
           : `in the next 12 months${r.nextDays != null ? `, the first in ${r.nextDays} days${r.nextClient ? ` (${r.nextClient})` : ""}` : ""}. Each one comes with what to do before the conversation.`,
       href: "/renewals",

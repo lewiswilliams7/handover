@@ -752,26 +752,28 @@ export function TeamDashboardClient() {
     <div className="mx-auto max-w-5xl animate-in fade-in duration-300 space-y-8 px-4 py-10">
       <div>
         <Link
-          href="/"
+          href="/week"
           className="mb-3 inline-flex items-center text-sm font-medium text-[var(--accent)] hover:underline"
         >
-          ← Back to Dashboard
+          ← This week
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)] md:text-[28px]">
-          Your team
+          Team
         </h1>
-        <p className="mt-1 text-sm text-[var(--text-muted)]">
-          Usage, members, and settings for your Handover team plan.
+        <p className="mt-1 max-w-2xl text-sm text-[var(--text-muted)]">
+          {isEnterprisePlan
+            ? "Everyone at your MSP can use Handover, with no charge per person. They all see the same clients, scans and Save Plays."
+            : "Members, usage and settings for your team."}
         </p>
       </div>
 
       <div className="flex flex-wrap gap-8 border-b border-[var(--border)]" role="tablist">
-        {tabBtn("overview", "Overview")}
+        {isEnterprisePlan ? null : tabBtn("overview", "Overview")}
         {tabBtn("members", "Members")}
         {tabBtn("settings", "Settings")}
       </div>
 
-      {tab === "overview" ? (
+      {tab === "overview" && !isEnterprisePlan ? (
         <div key="overview" className="animate-in fade-in duration-200 space-y-8">
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <ScrollRevealItem index={0} className="min-w-0">
@@ -1020,14 +1022,15 @@ export function TeamDashboardClient() {
         </div>
       ) : null}
 
-      {tab === "members" ? (
+      {tab === "members" || (tab === "overview" && isEnterprisePlan) ? (
         <div key="members" className="animate-in fade-in duration-200 space-y-10">
           <ScrollRevealItem index={0} className="block">
           <section className={cn(cardShell, "p-6 sm:p-7")} style={elevateCardStyle}>
             <h2 className={sectionTitleClass()}>Members</h2>
             <p className="mt-3 text-sm text-[var(--text-secondary)]">
-              Each member has an individual allowance of {generationsPerSeat} generations/month contributing to your team
-              pool.
+              {isEnterprisePlan
+                ? "Admins can invite and remove people and change team settings. Members use everything else."
+                : `Each member has an individual allowance of ${generationsPerSeat} generations/month contributing to your team pool.`}
             </p>
             <div className="mt-5 min-w-0 [&_[data-slot=table-container]]:overflow-y-visible">
               <Table>
@@ -1037,17 +1040,18 @@ export function TeamDashboardClient() {
                     <TableHead>Email</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Joined</TableHead>
-                    {permKeys.map((k) => (
-                      <TableHead key={k} className="whitespace-normal text-xs capitalize">
-                        {k.replace(/_/g, " ")}
+                    {isEnterprisePlan
+                      ? null
+                      : permKeys.map((k) => (
+                          <TableHead key={k} className="whitespace-normal text-xs capitalize">
+                            {k.replace(/_/g, " ")}
+                          </TableHead>
+                        ))}
+                    {isEnterprisePlan ? null : (
+                      <TableHead className="whitespace-normal text-xs" title={DASHBOARD_PERM_HELP}>
+                        Dashboard
                       </TableHead>
-                    ))}
-                    <TableHead
-                      className="whitespace-normal text-xs"
-                      title={DASHBOARD_PERM_HELP}
-                    >
-                      Dashboard
-                    </TableHead>
+                    )}
                     <TableHead className="w-[52px] text-right"> </TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1078,7 +1082,7 @@ export function TeamDashboardClient() {
                         <TableCell className="text-[var(--text-muted)]">
                           {new Date(m.joined_at).toLocaleDateString()}
                         </TableCell>
-                        {permKeys.map((key) => (
+                        {(isEnterprisePlan ? [] : permKeys).map((key) => (
                           <TableCell key={key}>
                             {m.role === "owner" ? (
                               <span className="text-xs text-[var(--text-muted)]">Full access</span>
@@ -1095,6 +1099,7 @@ export function TeamDashboardClient() {
                             )}
                           </TableCell>
                         ))}
+                        {isEnterprisePlan ? null : (
                         <TableCell>
                           {m.role === "owner" || m.role === "admin" ? (
                             <span className="text-xs text-[var(--text-muted)]">Full access</span>
@@ -1119,6 +1124,7 @@ export function TeamDashboardClient() {
                             </select>
                           )}
                         </TableCell>
+                        )}
                         <TableCell className="relative overflow-visible text-right">
                           {m.role !== "owner" && menuItems > 0 ? (
                             <div
@@ -1246,7 +1252,9 @@ export function TeamDashboardClient() {
             {memberInvitesAllowed ? (
               <>
                 <p className="mt-3 text-sm text-[var(--text-secondary)]">
-                  Invited users receive an email with a secure link (valid 7 days).
+                  {isEnterprisePlan
+                    ? "Invite as many people as you need. They get an email with a secure link, valid for 7 days."
+                    : "Invited users receive an email with a secure link (valid 7 days)."}
                 </p>
                 <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
                   <div className="min-w-0 flex-1">
@@ -1370,8 +1378,7 @@ export function TeamDashboardClient() {
           <section className={cn(cardShell, "p-6 sm:p-7")} style={elevateCardStyle}>
             <h2 className={sectionTitleClass()}>PSA connection</h2>
             <p className="mt-2 text-sm text-[var(--text-muted)]">
-              This connection is shared across your team. One connected account lets everyone use PSA
-              imports according to their permissions.
+              One connection, shared by the whole team. Everyone sees the same clients, scans and findings.
             </p>
             <p className="mt-3 text-sm text-[var(--text-primary)]">
               Status:{" "}
@@ -1381,10 +1388,31 @@ export function TeamDashboardClient() {
               href="/?openSettings=integrations"
               className="mt-4 inline-flex text-sm font-medium text-[var(--accent)] underline-offset-4 hover:underline"
             >
-              Manage in Integrations
+              Manage the connection
             </Link>
           </section>
           </ScrollRevealItem>
+
+          {isEnterprisePlan ? (
+            <ScrollRevealItem index={2} className="block">
+              <section className={cn(cardShell, "p-6 sm:p-7")} style={elevateCardStyle}>
+                <h2 className={sectionTitleClass()}>Plan and billing</h2>
+                <p className="mt-2 text-sm text-[var(--text-muted)]">
+                  <span className="font-semibold text-[var(--text-primary)]">{planLabel(team.plan)}</span>, everything
+                  included, unlimited users. Update your card, download invoices or cancel in the billing portal.
+                </p>
+                <Button
+                  type="button"
+                  size="lg"
+                  className="mt-5 rounded-[var(--radius)] bg-[var(--accent)] font-semibold text-white shadow-md hover:bg-[var(--accent-hover)]"
+                  disabled={billingLoading}
+                  onClick={() => void openBillingPortal()}
+                >
+                  {billingLoading ? "Opening…" : "Manage billing"}
+                </Button>
+              </section>
+            </ScrollRevealItem>
+          ) : null}
 
           <ScrollRevealItem index={2} className="block">
           <section className={cn(cardShell, "border border-red-500/35 bg-red-500/[0.06] p-6 sm:p-7")}>
@@ -1487,8 +1515,8 @@ export function TeamDashboardClient() {
               {removeTarget ? `Remove ${removeTarget.display_name} from the team?` : "Remove from team?"}
             </DialogTitle>
             <DialogDescription>
-              They will lose access to Handover team features and revert to a free account. Type their email
-              below to confirm.
+              They lose access to your team&apos;s clients and Handover straight away. Type their email below to
+              confirm.
             </DialogDescription>
           </DialogHeader>
           {!removeTarget?.email ? (
