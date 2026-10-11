@@ -11,8 +11,11 @@ import { buildClientMargin, rateUnit } from "@/lib/client-margin";
 import { shortCategory } from "@/lib/psa/client-monthly";
 import type { StoredScanResults } from "@/lib/psa/scan-session";
 import { buildRenewalRadar } from "@/lib/renewal-radar";
+import { isRiskFinding } from "@/lib/revenue/revenue-signals";
 
 export type ScanHighlights = {
+  /** Revenue held by clients with a real warning sign (housekeeping excluded), each client counted once. */
+  atRisk: { annualValue: number; clients: number; clientsWithoutValue: number } | null;
   renewals: {
     next90Count: number;
     next90AnnualValue: number;
@@ -157,6 +160,21 @@ export function buildScanHighlights(
     }
   }
 
-  if (!renewalsOut && !marginOut && !receiptsOut && !recurringOut) return null;
-  return { renewals: renewalsOut, margin: marginOut, receipts: receiptsOut, recurring: recurringOut };
+  const riskValue = new Map<number, number | null>();
+  for (const finding of results.findings ?? []) {
+    if (!isRiskFinding(finding.type) || departed.has(finding.clientId)) continue;
+    const value = finding.monthlyValue != null && finding.monthlyValue > 0 ? finding.monthlyValue : null;
+    riskValue.set(finding.clientId, Math.max(riskValue.get(finding.clientId) ?? 0, value ?? 0) || null);
+  }
+  const atRiskOut =
+    riskValue.size > 0
+      ? {
+          annualValue: Math.round([...riskValue.values()].reduce<number>((sum, value) => sum + (value ?? 0), 0) * 12),
+          clients: riskValue.size,
+          clientsWithoutValue: [...riskValue.values()].filter((value) => value == null).length,
+        }
+      : null;
+
+  if (!atRiskOut && !renewalsOut && !marginOut && !receiptsOut && !recurringOut) return null;
+  return { atRisk: atRiskOut, renewals: renewalsOut, margin: marginOut, receipts: receiptsOut, recurring: recurringOut };
 }

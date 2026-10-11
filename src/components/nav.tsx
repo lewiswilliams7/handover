@@ -67,7 +67,7 @@ const CLIENT_INTELLIGENCE_NAV: MegaNavItem[] = [
   {
     label: "Client Margin",
     href: "/features/client-margin",
-    description: "Revenue per hour for every client: who to save, fix or reprice.",
+    description: "Who pays for the work they create: who to save, fix or reprice.",
     Icon: Scale,
   },
   {

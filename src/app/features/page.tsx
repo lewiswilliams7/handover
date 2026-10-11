@@ -74,7 +74,7 @@ const PROTECT: FeatureCard[] = [
   },
   {
     title: "Client Margin",
-    body: "Revenue per hour for every client, so you know who to save, who to fix and who to reprice at renewal.",
+    body: "What each client pays against the work they create, so you know who to save, who to fix and who to reprice at renewal.",
     href: "/features/client-margin",
     Icon: Scale,
   },

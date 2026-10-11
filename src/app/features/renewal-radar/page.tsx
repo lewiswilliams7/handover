@@ -56,8 +56,8 @@ export default function RenewalRadarFeaturePage() {
           </h1>
           <p className="mt-4 max-w-2xl text-[16px] leading-relaxed text-white/70">
             Renewal Radar lines up every contract ending in the next year with what your PSA already
-            says about that client: whether service has slipped, and whether they pay for the time they
-            take. You see what to do months before the conversation, not the week of it.
+            says about that client: whether service has slipped, and whether they pay for the work they
+            create. You see what to do months before the conversation, not the week of it.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Link

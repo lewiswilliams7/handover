@@ -9,9 +9,9 @@ import { MarketingRelatedPages } from "@/components/marketing-related-pages";
 const PAGE_URL = "https://gethandover.uk/features/client-margin";
 
 export const metadata: Metadata = {
-  title: "Client Margin for MSPs | Revenue Per Hour, Per Client | Handover",
+  title: "Client Margin for MSPs | Which Clients Pay for Their Work | Handover",
   description:
-    "See which clients pay for the time they take. Handover divides each client's contract value by the hours logged on their tickets and groups them with Revenue at Risk: save, fix, reprice or protect.",
+    "See which clients pay for the work they create. Handover compares what each client pays with the hours logged or tickets raised, and groups them with Revenue at Risk: save, fix, reprice or protect.",
   alternates: { canonical: PAGE_URL },
 };
 
@@ -40,12 +40,12 @@ export default function ClientMarginFeaturePage() {
         <div className="relative z-[1] mx-auto max-w-[1000px] rounded-[var(--radius-lg)] border border-[rgba(56,189,248,0.25)] bg-[rgba(15,23,42,0.68)] p-8">
           <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#38bdf8]">Client Margin</p>
           <h1 className="mt-3 text-3xl font-semibold text-white md:text-5xl">
-            Which clients pay for the time they take?
+            Which clients pay for the work they create?
           </h1>
           <p className="mt-4 max-w-2xl text-[16px] leading-relaxed text-white/70">
-            Every MSP has clients that quietly cost more to support than they pay. Client Margin shows
-            revenue per hour for every client, straight from your PSA, and tells you which ones to save,
-            fix, reprice or protect.
+            Every MSP has clients that quietly cost more to support than they pay. Client Margin puts what
+            each client pays against the work they create, straight from your PSA, and tells you which ones
+            to save, fix, reprice or protect. It works even if your team doesn&apos;t log time.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Link

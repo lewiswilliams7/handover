@@ -6,46 +6,54 @@ import { useEffect, useState } from "react";
 import { Check, ArrowRight, Loader2 } from "lucide-react";
 
 import { BOOK_DEMO_CALENDLY_URL } from "@/lib/book-demo";
+import { PRICING_FAQS as FAQS } from "@/lib/marketing-faqs";
 import { STRIPE_PRICE_IDS } from "@/lib/stripe-price-ids";
 import { createClient } from "@/lib/supabase";
 
 type BillingPeriod = "monthly" | "annual";
 
-type FeatureItem = { label: string; href?: string };
+type Product = { name: string; body: string; href: string };
 
-const FEATURE_GROUPS: ReadonlyArray<{ title: string; items: ReadonlyArray<FeatureItem> }> = [
+/** The whole product, grouped by the stage of the client lifecycle it serves. */
+const STAGES: ReadonlyArray<{ verb: string; title: string; products: ReadonlyArray<Product> }> = [
   {
-    title: "Revenue protection",
-    items: [
-      { label: "Revenue at Risk™ across your whole client base", href: "/features/revenue-at-risk" },
-      { label: "Churn Replay™ on the clients you have already lost", href: "/features/churn-replay" },
-      { label: "Save Plays™ with a ready-to-send email for every flag", href: "/features/save-plays" },
-      { label: "Saved Revenue tracking", href: "/features/revenue-at-risk#saved-revenue" },
-      { label: "Client Margin: revenue per hour for every client", href: "/features/client-margin" },
-      { label: "Renewal Radar: every renewal, planned months ahead", href: "/features/renewal-radar" },
-      { label: "The Monday Brief and top-client alerts by email", href: "/features/monday-brief" },
-      { label: "Handover Client Intelligence™ signals and weekly digest", href: "/features/client-intelligence" },
+    verb: "Detect",
+    title: "Know who moved",
+    products: [
+      { name: "Revenue at Risk™", body: "Every client that changed against its own history, ranked by the revenue it holds.", href: "/features/revenue-at-risk" },
+      { name: "The Monday Brief", body: "Your week by email: what's at risk, what renews, the three moves to make.", href: "/features/monday-brief" },
+      { name: "Churn Replay™", body: "The clients you lost, replayed. See when Handover would have warned you.", href: "/features/churn-replay" },
     ],
   },
   {
-    title: "Proof for your clients",
-    items: [
-      { label: "Value Receipts™ sent to each client every month", href: "/features/value-receipts" },
-      { label: "Service reviews and QBR packs", href: "/features/qbr-generator" },
-      { label: "Scheduled reports with an approval step", href: "/features/scheduled-reports" },
-      { label: "PowerPoint, PDF and Excel export", href: "/features/exports" },
-      { label: "White-labelled client portal", href: "/features/white-label" },
-      { label: "Notes pushed back to the PSA", href: "/features/psa-push" },
+    verb: "Act",
+    title: "Do the right thing first",
+    products: [
+      { name: "Save Plays™", body: "The steps and a ready-to-send email for every warning sign.", href: "/features/save-plays" },
+      { name: "Client Margin", body: "Which clients create more work than they pay for, and what fair looks like.", href: "/features/client-margin" },
+      { name: "Renewal Radar", body: "Every renewal this year, with the move to make before the conversation.", href: "/features/renewal-radar" },
     ],
   },
   {
-    title: "Platform",
-    items: [
-      { label: "HaloPSA and ConnectWise Manage", href: "/integrations" },
-      { label: "Unlimited users" },
+    verb: "Prove",
+    title: "Show and count the value",
+    products: [
+      { name: "Value Receipts™", body: "A branded monthly summary for each client's decision-maker, sent from you.", href: "/features/value-receipts" },
+      { name: "Saved Revenue", body: "Recovered clients counted in pounds. The return on Handover, in your numbers.", href: "/features/revenue-at-risk#saved-revenue" },
+      { name: "Client pages", body: "One page per client: tickets, people, margin, renewal and the next step.", href: "/features/client-intelligence" },
     ],
   },
 ];
+
+const ALSO_INCLUDED: ReadonlyArray<{ label: string; href?: string }> = [
+  { label: "HaloPSA and ConnectWise Manage", href: "/integrations" },
+  { label: "Unlimited users" },
+  { label: "QBR packs and service reviews", href: "/features/qbr-generator" },
+  { label: "PowerPoint, PDF and Excel export", href: "/features/exports" },
+  { label: "White-labelled client portal", href: "/features/white-label" },
+  { label: "Notes pushed back to the PSA", href: "/features/psa-push" },
+];
+
 
 export function PricingPageClient() {
   const router = useRouter();
@@ -129,7 +137,7 @@ export function PricingPageClient() {
 
   return (
     <main className="marketing-aurora min-h-screen px-4 py-12 text-white sm:px-6 md:pb-20">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-6xl">
         <section className="mx-auto max-w-3xl text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">
             One plan, everything included
@@ -138,8 +146,8 @@ export function PricingPageClient() {
             Costs less than one lost client a year.
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-white/60 sm:text-lg">
-            Handover shows which clients are slipping and what they are worth, proves the value you
-            deliver to the people who renew, and counts the revenue you keep.
+            Handover shows which clients are slipping and what they are worth, tells you what to do,
+            proves your value to the people who renew, and counts the revenue you keep.
           </p>
         </section>
 
@@ -149,143 +157,188 @@ export function PricingPageClient() {
           </p>
         ) : null}
 
-        <section className="mx-auto mt-12 max-w-5xl">
-          <div className="rounded-[2rem] border border-cyan-300/35 bg-[#0b1629]/85 p-6 shadow-2xl shadow-cyan-950/35 backdrop-blur-sm sm:p-10">
-          <div className="flex flex-col gap-8 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300">
-                The whole product
-              </p>
-              <h2 className="mt-3 text-3xl font-semibold">Handover</h2>
-              <p className="mt-2 text-sm text-white/55">Everything included. No client counting.</p>
+        <section className="mt-12 grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+          <div className="rounded-[2rem] border border-cyan-300/35 bg-[#0b1629]/85 p-6 shadow-2xl shadow-cyan-950/35 backdrop-blur-sm sm:p-9">
+            <div className="flex flex-col gap-6">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300">The whole product</p>
+                <h2 className="mt-3 text-3xl font-semibold">Handover</h2>
+                <p className="mt-2 text-sm text-white/55">Everything included. Unlimited users. No client counting.</p>
+              </div>
+              <div>
+                <p className="font-bold tracking-tight text-white">
+                  <span className="text-[clamp(2.5rem,5vw,3.75rem)] leading-none">
+                    {billingPeriod === "annual" ? "£4,990" : "£499"}
+                  </span>
+                  <span className="ml-1 text-xl font-semibold text-white/70">
+                    {billingPeriod === "annual" ? "/year" : "/month"}
+                  </span>
+                </p>
+                <p className="mt-2 text-sm text-cyan-200">
+                  {billingPeriod === "annual" ? "Two months free, £416 a month" : "Billed monthly, cancel any time"}
+                </p>
+              </div>
             </div>
-            <div className="text-left sm:text-right">
-              <p className="font-bold tracking-tight text-white">
-                <span className="text-[clamp(2.5rem,5vw,3.75rem)] leading-none">
-                  {billingPeriod === "annual" ? "£4,990" : "£499"}
-                </span>
-                <span className="ml-1 text-xl font-semibold text-white/70">
-                  {billingPeriod === "annual" ? "/year" : "/month"}
-                </span>
-              </p>
-              <p className="mt-2 text-sm text-cyan-200">
-                {billingPeriod === "annual" ? "Two months free" : "Billed monthly"}
-              </p>
-            </div>
-          </div>
 
-          <div className="mt-8 flex rounded-xl border border-white/10 bg-black/10 p-1">
-            {(["monthly", "annual"] as const).map((period) => (
+            <div className="mt-7 flex rounded-xl border border-white/10 bg-black/10 p-1" role="group" aria-label="Billing period">
+              {(["monthly", "annual"] as const).map((period) => (
+                <button
+                  key={period}
+                  type="button"
+                  onClick={() => setBillingPeriod(period)}
+                  aria-pressed={billingPeriod === period}
+                  className={`min-h-0 flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
+                    billingPeriod === period ? "bg-cyan-300 text-slate-950" : "text-white/55 hover:text-white"
+                  }`}
+                >
+                  {period === "monthly" ? "Monthly" : "Annual · 2 months free"}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <button
-                key={period}
                 type="button"
-                onClick={() => setBillingPeriod(period)}
-                className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
-                  billingPeriod === period
-                    ? "bg-cyan-300 text-slate-950"
-                    : "text-white/55 hover:text-white"
-                }`}
+                onClick={() => void buyNow()}
+                disabled={!authChecked || checkoutBusy}
+                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-cyan-300 px-5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200 disabled:cursor-wait disabled:opacity-60 sm:flex-1"
               >
-                {period === "monthly" ? "Monthly · £499" : "Annual · £4,990"}
+                {checkoutBusy ? <Loader2 className="size-4 animate-spin" /> : null}
+                Buy now
+                {!checkoutBusy ? <ArrowRight className="size-4" /> : null}
               </button>
-            ))}
-          </div>
-
-          <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-            <button
-              type="button"
-              onClick={() => void buyNow()}
-              disabled={!authChecked || checkoutBusy}
-              className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-cyan-300 px-5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200 disabled:cursor-wait disabled:opacity-60"
-            >
-              {checkoutBusy ? <Loader2 className="size-4 animate-spin" /> : null}
-              Buy now
-              {!checkoutBusy ? <ArrowRight className="size-4" /> : null}
-            </button>
-            <a
-              href={BOOK_DEMO_CALENDLY_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex h-12 flex-1 items-center justify-center rounded-xl border border-white/15 px-5 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/[0.05]"
-            >
-              Book a walkthrough
-            </a>
-          </div>
-          {checkoutError ? (
-            <p className="mt-3 text-sm text-amber-200" role="alert">
-              {checkoutError}
-            </p>
-          ) : null}
-          {!hasCheckoutPrice ? (
-            <p className="mt-3 text-xs text-white/40">
-              Online checkout is being configured. Book a walkthrough to get started.
-            </p>
-          ) : null}
-          </div>
-        </section>
-        <p className="mx-auto mt-5 max-w-2xl text-center text-sm text-white/60">
-          Every customer gets a{" "}
-          <Link
-            href="/onboarding-programme"
-            className="font-semibold text-cyan-200 underline decoration-cyan-200/30 underline-offset-4 hover:text-cyan-100"
-          >
-            30-day launch
-          </Link>
-          , run by me personally.
-        </p>
-
-        <div className="mx-auto mt-12 max-w-3xl">
-          <p className="text-center text-xs font-semibold uppercase tracking-[0.16em] text-white/40">
-            Everything included
-          </p>
-          <div className="mt-3">
-            {FEATURE_GROUPS.map((group) => (
-              <section
-                key={group.title}
-                className="border-t border-white/10 py-6 first:border-t-0 first:pt-0"
+              <a
+                href={BOOK_DEMO_CALENDLY_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-white/15 px-5 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/[0.05] sm:flex-1"
               >
-                <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-200/65">
-                  {group.title}
-                </h3>
-                <ul className="mt-3 space-y-2.5">
-                  {group.items.map((feature) => (
-                    <li key={feature.label} className="flex items-start gap-3 text-sm leading-6 text-white/70">
-                      <Check className="mt-1 size-4 shrink-0 text-cyan-300" aria-hidden />
-                      {feature.href ? (
-                        <Link
-                          href={feature.href}
-                          className="underline decoration-white/15 underline-offset-4 transition-colors hover:text-white hover:decoration-cyan-300/60"
-                        >
-                          {feature.label}
-                        </Link>
-                      ) : (
-                        <span>{feature.label}</span>
-                      )}
+                Book a walkthrough
+              </a>
+            </div>
+            {checkoutError ? (
+              <p className="mt-3 text-sm text-amber-200" role="alert">
+                {checkoutError}
+              </p>
+            ) : null}
+            {!hasCheckoutPrice ? (
+              <p className="mt-3 text-xs text-white/40">Online checkout is being configured. Book a walkthrough to get started.</p>
+            ) : null}
+
+            <ul className="mt-7 grid gap-2.5 border-t border-white/10 pt-6 text-sm text-white/70 sm:grid-cols-2">
+              {[
+                "Every product on this page",
+                "Unlimited users",
+                "A 30-day launch, run by me",
+                "No minimum term",
+              ].map((item) => (
+                <li key={item} className="flex items-center gap-2.5">
+                  <Check className="size-4 shrink-0 text-cyan-300" aria-hidden />
+                  {item === "A 30-day launch, run by me" ? (
+                    <Link href="/onboarding-programme" className="underline decoration-white/20 underline-offset-4 hover:text-white">
+                      {item}
+                    </Link>
+                  ) : (
+                    item
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <PaybackCard annual={billingPeriod === "annual"} />
+        </section>
+
+        <section className="mt-20" aria-labelledby="included">
+          <div className="mx-auto max-w-2xl text-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300">Everything included</p>
+            <h2 id="included" className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
+              One loop, from the first warning to the renewal
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-white/55">
+              All of it runs on Handover Client Intelligence™: every client measured against its own history, every week.
+            </p>
+          </div>
+          <div className="mt-10 grid gap-5 lg:grid-cols-3">
+            {STAGES.map((stage, index) => (
+              <div key={stage.verb} className="rounded-3xl border border-white/10 bg-white/[0.03] p-6">
+                <p className="text-sm font-semibold text-cyan-300">
+                  {index + 1}. {stage.verb}
+                </p>
+                <h3 className="mt-1 text-lg font-semibold text-white">{stage.title}</h3>
+                <ul className="mt-5 space-y-4">
+                  {stage.products.map((product) => (
+                    <li key={product.name}>
+                      <Link href={product.href} className="group block">
+                        <span className="flex items-center gap-1.5 text-sm font-semibold text-white group-hover:text-cyan-200">
+                          {product.name}
+                          <ArrowRight className="size-3.5 text-white/30 transition-transform group-hover:translate-x-0.5 group-hover:text-cyan-200" aria-hidden />
+                        </span>
+                        <span className="mt-0.5 block text-[13px] leading-5 text-white/55">{product.body}</span>
+                      </Link>
                     </li>
                   ))}
                 </ul>
-              </section>
+              </div>
             ))}
           </div>
-        </div>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[13px] text-white/50">
+            <span className="font-semibold text-white/70">Also included:</span>
+            {ALSO_INCLUDED.map((item) =>
+              item.href ? (
+                <Link key={item.label} href={item.href} className="hover:text-white">
+                  {item.label}
+                </Link>
+              ) : (
+                <span key={item.label}>{item.label}</span>
+              ),
+            )}
+          </div>
+        </section>
 
-        <div className="mx-auto mt-10 max-w-3xl text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200/70">
-            Start with the evidence
-          </p>
+        <section className="mt-20 grid gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]" aria-labelledby="faq">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300">Questions</p>
+            <h2 id="faq" className="mt-3 text-3xl font-semibold tracking-tight">Before you buy</h2>
+            <p className="mt-3 text-sm leading-6 text-white/55">
+              Anything else, ask me directly at{" "}
+              <a href="mailto:hello@gethandover.uk" className="text-cyan-200 hover:text-cyan-100">
+                hello@gethandover.uk
+              </a>
+              .
+            </p>
+          </div>
+          <div className="divide-y divide-white/10 border-y border-white/10">
+            {FAQS.map((faq) => (
+              <details key={faq.q} className="group py-4">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-[15px] font-semibold text-white [&::-webkit-details-marker]:hidden">
+                  {faq.q}
+                  <span className="text-xl leading-none text-white/40 transition-transform group-open:rotate-45" aria-hidden>
+                    +
+                  </span>
+                </summary>
+                <p className="mt-2 pr-8 text-sm leading-6 text-white/60">{faq.a}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+
+        <section className="mx-auto mt-20 max-w-3xl rounded-3xl border border-white/10 bg-[#0b1629]/70 px-6 py-10 text-center sm:px-10">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200/70">Start with the evidence</p>
+          <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">See it on your own clients first</h2>
           <p className="mx-auto mt-3 max-w-xl text-base leading-7 text-white/65">
-            Connect your PSA read-only. See your Revenue at Risk and replay the clients you lost in the
-            last 12 months before you pay anything.
+            Connect your PSA read-only. In about a minute you see your Revenue at Risk, your renewals, your margin gap
+            and the clients you lost last year, replayed.
           </p>
           <Link
             href="/onboarding/connect"
-            className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-cyan-300 px-6 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-950/25 transition hover:bg-cyan-200 sm:w-auto"
+            className="mt-6 inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-cyan-300 px-6 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-950/25 transition hover:bg-cyan-200 sm:w-auto"
           >
             Run your free scan
             <ArrowRight className="ml-2 size-4" aria-hidden />
           </Link>
           <p className="mt-3 text-xs text-white/45">No card, no trial.</p>
-        </div>
+        </section>
 
         <p className="mx-auto mt-7 max-w-3xl text-center text-xs text-white/40">
           Smaller MSP?{" "}
@@ -341,5 +394,75 @@ export function PricingPageClient() {
         </section>
       </div>
     </main>
+  );
+}
+
+const CLIENT_VALUES = [500, 1000, 1500, 2500, 4000] as const;
+
+/**
+ * The only maths that matters at this price: what one kept client is worth
+ * against a year of Handover. The visitor picks a typical client size.
+ */
+function PaybackCard({ annual }: { annual: boolean }) {
+  const [monthly, setMonthly] = useState<number>(1500);
+  const yearlyCost = annual ? 4990 : 499 * 12;
+  const kept = monthly * 12;
+  const multiple = kept / yearlyCost;
+  return (
+    <div className="flex flex-col rounded-[2rem] border border-white/10 bg-white/[0.03] p-6 sm:p-9">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/45">The maths</p>
+      <h2 className="mt-3 text-2xl font-semibold tracking-tight">Keep one client and it pays for itself</h2>
+      <p className="mt-3 text-sm leading-6 text-white/60">What does a typical client pay you a month?</p>
+      <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Typical monthly client value">
+        {CLIENT_VALUES.map((value) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setMonthly(value)}
+            aria-pressed={monthly === value}
+            className={`min-h-0 rounded-full border px-3 py-1.5 text-sm font-semibold transition-colors ${
+              monthly === value
+                ? "border-cyan-300/60 bg-cyan-300/15 text-cyan-100"
+                : "border-white/10 text-white/60 hover:border-white/25 hover:text-white"
+            }`}
+          >
+            £{value.toLocaleString("en-GB")}
+          </button>
+        ))}
+      </div>
+      <dl className="mt-6 grid grid-cols-2 gap-3">
+        <div className="rounded-2xl border border-white/10 bg-black/10 p-4">
+          <dt className="text-xs text-white/50">One client kept</dt>
+          <dd className="mt-1 text-2xl font-semibold tabular-nums">£{kept.toLocaleString("en-GB")}</dd>
+          <dd className="text-xs text-white/40">a year</dd>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-black/10 p-4">
+          <dt className="text-xs text-white/50">Handover</dt>
+          <dd className="mt-1 text-2xl font-semibold tabular-nums">£{yearlyCost.toLocaleString("en-GB")}</dd>
+          <dd className="text-xs text-white/40">a year</dd>
+        </div>
+      </dl>
+      <p className="mt-5 rounded-2xl border border-cyan-300/30 bg-cyan-300/[0.07] px-4 py-3 text-sm leading-6 text-cyan-50">
+        {multiple >= 1 ? (
+          <>
+            Keeping one <span className="font-semibold">£{monthly.toLocaleString("en-GB")}</span> client covers Handover{" "}
+            <span className="font-semibold">{multiple >= 1.95 ? `${Math.round(multiple * 10) / 10}×` : "for the year"}</span>
+            {multiple >= 1.95 ? " over" : ""}.
+          </>
+        ) : (
+          <>
+            At <span className="font-semibold">£{monthly.toLocaleString("en-GB")}</span> a month, keeping one client covers{" "}
+            {Math.round(multiple * 100)}% of the year. Smaller book?{" "}
+            <Link href="/pricing/starter-programme" className="font-semibold underline underline-offset-4">
+              See the Starter Programme
+            </Link>
+            .
+          </>
+        )}
+      </p>
+      <p className="mt-auto pt-5 text-xs leading-5 text-white/40">
+        Before counting the time it saves, the renewals it helps you reprice or the clients it helps you expand.
+      </p>
+    </div>
   );
 }

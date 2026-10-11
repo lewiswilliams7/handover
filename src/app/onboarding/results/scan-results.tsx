@@ -309,7 +309,7 @@ function expiringContractHeadline(scan: AnonymousScanStatus): string | null {
   ) {
     return null;
   }
-  return `${formatCurrency(scan.expiringContractValue)} of monthly recurring revenue is in contracts ending within 90 days across ${scan.expiringContractCount} contract${scan.expiringContractCount === 1 ? "" : "s"}.`;
+  return `${formatCurrency(scan.expiringContractValue * 12)} a year renews in the next 90 days.`;
 }
 
 type ResultsHeadline = {
@@ -323,6 +323,13 @@ function resultsHeadline(
   hasFindings: boolean,
 ): ResultsHeadline {
   if (!hasFindings) return { amount: null, text: "Your delivery scan is complete." };
+  const atRisk = scan.highlights?.atRisk;
+  if (atRisk && atRisk.annualValue > 0) {
+    return {
+      amount: `${formatCurrency(atRisk.annualValue)} a year`,
+      text: `sits with ${atRisk.clients} client${atRisk.clients === 1 ? "" : "s"} whose behaviour has changed against their own history.`,
+    };
+  }
   const quoteHeadline = quoteAtStakeHeadline(scan);
   if (quoteHeadline) {
     const [amount, ...text] = quoteHeadline.split(" ");
@@ -330,8 +337,8 @@ function resultsHeadline(
   }
   const expiringHeadline = expiringContractHeadline(scan);
   if (expiringHeadline) {
-    const [amount, ...text] = expiringHeadline.split(" ");
-    return { amount: amount ?? null, text: text.join(" ") };
+    const [amount, unit, ...text] = expiringHeadline.split(" ");
+    return { amount: amount ? `${amount} ${unit ?? ""}`.trim() : null, text: text.join(" ") };
   }
   return {
     amount: null,
@@ -385,21 +392,49 @@ function formatPreviewNumber(value: number, unit: string): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
-function previewDriverText(driver: FindingPreviewView["drivers"][number]): string {
-  if (driver.unit === "quoted_value") {
-    return `${formatCurrency(driver.value)} combined quoted value`;
+/** Each measured change as a plain sentence. Contract value is shown separately, so it is skipped. */
+function previewDriverText(driver: FindingPreviewView["drivers"][number]): string | null {
+  const n = (value: number) => (Number.isInteger(value) ? String(value) : value.toFixed(1));
+  const hrs = (value: number) =>
+    value < 1 ? `${Math.max(1, Math.round(value * 60))} min` : value < 48 ? `${n(Math.round(value * 10) / 10)} hours` : `${n(Math.round((value / 24) * 10) / 10)} days`;
+  switch (driver.unit) {
+    case "monthly_contract_value":
+      return null;
+    case "quoted_value":
+      return `${formatCurrency(driver.value)} of quotes left unapproved`;
+    case "days_since_ticket_activity":
+      return `No tickets for ${n(driver.value)} days, against a usual gap of ${n(driver.baseline)}`;
+    case "days_until_contract_end":
+      return `Contract ends in ${Math.max(1, Math.ceil(driver.value))} days`;
+    case "tickets_per_month":
+      return `${n(driver.value)} tickets a month, down from ${n(driver.baseline)}`;
+    case "open_tickets_per_month":
+      return `${n(driver.value)} open tickets, against a usual ${n(driver.baseline)}`;
+    case "hours":
+      return `First response now ${hrs(driver.value)}, was ${hrs(driver.baseline)}`;
+    case "resolution_time_hours":
+      return `Resolution now ${hrs(driver.value)}, was ${hrs(driver.baseline)}`;
+    case "projects":
+      return `${n(driver.value)} project${driver.value === 1 ? "" : "s"} past target date`;
+    case "percent_without_close_timestamp":
+      return `${formatPercent(driver.value)}% of tickets have no close date`;
+    case "percent_without_response_timestamp":
+      return `${formatPercent(driver.value)}% of tickets have no response time`;
+    case "after_hours_ticket_percent":
+      return `${formatPercent(driver.value)}% of tickets raised out of hours, was ${formatPercent(driver.baseline)}%`;
+    case "dominant_requester_percent":
+      return `${formatPercent(driver.value)}% of tickets come from one person`;
+    case "quote_acceptance_pct":
+      return `${formatPercent(driver.value)}% of quotes accepted recently, was ${formatPercent(driver.baseline)}%`;
+    case "days_since_quote":
+      return `No quote for ${n(driver.value)} days`;
+    case "days_since_order":
+      return `No order for ${n(driver.value)} days`;
+    default: {
+      const label = driver.unit.replace(/_pct$/, "").replace(/_per_month$/, " a month").replace(/_/g, " ");
+      return `${formatPreviewNumber(driver.value, driver.unit)} ${label}, was ${formatPreviewNumber(driver.baseline, driver.unit)}`;
+    }
   }
-  if (driver.unit === "days_since_ticket_activity") {
-    return `${formatPreviewNumber(driver.value, driver.unit)} days since activity (threshold ${formatPreviewNumber(driver.baseline, driver.unit)} days)`;
-  }
-  if (driver.unit === "quote_acceptance_pct") {
-    return `${formatPreviewNumber(driver.value, driver.unit)} recent acceptance versus ${formatPreviewNumber(driver.baseline, driver.unit)} earlier`;
-  }
-  const label = driver.unit
-    .replace(/_pct$/, "")
-    .replace(/_per_month$/, " per month")
-    .replace(/_/g, " ");
-  return `${formatPreviewNumber(driver.value, driver.unit)} ${label} versus ${formatPreviewNumber(driver.baseline, driver.unit)}`;
 }
 
 export function ScanResults() {
@@ -734,16 +769,12 @@ export function ScanResults() {
       ? null
       : Math.max(0, 100 - scan.closeTimestampCoveragePct);
   const portfolioStats = [
-    missingResponsePct != null && ticketCount > 0 && missingResponsePct > 0
+    missingResponsePct != null && ticketCount > 0 && missingResponsePct >= 2
       ? `You can't measure first response on ${formatPercent(missingResponsePct)}% of your tickets, so service-level reporting is incomplete.`
-      : scan.responseTimestampCoveragePct === 100 && ticketCount > 0
-        ? `First response was recorded on all ${ticketCount} scanned tickets, so service-level reporting can be measured.`
-        : null,
-    missingClosePct != null && ticketCount > 0 && missingClosePct > 0
+      : null,
+    missingClosePct != null && ticketCount > 0 && missingClosePct >= 2
       ? `You can't measure completion time on ${formatPercent(missingClosePct)}% of your tickets, so resolution reporting is incomplete.`
-      : scan.closeTimestampCoveragePct === 100 && ticketCount > 0
-        ? `Completion time was recorded on all ${ticketCount} scanned tickets, so resolution reporting can be measured.`
-        : null,
+      : null,
     scan.clientsWithoutOwner != null && scan.clientsWithoutOwner > 0
       ? `${scan.clientsWithoutOwner} client${scan.clientsWithoutOwner === 1 ? "" : "s"} ${scan.clientsWithoutOwner === 1 ? "has" : "have"} tickets with no assigned owner.`
       : null,
@@ -753,15 +784,6 @@ export function ScanResults() {
     scan.clientsInsufficientData != null && scan.clientsInsufficientData > 0
       ? `${scan.clientsInsufficientData} client${scan.clientsInsufficientData === 1 ? "" : "s"} ${scan.clientsInsufficientData === 1 ? "had" : "had"} too little history for a reliable comparison and were left out of trend findings.`
       : null,
-    scan.expiringContractCount != null && scan.expiringContractCount > 0
-      ? scan.expiringContractValue != null && scan.expiringContractValue > 0
-        ? `${scan.expiringContractCount} active contract${scan.expiringContractCount === 1 ? "" : "s"} end within 90 days, representing ${formatCurrency(scan.expiringContractValue)} in monthly contract value.`
-        : `${scan.expiringContractCount} active contract${scan.expiringContractCount === 1 ? "" : "s"} end within 90 days; their monthly value was not available.`
-      : null,
-    scan.revenueConcentrationPct != null && scan.revenueConcentrationPct > 0
-      ? `${formatPercent(scan.revenueConcentrationPct)}% of your monthly recurring revenue sits in accounts carrying at least one finding.`
-      : null,
-    scan.revenueConcentrationSuppressedReason,
   ].filter((value): value is string => value != null);
 
   return (
@@ -921,14 +943,20 @@ export function ScanResults() {
           <>
             <section className="mt-8 grid gap-4 sm:grid-cols-3">
               <Metric label="Clients analysed" value={scan.clientsAnalysed == null ? "Not available" : String(scan.clientsAnalysed)} />
-              <Metric label="Findings identified" value={String(totalFindingCount)} />
-              {recurringRevenueCopy ? (
+              <Metric
+                label="With warning signs"
+                value={String(scan.highlights?.atRisk?.clients ?? scan.clientsWithFindings ?? 0)}
+              />
+              {scan.highlights?.atRisk && scan.highlights.atRisk.annualValue > 0 ? (
+                <Metric label="Revenue at risk" value={`${formatCurrency(scan.highlights.atRisk.annualValue)} a year`} />
+              ) : recurringRevenueCopy ? (
                 <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:col-span-1">
                   <p className="text-xs uppercase tracking-[0.12em] text-white/40">Account size</p>
                   <p className="mt-3 text-sm leading-6 text-white/70">{recurringRevenueCopy}</p>
                 </div>
               ) : null}
             </section>
+            {findingPreviews.length === 0 && !claimState?.entitled ? (
             <section className="mt-6 rounded-2xl border border-white/10 bg-white/[0.04] p-5">
               <p className="text-xs uppercase tracking-[0.12em] text-white/40">Findings by type</p>
               <div className="mt-4 flex flex-wrap gap-2">
@@ -939,13 +967,14 @@ export function ScanResults() {
                 )) : <span className="text-sm text-white/55">No findings identified in the scanned period.</span>}
               </div>
             </section>
+            ) : null}
             {portfolioStats.length > 0 ? (
               <section className="mt-6 rounded-2xl border border-white/10 bg-white/[0.025] p-5">
                 <p className="text-xs uppercase tracking-[0.12em] text-white/40">
-                  What your PSA data cannot currently tell you
+                  Gaps in your PSA data
                 </p>
                 <p className="mt-2 text-sm leading-6 text-white/55">
-                  These are findings about the coverage and completeness of the data returned by your PSA.
+                  Not warning signs. Fixing these makes every number above more complete.
                 </p>
                 <ul className="mt-4 space-y-2 text-sm text-white/65">
                   {portfolioStats.map((stat) => <li key={stat}>{stat}</li>)}
@@ -984,7 +1013,7 @@ export function ScanResults() {
                         <span className="hidden text-white/30 sm:inline" aria-hidden>—</span>
                         <span className={finding.monthlyValue != null && finding.monthlyValue > 0
                           ? "shrink-0 rounded-lg bg-white/95 px-2 py-1 text-sm font-bold text-[#07111f]"
-                          : "shrink-0 text-sm font-medium text-white/45"}>
+                          : "shrink-0 text-xs font-medium text-white/40"}>
                           {monthlyValueLabel(finding.monthlyValue)}
                         </span>
                         <span className={`min-w-0 break-words text-sm font-medium ${findingAccentClass(finding.type, finding.drivers)}`}>
@@ -992,12 +1021,10 @@ export function ScanResults() {
                         </span>
                       </div>
                       <div className="mt-2 min-w-0 break-words text-sm leading-6 text-white/55">
-                        {finding.drivers.map((driver, driverIndex) => (
-                          <span key={`${driver.unit}-${driverIndex}`}>
-                            {driverIndex > 0 ? " · " : ""}
-                            {previewDriverText(driver)}
-                          </span>
-                        ))}
+                        {finding.drivers
+                          .map((driver) => previewDriverText(driver))
+                          .filter((text): text is string => Boolean(text))
+                          .join(" · ")}
                       </div>
                     </div>
                   );

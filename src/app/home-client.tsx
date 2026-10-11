@@ -500,6 +500,7 @@ import { ChatsModal } from "@/components/chats-modal";
 import { FirstGenerationCelebrationModal } from "@/components/first-generation-celebration-modal";
 import { SendClientEmailModal } from "@/components/send-client-email-modal";
 import { HandoverLoopDiagram } from "@/components/marketing/handover-loop-diagram";
+import { HomePricingFaq } from "@/components/marketing/home-pricing-faq";
 import { SmartActionsPanel } from "@/components/smart-actions-panel";
 import {
   GettingStartedChecklistWidget,
@@ -13407,7 +13408,7 @@ export default function Home() {
                   One loop, from the first warning to the renewal
                 </h2>
                 <p className="mx-auto mt-4 max-w-2xl text-[16px] text-[#94a3b8]">
-                  Handover finds the clients that are drifting, proves it on your own history, puts your value in front of the people who renew, and counts what you keep.
+                  Handover spots the clients that are drifting, tells you what to do, shows your value to the people who renew, and counts what you keep. Every week, from your PSA.
                 </p>
               </div>
               <HandoverLoopDiagram />
@@ -13543,6 +13544,8 @@ export default function Home() {
               </div>
             </motion.section>
 
+            <HomePricingFaq />
+
             <motion.section
               className="w-full px-4 py-12 md:px-6 md:py-14 lg:py-16"
               style={{
@@ -13566,7 +13569,7 @@ export default function Home() {
                   Find out which of last year&apos;s losses you could have kept.
                 </h2>
                 <p className="mt-3 text-sm leading-relaxed text-white/75 md:text-base">
-                  Connect HaloPSA or ConnectWise read-only. In about a minute you see your Revenue at Risk and a Churn Replay of the clients you lost, on your own data.
+                  Connect HaloPSA or ConnectWise read-only. In about a minute you see your Revenue at Risk, your renewals, your margin gap and a Churn Replay of the clients you lost, on your own data.
                 </p>
                 <div className="mt-8 flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
                   <Link

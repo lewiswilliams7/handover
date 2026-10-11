@@ -48,7 +48,7 @@ const shipped: RoadmapItem[] = [
   },
   {
     title: "Client Margin",
-    desc: "Revenue per hour for every client, grouped with Revenue at Risk: save, fix, reprice or protect.",
+    desc: "What each client pays against the work they create, grouped with Revenue at Risk: save, fix, reprice or protect.",
     badge: "Protect",
   },
   {
