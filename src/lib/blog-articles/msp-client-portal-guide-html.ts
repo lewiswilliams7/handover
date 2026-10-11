@@ -20,5 +20,5 @@ export const MSP_CLIENT_PORTAL_GUIDE_HTML = `
 <h2 id="why-visibility-builds-retention" class="blog-h2-anchor">Why visibility builds retention</h2>
 <p>Retention is not only about uptime statistics. It is about whether the client believes you are organised, honest, and ahead of problems. A portal that answers the questions they would ask on a call — before they book the call — reduces anxiety and procurement friction.</p>
 <p>When reporting is consistent and readable, renewals feel less like a price negotiation and more like a partnership checkpoint. That is the practical return on getting the portal right — not vanity metrics on logins, but calmer stakeholders who already know the story.</p>
-<p>To see how Handover’s client portal fits alongside automated reporting from your PSA, try it free for fourteen days at <a href="https://gethandover.uk">gethandover.uk</a> — 14-day free trial — cancel anytime.</p>
+<p>To see how Handover’s client portal fits alongside automated reporting from your PSA, run the free scan at <a href="https://gethandover.uk">gethandover.uk</a>. Free, read-only, no card.</p>
 `.trim();

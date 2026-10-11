@@ -245,8 +245,8 @@ export default function ClientIntelligenceLaunchPost() {
             <h2 className="mb-4 mt-10 text-[18px] font-semibold text-white">Available now</h2>
 
             <p>
-              Handover Client Intelligence™ is available today on Growth (£99/month) and Enterprise
-              plans. Every plan includes a 14-day free trial.
+              Handover Client Intelligence™ is included in Handover, one plan at £499 a month with
+              unlimited users. You can see it on your own data first with the free scan.
             </p>
 
             <p>
@@ -265,10 +265,10 @@ export default function ClientIntelligenceLaunchPost() {
               clients after just a few generations. No credit card required to start.
             </p>
             <Link
-              href="/auth?tab=signup"
+              href="/onboarding/connect"
               className="inline-block rounded-lg bg-[#38bdf8] px-5 py-2.5 text-[13px] font-semibold text-[#06091a] transition-all hover:scale-[1.02]"
             >
-              Start free trial →
+              Run your free scan →
             </Link>
           </div>
 

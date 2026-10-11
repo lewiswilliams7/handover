@@ -302,7 +302,7 @@ export default function ConnectWiseManageIntegrationBlogPage() {
               Connect your PSA, generate your first report in under 30 seconds, and see what your clients receive.
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
-              Start your free trial at{" "}
+              Run your free scan at{" "}
               <a href="https://gethandover.uk" className="text-[var(--accent)] underline-offset-2 hover:underline">
                 gethandover.uk
               </a>

@@ -31,7 +31,7 @@ export const HOW_MSPS_LOSE_CLIENTS_COMMUNICATION_HTML = `
 <li><strong>Quarterly:</strong> QBR with executive summary, trends, recommendations, and forward roadmap</li>
 </ul>
 <p>The barrier is rarely willingness. It is time. A proper weekly report can take two to three hours per client when written manually from PSA notes — which is why teams skip it when delivery pressure peaks.</p>
-<p>Tools that connect to HaloPSA or ConnectWise and generate structured client-ready output from live ticket data remove the blank-page problem. You still apply judgement and tone; you are not writing from scratch every Friday. If you want to see what that looks like on your own accounts, start a fourteen-day free trial at <a href="https://gethandover.uk">gethandover.uk</a>.</p>
+<p>Tools that connect to HaloPSA or ConnectWise and generate structured client-ready output from live ticket data remove the blank-page problem. You still apply judgement and tone; you are not writing from scratch every Friday. If you want to see what that looks like on your own accounts, run the free read-only scan at <a href="https://gethandover.uk">gethandover.uk</a>.</p>
 <h2 id="closing-thought" class="blog-h2-anchor">The retention lever you already control</h2>
 <p>You cannot control every competitor or every budget cycle. You can control whether your clients hear from you consistently, in language they understand, with evidence of the work you are already doing. That is the retention lever most MSPs underuse — not because they do not care, but because the manual cost of communication is too high to sustain.</p>
 <p>Fix the cadence, and you fix a large part of the churn story before it starts.</p>

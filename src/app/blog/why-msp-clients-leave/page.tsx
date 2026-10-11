@@ -374,10 +374,10 @@ export default function WhyMspClientsLeavePage() {
               Handover generates professional client reports from your HaloPSA or ConnectWise data in
               30 seconds.{" "}
               <Link
-                href="/auth?tab=signup"
+                href="/onboarding/connect"
                 className="font-medium text-[var(--accent)] underline-offset-4 hover:underline"
               >
-                Start your free trial
+                Run your free scan
               </Link>{" "}
               - no configuration required.
             </p>
@@ -405,15 +405,15 @@ export default function WhyMspClientsLeavePage() {
                 }}
               >
                 <h3 className="text-[24px] font-bold text-[var(--text-primary)]">
-                  Start free trial
+                  Run your free scan
                 </h3>
                 <p className="mt-2 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
                   Connect HaloPSA or ConnectWise and see how consistent client communication
-                  strengthens retention - 14-day free trial, cancel anytime.
+                  strengthens retention. Free, read-only, no card.
                 </p>
                 <div className="mt-5">
                   <Link
-                    href="/auth?tab=signup&returnTo=/welcome"
+                    href="/onboarding/connect"
                     className="inline-flex items-center rounded-[var(--radius)] bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]"
                   >
                     Start generating reports →

@@ -53,7 +53,7 @@ const halopsaClientReportingAutomation = `
 <p>More importantly, it means reporting actually happens consistently. Manual reporting is prone to being deprioritised when delivery work is busy. Automated reporting runs regardless.</p>
 <h2>Getting started</h2>
 <p>If you use HaloPSA and want to see what automated client reporting looks like on your actual ticket data, Handover connects directly to your HaloPSA instance and generates all five outputs in under 30 seconds. It also supports scheduled weekly reports with automatic push-back to HaloPSA tickets.</p>
-<p>You can try it free at <a href="https://gethandover.uk">gethandover.uk</a> - 14-day free trial — cancel anytime.</p>
+<p>You can try it free at <a href="https://gethandover.uk">gethandover.uk</a>. Free, read-only, no card.</p>
 `.trim();
 
 const mspProjectManagerReportingProblem = `
@@ -89,7 +89,7 @@ const mspProjectManagerReportingProblem = `
 <p>Reporting is not the job. Delivery is the job. Reporting is documentation of the job - necessary, professional, and important for client relationships, but not the work itself.</p>
 <p>The hours MSP PMs spend on manual reporting every week are hours that could go to delivery, to client relationships, to new business, or frankly to finishing at a reasonable time on Friday.</p>
 <p>The tools to automate this exist now. The question is whether you use them.</p>
-<p>If you want to see what automated reporting looks like on your actual PSA data, Handover connects to HaloPSA and generates client updates, action logs, risk registers, and Excel report packs in seconds - with push-back to tickets on Pro. Start with a 14-day free trial at <a href="https://gethandover.uk">gethandover.uk</a> - 14-day free trial — cancel anytime.</p>
+<p>If you want to see what automated reporting looks like on your actual PSA data, Handover connects to HaloPSA and generates client updates, action logs, risk registers, and Excel report packs in seconds - with push-back to tickets. Run the free scan at <a href="https://gethandover.uk">gethandover.uk</a>. Free, read-only, no card.</p>
 `.trim();
 
 const mspReportingHiddenCost = `
@@ -113,7 +113,7 @@ const mspReportingHiddenCost = `
 <h2>What good looks like</h2>
 <p>The MSP teams that have solved this problem share a few characteristics. Their reporting is consistent because it's generated from the same structured data source every week. It's timely because it's scheduled to run automatically rather than depending on PM availability. And it's integrated - the report exists in the PSA as a ticket note, not just in an email thread somewhere.</p>
 <p>This isn't about removing the PM from the communication process. Review, relationship context, and judgement still matter. It's about removing the blank page problem - the hours spent turning raw PSA data into structured written communication from scratch, every week, indefinitely.</p>
-<p>If you manage client delivery at an MSP and want to see what this looks like in practice, Handover connects to HaloPSA and generates professional client updates, logs, and Excel packs from your live ticket data in seconds. Start with a 14-day free trial at <a href="https://gethandover.uk">gethandover.uk</a> - 14-day free trial — cancel anytime.</p>
+<p>If you manage client delivery at an MSP and want to see what this looks like in practice, Handover connects to HaloPSA and generates professional client updates, logs, and Excel packs from your live ticket data in seconds. Run the free scan at <a href="https://gethandover.uk">gethandover.uk</a>. Free, read-only, no card.</p>
 `.trim();
 
 const handoverHalopsaMarketplace = `
@@ -138,9 +138,9 @@ const handoverHalopsaMarketplace = `
 <p>The push-back feature in particular closes the full reporting loop in a way that no other tool does for HaloPSA specifically - pull from HaloPSA, generate, push back. The ticket history stays accurate, the client gets a professional update, and the PM reclaims the hours they were spending doing this manually.</p>
 <h2>What's next</h2>
 <p>ConnectWise integration is on the roadmap, which will extend the same workflow to the significant portion of the MSP market running ConnectWise Manage. A ConnectWise waitlist is available at <a href="https://gethandover.uk/integrations">gethandover.uk/integrations</a>.</p>
-<p>Growth plans are also now available - allowing MSP delivery teams to share a HaloPSA connection, pool generation allowances, and manage member permissions from a central admin dashboard.</p>
+<p>Whole teams can use Handover too, sharing one HaloPSA connection with as many users as they need.</p>
 <h2>Try it</h2>
-<p>Handover offers a 14-day free trial at <a href="https://gethandover.uk">gethandover.uk</a> - 14-day free trial — cancel anytime. Starter plan starts at £49 per month. Growth plan from £99 per month with unlimited users.</p>
+<p>You can run a free, read-only scan at <a href="https://gethandover.uk">gethandover.uk</a>, no card needed. Handover is one plan at £499 a month with every feature and unlimited users.</p>
 `.trim();
 
 const sapN8nMspAutomation = `
@@ -161,7 +161,7 @@ const sapN8nMspAutomation = `
 <p>HaloPSA and ConnectWise already hold the data MSPs need. The question is whether that data sits unused in the PSA or gets turned into professional client communication automatically.</p>
 <p>Handover connects to HaloPSA and ConnectWise, pulls live ticket and project data, and generates professional client reports in 30 seconds — pushed straight back to the PSA or delivered to the client automatically on a schedule.</p>
 <p>The automation era is already here. The question is which MSPs adopt it first.</p>
-<p>Try Handover free for 14 days at <a href="https://gethandover.uk">gethandover.uk</a> - 14-day free trial — cancel anytime.</p>
+<p>Try Handover free for 14 days at <a href="https://gethandover.uk">gethandover.uk</a>. Free, read-only, no card.</p>
 `.trim();
 
 export const ARTICLE_HTML: Record<string, string> = {

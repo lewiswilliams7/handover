@@ -81,7 +81,7 @@ export default function ServiceReviewPage() {
           name: "Can I white label the Service Review packs?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Yes. Handover supports full white labelling on Growth and Enterprise plans. Your brand name, logo, and colours appear on all outputs including the PowerPoint and Excel exports. The Handover branding is removed completely.",
+            text: "Yes. Handover includes full white labelling. Your brand name, logo, and colours appear on all outputs including the PowerPoint and Excel exports. The Handover branding is removed completely.",
           },
         },
         {
@@ -190,7 +190,7 @@ export default function ServiceReviewPage() {
                 },
                 {
                   title: "Excel export",
-                  body: "17-sheet workbook covering actions, risks, projects, and ticket data. White labelled with your branding on Growth and above.",
+                  body: "17-sheet workbook covering actions, risks, projects, and ticket data. White labelled with your branding.",
                 },
               ].map((item, i) => (
                 <ScrollRevealItem key={i} index={i + 2}>

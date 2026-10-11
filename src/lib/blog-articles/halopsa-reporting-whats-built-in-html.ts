@@ -37,5 +37,5 @@ export const HALOPSA_REPORTING_WHATS_BUILT_IN_HTML = `
 <p>Handover is listed on the HaloPSA Technology Alliance Partner marketplace for exactly this workflow: HaloPSA data in, professional client communication out, optional scheduled delivery and ticket push-back. Setup takes minutes, not a custom integration project.</p>
 <h2 id="closing-thought" class="blog-h2-anchor">HaloPSA gives you the data</h2>
 <p>The question is what you do with it on the client side. Internal reporting keeps your operation healthy. Client reporting keeps your relationships healthy. HaloPSA handles the first natively; the second still needs a purpose-built layer — unless you are happy spending hours every week doing it by hand.</p>
-<p>See what automated client reporting looks like on your HaloPSA data at <a href="https://gethandover.uk">gethandover.uk</a> — fourteen-day free trial, cancel anytime.</p>
+<p>See what automated client reporting looks like on your HaloPSA data at <a href="https://gethandover.uk">gethandover.uk</a> with the free read-only scan. No card needed.</p>
 `.trim();

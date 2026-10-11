@@ -28,9 +28,9 @@ export const BEST_HALOPSA_REPORTING_TOOLS_HTML = `
 <p><strong>What makes it different:</strong></p>
 <p>Unlike dashboard tools, Handover generates written outputs - actual emails and documents ready to send or export. It reads the full ticket note history including email correspondence, understands context, and writes like a senior PM would write.</p>
 <p>Generated outputs can be pushed directly back to HaloPSA as ticket notes automatically. Scheduled weekly reports run every Monday without anyone triggering them.</p>
-<p><strong>Pricing:</strong> Basic (14-day free trial) · Starter £49/month · Growth £99/month</p>
+<p><strong>Pricing:</strong> One plan, £499/month with unlimited users. Free read-only scan before you buy.</p>
 <p><strong>Limitations:</strong> Focused on written outputs rather than visual dashboards. If you need charts and graphs for board-level reporting, a dashboard tool is a better fit.</p>
-<p><a href="/auth?tab=signup&returnTo=/welcome">Start free trial →</a></p>
+<p><a href="/onboarding/connect">Run your free scan →</a></p>
 <hr class="blog-hr" />
 <h2 id="squared-up" class="blog-h2-anchor">2. Squared Up - Visual dashboards for HaloPSA</h2>
 <p><strong>Best for:</strong> MSPs who need visual reporting dashboards</p>
@@ -124,7 +124,7 @@ export const BEST_HALOPSA_REPORTING_TOOLS_HTML = `
 <td>✓</td>
 <td>✓</td>
 <td>✓</td>
-<td>Basic / £49/mo</td>
+<td>£499/mo, unlimited users</td>
 </tr>
 <tr>
 <th scope="row">Squared Up</th>
@@ -194,5 +194,5 @@ export const BEST_HALOPSA_REPORTING_TOOLS_HTML = `
 <h2 id="bottom-line" class="blog-h2-anchor">The bottom line</h2>
 <p>For MSP delivery teams who need to produce client-ready reports quickly and consistently, Handover is the only tool designed specifically for that workflow. Dashboard tools like Squared Up and analytics platforms like Renada solve different problems - important ones, but not the weekly delivery reporting problem that most MSP PMs face.</p>
 <p>If your Friday afternoons are spent writing the same client emails and action logs week after week, a purpose-built tool will save you more time than any dashboard configuration.</p>
-<p><a href="/auth?tab=signup&returnTo=/welcome">Start free trial — 14-day free trial — cancel anytime →</a></p>
+<p><a href="/onboarding/connect">Run your free scan. Free, read-only, no card. →</a></p>
 `.trim();

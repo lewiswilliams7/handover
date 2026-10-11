@@ -351,10 +351,10 @@ export default function MspRaidLogTemplatePage() {
 
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               <Link
-                href="/auth?tab=signup"
+                href="/onboarding/connect"
                 className="font-medium text-[var(--accent)] underline-offset-4 hover:underline"
               >
-                Start your free trial
+                Run your free scan
               </Link>{" "}
               and enable RAID log in your output tabs — no separate template to maintain.
             </p>
@@ -383,11 +383,11 @@ export default function MspRaidLogTemplatePage() {
                 </h3>
                 <p className="mt-2 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
                   Connect HaloPSA or ConnectWise and generate a client-ready RAID log in under a
-                  minute — 14-day free trial.
+                  minute. Free, read-only, no card.
                 </p>
                 <div className="mt-5">
                   <Link
-                    href="/auth?tab=signup&returnTo=/welcome"
+                    href="/onboarding/connect"
                     className="inline-flex items-center rounded-[var(--radius)] bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]"
                   >
                     Try Handover free →

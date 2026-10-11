@@ -496,7 +496,7 @@ export default function ConnectWiseIntegrationPage() {
                   ],
                   [
                     "Status Report",
-                    "Full structured report with RAG status, progress, actions and next steps. Push results back to ConnectWise as notes on Pro.",
+                    "Full structured report with RAG status, progress, actions and next steps. Push results back to ConnectWise as notes.",
                   ],
                 ].map(([title, body], idx) => (
                   <ScrollRevealItem key={title} index={idx + 1} className="min-w-0 shrink-0 snap-start md:shrink">

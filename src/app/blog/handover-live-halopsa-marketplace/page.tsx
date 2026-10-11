@@ -150,7 +150,7 @@ export default function HandoverLiveHaloPsaMarketplacePage() {
               How to get started
             </h2>
             <ol className="mb-5 list-decimal space-y-1 pl-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
-              <li>Visit <Link href="/">gethandover.uk</Link> and start your free trial</li>
+              <li>Visit <Link href="/">gethandover.uk</Link> and run your free scan</li>
               <li>Connect your HaloPSA instance using your API credentials</li>
               <li>Pull your first ticket data and generate your first output</li>
             </ol>
@@ -162,7 +162,7 @@ export default function HandoverLiveHaloPsaMarketplacePage() {
               Ready to stop writing updates manually?
             </h2>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
-              Handover is live on the HaloPSA marketplace now. Start your free trial or book a 15-minute demo to see it running on live
+              Handover is live on the HaloPSA marketplace now. Run your free scan or book a 15-minute demo to see it running on live
               ticket data. Handover integrates with HaloPSA today, with ConnectWise and Autotask coming soon.
             </p>
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">

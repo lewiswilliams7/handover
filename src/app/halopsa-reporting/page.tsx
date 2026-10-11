@@ -51,7 +51,7 @@ const outputCards: readonly [string, string][] = [
   ["Internal Summary", "Two paragraph internal update for your team or manager."],
   [
     "Status Report",
-    "Full structured report with RAG status, progress, actions and next steps. Push results back to HaloPSA as notes on Pro.",
+    "Full structured report with RAG status, progress, actions and next steps. Push results back to HaloPSA as notes.",
   ],
 ] as const;
 

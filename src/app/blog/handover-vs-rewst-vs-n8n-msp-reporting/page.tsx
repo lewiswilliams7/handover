@@ -236,8 +236,8 @@ export default function HandoverVsRewstVsN8nMspReportingPage() {
             </p>
 
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
-              Handover starts at £49 per month for solo use and £99 per month for Growth.
-              There&apos;s a 14-day free trial.
+              Handover is one plan at £499 per month with unlimited users, and you can run a free
+              read-only scan of your PSA before paying anything.
             </p>
 
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
@@ -284,14 +284,14 @@ export default function HandoverVsRewstVsN8nMspReportingPage() {
                 }}
               >
                 <h3 className="text-[24px] font-bold text-[var(--text-primary)]">
-                  Start free trial
+                  Run your free scan
                 </h3>
                 <p className="mt-2 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
                   Connect HaloPSA or ConnectWise and ship your next client report in minutes.
                 </p>
                 <div className="mt-5">
                   <Link
-                    href="/auth?tab=signup&returnTo=/welcome"
+                    href="/onboarding/connect"
                     className="inline-flex items-center rounded-[var(--radius)] bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]"
                   >
                     Start generating reports →

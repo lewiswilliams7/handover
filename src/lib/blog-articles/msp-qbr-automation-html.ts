@@ -19,5 +19,5 @@ export const MSP_QBR_AUTOMATION_HTML = `
 <p>Because outputs are generated from the same PSA data your engineers use, you spend less time arguing internally about “what really happened” in month seven of a platform migration. The meeting can focus on decisions, not archaeology.</p>
 <h2 id="from-hours-to-minutes" class="blog-h2-anchor">From hours to minutes</h2>
 <p>Teams that adopt this pattern typically describe QBR prep as “review and refine” instead of “research and write.” The time saved is not just typing — it is the cognitive load of reconstructing a quarter from scattered notes. That reclaimed focus often shows up in better conversations on the day, because the account manager has had space to think about advice rather than formatting.</p>
-<p>If you run QBRs on HaloPSA or ConnectWise data and want to see what automated prep feels like on your own accounts, start a fourteen-day free trial at <a href="https://gethandover.uk">gethandover.uk</a> — 14-day free trial — cancel anytime.</p>
+<p>If you run QBRs on HaloPSA or ConnectWise data and want to see what automated prep feels like on your own accounts, run the free read-only scan at <a href="https://gethandover.uk">gethandover.uk</a>. Free, read-only, no card.</p>
 `.trim();

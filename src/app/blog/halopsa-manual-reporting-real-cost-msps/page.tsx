@@ -275,8 +275,8 @@ export default function HalopsaManualReportingRealCostMspsPage() {
             <p className="mb-5 text-[16px] italic leading-[1.8] text-[var(--text-secondary)]">
               Handover connects natively to HaloPSA and generates client-ready reports in under 30
               seconds.{" "}
-              <Link href="/auth?tab=signup" className="text-[var(--accent)] hover:underline">
-                Start your free trial
+              <Link href="/onboarding/connect" className="text-[var(--accent)] hover:underline">
+                Run your free scan
               </Link>{" "}
               - no configuration required.
             </p>
@@ -304,15 +304,14 @@ export default function HalopsaManualReportingRealCostMspsPage() {
                 }}
               >
                 <h3 className="text-[24px] font-bold text-[var(--text-primary)]">
-                  Start free trial
+                  Run your free scan
                 </h3>
                 <p className="mt-2 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
-                  Connect HaloPSA and generate your first client report in 30 seconds - 14-day free
-                  trial, cancel anytime.
+                  Connect HaloPSA and generate your first client report in 30 seconds. Free, read-only, no card.
                 </p>
                 <div className="mt-5">
                   <Link
-                    href="/auth?tab=signup&returnTo=/welcome"
+                    href="/onboarding/connect"
                     className="inline-flex items-center rounded-[var(--radius)] bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]"
                   >
                     Start generating reports →

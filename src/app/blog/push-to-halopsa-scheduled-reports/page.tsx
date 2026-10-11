@@ -15,7 +15,7 @@ const post = getPostBySlug(SLUG)!;
 export const metadata: Metadata = {
   title: "Your MSP reports now write and file themselves | Handover",
   description:
-    "Push to HaloPSA or ConnectWise and scheduled weekly reports close the loop: pull from your PSA, generate, push back - automatically on Pro.",
+    "Push to HaloPSA or ConnectWise and scheduled weekly reports close the loop: pull from your PSA, generate, push back - automatically.",
   keywords: [
     "HaloPSA",
     "MSP reporting",
@@ -29,7 +29,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Your MSP reports now write and file themselves",
     description:
-      "Push to HaloPSA or ConnectWise and scheduled weekly reports close the loop: pull from your PSA, generate, push back - automatically on Pro.",
+      "Push to HaloPSA or ConnectWise and scheduled weekly reports close the loop: pull from your PSA, generate, push back - automatically.",
     type: "article",
     publishedTime: post.dateISO,
     authors: [post.author],
@@ -45,7 +45,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Your MSP reports now write and file themselves",
     description:
-      "Push to HaloPSA or ConnectWise and scheduled weekly reports close the loop: pull from your PSA, generate, push back - automatically on Pro.",
+      "Push to HaloPSA or ConnectWise and scheduled weekly reports close the loop: pull from your PSA, generate, push back - automatically.",
     images: ["https://gethandover.uk/opengraph-image"],
   },
 };
@@ -162,10 +162,10 @@ export default function PushToHaloScheduledReportsPage() {
                     Compare plans & pricing
                   </Link>
                   <Link
-                    href="/auth?tab=signup&returnTo=/welcome"
+                    href="/onboarding/connect"
                     className="inline-flex items-center rounded-[var(--radius)] border border-[var(--border)] px-6 py-3 text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]"
                   >
-                    Start free trial
+                    Run your free scan
                   </Link>
                 </div>
               </div>

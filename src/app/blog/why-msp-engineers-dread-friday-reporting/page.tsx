@@ -220,7 +220,7 @@ export default function WhyMspEngineersDreadFridayReportingPage() {
                 </p>
                 <div className="mt-5">
                   <Link
-                    href="/auth?tab=signup&returnTo=/welcome"
+                    href="/onboarding/connect"
                     className="inline-flex items-center rounded-[var(--radius)] bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]"
                   >
                     Start generating reports →
