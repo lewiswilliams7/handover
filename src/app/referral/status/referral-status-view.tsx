@@ -181,28 +181,28 @@ export function ReferralStatusView() {
 
   const pendingSteps = [
     { state: "done" as const, label: "Signed up via referral link" },
-    { state: "current" as const, label: "Subscribe to Pro (activates free month)" },
+    { state: "current" as const, label: "Subscribe to Handover (£499 off your first invoice)" },
     {
       state: "todo" as const,
-      label: <>Month 2 payment (unlocks reward for {refName})</>,
+      label: <>Second payment (unlocks £499 off for {refName})</>,
     },
   ];
 
   const activeSteps = [
     { state: "done" as const, label: "Signed up via referral link" },
-    { state: "done" as const, label: "Subscribed to Pro - free month active" },
+    { state: "done" as const, label: "Subscribed to Handover, £499 off applied" },
     {
       state: "current" as const,
-      label: <>Month 2 payment - completes on {renewalLabel}</>,
+      label: <>Second payment on {renewalLabel}</>,
     },
   ];
 
   const completeSteps = [
     { state: "done" as const, label: "Signed up via referral link" },
-    { state: "done" as const, label: "Subscribed to Pro - free month active" },
+    { state: "done" as const, label: "Subscribed to Handover, £499 off applied" },
     {
       state: "done" as const,
-      label: <>Month 2 payment - completed on {month2Label}</>,
+      label: <>Second payment completed on {month2Label}</>,
     },
   ];
 
@@ -217,18 +217,17 @@ export function ReferralStatusView() {
                 <Clock className="size-12 text-[var(--accent)]" strokeWidth={1.5} aria-hidden />
               </div>
               <h1 className="mt-6 text-center text-2xl font-bold tracking-tight text-[var(--text-primary)] sm:text-3xl">
-                Your free month is ready
+                Your £499 off is ready
               </h1>
               <p className="mt-4 text-center text-[15px] leading-relaxed text-[var(--text-secondary)]">
-                Complete your Pro subscription to activate your free first month. You won&apos;t be
-                charged until month 2.
+                Subscribe to Handover and £499 comes off your first invoice automatically.
               </p>
               <div className="mt-8 flex justify-center">
                 <Link
                   href="/pricing"
                   className="inline-flex h-11 items-center justify-center rounded-[var(--radius)] bg-[var(--accent)] px-6 text-[15px] font-semibold text-white transition-colors hover:bg-[var(--accent-hover)]"
                 >
-                  Activate Pro now →
+                  Subscribe now →
                 </Link>
               </div>
               <StepsTimeline steps={pendingSteps} />
@@ -241,15 +240,15 @@ export function ReferralStatusView() {
                 <PartyPopper className="size-12 text-[var(--accent)]" strokeWidth={1.5} aria-hidden />
               </div>
               <h1 className="mt-6 text-center text-2xl font-bold tracking-tight text-[var(--text-primary)] sm:text-3xl">
-                Your free month is active
+                Your referral discount is applied
               </h1>
               <p className="mt-4 text-center text-[15px] leading-relaxed text-[var(--text-secondary)]">
-                Your first month is completely free. You&apos;ll be charged £49 on {renewalLabel}.
-                Cancel anytime before then to pay nothing.
+                £499 came off your first invoice. Your next payment is on {renewalLabel}, and you can cancel
+                any time before then.
               </p>
               <StepsTimeline steps={activeSteps} />
               <p className="mx-auto mt-8 max-w-[440px] text-center text-[13px] leading-relaxed text-[var(--text-muted)]">
-                When your first paid month completes, {refName} will earn £79 credit (1 month free) as a thank you.
+                When your first paid month completes, {refName} will get £499 off their next invoice as a thank you.
               </p>
             </>
           ) : null}
@@ -263,8 +262,8 @@ export function ReferralStatusView() {
                 You&apos;re all set
               </h1>
               <p className="mt-4 text-center text-[15px] leading-relaxed text-[var(--text-secondary)]">
-                Your free month has been used and your Pro subscription is active. {refName} has
-                earned their reward - thanks for helping them out.
+                Your discount has been used and your Handover subscription is active. {refName} has had
+                their £499 off too. Thanks for helping them out.
               </p>
               <StepsTimeline steps={completeSteps} />
             </>

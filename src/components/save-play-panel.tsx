@@ -3,7 +3,9 @@
 import { Check, ChevronDown, Copy, Loader2, Mail, Send } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 
+import { useAppShell } from "@/components/app-shell";
 import { ContactSuggestions } from "@/components/contact-suggestions";
+import { buildClientEmailSignOffBlock } from "@/lib/client-email-signature";
 import type { ClientContact } from "@/lib/psa/scan-session";
 import { buildSavePlayEmail, getSavePlay, playHasEmail } from "@/lib/save-plays";
 

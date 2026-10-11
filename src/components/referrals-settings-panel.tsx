@@ -128,11 +128,11 @@ export function ReferralsSettingsPanel({
             />
           </div>
           <h3 className="text-[16px] font-bold text-[var(--text-primary)]">
-            Refer &amp; Earn £79 credit per referral
+            Refer an MSP, you both get £499 off
           </h3>
           <p className="mt-2 max-w-sm text-[13px] leading-relaxed text-[var(--text-muted)]">
-            Upgrade to Starter to access the referral programme and start earning £79 credit (1 month
-            free on Team) for every MSP you refer to Handover.
+            Once you subscribe to Handover, every MSP you refer gets £499 off their first invoice, and so do
+            you.
           </p>
           <div
             className="mt-6 w-full max-w-md select-none rounded-[var(--radius)] border border-[var(--border)]/60 bg-[var(--bg-primary)]/40 p-4 text-left opacity-40 pointer-events-none"
@@ -142,7 +142,7 @@ export function ReferralsSettingsPanel({
             <ol className="mt-2 list-decimal space-y-2 pl-5 text-[13px] text-[var(--text-secondary)]">
               <li>Share your link with MSP delivery teams</li>
               <li>They sign up and try Handover free for their first month</li>
-              <li>When they complete their first paid month, you earn 1 month free (£79 credit on Team)</li>
+              <li>When they complete their first paid month, £499 comes off your next invoice</li>
             </ol>
           </div>
           <Link
@@ -152,7 +152,7 @@ export function ReferralsSettingsPanel({
               focusRing,
             )}
           >
-            Upgrade to Starter →
+            See Handover pricing →
           </Link>
         </div>
       </div>
@@ -175,7 +175,7 @@ export function ReferralsSettingsPanel({
       <div>
         <h3 className="text-[15px] font-bold text-[var(--text-primary)]">Refer &amp; Earn</h3>
         <p className="mt-1 text-[13px] text-[var(--text-secondary)]">
-          Earn £79 credit (1 month free on Team) for every MSP you refer to Handover.
+          Every MSP you refer gets £499 off their first invoice. When they stay past their first month, £499 comes off yours.
         </p>
       </div>
 
@@ -212,7 +212,7 @@ export function ReferralsSettingsPanel({
           </>
         ) : (
           <p className="mt-2 text-[12px] text-[var(--text-muted)]">
-            Your code will appear here after your first successful Starter or Growth subscription checkout.
+            Your link appears here after your first Handover payment.
           </p>
         )}
       </div>
@@ -222,7 +222,7 @@ export function ReferralsSettingsPanel({
         <ol className="mt-2 list-decimal space-y-2 pl-5 text-[13px] text-[var(--text-secondary)]">
           <li>Share your link with MSP delivery teams</li>
           <li>They sign up and try Handover free for their first month</li>
-          <li>When they complete their first paid month, you earn 1 month free (£79 credit on Team)</li>
+          <li>When they complete their first paid month, £499 comes off your next invoice</li>
         </ol>
       </div>
 
@@ -283,7 +283,7 @@ export function ReferralsSettingsPanel({
                       })}
                     </td>
                     <td className="px-3 py-2 text-[var(--text-secondary)]">
-                      {r.status === "rewarded" ? "£79" : " - "}
+                      {r.status === "rewarded" ? "£499" : " - "}
                     </td>
                   </tr>
                 ))}

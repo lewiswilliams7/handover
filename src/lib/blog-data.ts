@@ -47,6 +47,27 @@ export const BLOG_FILTER_OPTIONS: { id: BlogFilterId; label: string }[] = [
 
 export const BLOG_POSTS: BlogPostMeta[] = [
   {
+    slug: "handover-client-retention-platform",
+    routePath: "/blog/handover-client-retention-platform",
+    title: "Handover is now a client retention platform. Here's what changed.",
+    dateISO: "2026-10-12T08:00:00.000Z",
+    dateDisplay: "12 October 2026",
+    author: "Lewis Williams",
+    tags: ["Product", "MSP"],
+    description:
+      "Handover started as a reporting tool. It's now built around one job: helping MSPs keep the clients they already have. What changed, what it costs, and what it means if you already use it.",
+    kind: "dynamic",
+    featured: true,
+    toc: [
+      { id: "why-we-changed", label: "Why we changed it" },
+      { id: "what-handover-does-now", label: "What Handover does now" },
+      { id: "one-price", label: "One price, everything included" },
+      { id: "what-it-wont-do", label: "What it won't do" },
+      { id: "if-you-already-use-handover", label: "If you already use Handover" },
+      { id: "try-it", label: "See it on your own clients" },
+    ],
+  },
+  {
     slug: "what-msps-told-us-about-client-reporting",
     routePath: "/blog/what-msps-told-us-about-client-reporting",
     title: "What MSPs kept telling us, and why Handover changed",
@@ -436,7 +457,6 @@ export const BLOG_POSTS: BlogPostMeta[] = [
     description:
       "A honest comparison of the best reporting tools that integrate with HaloPSA - from native dashboards to AI-powered report generation. Written by an MSP delivery team.",
     kind: "dynamic",
-    featured: true,
     readMinutesOverride: 8,
     toc: [
       { id: "what-to-look-for", label: "What to look for" },

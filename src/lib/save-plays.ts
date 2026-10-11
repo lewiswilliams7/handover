@@ -309,14 +309,15 @@ export function playHasEmail(play: SavePlay): boolean {
 /** Fill a play's email for one client. */
 export function buildSavePlayEmail(
   play: SavePlay,
-  input: { clientName: string; senderName: string },
+  input: { clientName: string; senderName: string; /** Full sign-off from the user's profile, used as-is. */ signOff?: string | null },
 ): { subject: string; body: string } {
   const fill = (text: string) =>
     text
       .replaceAll("{client}", input.clientName)
       .replaceAll("{sender}", input.senderName.trim() || "The team");
+  const signOff = input.signOff?.trim();
   return {
     subject: fill(play.email.subject),
-    body: fill(play.email.body + SIGN_OFF),
+    body: signOff ? `${fill(play.email.body)}\n\n${signOff}` : fill(play.email.body + SIGN_OFF),
   };
 }

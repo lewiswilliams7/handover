@@ -1,5 +1,6 @@
 import { BEST_HALOPSA_REPORTING_TOOLS_HTML } from "@/lib/blog-articles/best-halopsa-reporting-tools-html";
 import { BEST_MSP_CLIENT_REPORTING_TOOL_2026_HTML } from "@/lib/blog-articles/best-msp-client-reporting-tool-2026-html";
+import { HANDOVER_CLIENT_RETENTION_PLATFORM_HTML } from "@/lib/blog-articles/handover-client-retention-platform-html";
 import { HALOPSA_REPORTING_WHATS_BUILT_IN_HTML } from "@/lib/blog-articles/halopsa-reporting-whats-built-in-html";
 import { HOW_MSPS_LOSE_CLIENTS_COMMUNICATION_HTML } from "@/lib/blog-articles/how-msps-lose-clients-communication-html";
 import { HOW_TO_WRITE_MSP_WEEKLY_CLIENT_REPORT_HTML } from "@/lib/blog-articles/how-to-write-msp-weekly-client-report-html";
@@ -164,6 +165,7 @@ const sapN8nMspAutomation = `
 `.trim();
 
 export const ARTICLE_HTML: Record<string, string> = {
+  "handover-client-retention-platform": HANDOVER_CLIENT_RETENTION_PLATFORM_HTML,
   "how-msps-lose-clients-communication": HOW_MSPS_LOSE_CLIENTS_COMMUNICATION_HTML,
   "how-to-write-msp-weekly-client-report": HOW_TO_WRITE_MSP_WEEKLY_CLIENT_REPORT_HTML,
   "halopsa-reporting-whats-built-in": HALOPSA_REPORTING_WHATS_BUILT_IN_HTML,

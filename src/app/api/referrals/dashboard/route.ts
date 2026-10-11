@@ -1,3 +1,4 @@
+import { REFERRAL_CREDIT_GBP } from "@/lib/stripe-referral-coupons";
 import { NextResponse } from "next/server";
 
 import { createServiceRoleClient } from "@/lib/supabase/admin";
@@ -61,7 +62,7 @@ export async function GET() {
         converted:
           referralsData?.filter((r) => r.status === "converted" || r.status === "rewarded")
             .length ?? 0,
-        earned: (referralsData?.filter((r) => r.status === "rewarded").length ?? 0) * 79,
+        earned: (referralsData?.filter((r) => r.status === "rewarded").length ?? 0) * REFERRAL_CREDIT_GBP,
       },
     });
   } catch (e) {

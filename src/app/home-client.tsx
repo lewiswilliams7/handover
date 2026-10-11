@@ -536,7 +536,7 @@ import {
 import { extractFirstEmailFromText } from "@/lib/email-recipients";
 import { cn } from "@/lib/utils";
 import { normalizeHaloUrlForSubmit } from "@/lib/halo-url";
-import { SettingsBodyPortal, useAppShell } from "@/components/app-shell";
+import { SettingsBodyPortal, useAppShell, useShowLegacyTools } from "@/components/app-shell";
 
 const QbrPackBuilder = dynamic(
   () =>
@@ -7986,6 +7986,32 @@ export default function Home() {
     toast({ message: "Settings saved", durationMs: 2000 });
   };
 
+  /** Profile details and sign-off in one save, with one confirmation. */
+  const saveProfileAndSignOff = async () => {
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+    const { error: upsertErr } = await supabase.from("profiles").upsert(
+      {
+        id: user.id,
+        first_name: profileFirstName.trim() || null,
+        last_name: profileLastName.trim() || null,
+        job_title: profileJobTitle.trim() || null,
+        company_name: profileCompanyName.trim() || null,
+        signature_override: signatureOverride.trim() || null,
+      },
+      { onConflict: "id" },
+    );
+    if (upsertErr) {
+      setError("Failed to save your profile.");
+      return;
+    }
+    toast({ message: "Profile saved", durationMs: 2000 });
+    await refreshShellData();
+  };
+
   const WRITING_STYLE_MAX = 500;
 
   const saveWritingStyle = async () => {
@@ -9980,11 +10006,12 @@ export default function Home() {
   ]);
 
   const signaturePreview = buildClientEmailSignOffBlock(
-    signatureOverride,
-    profileDisplayName,
+    "",
+    [profileFirstName, profileLastName].map((part) => part.trim()).filter(Boolean).join(" ") || profileDisplayName,
     profileJobTitle,
     profileCompanyName,
   );
+  const showLegacySettings = useShowLegacyTools();
   const signedOutCompactMode =
     !userEmail && Boolean(result) && !isEditingSignedOutInput && !isGenerating;
   const signedOutInputPreview =
@@ -12037,87 +12064,66 @@ export default function Home() {
                 {settingsTab === "profile" ? (
                   <div className="space-y-8">
                     <div className="space-y-2">
-                      <h3 className="text-[14px] font-medium text-white">Personal details</h3>
+                      <h3 className="text-[14px] font-medium text-white">About you</h3>
                       <p className="text-[12px] text-[var(--text-muted)]">
-                        Your name and job title appear in client email sign-offs when no custom signature is set.
+                        Used on Save Play emails, Value Receipts and anything else Handover sends for you.
                       </p>
                       <div className="grid grid-cols-2 gap-2">
                         <Input
                           value={profileFirstName}
                           onChange={(e) => setProfileFirstName(e.target.value)}
                           placeholder="First name"
+                          aria-label="First name"
                           className={cn("rounded-[var(--radius)] border-[var(--border)]", focusRing)}
                         />
                         <Input
                           value={profileLastName}
                           onChange={(e) => setProfileLastName(e.target.value)}
                           placeholder="Last name"
+                          aria-label="Last name"
                           className={cn("rounded-[var(--radius)] border-[var(--border)]", focusRing)}
                         />
                       </div>
-                      <Input
-                        value={profileDisplayName}
-                        onChange={(e) => setProfileDisplayName(e.target.value)}
-                        placeholder="Display name on client emails (optional)"
-                        className={cn("rounded-[var(--radius)] border-[var(--border)]", focusRing)}
-                      />
                       <div className="grid grid-cols-2 gap-2">
                         <Input
                           value={profileJobTitle}
                           onChange={(e) => setProfileJobTitle(e.target.value)}
                           placeholder="Job title"
+                          aria-label="Job title"
                           className={cn("rounded-[var(--radius)] border-[var(--border)]", focusRing)}
                         />
                         <Input
                           value={profileCompanyName}
                           onChange={(e) => setProfileCompanyName(e.target.value)}
                           placeholder="Company name"
+                          aria-label="Company name"
                           className={cn("rounded-[var(--radius)] border-[var(--border)]", focusRing)}
                         />
                       </div>
-                      <div className="flex justify-end pt-1">
-                        <Button
-                          type="button"
-                          className={cn(
-                            "bg-[var(--accent)] text-[13px] text-white hover:bg-[var(--accent-hover)]",
-                            focusRing,
-                          )}
-                          onClick={() => void saveSettings()}
-                        >
-                          Save
-                        </Button>
-                      </div>
                     </div>
-                    <div className="space-y-4">
-                      <h3 className="text-[14px] font-medium text-white">Signature</h3>
+                    <div className="space-y-2">
+                      <h3 className="text-[14px] font-medium text-white">Email sign-off</h3>
                       <p className="text-[12px] text-[var(--text-muted)]">
-                        Optional full sign-off. When empty, generated emails use your profile display name, job title, and company (see Profile). The model is instructed not to substitute names from tickets.
+                        Added to the end of every email. Leave it empty and Handover signs off with your name, job title
+                        and company, as shown.
                       </p>
                       <Textarea
                         value={signatureOverride}
                         onChange={(e) => setSignatureOverride(e.target.value)}
-                        placeholder={"Kind regards,\nAlex Taylor\nTechnical Project Manager\nHarbour IT Group"}
-                        rows={6}
-                        className={cn("min-h-36 rounded-[var(--radius)] border-[var(--border)]", focusRing)}
+                        placeholder={signaturePreview}
+                        aria-label="Email sign-off"
+                        rows={5}
+                        className={cn("min-h-32 rounded-[var(--radius)] border-[var(--border)]", focusRing)}
                       />
-                      <div className="space-y-2">
-                        <p className="text-[13px] font-semibold text-[var(--text-primary)]">Effective sign-off</p>
-                        <p className="text-[11px] text-[var(--text-muted)]">
-                          What generation uses when the box above is empty.
-                        </p>
-                        <div className="whitespace-pre-wrap rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] p-3 text-sm">
-                          {signaturePreview}
-                        </div>
-                      </div>
-                      <div className="flex justify-end">
-                        <Button
-                          type="button"
-                          className={cn("bg-[var(--accent)] text-[13px] text-white hover:bg-[var(--accent-hover)]", focusRing)}
-                          onClick={() => void saveSignatureOverride()}
-                        >
-                          Save signature
-                        </Button>
-                      </div>
+                    </div>
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        className={cn("bg-[var(--accent)] text-[13px] text-white hover:bg-[var(--accent-hover)]", focusRing)}
+                        onClick={() => void saveProfileAndSignOff()}
+                      >
+                        Save
+                      </Button>
                     </div>
                   </div>
                 ) : null}
@@ -12514,7 +12520,7 @@ export default function Home() {
 
                 {settingsTab === "appearance" ? (
                   <div className="space-y-4">
-                    <p className="text-[12px] text-[var(--text-muted)]">Theme and layout preferences for this device.</p>
+                    <p className="text-[12px] text-[var(--text-muted)]">Saved on this device straight away.</p>
                     <label className="flex items-center justify-between rounded-[var(--radius)] border border-[var(--border)] p-3 text-sm">
                       <span className="flex items-center gap-2 text-[var(--text-secondary)]">
                         {theme === "dark" ? <Moon className="size-4" /> : <Sun className="size-4" />}
@@ -12522,6 +12528,8 @@ export default function Home() {
                       </span>
                       <input type="checkbox" checked={theme === "dark"} onChange={toggleTheme} className={focusRing} />
                     </label>
+                    {showLegacySettings ? (
+                    <>
                     <label className="flex items-center justify-between rounded-[var(--radius)] border border-[var(--border)] p-3 text-sm">
                       <span>Compact mode</span>
                       <input type="checkbox" checked={compactMode} onChange={(e) => setCompactMode(e.target.checked)} className={focusRing} />
@@ -12557,11 +12565,33 @@ export default function Home() {
                         Save
                       </Button>
                     </div>
+                    </>
+                    ) : null}
                   </div>
                 ) : null}
 
                 {settingsTab === "privacy" ? (
                   <div className="space-y-5">
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-1)] p-4">
+                      <h3 className="text-[14px] font-medium text-white">What Handover keeps</h3>
+                      <ul className="mt-3 space-y-2 text-[13px] leading-6 text-[var(--text-secondary)]">
+                        <li>Your PSA connection is read-only. Handover never changes a ticket unless you push a note yourself.</li>
+                        <li>PSA credentials are encrypted with AES-256. Everything is stored in the EU and never leaves the EU or UK.</li>
+                        <li>Each scan&apos;s full results are kept for 7 days and replaced by the next scan. Headline numbers are kept so you can see trends.</li>
+                      </ul>
+                      <p className="mt-4 text-[13px] leading-6 text-[var(--text-secondary)]">
+                        To delete your account and everything stored with it, email{" "}
+                        <a href="mailto:hello@gethandover.uk?subject=Delete%20my%20Handover%20account" className="text-[var(--accent)] hover:underline">
+                          hello@gethandover.uk
+                        </a>
+                        . More on the{" "}
+                        <Link href="/security" onClick={() => setSettingsOpen(false)} className="text-[var(--accent)] hover:underline">
+                          security page
+                        </Link>
+                        .
+                      </p>
+                    </div>
+                    {showLegacySettings ? (
                     <div className="space-y-4">
                       <p className="text-[12px] text-[var(--text-muted)]">
                         Control whether generations are saved to your account history.
@@ -12590,6 +12620,7 @@ export default function Home() {
                         </Button>
                       </div>
                     </div>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -13331,7 +13362,7 @@ export default function Home() {
                   <div className="rounded-2xl border border-red-500/20 bg-red-500/[0.04] p-6">
                     <p className="mb-3 text-[42px] font-bold leading-none text-red-400">23%</p>
                     <p className="mb-2 text-[13px] font-semibold text-white">
-                      of SMEs left their MSP due to poor customer service or account management
+                      of SMEs have ended an MSP relationship over poor customer service
                     </p>
                   </div>
 

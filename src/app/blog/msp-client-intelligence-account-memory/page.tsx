@@ -220,7 +220,7 @@ export default function MspClientIntelligencePage() {
             <p className="mb-5 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
               <strong>For the MSP:</strong> you spot deteriorating accounts before the renewal
               conversation. Research from JumpCloud&apos;s 2024 SME IT Trends survey found 23% of SMEs
-              left their MSP due to poor customer service or account management — often because
+              have ended an MSP relationship over poor customer service, often because
               nobody noticed the relationship fraying until the client had already decided. Attention
               alerts and health scoring exist to catch that drift early.
             </p>

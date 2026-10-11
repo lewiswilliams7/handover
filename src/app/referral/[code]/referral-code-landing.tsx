@@ -56,16 +56,16 @@ export function ReferralCodeLanding({
 
   const benefits = [
     {
-      title: "First month of Pro free",
-      body: "Try every Pro feature for 30 days. No charge until month 2.",
+      title: "£499 off your first invoice",
+      body: "Applied automatically when you subscribe through this link.",
     },
     {
-      title: "Full HaloPSA integration",
-      body: "Pull live ticket data and generate reports in 30 seconds.",
+      title: "See it on your data first",
+      body: "Run the free scan on HaloPSA or ConnectWise and see your Revenue at Risk before you pay anything.",
     },
     {
-      title: "Unlimited generations",
-      body: "No limits on how many reports you generate during your trial.",
+      title: "Everything included",
+      body: "Every product, unlimited users and a 30-day launch run by the founder.",
     },
   ] as const;
 
@@ -88,14 +88,13 @@ export function ReferralCodeLanding({
               <span className="text-gradient-brand">{heading}</span>
             </h1>
             <p className="mx-auto mt-5 max-w-[540px] text-[16px] leading-relaxed text-[var(--text-secondary)]">
-              Get your first month of Handover Pro completely free.
-              <br />
-              No commitment - cancel before month 2 and pay nothing.
+              Handover shows which of your clients are slipping and what they are worth, straight from your PSA.
+              Subscribe through this link and £499 comes off your first invoice.
               <br />
               {firstName && valid ? (
-                <>{firstName} earns £79 credit (1 month free) when you complete your first paid month.</>
+                <>{firstName} gets the same when you complete your first paid month.</>
               ) : (
-                <>Your referrer earns £79 credit (1 month free) when you complete your first paid month.</>
+                <>Your referrer gets the same when you complete your first paid month.</>
               )}
             </p>
 
@@ -104,7 +103,7 @@ export function ReferralCodeLanding({
                 href={signupHref}
                 className="inline-flex h-12 w-full items-center justify-center rounded-[var(--radius)] bg-[var(--accent)] text-[15px] font-semibold text-white transition-colors hover:bg-[var(--accent-hover)]"
               >
-                Claim your free month →
+                Claim your £499 off →
               </Link>
               <Link
                 href={signinHref}
@@ -115,7 +114,7 @@ export function ReferralCodeLanding({
             </div>
 
             <p className="mx-auto mt-8 max-w-[420px] text-[12px] leading-relaxed text-[var(--text-muted)]">
-              Free month applied automatically at checkout. Cancel before month 2 to pay nothing.
+              Applied automatically at checkout. No minimum term, cancel any time.
             </p>
           </ScrollRevealItem>
         </div>
@@ -160,38 +159,37 @@ export function ReferralCodeLanding({
               <li className="flex gap-2">
                 <span className="mt-0.5 shrink-0 font-semibold text-[var(--text-secondary)]">1.</span>
                 <span>
-                  Sign up using this link - your free month is applied automatically at checkout
+                  Sign up using this link. £499 off is applied automatically at checkout
                 </span>
               </li>
               <li className="flex gap-2">
                 <span className="mt-0.5 shrink-0 font-semibold text-[var(--text-secondary)]">2.</span>
                 <span>
-                  Use Handover Pro free for 30 days - full push-back, scheduling, and Excel packs; no
-                  charge until month 2
+                  Run the free scan first if you like, and see your Revenue at Risk on your own data
                 </span>
               </li>
               <li className="flex gap-2">
                 <span className="mt-0.5 shrink-0 font-semibold text-[var(--text-secondary)]">3.</span>
                 <span>
-                  If you love it, do nothing - you&apos;ll be charged £49 from month 2 onwards
+                  Subscribe monthly (£499) or annually (£4,990). The £499 comes off your first invoice
                 </span>
               </li>
               <li className="flex gap-2">
                 <span className="mt-0.5 shrink-0 font-semibold text-[var(--text-secondary)]">4.</span>
-                <span>Cancel anytime before month 2 to pay nothing</span>
+                <span>No minimum term. Cancel any time and keep access to the end of what you&apos;ve paid for</span>
               </li>
               <li className="flex gap-2">
                 <span className="mt-0.5 shrink-0 font-semibold text-[var(--text-secondary)]">5.</span>
                 <span>
-                  When you complete your first paid month, {termsName} earns £79 credit - 1 month
-                  free on their subscription as a thank you
+                  When you complete your first paid month, {termsName} gets £499 off their next invoice as a
+                  thank you
                 </span>
               </li>
             </ol>
             <p className="mt-6 text-[12px] leading-relaxed text-[var(--text-muted)]">
               This offer is valid for 30 days from today.
               <br />
-              One free month per email address.
+              One referral discount per email address.
               <br />
               New customers only.
             </p>

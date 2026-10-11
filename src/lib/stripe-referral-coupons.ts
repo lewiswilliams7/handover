@@ -1,7 +1,14 @@
 import type Stripe from "stripe";
 
-const META_WELCOME = "handover_referral_welcome";
-const META_REWARD = "handover_referral_reward";
+/**
+ * Referral coupons are a fixed £499 off, used once: one free month on monthly
+ * billing, £499 off on annual billing. A percentage coupon would make an annual
+ * subscription's first invoice (a whole year) free. The "_v2" keys stop the old
+ * 100%-off coupons being found and reused.
+ */
+const META_WELCOME = "handover_referral_welcome_v2";
+const META_REWARD = "handover_referral_reward_v2";
+export const REFERRAL_CREDIT_GBP = 499;
 
 function couponIdsFromDiscounts(sub: Stripe.Subscription): string[] {
   const out: string[] = [];
@@ -26,8 +33,8 @@ export function subscriptionHasCoupon(
 }
 
 /**
- * 100% off for one monthly billing period (repeating × 1 month).
- * Works for monthly subs; env override via STRIPE_REFERRAL_WELCOME_COUPON when valid.
+ * £499 off the referred customer's first invoice. Env override via
+ * STRIPE_REFERRAL_WELCOME_COUPON when valid.
  */
 export async function ensureWelcomeReferralCoupon(stripe: Stripe): Promise<string | null> {
   const envId = process.env.STRIPE_REFERRAL_WELCOME_COUPON?.trim();
@@ -49,10 +56,10 @@ export async function ensureWelcomeReferralCoupon(stripe: Stripe): Promise<strin
   if (existing) return existing.id;
 
   const created = await stripe.coupons.create({
-    name: "Referral welcome - 1 month free",
-    percent_off: 100,
-    duration: "repeating",
-    duration_in_months: 1,
+    name: "Referral welcome - £499 off",
+    amount_off: REFERRAL_CREDIT_GBP * 100,
+    currency: "gbp",
+    duration: "once",
     metadata: { [META_WELCOME]: "1" },
   });
   return created.id;
@@ -79,10 +86,10 @@ export async function ensureReferrerRewardCoupon(stripe: Stripe): Promise<string
   if (existing) return existing.id;
 
   const created = await stripe.coupons.create({
-    name: "Referral reward - 1 month free (referrer)",
-    percent_off: 100,
-    duration: "repeating",
-    duration_in_months: 1,
+    name: "Referral reward - £499 off (referrer)",
+    amount_off: REFERRAL_CREDIT_GBP * 100,
+    currency: "gbp",
+    duration: "once",
     metadata: { [META_REWARD]: "1" },
   });
   return created.id;

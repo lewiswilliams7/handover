@@ -19,16 +19,16 @@ const steps = [
   },
   {
     title: "They subscribe",
-    body: "They sign up and subscribe to any paid Handover plan when they’re ready.",
+    body: "They subscribe to Handover when they’re ready, with £499 off their first invoice.",
   },
   {
     title: "You both benefit",
-    body: "You receive 1 month free (£79 credit on Team) on your subscription automatically - they receive their first month free on signup.",
+    body: "Once they’ve been subscribed for a month, £499 comes off your next invoice automatically.",
   },
 ] as const;
 
 const termsLines = [
-  "Reward applies when the referred user subscribes to a paid plan and remains subscribed for 30 days.",
+  "Your reward applies when the referred MSP subscribes to Handover and stays subscribed for 30 days.",
   "Both the referrer and referee must have active Handover accounts.",
   "Referral rewards are applied as account credit, not cash.",
   "No limit on referrals - refer as many people as you like.",

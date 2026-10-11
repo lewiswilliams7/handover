@@ -134,6 +134,11 @@ export function MarketingFooter() {
                 </Link>
               </li>
               <li>
+                <Link href="/press" className={linkClass}>
+                  Press
+                </Link>
+              </li>
+              <li>
                 <Link href="/partners" className={linkClass}>
                   Partners
                 </Link>

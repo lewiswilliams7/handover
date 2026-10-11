@@ -16,7 +16,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return {
     title: normalized ? "You've been invited - Handover" : "Referral - Handover",
     description:
-      "Get your first month of Handover Pro free when you join through a referral link.",
+      "Get £499 off your first Handover invoice when you join through a referral link.",
   };
 }
 

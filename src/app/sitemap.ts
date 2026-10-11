@@ -1,5 +1,6 @@
 import { MetadataRoute } from "next";
 import { BLOG_POSTS } from "@/lib/blog-data";
+import { PRESS_RELEASES } from "@/lib/press-releases";
 
 const today = new Date();
 
@@ -28,6 +29,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: today,
       changeFrequency: "monthly" as const,
       priority: 0.8,
+    },
+    {
+      url: "https://gethandover.uk/press",
+      lastModified: today,
+      changeFrequency: "monthly" as const,
+      priority: 0.6,
     },
     {
       url: "https://gethandover.uk/compare",
@@ -424,5 +431,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
     })),
   ];
 
-  return [...staticRoutes, ...blogRoutes];
+  const pressRoutes: MetadataRoute.Sitemap = PRESS_RELEASES.map((release) => ({
+    url: `https://gethandover.uk/press/${release.slug}`,
+    lastModified: new Date(release.dateISO),
+    changeFrequency: "yearly" as const,
+    priority: 0.6,
+  }));
+  return [...staticRoutes, ...blogRoutes, ...pressRoutes];
 }
