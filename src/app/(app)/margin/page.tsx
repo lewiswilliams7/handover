@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { MarginClient } from "@/app/(app)/margin/margin-client";
 import { buildClientMargin } from "@/lib/client-margin";
 import { getClaimedScanForUser } from "@/lib/psa/scan-session";
+import { applyManualValues, loadManualValues } from "@/lib/manual-client-values";
 import { userCanViewScanDetails } from "@/lib/scan-entitlement";
 import { createServerClient } from "@/lib/supabase/server";
 
@@ -26,7 +27,9 @@ export default async function MarginPage() {
   }
 
   const scan = await getClaimedScanForUser(user.id);
-  const results = scan?.results ?? null;
+  // Values typed in by hand fill any client the PSA holds no value for.
+  const manualValues = await loadManualValues(supabase, user.id);
+  const results = scan?.results ? applyManualValues(scan.results, manualValues) : null;
   const margin =
     results?.clientMonthly
       ? buildClientMargin({
@@ -44,6 +47,7 @@ export default async function MarginPage() {
     <MarginClient
       state={!results ? "no_scan" : !results.clientMonthly ? "stale_scan" : "ready"}
       margin={margin}
+      manualValues={manualValues}
       scannedAt={scan?.createdAt ?? null}
     />
   );

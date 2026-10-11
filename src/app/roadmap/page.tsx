@@ -57,6 +57,11 @@ const shipped: RoadmapItem[] = [
     badge: "Prove",
   },
   {
+    title: "The Monday Brief",
+    desc: "The owner's week by email every Monday, plus same-day alerts when a top-ten client changes.",
+    badge: "Protect",
+  },
+  {
     title: "Renewal Radar",
     desc: "Every contract ending in the next year with its client's signals and margin, and the move to make.",
     badge: "Protect",

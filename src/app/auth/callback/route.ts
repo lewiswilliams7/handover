@@ -37,9 +37,9 @@ const EMAIL_CONFIRMATION_TYPES = new Set<string>([
 ]);
 
 function safeNextPath(raw: string | null): string {
-  if (!raw || typeof raw !== "string") return "/attention";
+  if (!raw || typeof raw !== "string") return "/week";
   const t = raw.trim();
-  if (!t.startsWith("/") || t.startsWith("//")) return "/attention";
+  if (!t.startsWith("/") || t.startsWith("//")) return "/week";
   return t;
 }
 
@@ -223,7 +223,7 @@ export async function GET(request: NextRequest) {
    * Post-login redirect: `next` is set by email links and OAuth (see auth form).
    * Never reject redirects based on `profiles.plan` — all trial and paid SKUs use the same session.
    */
-  const successPath = nextPath === "/" ? "/attention" : nextPath;
+  const successPath = nextPath === "/" ? "/week" : nextPath;
   let successUrl = new URL(successPath, request.nextUrl.origin);
   const redirectResponse = NextResponse.redirect(successUrl);
 

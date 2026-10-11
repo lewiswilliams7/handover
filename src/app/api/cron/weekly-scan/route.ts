@@ -6,6 +6,7 @@ import {
   type ScheduledScanOutcome,
 } from "@/lib/server/scheduled-scan";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
+import { sendTopClientAlerts } from "@/lib/server/top-client-alerts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,7 +35,14 @@ export async function GET(req: Request) {
   for (const userId of due) {
     if (Date.now() - started > TIME_BUDGET_MS) break;
     try {
-      outcomes.push(await runScheduledScanForUser(admin, userId));
+      const outcome = await runScheduledScanForUser(admin, userId);
+      outcomes.push(outcome);
+      if (outcome.status === "scanned") {
+        // A new warning on a top-ten client should not wait for Monday.
+        await sendTopClientAlerts(admin, userId).catch((error) =>
+          console.error("[cron/weekly-scan] alert failed", userId, error),
+        );
+      }
     } catch (error) {
       console.error("[cron/weekly-scan] user failed", userId, error);
       outcomes.push({ userId, status: "failed", reason: "unexpected_error" });

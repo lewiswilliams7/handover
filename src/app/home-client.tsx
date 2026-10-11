@@ -2865,7 +2865,7 @@ export default function Home() {
     if (settings.open || showSuccessBanner) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("openSettings") || params.get("success")) return;
-    router.replace("/attention");
+    router.replace("/week");
   }, [authChecked, userEmail, mainView, settings.open, showSuccessBanner, router]);
 
   const [reportsSubView, setReportsSubView] = useState<

@@ -23,6 +23,7 @@ const FEATURE_GROUPS: ReadonlyArray<{ title: string; items: ReadonlyArray<Featur
       { label: "Saved Revenue tracking", href: "/features/revenue-at-risk#saved-revenue" },
       { label: "Client Margin: revenue per hour for every client", href: "/features/client-margin" },
       { label: "Renewal Radar: every renewal, planned months ahead", href: "/features/renewal-radar" },
+      { label: "The Monday Brief and top-client alerts by email", href: "/features/monday-brief" },
       { label: "Handover Client Intelligence™ signals and weekly digest", href: "/features/client-intelligence" },
     ],
   },

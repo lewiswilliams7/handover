@@ -76,11 +76,11 @@ const STEP_CLIENT_INTELLIGENCE: DriveStep = {
 };
 
 const STEP_SCHEDULED: DriveStep = {
-  element: '[data-tour="nav-scheduled"]',
+  element: '[data-tour="nav-value-receipts"]',
   popover: {
-    title: "Show your value on a schedule",
+    title: "Show your value every month",
     description:
-      "Service reviews and QBR packs go out automatically to the people who renew. Want a final check first? Approvals holds them for your sign-off.",
+      "Value Receipts put what you did in front of the person who renews, one page a month, sent automatically. Renewal Radar tells you who to send one to before their contract ends.",
     side: "right",
     align: "start",
   },

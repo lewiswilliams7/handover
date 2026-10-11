@@ -5,6 +5,7 @@ import { RenewalsClient } from "@/app/(app)/renewals/renewals-client";
 import { buildClientMargin } from "@/lib/client-margin";
 import { getClaimedScanForUser } from "@/lib/psa/scan-session";
 import { buildRenewalRadar } from "@/lib/renewal-radar";
+import { applyManualValues, loadManualValues } from "@/lib/manual-client-values";
 import { userCanViewScanDetails } from "@/lib/scan-entitlement";
 import { createServerClient } from "@/lib/supabase/server";
 
@@ -27,7 +28,10 @@ export default async function RenewalsPage() {
   }
 
   const scan = await getClaimedScanForUser(user.id);
-  const results = scan?.results ?? null;
+  // Values typed in by hand fill any client the PSA holds no value for.
+  const results = scan?.results
+    ? applyManualValues(scan.results, await loadManualValues(supabase, user.id))
+    : null;
   const findings = (results?.findings ?? []).map((finding) => ({
     clientId: finding.clientId,
     type: finding.type,

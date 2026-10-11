@@ -30,13 +30,13 @@ export default async function HomePage({
     return value != null;
   });
   if (!opensInAppView) {
-    // Signed-in users land on Revenue at Risk, decided on the server so the old
+    // Signed-in users land on This week, decided on the server so the old
     // Overview never flashes or rewrites the address bar first.
     const supabase = await createServerClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (user) redirect("/attention");
+    if (user) redirect("/week");
   }
 
   return (

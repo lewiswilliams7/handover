@@ -5,6 +5,7 @@ import {
   ArrowLeftRight,
   Brain,
   CalendarClock,
+  Mail,
   FileSpreadsheet,
   LayoutTemplate,
   Paintbrush,
@@ -82,6 +83,12 @@ const PROTECT: FeatureCard[] = [
     body: "Every contract ending in the next year, with service signals and margin side by side: save, reprice or renew early.",
     href: "/features/renewal-radar",
     Icon: CalendarClock,
+  },
+  {
+    title: "The Monday Brief",
+    body: "Your week by email every Monday: what is at risk, what changed, what renews and the three moves to make. Instant alerts for top clients.",
+    href: "/features/monday-brief",
+    Icon: Mail,
   },
 ];
 

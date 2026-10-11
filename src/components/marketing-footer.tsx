@@ -86,6 +86,11 @@ export function MarketingFooter() {
                 </Link>
               </li>
               <li>
+                <Link href="/features/monday-brief" className={linkClass}>
+                  The Monday Brief
+                </Link>
+              </li>
+              <li>
                 <Link href="/features" className={linkClass}>
                   Features
                 </Link>

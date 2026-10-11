@@ -49,7 +49,7 @@ export function EvidenceChips({
         <button
           type="button"
           onClick={() => setShowAll((value) => !value)}
-          className="rounded-md px-1.5 py-0.5 font-semibold text-[var(--text-secondary)] hover:text-white"
+          className="min-h-0 rounded-md px-1.5 py-0.5 font-semibold text-[var(--text-secondary)] hover:text-white"
         >
           {showAll ? "Show fewer" : `+${links.length - VISIBLE} more`}
         </button>

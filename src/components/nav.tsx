@@ -8,6 +8,7 @@ import {
   CalendarClock,
   ChevronDown,
   ClipboardCheck,
+  Mail,
   Menu,
   Moon,
   PoundSterling,
@@ -74,6 +75,12 @@ const CLIENT_INTELLIGENCE_NAV: MegaNavItem[] = [
     href: "/features/renewal-radar",
     description: "Every renewal in the next year, with the move to make.",
     Icon: CalendarClock,
+  },
+  {
+    label: "The Monday Brief",
+    href: "/features/monday-brief",
+    description: "Your week by email every Monday, with top-client alerts.",
+    Icon: Mail,
   },
   {
     label: "Client Intelligence™",

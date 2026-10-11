@@ -179,7 +179,7 @@ export function AuthForm({
   const destinationAfterSignIn = useMemo(() => {
     const base = safeInternalPath(returnTo);
     if (base === "/welcome" && !trialPlan) return "/pricing";
-    if (!base || base === "/") return appendTrialQueryToPath("/attention", trialPlan);
+    if (!base || base === "/") return appendTrialQueryToPath("/week", trialPlan);
     return destinationAfterAuth;
   }, [destinationAfterAuth, returnTo, trialPlan]);
   const resolvePostSignInDestination = async (): Promise<string> => {

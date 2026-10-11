@@ -5,6 +5,7 @@ import { compareScanFindings } from "@/lib/psa/scan-comparison";
 import { getClaimedScanForUser } from "@/lib/psa/scan-session";
 import { getPreviousClaimedScanForUser } from "@/lib/psa/scan-session";
 import { syncScanFindingLedger } from "@/lib/psa/scan-finding-ledger";
+import { applyManualValues, loadManualValues } from "@/lib/manual-client-values";
 import { userCanViewScanDetails } from "@/lib/scan-entitlement";
 import { createServerClient } from "@/lib/supabase/server";
 
@@ -57,7 +58,11 @@ export default async function AttentionPage() {
   }
   return (
     <AttentionClient
-      initialResults={claimedScan?.results ?? null}
+      initialResults={
+        claimedScan?.results
+          ? applyManualValues(claimedScan.results, await loadManualValues(supabase, user.id))
+          : null
+      }
       initialSessionId={claimedScan?.sessionId ?? null}
       initialSyncedAt={claimedScan?.createdAt ?? null}
       initialComparison={comparison}

@@ -20,6 +20,7 @@ import {
   ReceiptText,
   Rewind,
   CalendarClock,
+  ChevronDown,
   Scale,
   Settings,
   Shield,
@@ -670,6 +671,12 @@ function AppShellContent({ children }: { children: ReactNode }) {
     theme, setTheme, settings, settingsBodyContainer, setSettingsBodyContainer, invokeOnSignOut, signOutRegistered,
   } = useAppShell();
   const [confirmSignOut, setConfirmSignOut] = useState(false);
+  // Legacy tools live under "More", open when the current page is one of them.
+  const legacyViews = ["scheduled", "approvals", "organisation", "generate", "delivery"];
+  const [moreOpen, setMoreOpen] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return legacyViews.includes(new URLSearchParams(window.location.search).get("view") ?? "");
+  });
   const [activeView, setActiveView] = useState<MainView>(() => {
     if (typeof window === "undefined") return "overview";
     const value = new URLSearchParams(window.location.search).get("view");
@@ -732,6 +739,8 @@ function AppShellContent({ children }: { children: ReactNode }) {
             : "Revenue at Risk"
         : pathname === "/receipts"
           ? "Value Receipts"
+          : pathname === "/week"
+            ? "This week"
           : pathname === "/renewals"
             ? "Renewal Radar"
           : pathname === "/margin"
@@ -796,22 +805,35 @@ function AppShellContent({ children }: { children: ReactNode }) {
           <div className="sidebar-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 md:overscroll-auto">
             <nav className="mb-4 flex flex-col gap-2" aria-label="Main navigation">
               <div className="space-y-0.5">
+                <Link href="/week" onClick={closeMobile} title="This week" className={`relative flex h-8 w-full items-center rounded-[var(--radius)] border-l-2 text-[12px] transition-all duration-[120ms] ${expanded ? "gap-1.5 px-2.5" : "justify-center px-0"} ${pathname === "/week" && !settings.open ? "border-[var(--accent)] bg-[var(--accent)]/15 font-medium text-white" : "border-transparent text-[var(--text-secondary)] hover:bg-white/5 hover:text-white"}`}><Sun className="size-[14px]" /><span className={labelClass}>This week</span></Link>
+              </div>
+              <div className="space-y-0.5">
                 <div className={sectionLabelClass.replace("mt-4 ", "mt-1 ")}>Protect</div>
                 <Link href="/attention" data-tour="nav-revenue-at-risk" onClick={closeMobile} className={attentionNavClass("risk")} title="Revenue at Risk"><PoundSterling className="size-[14px]" /><span className={labelClass}>Revenue at Risk</span></Link>
                 <Link href="/attention?tab=replay" data-tour="nav-churn-replay" onClick={closeMobile} className={attentionNavClass("replay")} title="Churn Replay"><Rewind className="size-[14px]" /><span className={labelClass}>Churn Replay</span></Link>
-                <Link href="/margin" onClick={closeMobile} title="Client Margin" className={`relative flex h-8 w-full items-center rounded-[var(--radius)] border-l-2 text-[12px] transition-all duration-[120ms] ${expanded ? "gap-1.5 px-2.5" : "justify-center px-0"} ${pathname === "/margin" && !settings.open ? "border-[var(--accent)] bg-[var(--accent)]/15 font-medium text-white" : "border-transparent text-[var(--text-secondary)] hover:bg-white/5 hover:text-white"}`}><Scale className="size-[14px]" /><span className={labelClass}>Client Margin</span></Link>
                 <Link href="/renewals" onClick={closeMobile} title="Renewal Radar" className={`relative flex h-8 w-full items-center rounded-[var(--radius)] border-l-2 text-[12px] transition-all duration-[120ms] ${expanded ? "gap-1.5 px-2.5" : "justify-center px-0"} ${pathname === "/renewals" && !settings.open ? "border-[var(--accent)] bg-[var(--accent)]/15 font-medium text-white" : "border-transparent text-[var(--text-secondary)] hover:bg-white/5 hover:text-white"}`}><CalendarClock className="size-[14px]" /><span className={labelClass}>Renewal Radar</span></Link>
+                <Link href="/margin" onClick={closeMobile} title="Client Margin" className={`relative flex h-8 w-full items-center rounded-[var(--radius)] border-l-2 text-[12px] transition-all duration-[120ms] ${expanded ? "gap-1.5 px-2.5" : "justify-center px-0"} ${pathname === "/margin" && !settings.open ? "border-[var(--accent)] bg-[var(--accent)]/15 font-medium text-white" : "border-transparent text-[var(--text-secondary)] hover:bg-white/5 hover:text-white"}`}><Scale className="size-[14px]" /><span className={labelClass}>Client Margin</span></Link>
                 <Link href="/?view=client-intelligence" data-tour="nav-client-intelligence" onClick={closeMobile} className={navClass("client-intelligence")} title="Clients"><Users className="size-[14px]" /><span className={labelClass}>Clients</span></Link>
-                {entitlement.hasProAccess && teamVisibility.deliveryAccess !== "none" ? <Link href="/?view=delivery" onClick={closeMobile} className={navClass("delivery")} title="Delivery health"><BarChart3 className="size-[14px]" /><span className={labelClass}>Delivery health</span></Link> : null}
               </div>
               <div className="space-y-0.5">
                 <div className={sectionLabelClass}>Prove</div>
-                <Link href="/receipts" onClick={closeMobile} title="Value Receipts" className={`relative flex h-8 w-full items-center rounded-[var(--radius)] border-l-2 text-[12px] transition-all duration-[120ms] ${expanded ? "gap-1.5 px-2.5" : "justify-center px-0"} ${pathname === "/receipts" && !settings.open ? "border-[var(--accent)] bg-[var(--accent)]/15 font-medium text-white" : "border-transparent text-[var(--text-secondary)] hover:bg-white/5 hover:text-white"}`}><ReceiptText className="size-[14px]" /><span className={labelClass}>Value Receipts</span></Link>
+                <Link href="/receipts" data-tour="nav-value-receipts" onClick={closeMobile} title="Value Receipts" className={`relative flex h-8 w-full items-center rounded-[var(--radius)] border-l-2 text-[12px] transition-all duration-[120ms] ${expanded ? "gap-1.5 px-2.5" : "justify-center px-0"} ${pathname === "/receipts" && !settings.open ? "border-[var(--accent)] bg-[var(--accent)]/15 font-medium text-white" : "border-transparent text-[var(--text-secondary)] hover:bg-white/5 hover:text-white"}`}><ReceiptText className="size-[14px]" /><span className={labelClass}>Value Receipts</span></Link>
                 <Link href="/?view=reports" onClick={closeMobile} className={navClass("reports")} title="Reports"><LayoutTemplate className="size-[14px]" /><span className={labelClass}>Reports</span></Link>
-                <Link href="/?view=scheduled" data-tour="nav-scheduled" onClick={closeMobile} className={navClass("scheduled")} title="Scheduled"><Calendar className="size-[14px]" /><span className={labelClass}>Scheduled</span></Link>
-                <Link href="/?view=approvals" onClick={closeMobile} className={navClass("approvals")} title="Approvals"><ClipboardCheck className="size-[14px]" /><span className={labelClass}>Approvals</span></Link>
-                {entitlement.hasProAccess ? <Link href="/?view=organisation" onClick={closeMobile} className={navClass("organisation")} title="Client portal"><Building2 className="size-[14px]" /><span className={labelClass}>Client portal</span></Link> : null}
-                <Link href="/?view=generate" onClick={closeMobile} className={navClass("generate")} title="Quick update"><Zap className="size-[14px]" /><span className={labelClass}>Quick update</span></Link>
+              </div>
+              <div className="space-y-0.5">
+                <button type="button" onClick={() => setMoreOpen((value) => !value)} aria-expanded={moreOpen} className={`${sectionLabelClass} flex min-h-0 w-full items-center justify-between text-left hover:text-white/70`}>
+                  <span>More</span>
+                  <ChevronDown className={`size-3 transition-transform motion-reduce:transition-none ${moreOpen ? "rotate-180" : ""} ${!expanded ? "md:hidden" : ""}`} aria-hidden />
+                </button>
+                {moreOpen ? (
+                  <>
+                    <Link href="/?view=scheduled" data-tour="nav-scheduled" onClick={closeMobile} className={navClass("scheduled")} title="Scheduled"><Calendar className="size-[14px]" /><span className={labelClass}>Scheduled</span></Link>
+                    <Link href="/?view=approvals" onClick={closeMobile} className={navClass("approvals")} title="Approvals"><ClipboardCheck className="size-[14px]" /><span className={labelClass}>Approvals</span></Link>
+                    {entitlement.hasProAccess ? <Link href="/?view=organisation" onClick={closeMobile} className={navClass("organisation")} title="Client portal"><Building2 className="size-[14px]" /><span className={labelClass}>Client portal</span></Link> : null}
+                    <Link href="/?view=generate" onClick={closeMobile} className={navClass("generate")} title="Quick update"><Zap className="size-[14px]" /><span className={labelClass}>Quick update</span></Link>
+                    {entitlement.hasProAccess && teamVisibility.deliveryAccess !== "none" ? <Link href="/?view=delivery" onClick={closeMobile} className={navClass("delivery")} title="Delivery health"><BarChart3 className="size-[14px]" /><span className={labelClass}>Delivery health</span></Link> : null}
+                  </>
+                ) : null}
               </div>
               <div><div className={sectionLabelClass}>Settings</div>
                 <Link href="/?view=configuration" onClick={closeMobile} className={navClass("configuration")}><Settings className="size-[14px]" /><span className={labelClass}>Configuration</span></Link>
