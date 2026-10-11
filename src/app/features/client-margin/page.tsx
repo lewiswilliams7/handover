@@ -93,9 +93,15 @@ export default function ClientMarginFeaturePage() {
             not need to enter salaries or overheads.
           </p>
           <p>
-            A client is only measured when it has a contract value and time is logged on most of its
-            tickets. Anything that cannot be measured is listed with the reason, so you know exactly
-            what to fix in your PSA.
+            If your team doesn&apos;t log time on most tickets, Handover measures revenue per ticket
+            instead, using the tickets each client raises. It is less precise, because a password reset
+            counts the same as a server rebuild, but it still shows who creates far more work than they
+            pay for. It switches to hours by itself once time is logged.
+          </p>
+          <p>
+            A client is only measured when it has a monthly value and enough tickets to compare. If your
+            PSA has no value for a client, you can type one in, and you can hide your own company or test
+            clients. Anything that cannot be measured is listed with the reason.
           </p>
           <p>
             Margin sits next to{" "}

@@ -4,6 +4,7 @@ import { ArrowRight, CalendarClock } from "lucide-react";
 import Link from "next/link";
 
 import { InfoTip } from "@/components/info-tip";
+import { rateUnit, workLabel, type MarginBasis } from "@/lib/client-margin";
 import { RENEWAL_MOVE_COPY, type RenewalMove, type RenewalRadar, type RenewalRow } from "@/lib/renewal-radar";
 
 type Props = {
@@ -99,7 +100,7 @@ export function RenewalsClient({ state, radar, contractsReadable, scannedAt }: P
               {radar.repriceAnnualUplift > 0 ? (
                 <Stat
                   label="Margin gap on renewals"
-                  tip="For renewing clients who take far more time than they pay for: what they would pay at your typical revenue per hour, minus today's price. A starting point for the renewal, not a demand."
+                  tip={`For renewing clients who create far more work than they pay for: what they would pay at your typical revenue per ${rateUnit(radar.basis)}, minus today's price. A starting point for the renewal, not a demand.`}
                   value={money(radar.repriceAnnualUplift)}
                   suffix=" a year"
                   note="On thin-margin renewals, at your typical rate"
@@ -128,7 +129,7 @@ export function RenewalsClient({ state, radar, contractsReadable, scannedAt }: P
                   </h2>
                   <div className="mt-4 grid gap-3">
                     {rows.map((row) => (
-                      <RenewalCard key={row.clientId} row={row} median={radar.medianRevenuePerHour} />
+                      <RenewalCard key={row.clientId} row={row} median={radar.medianRate} basis={radar.basis} />
                     ))}
                   </div>
                 </section>
@@ -137,7 +138,7 @@ export function RenewalsClient({ state, radar, contractsReadable, scannedAt }: P
 
             <p className="mt-10 max-w-3xl text-xs leading-5 text-[var(--text-muted)]">
               Warning signs are the open signals on Revenue at Risk. Margin comes from Client Margin:
-              monthly contract value against hours logged over the last three complete months. A
+              monthly value against {radar.basis === "hours" ? "hours logged" : "tickets raised"} over the last three complete months. A
               recommendation only uses what is shown on this page; where margin cannot be measured,
               it is left out rather than guessed.
             </p>
@@ -199,7 +200,7 @@ function Stat({
   );
 }
 
-function RenewalCard({ row, median }: { row: RenewalRow; median: number | null }) {
+function RenewalCard({ row, median, basis }: { row: RenewalRow; median: number | null; basis: MarginBasis }) {
   const copy = RENEWAL_MOVE_COPY[row.move];
   return (
     <article
@@ -237,12 +238,13 @@ function RenewalCard({ row, median }: { row: RenewalRow; median: number | null }
             {copy.title}
           </span>
           <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{copy.body}</p>
-          {row.repriceTarget != null && row.monthlyValue != null && median && row.hoursPerMonth ? (
+          {row.repriceTarget != null && row.monthlyValue != null && median && row.workPerMonth ? (
             <p className="mt-2 text-sm leading-6 text-amber-100">
-              {money(row.monthlyValue)} a month buys {Math.round((row.monthlyValue / median) * 10) / 10} hours
-              at your typical rate. They take {Math.round(row.hoursPerMonth)}. Matching your typical rate
-              would mean {money(row.repriceTarget)} a month, so even a partial rise, or a tighter scope, is
-              worth putting on the table.
+              At your typical rate, {money(row.monthlyValue)} a month covers{" "}
+              {workLabel(row.monthlyValue / median, basis)}. They create{" "}
+              {workLabel(row.workPerMonth, basis)} a month. Matching your typical rate would mean{" "}
+              {money(row.repriceTarget)} a month, so even a partial rise, or a tighter scope, is worth putting
+              on the table.
             </p>
           ) : null}
         </div>
@@ -261,7 +263,7 @@ function RenewalCard({ row, median }: { row: RenewalRow; median: number | null }
               )}
             </dd>
           </div>
-          {row.revenuePerHour == null && row.marginUnmeasuredReason ? (
+          {row.rate == null && row.marginUnmeasuredReason ? (
             <div>
               <dt className="text-xs text-[var(--text-muted)]">Margin</dt>
               <dd className="mt-1 text-[var(--text-secondary)]">
@@ -269,11 +271,11 @@ function RenewalCard({ row, median }: { row: RenewalRow; median: number | null }
               </dd>
             </div>
           ) : null}
-          {row.revenuePerHour != null ? (
+          {row.rate != null ? (
             <div>
               <dt className="text-xs text-[var(--text-muted)]">Margin</dt>
               <dd className="mt-1 text-[var(--text-secondary)]">
-                <span className="font-semibold text-white">{money(row.revenuePerHour)}</span> per hour
+                <span className="font-semibold text-white">{money(row.rate)}</span> per {rateUnit(basis)}
                 {row.vsMedian != null && median != null ? (
                   <span className={row.vsMedian < 0.75 ? "text-amber-200" : "text-[var(--text-muted)]"}>
                     {" "}

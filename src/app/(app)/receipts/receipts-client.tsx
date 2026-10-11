@@ -399,7 +399,27 @@ export function ReceiptPaper({
           </dl>
         ) : null}
 
-        <div className="mt-8 grid gap-8 md:grid-cols-2">
+        {receipt.highlights.length > 0 ? (
+          <section className="mt-8 break-inside-avoid" aria-label="Some of what we worked on">
+            <h3 className="text-sm font-semibold text-slate-900">Some of what we worked on</h3>
+            <ul className="mt-3 grid gap-2">
+              {receipt.highlights.map((item, index) => (
+                <li
+                  key={`${item.summary}-${index}`}
+                  className="flex items-start justify-between gap-4 rounded-xl border border-slate-200 py-3 pl-4 pr-4"
+                  style={{ borderLeft: `4px solid ${accent}` }}
+                >
+                  <span className="text-[15px] leading-6 text-slate-800">{item.summary}</span>
+                  {item.note ? <span className="shrink-0 text-xs font-medium text-slate-500">{item.note}</span> : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        <div
+          className={`mt-8 grid gap-8 ${receipt.trend.length >= 2 && receipt.workTypes.length > 0 ? "md:grid-cols-2" : ""}`}
+        >
           {receipt.trend.length >= 2 ? (
             <section aria-label="Requests resolved, month by month">
               <h3 className="text-sm font-semibold text-slate-900">Requests resolved, month by month</h3>
@@ -433,9 +453,7 @@ export function ReceiptPaper({
                     <li key={type.type}>
                       <div className="flex items-baseline justify-between text-sm">
                         <span className="text-slate-700">{type.type}</span>
-                        <span className="tabular-nums text-slate-500">
-                          {type.count} <span className="text-slate-400">· {pct}%</span>
-                        </span>
+                        <span className="tabular-nums font-medium text-slate-600">{pct}%</span>
                       </div>
                       <div className="mt-1 h-2 rounded-full bg-slate-200">
                         <div className="h-2 rounded-full" style={{ width: `${pct}%`, background: accent }} />
@@ -459,6 +477,16 @@ export function ReceiptPaper({
                 </li>
               ))}
             </ul>
+          </section>
+        ) : null}
+
+        {receipt.recommendation ? (
+          <section
+            className="mt-6 break-inside-avoid rounded-xl border border-slate-200 bg-slate-50 p-5"
+            style={{ borderLeft: `4px solid ${accent}` }}
+          >
+            <h3 className="text-sm font-semibold text-slate-900">Worth knowing</h3>
+            <p className="mt-1.5 text-[15px] leading-7 text-slate-700">{receipt.recommendation}</p>
           </section>
         ) : null}
 

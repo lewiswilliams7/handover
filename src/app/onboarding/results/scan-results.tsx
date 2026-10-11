@@ -19,6 +19,7 @@ import {
 import { type ScanEvidenceRef } from "@/lib/psa/scan-evidence";
 import { BOOK_DEMO_CALENDLY_URL } from "@/lib/book-demo";
 import type { ChurnReplayPreview, ChurnReplayResult } from "@/lib/psa/churn-replay";
+import type { ScanHighlights } from "@/lib/scan-highlights";
 
 type AnonymousScanStatus = {
   status: string;
@@ -56,6 +57,7 @@ type AnonymousScanStatus = {
   instanceUrl?: string | null;
   churnReplay?: ChurnReplayResult | null;
   churnReplayPreview?: ChurnReplayPreview | null;
+  highlights?: ScanHighlights | null;
 };
 
 type ClaimState = {
@@ -148,6 +150,7 @@ type ScanResultsPayload = {
   instanceUrl?: string | null;
   churnReplay?: ChurnReplayResult | null;
   churnReplayPreview?: ChurnReplayPreview | null;
+  highlights?: ScanHighlights | null;
 };
 
 function statusFromResults(
@@ -188,6 +191,7 @@ function statusFromResults(
     instanceUrl: results.instanceUrl,
     churnReplay: results.churnReplay,
     churnReplayPreview: results.churnReplayPreview,
+    highlights: results.highlights,
   };
 }
 
@@ -951,6 +955,10 @@ export function ScanResults() {
           </>
         )}
 
+        {!outcome && !failure && scan.highlights ? (
+          <ProductHighlights highlights={scan.highlights} entitled={claimState?.entitled === true || scan.detailsEntitled === true} />
+        ) : null}
+
         {!outcome && !failure ? (
           <ScanChurnReplay scan={scan} entitled={claimState?.entitled === true} claimed={claimState !== null || scan.status === "claimed"} />
         ) : null}
@@ -1042,6 +1050,103 @@ export function ScanResults() {
         ) : null}
       </div>
     </main>
+  );
+}
+
+const MONTHS_FULL = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+function money(value: number): string {
+  return `£${Math.round(value).toLocaleString("en-GB")}`;
+}
+
+/**
+ * One card per product, each with its headline from this scan. Paying viewers
+ * get names and a link straight into the product; everyone else sees the
+ * numbers and what they unlock.
+ */
+export function ProductHighlights({ highlights, entitled }: { highlights: ScanHighlights; entitled: boolean }) {
+  const cards: Array<{ key: string; product: string; figure: string; body: string; href: string; cta: string }> = [];
+  const r = highlights.renewals;
+  if (r) {
+    cards.push({
+      key: "renewals",
+      product: "Renewal Radar",
+      figure: r.next90Count > 0 ? `${money(r.next90AnnualValue)} a year` : `${r.next12Count} renewal${r.next12Count === 1 ? "" : "s"}`,
+      body:
+        r.next90Count > 0
+          ? `renews in the next 90 days across ${r.next90Count} client${r.next90Count === 1 ? "" : "s"}${
+              r.next90AtRiskAnnualValue > 0 ? `, and ${money(r.next90AtRiskAnnualValue)} of it is with clients showing warning signs` : ""
+            }. Each one comes with what to do before the conversation.`
+          : `in the next 12 months${r.nextDays != null ? `, the first in ${r.nextDays} days${r.nextClient ? ` (${r.nextClient})` : ""}` : ""}. Each one comes with what to do before the conversation.`,
+      href: "/renewals",
+      cta: "Open Renewal Radar",
+    });
+  }
+  const m = highlights.margin;
+  if (m) {
+    cards.push({
+      key: "margin",
+      product: "Client Margin",
+      figure: m.annualGap > 0 ? `${money(m.annualGap)} a year` : `${money(m.medianRate)} per ${m.unit}`,
+      body:
+        m.annualGap > 0
+          ? `is the gap on ${m.thinCount} client${m.thinCount === 1 ? "" : "s"} who create far more work than they pay for, against your typical ${money(m.medianRate)} per ${m.unit}.${
+              m.lowestClient && m.lowestRate != null ? ` Lowest: ${m.lowestClient} at ${money(m.lowestRate)}.` : ""
+            }`
+          : `is what your typical client pays per ${m.unit} of work, measured across ${m.measured} clients. Nobody is far below it.`,
+      href: "/margin",
+      cta: "Open Client Margin",
+    });
+  }
+  const rc = highlights.receipts;
+  if (rc) {
+    const month = MONTHS_FULL[Number(rc.month.slice(5, 7)) - 1] ?? rc.month;
+    cards.push({
+      key: "receipts",
+      product: "Value Receipts",
+      figure: `${rc.clients} ready to send`,
+      body: `one-page summaries for ${month}, built from ${rc.resolved.toLocaleString("en-GB")} resolved requests${
+        rc.hours != null ? ` and ${rc.hours.toLocaleString("en-GB")} hours of work` : ""
+      }. Your branding, sent from your address, so clients see what they pay for.`,
+      href: "/receipts",
+      cta: "Preview a receipt",
+    });
+  }
+  const rec = highlights.recurring;
+  if (rec) {
+    cards.push({
+      key: "recurring",
+      product: "Recurring work",
+      figure: `${rec.count} × ${rec.label.split(" › ").at(-1) ?? rec.label}`,
+      body: `${rec.label.includes(" › ") ? `(${rec.label}) ` : ""}in ${rec.months} months, across ${rec.clients} client${rec.clients === 1 ? "" : "s"}. Repeated work is either a root cause to fix or a project to sell.`,
+      href: "/clients",
+      cta: "See it by client",
+    });
+  }
+  if (cards.length === 0) return null;
+  return (
+    <section className="mt-8" aria-labelledby="also-found">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/45">Also in this scan</p>
+      <h2 id="also-found" className="mt-2 text-2xl font-semibold">What else Handover found</h2>
+      <div className="mt-5 grid gap-4 md:grid-cols-2">
+        {cards.map((card) => (
+          <article key={card.key} className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cyan-200/80">{card.product}</p>
+            <p className="mt-3 text-2xl font-semibold tracking-tight text-white">{card.figure}</p>
+            <p className="mt-2 flex-1 text-sm leading-6 text-white/60">{card.body}</p>
+            {entitled ? (
+              <Link href={card.href} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-cyan-200 hover:text-cyan-100">
+                {card.cta} <ArrowRight className="size-4" aria-hidden />
+              </Link>
+            ) : (
+              <span className="mt-4 inline-flex items-center gap-1.5 text-xs text-white/45">
+                <LockKeyhole className="size-3.5" aria-hidden /> Client names and the full view are part of Handover
+              </span>
+            )}
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 

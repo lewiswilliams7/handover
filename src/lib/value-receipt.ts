@@ -7,7 +7,7 @@
  * invented. Wording is plain, client-facing and never mentions Handover, the
  * scan, contract values or internal targets.
  */
-import type { ClientMonthStats, ClientMonthly } from "@/lib/psa/client-monthly";
+import { cleanTicketTitle as cleanTitle, type ClientMonthStats, type ClientMonthly, type NotableTicket } from "@/lib/psa/client-monthly";
 
 export type ReceiptStat = {
   key: string;
@@ -29,8 +29,16 @@ export type ValueReceipt = {
   stats: ReceiptStat[];
   /** Short paragraphs, in order. */
   summary: string[];
-  /** Most common kinds of work this month. */
+  /**
+   * Most common kinds of work this period: categories when the PSA records
+   * them, otherwise ticket types. Empty when everything is one kind, since a
+   * single 100% bar tells the client nothing.
+   */
   workTypes: Array<{ type: string; count: number }>;
+  /** Pieces of work worth naming: urgent first, then the most time spent. */
+  highlights: Array<{ summary: string; note: string | null }>;
+  /** One consultative observation for the client, when the data supports it. */
+  recommendation: string | null;
   /** Requests still open at the end of the month. */
   inProgress: number;
   /** False when there is too little activity to be worth sending. */
@@ -86,8 +94,8 @@ export function formatDuration(hours: number | null): string {
 }
 
 function formatHoursWorked(hours: number): string {
-  const rounded = Math.round(hours * 2) / 2;
-  return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)} hours`;
+  const rounded = Math.max(0.5, Math.round(hours * 2) / 2);
+  return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)} ${rounded === 1 ? "hour" : "hours"}`;
 }
 
 function average(values: Array<number | null>): number | null {
@@ -112,6 +120,41 @@ function speedNote(
   if (change >= 0.15) return `Slower than ${against}, up from ${formatDuration(baseline)}`;
   return `In line with ${against}`;
 }
+
+function highlightNote(ticket: NotableTicket): string | null {
+  const parts: string[] = [];
+  if (ticket.urgent) parts.push("Urgent");
+  if (ticket.hours != null && ticket.hours >= 0.5) parts.push(formatHoursWorked(ticket.hours));
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+/** Kinds of work worth showing: categories first, and only when there is more than one. */
+function workBreakdown(stats: ClientMonthStats): Array<{ type: string; count: number }> {
+  const categories = (stats.topCategories ?? []).map((row) => ({ type: row.category, count: row.count }));
+  const types = stats.topTypes.filter((entry) => !/^\d+$/.test(entry.type.trim()));
+  const pick = categories.length >= 2 ? categories : types.length >= 2 ? types : [];
+  return pick.slice(0, 4);
+}
+
+/**
+ * One observation the client can act on. Only made when a single kind of
+ * request is both frequent and a large share of the period, so it is never
+ * noise.
+ */
+function recommendationFor(stats: ClientMonthStats, noun: "month" | "quarter"): string | null {
+  const top = stats.topCategories?.[0];
+  if (top && top.count >= 3 && stats.closed > 0 && top.count / stats.closed >= 0.3) {
+    const label = top.category.replaceAll(" › ", " – ");
+    return `${top.count} of the ${stats.closed} requests this ${noun} were about “${label}”. If it keeps coming up, we would be glad to look at fixing it at the root, so your team is interrupted less.`;
+  }
+  if (stats.outOfHours >= 3 && stats.opened > 0 && stats.outOfHours / stats.opened >= 0.25) {
+    return `${Math.round((stats.outOfHours / stats.opened) * 100)}% of requests came in outside office hours. If that reflects how your team works, it is worth talking about the cover you have in place.`;
+  }
+  return null;
+}
+
+/** On-time percentage below which the figure is left off the receipt and flagged to the MSP instead. */
+const SLA_SHOW_FROM = 80;
 
 /** Complete months available for a receipt, newest first. */
 export function receiptMonths(client: ClientMonthly, currentMonth: string): string[] {
@@ -149,17 +192,42 @@ export function buildValueReceipt(input: {
     ? null
     : `No requests were raised or resolved for ${clientName} in ${periodLabel}. A receipt with no activity is better replaced by a short check-in.`;
 
+  const baselineClosed = average(previous.map((m) => m.closed));
+  const volumeNote =
+    stats.urgentClosed > 0
+      ? `Including ${plural(stats.urgentClosed, "urgent issue", "urgent issues")}`
+      : baselineClosed != null && previous.length >= 2 && baselineClosed >= 3
+        ? stats.closed >= baselineClosed * 1.25
+          ? `Busier than ${noun === "quarter" ? "last quarter" : "usual"}`
+          : stats.closed <= baselineClosed * 0.75
+            ? `Quieter than ${noun === "quarter" ? "last quarter" : "usual"}`
+            : undefined
+        : undefined;
   const receiptStats: ReceiptStat[] = [
     {
       key: "resolved",
       label: "Requests resolved",
       value: stats.closed.toLocaleString("en-GB"),
-      note:
-        stats.urgentClosed > 0
-          ? `Including ${plural(stats.urgentClosed, "urgent issue", "urgent issues")}`
-          : undefined,
+      note: volumeNote,
     },
   ];
+  // Fix-by targets: only when most of the period's tickets carried one. A weak
+  // figure is flagged to the MSP in the app rather than sent to the client
+  // unannounced; they can raise it themselves.
+  const slaMeasured = stats.slaMeasured ?? 0;
+  const slaPct =
+    slaMeasured >= 5 && stats.closed > 0 && slaMeasured / stats.closed >= 0.5
+      ? Math.round(((stats.slaMet ?? 0) / slaMeasured) * 100)
+      : null;
+  if (slaPct != null && slaPct >= SLA_SHOW_FROM) {
+    const pct = slaPct;
+    receiptStats.push({
+      key: "sla",
+      label: "Resolved within the agreed time",
+      value: `${pct}%`,
+      note: `${stats.slaMet ?? 0} of ${slaMeasured} requests with a target`,
+    });
+  }
   if (hoursTracked) {
     receiptStats.push({
       key: "hours",
@@ -206,26 +274,24 @@ export function buildValueReceipt(input: {
   }
   const headline = `${headlineParts.join(", ")}.`;
 
+  // The summary only says what the numbers above do not: what changed and
+  // what is still open. Nothing is repeated.
   const summary: string[] = [];
+  const against = noun === "quarter" ? "last quarter" : "the previous three months";
+  if (volumeNote?.startsWith("Busier") && baselineClosed != null) {
+    summary.push(`A busier ${noun} than usual: ${stats.closed} requests resolved, against an average of ${Math.round(baselineClosed)} over ${against}.`);
+  } else if (volumeNote?.startsWith("Quieter") && baselineClosed != null) {
+    summary.push(`A quieter ${noun}: ${stats.closed} requests resolved, against an average of ${Math.round(baselineClosed)} over ${against}.`);
+  }
   const responseNote = speedNote(stats.firstResponseHours, baselineResponse, noun);
-  if (stats.firstResponseHours != null) {
-    summary.push(
-      `Your team usually heard back from us within ${formatDuration(stats.firstResponseHours)}${
-        responseNote?.startsWith("Faster")
-          ? `, quicker than ${noun === "quarter" ? "last quarter" : "in recent months"}`
-          : responseNote?.startsWith("Slower")
-            ? `, a little slower than ${noun === "quarter" ? "last quarter" : "in recent months"}`
-            : ""
-      }.`,
-    );
+  if (responseNote?.startsWith("Faster") && stats.firstResponseHours != null) {
+    summary.push(`First responses were quicker than ${against}, typically ${formatDuration(stats.firstResponseHours)}.`);
+  } else if (responseNote?.startsWith("Slower") && stats.firstResponseHours != null) {
+    summary.push(`First responses took a little longer than ${against}, typically ${formatDuration(stats.firstResponseHours)}. We are keeping an eye on it.`);
   }
-  if (stats.resolutionHours != null) {
-    summary.push(`Most issues were fully resolved within ${formatDuration(stats.resolutionHours)}.`);
-  }
-  if (stats.outOfHours > 0) {
-    summary.push(
-      `${plural(stats.outOfHours, "request was", "requests were")} raised outside office hours.`,
-    );
+  const resolutionNote = speedNote(stats.resolutionHours, baselineResolution, noun);
+  if (resolutionNote?.startsWith("Faster") && stats.resolutionHours != null) {
+    summary.push(`Issues were resolved faster than ${against}, typically within ${formatDuration(stats.resolutionHours)}.`);
   }
   if (stats.openAtEnd > 0) {
     summary.push(
@@ -243,13 +309,24 @@ export function buildValueReceipt(input: {
     headline,
     stats: receiptStats,
     summary,
-    // Older scans stored Halo type ids ("1"); never show a bare number as a kind of work.
-    workTypes: stats.topTypes.filter((entry) => !/^\d+$/.test(entry.type.trim())),
+    workTypes: workBreakdown(stats),
+    highlights: (stats.notable ?? [])
+      .map((ticket) => ({ summary: cleanTitle(ticket.summary), note: highlightNote(ticket) }))
+      .filter((item, index, all) => all.findIndex((other) => other.summary.toLowerCase() === item.summary.toLowerCase()) === index)
+      .slice(0, 3),
+    recommendation: recommendationFor(stats, noun),
     inProgress: stats.openAtEnd,
     sendable,
     unsendableReason,
     hoursTracked,
-    dataWarnings: receiptDataWarnings(stats, noun),
+    dataWarnings: [
+      ...receiptDataWarnings(stats, noun),
+      ...(slaPct != null && slaPct < SLA_SHOW_FROM
+        ? [
+            `Only ${slaPct}% of requests with a target were resolved within it this ${noun} (${stats.slaMet ?? 0} of ${slaMeasured}). It is left off the receipt so you can raise it with ${clientName} yourself, before they notice.`,
+          ]
+        : []),
+    ],
     period: noun,
     trend: receiptTrend(input.trendSource ?? { client, currentMonths: [month] }),
   };
@@ -298,6 +375,11 @@ export function valueReceiptText(
   for (const stat of receipt.stats) {
     lines.push(`${stat.label}: ${stat.value}${stat.note ? `. ${stat.note}.` : ""}`);
   }
+  if (receipt.highlights.length > 0) {
+    lines.push("");
+    lines.push(`Some of what we worked on:`);
+    for (const item of receipt.highlights) lines.push(`- ${item.summary}${item.note ? ` (${item.note})` : ""}`);
+  }
   if (receipt.workTypes.length > 0) {
     lines.push("");
     lines.push(
@@ -309,6 +391,10 @@ export function valueReceiptText(
   if (receipt.summary.length > 0) {
     lines.push("");
     lines.push(...receipt.summary);
+  }
+  if (receipt.recommendation) {
+    lines.push("");
+    lines.push(`Worth knowing: ${receipt.recommendation}`);
   }
   lines.push("");
   lines.push("If anything here does not match your experience, or there is something you would like us to focus on next month, just reply to this email.");
@@ -388,12 +474,31 @@ export function valueReceiptHtml(
           return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;"><tr>
             <td style="font:13px ${font};color:#334155;width:40%;">${escapeHtml(type.type)}</td>
             <td style="width:45%;"><div style="background:#e2e8f0;border-radius:4px;height:8px;"><div style="width:${pct}%;background:${accent};height:8px;border-radius:4px;"></div></div></td>
-            <td style="font:600 13px ${font};color:#0f172a;text-align:right;width:15%;">${type.count}</td>
+            <td style="font:600 13px ${font};color:#0f172a;text-align:right;width:15%;">${pct}%</td>
           </tr></table>`;
         })
         .join("")}</td></tr>`
       : "";
 
+  const highlights =
+    receipt.highlights.length > 0
+      ? `<tr><td style="padding:20px 32px 0;">
+      <div style="font:600 14px ${font};color:#0f172a;margin-bottom:10px;">Some of what we worked on</div>
+      ${receipt.highlights
+        .map(
+          (item) => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;border:1px solid #e2e8f0;border-radius:8px;"><tr>
+            <td style="width:4px;background:${accent};border-radius:8px 0 0 8px;"></td>
+            <td style="padding:10px 14px;font:14px/1.45 ${font};color:#0f172a;">${escapeHtml(item.summary)}${
+              item.note ? `<div style="font:12px ${font};color:#64748b;margin-top:2px;">${escapeHtml(item.note)}</div>` : ""
+            }</td></tr></table>`,
+        )
+        .join("")}</td></tr>`
+      : "";
+  const recommendation = receipt.recommendation
+    ? `<tr><td style="padding:20px 32px 0;"><div style="background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid ${accent};border-radius:8px;padding:12px 16px;">
+      <div style="font:600 13px ${font};color:#0f172a;margin-bottom:4px;">Worth knowing</div>
+      <div style="font:14px/1.55 ${font};color:#334155;">${escapeHtml(receipt.recommendation)}</div></div></td></tr>`
+    : "";
   const summary = receipt.summary
     .map((line) => `<li style="margin:0 0 6px;font:14px/1.6 ${font};color:#334155;">${escapeHtml(line)}</li>`)
     .join("");
@@ -413,8 +518,10 @@ export function valueReceiptHtml(
     </td></tr>
     <tr><td style="padding:16px 26px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${tileRows.join("")}</table></td></tr>
     ${trend}
+    ${highlights}
     ${types}
     ${summary ? `<tr><td style="padding:20px 32px 0;"><div style="font:600 14px ${font};color:#0f172a;margin-bottom:8px;">In summary</div><ul style="margin:0;padding-left:18px;">${summary}</ul></td></tr>` : ""}
+    ${recommendation}
     <tr><td style="padding:22px 32px 28px;">
       <p style="margin:0 0 12px;font:14px/1.6 ${font};color:#475569;">If anything here does not match your experience, or there is something you would like us to focus on ${nextPeriod}, just reply to this email.</p>
       <p style="margin:0;font:14px/1.6 ${font};color:#0f172a;">Best regards,<br>${signature}${
@@ -460,6 +567,14 @@ function weighted(values: Array<{ value: number | null; weight: number }>): numb
 function mergeMonths(months: ClientMonthStats[], key: string): ClientMonthStats {
   const types = new Map<string, number>();
   for (const month of months) for (const t of month.topTypes) types.set(t.type, (types.get(t.type) ?? 0) + t.count);
+  const categories = new Map<string, number>();
+  for (const month of months) {
+    for (const c of month.topCategories ?? []) categories.set(c.category, (categories.get(c.category) ?? 0) + c.count);
+  }
+  const notable = months
+    .flatMap((month) => month.notable ?? [])
+    .sort((a, b) => (b.urgent ? 1000 : 0) + (b.hours ?? 0) - ((a.urgent ? 1000 : 0) + (a.hours ?? 0)) || b.closedAt.localeCompare(a.closedAt))
+    .slice(0, 3);
   return {
     month: key,
     opened: months.reduce((sum, m) => sum + m.opened, 0),
@@ -478,6 +593,13 @@ function mergeMonths(months: ClientMonthStats[], key: string): ClientMonthStats 
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .slice(0, 3)
       .map(([type, count]) => ({ type, count })),
+    topCategories: [...categories.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 5)
+      .map(([category, count]) => ({ category, count })),
+    slaMeasured: months.reduce((sum, m) => sum + (m.slaMeasured ?? 0), 0),
+    slaMet: months.reduce((sum, m) => sum + (m.slaMet ?? 0), 0),
+    notable,
   };
 }
 

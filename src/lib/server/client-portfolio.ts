@@ -5,9 +5,9 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { buildClientMargin, type ClientMarginRow } from "@/lib/client-margin";
+import { buildClientMargin, type ClientMarginRow, type MarginBasis } from "@/lib/client-margin";
 import { applyManualValues, loadManualValues } from "@/lib/manual-client-values";
-import type { ClientMonthStats } from "@/lib/psa/client-monthly";
+import type { ClientMonthStats, RecentTicket } from "@/lib/psa/client-monthly";
 import { getFindingCopy } from "@/lib/psa/scan-finding-copy";
 import { getClaimedScanForUser, type ClientContact, type StoredScanResults } from "@/lib/psa/scan-session";
 import { buildRenewalRadar, RENEWAL_MOVE_COPY, type RenewalRow } from "@/lib/renewal-radar";
@@ -34,13 +34,16 @@ export type ClientSummary = {
   lastMonthResolved: number | null;
   contacts: ClientContact[];
   months: ClientMonthStats[];
+  /** Most recent tickets, newest first. */
+  recent: RecentTicket[];
 };
 
 export type ClientPortfolio = {
   scanSessionId: string;
   scannedAt: string;
   currentMonth: string | null;
-  medianRevenuePerHour: number | null;
+  medianRate: number | null;
+  basis: MarginBasis;
   clients: ClientSummary[];
   psaType: StoredScanResults["psaType"];
   instanceUrl: string | null;
@@ -58,7 +61,17 @@ export async function loadClientPortfolio(
   const scan = await getClaimedScanForUser(userId);
   if (!scan?.results) return null;
   const manual = await loadManualValues(supabase, userId);
-  const results = applyManualValues(scan.results, manual);
+  return buildClientPortfolio(applyManualValues(scan.results, manual), {
+    sessionId: scan.sessionId,
+    createdAt: scan.createdAt,
+  });
+}
+
+/** Pure: the portfolio from scan results (with manual values already applied). */
+export function buildClientPortfolio(
+  results: StoredScanResults & { manualValueClientIds?: number[] },
+  scan: { sessionId: string; createdAt: string },
+): ClientPortfolio {
   const manualIds = new Set(results.manualValueClientIds ?? []);
   const findings = results.findings ?? [];
   const refs = findings.map((finding) => ({ clientId: finding.clientId, type: finding.type }));
@@ -89,6 +102,7 @@ export async function loadClientPortfolio(
   const marginById = new Map((margin?.rows ?? []).map((row) => [row.clientId, row]));
   const renewalById = new Map((radar?.rows ?? []).map((row) => [row.clientId, row]));
   const monthlyById = new Map((results.clientMonthly?.clients ?? []).map((client) => [client.clientId, client.months]));
+  const recentById = new Map((results.clientMonthly?.clients ?? []).map((client) => [client.clientId, client.recent ?? []]));
   const currentMonth = results.clientMonthly?.currentMonth ?? null;
 
   const clients: ClientSummary[] = [...ids].map((clientId) => {
@@ -119,6 +133,7 @@ export async function loadClientPortfolio(
       lastMonthResolved: lastComplete ? lastComplete.closed : null,
       contacts: results.clientContacts?.[String(clientId)] ?? [],
       months,
+      recent: recentById.get(clientId) ?? [],
     };
   });
   clients.sort(
@@ -132,7 +147,8 @@ export async function loadClientPortfolio(
     scanSessionId: scan.sessionId,
     scannedAt: scan.createdAt,
     currentMonth,
-    medianRevenuePerHour: margin?.medianRevenuePerHour ?? null,
+    medianRate: margin?.medianRate ?? null,
+    basis: margin?.basis ?? "hours",
     clients,
     psaType: results.psaType,
     instanceUrl: results.instanceUrl ?? null,

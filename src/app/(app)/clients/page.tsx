@@ -24,7 +24,8 @@ export default async function ClientsPage() {
   return (
     <ClientsListClient
       scannedAt={portfolio?.scannedAt ?? null}
-      median={portfolio?.medianRevenuePerHour ?? null}
+      median={portfolio?.medianRate ?? null}
+      basis={portfolio?.basis ?? "hours"}
       clients={(portfolio?.clients ?? []).map((client) => ({
         clientId: client.clientId,
         name: client.name,
@@ -32,9 +33,15 @@ export default async function ClientsPage() {
         status: client.status,
         topSignal: client.signals.find((signal) => signal.kind === "risk")?.label ?? null,
         renewalDays: client.renewal?.daysLeft ?? null,
-        revenuePerHour: client.margin?.revenuePerHour ?? null,
+        rate: client.margin?.rate ?? null,
         vsMedian: client.margin?.vsMedian ?? null,
         lastMonthResolved: client.lastMonthResolved,
+        trend: (portfolio?.currentMonth
+          ? client.months.filter((m) => m.month < portfolio.currentMonth!)
+          : client.months
+        )
+          .slice(-6)
+          .map((m) => m.opened),
       }))}
       hasScan={Boolean(portfolio)}
     />

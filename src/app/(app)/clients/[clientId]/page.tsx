@@ -39,7 +39,8 @@ export default async function ClientPage({ params }: { params: Promise<{ clientI
   return (
     <ClientDetailClient
       client={client}
-      median={portfolio.medianRevenuePerHour}
+      median={portfolio.medianRate}
+      basis={portfolio.basis}
       currentMonth={portfolio.currentMonth}
       scannedAt={portfolio.scannedAt}
       history={(history ?? []).map((row) => ({

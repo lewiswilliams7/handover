@@ -1,13 +1,19 @@
--- Monthly values typed in by the MSP for clients whose PSA holds no contract value.
+-- Monthly values typed in by the MSP for clients whose PSA holds no contract value,
+-- and clients the MSP marks as internal (their own company, a test client), which
+-- are left out of every client view.
 create table if not exists public.client_value_overrides (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
   client_id bigint not null,
   client_name text not null default '',
-  monthly_value numeric(12, 2) not null check (monthly_value > 0 and monthly_value < 10000000),
+  monthly_value numeric(12, 2),
+  is_internal boolean not null default false,
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now()),
-  constraint client_value_overrides_user_client_key unique (user_id, client_id)
+  constraint client_value_overrides_user_client_key unique (user_id, client_id),
+  constraint client_value_overrides_value_check check (
+    is_internal or (monthly_value is not null and monthly_value > 0 and monthly_value < 10000000)
+  )
 );
 
 alter table public.client_value_overrides enable row level security;

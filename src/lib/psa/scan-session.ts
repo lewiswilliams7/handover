@@ -34,6 +34,7 @@ import {
   type ScanProjectInput,
   type ScanTicketInput,
 } from "@/lib/psa/scan-aggregate";
+import { buildScanHighlights, type ScanHighlights } from "@/lib/scan-highlights";
 import { buildClientMonthly, type ClientMonthlyResult } from "@/lib/psa/client-monthly";
 import {
   buildChurnReplay,
@@ -150,6 +151,8 @@ export type PublicScanStatus = {
   findingPreviews: ScanFindingPreview[];
   /** Redacted Churn Replay™ summary, safe for anonymous viewers. */
   churnReplayPreview?: ChurnReplayPreview | null;
+  /** Headline numbers for each product, without client names. */
+  highlights?: ScanHighlights | null;
   exposureAvailability:
     | "available_value"
     | "available_zero"
@@ -694,11 +697,36 @@ type ClaimedScanRow = {
   progress_json: { stage?: string; completed?: number; total?: number | null } | null;
 };
 
+/**
+ * Scans stored before instant stamps were filtered can hold a median of zero
+ * minutes, which only happens when most tickets were back-entered. Treat those
+ * as not measured rather than showing "1 min" anywhere.
+ */
+function withoutInstantMedians(results: StoredScanResults | null): StoredScanResults | null {
+  const monthly = results?.clientMonthly;
+  if (!results || !monthly) return results;
+  const instant = (value: number | null) => (value != null && value < 0.02 ? null : value);
+  return {
+    ...results,
+    clientMonthly: {
+      ...monthly,
+      clients: monthly.clients.map((client) => ({
+        ...client,
+        months: client.months.map((m) => ({
+          ...m,
+          firstResponseHours: instant(m.firstResponseHours),
+          resolutionHours: instant(m.resolutionHours),
+        })),
+      })),
+    },
+  };
+}
+
 function claimedScanFromRow(row: ClaimedScanRow): ClaimedScanForUser {
   return {
     sessionId: row.id,
     createdAt: row.created_at,
-    results: row.results_json,
+    results: withoutInstantMedians(row.results_json),
     progress: row.progress_json,
   };
 }
@@ -833,6 +861,7 @@ export async function getPublicScanStatus(
         portfolio?.revenueConcentrationSuppressedReason ?? null,
       findingPreviews: scanFindingPreviewsForViewer(results),
       churnReplayPreview: churnReplayPreview(results?.churnReplay),
+      highlights: buildScanHighlights(results, false),
       exposureAvailability: results?.exposureAvailability ?? null,
       errorCode: session.error_reason,
     },
@@ -916,6 +945,8 @@ function haloTicketToRawScanInput(
     requesterName: attrs?.requesterName ?? null,
     requesterEmail: attrs?.requesterEmail ?? null,
     ticketType: haloTicketTypeLabel(attrs?.ticketType, typeNames),
+    summary: ticket.summary?.trim() || null,
+    category: ticket.category_2?.trim() || ticket.category_1?.trim() || null,
     slaDueDate: attrs?.slaDueDate ?? null,
     hoursLogged:
       typeof ticket.timetaken === "number" && Number.isFinite(ticket.timetaken) && ticket.timetaken >= 0
@@ -982,7 +1013,7 @@ async function fetchCwScanTickets(
   );
   const fields = encodeURIComponent(
     "id,company/id,dateEntered,dateResponded,closedDate,summary,priority/name,status/name," +
-      "owner/name,contact/name,type/name,respondByDate,resolveByDate,actualHours,contactEmailAddress",
+      "owner/name,contact/name,type/name,subType/name,respondByDate,resolveByDate,actualHours,contactEmailAddress",
   );
   const headers = {
     Authorization: cwAuth(connection),
@@ -1054,6 +1085,8 @@ async function fetchCwScanTickets(
             ? row.contactEmailAddress.trim().toLowerCase()
             : null,
         ticketType: provenanceRow.tickettype as string | null,
+        summary: typeof row.summary === "string" ? row.summary.trim() || null : null,
+        category: connectWiseField(row, ["subType/name"]) ?? (provenanceRow.tickettype as string | null),
         slaDueDate: provenanceRow.fixbydate as string | null,
         hoursLogged:
           typeof row.actualHours === "number" && Number.isFinite(row.actualHours) && row.actualHours >= 0

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { InfoTip } from "@/components/info-tip";
+import { rateUnit, type MarginBasis } from "@/lib/client-margin";
 import type { ClientStatus } from "@/lib/server/client-portfolio";
 
 export type ClientListRow = {
@@ -14,9 +15,11 @@ export type ClientListRow = {
   status: ClientStatus;
   topSignal: string | null;
   renewalDays: number | null;
-  revenuePerHour: number | null;
+  rate: number | null;
   vsMedian: number | null;
   lastMonthResolved: number | null;
+  /** Tickets raised per month, oldest first, last six complete months. */
+  trend: number[];
 };
 
 type Filter = "all" | "at_risk" | "renewing";
@@ -35,11 +38,13 @@ export function ClientsListClient({
   clients,
   scannedAt,
   median,
+  basis,
   hasScan,
 }: {
   clients: ClientListRow[];
   scannedAt: string | null;
   median: number | null;
+  basis: MarginBasis;
   hasScan: boolean;
 }) {
   const [query, setQuery] = useState("");
@@ -56,6 +61,15 @@ export function ClientsListClient({
   }, [clients, query, filter]);
   const atRisk = clients.filter((client) => client.status === "at_risk").length;
   const renewing = clients.filter((client) => client.renewalDays != null && client.renewalDays <= 90).length;
+  const totalValue = clients.reduce((sum, client) => sum + (client.monthlyValue ?? 0), 0);
+  const atRiskValue = clients
+    .filter((client) => client.status === "at_risk")
+    .reduce((sum, client) => sum + (client.monthlyValue ?? 0), 0);
+  const renewingValue = clients
+    .filter((client) => client.renewalDays != null && client.renewalDays <= 90)
+    .reduce((sum, client) => sum + (client.monthlyValue ?? 0), 0);
+  const noValue = clients.filter((client) => client.monthlyValue == null).length;
+  const unit = rateUnit(basis);
 
   return (
     <main className="min-h-screen px-4 pb-16 text-[var(--text-primary)] sm:px-6 lg:px-10">
@@ -64,8 +78,8 @@ export function ClientsListClient({
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">Clients</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Every client, at a glance</h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
-            What each client pays, whether anything has changed, when they renew and whether they pay for the time
-            they take. Open a client for the full picture and the one thing to do next.
+            What each client pays, whether anything has changed, when they renew and whether they pay for the work
+            they create. Open a client for their tickets, people, history and the one thing to do next.
             {scannedAt
               ? ` Scan on ${new Date(scannedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}.`
               : ""}
@@ -87,7 +101,35 @@ export function ClientsListClient({
           </section>
         ) : (
           <>
-            <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
+            <dl className="mt-8 grid gap-3 sm:grid-cols-3">
+              <Summary
+                label="Monthly recurring value"
+                value={`${money(totalValue)}/mo`}
+                note={
+                  noValue > 0
+                    ? `${clients.length - noValue} of ${clients.length} clients have a value`
+                    : `${clients.length} clients`
+                }
+                href={noValue > 0 ? "/margin#values" : undefined}
+                linkLabel={noValue > 0 ? "Add missing values" : undefined}
+              />
+              <Summary
+                label="At risk"
+                value={`${money(atRiskValue)}/mo`}
+                note={`${atRisk} client${atRisk === 1 ? "" : "s"} with a warning sign`}
+                tone={atRisk > 0 ? "risk" : undefined}
+                onClick={atRisk > 0 ? () => setFilter("at_risk") : undefined}
+              />
+              <Summary
+                label="Renewing in 90 days"
+                value={`${money(renewingValue)}/mo`}
+                note={`${renewing} client${renewing === 1 ? "" : "s"}`}
+                tone={renewing > 0 ? "amber" : undefined}
+                onClick={renewing > 0 ? () => setFilter("renewing") : undefined}
+              />
+            </dl>
+
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap gap-2">
                 {(
                   [
@@ -129,14 +171,23 @@ export function ClientsListClient({
                     <th className="px-4 py-3 font-medium">Client</th>
                     <th className="hidden px-4 py-3 text-right font-medium sm:table-cell">Value</th>
                     <th className="px-4 py-3 font-medium">Status</th>
+                    <th className="hidden px-4 py-3 font-medium md:table-cell">
+                      <span className="inline-flex items-center gap-1">
+                        Tickets
+                        <InfoTip label="tickets">
+                          Tickets raised each month over the last six complete months. A sudden drop is often the first sign
+                          a client is drifting away; a spike means something is going wrong for them.
+                        </InfoTip>
+                      </span>
+                    </th>
                     <th className="hidden px-4 py-3 text-right font-medium md:table-cell">Renews</th>
                     <th className="hidden px-4 py-3 text-right font-medium lg:table-cell">
                       <span className="inline-flex items-center gap-1">
-                        Per hour
-                        <InfoTip label="per hour" align="right">
-                          Monthly value divided by the hours your team logs for this client
-                          {median ? `, against your typical ${money(median)}` : ""}. Low means they take more
-                          time than they pay for.
+                        Per {unit}
+                        <InfoTip label={`per ${unit}`} align="right">
+                          Monthly value divided by the {basis === "hours" ? "hours your team logs" : "tickets raised"} for
+                          this client{median ? `, against your typical ${money(median)}` : ""}. Low means they create
+                          more work than they pay for.
                         </InfoTip>
                       </span>
                     </th>
@@ -162,6 +213,9 @@ export function ClientsListClient({
                           {STATUS[client.status].label}
                         </span>
                       </td>
+                      <td className="hidden px-4 py-3 md:table-cell">
+                        <Spark values={client.trend} />
+                      </td>
                       <td className="hidden px-4 py-3 text-right tabular-nums text-[var(--text-secondary)] md:table-cell">
                         {client.renewalDays != null ? (
                           <span className={client.renewalDays <= 90 ? "font-semibold text-amber-200" : ""}>
@@ -172,9 +226,9 @@ export function ClientsListClient({
                         )}
                       </td>
                       <td className="hidden px-4 py-3 text-right tabular-nums lg:table-cell">
-                        {client.revenuePerHour != null ? (
+                        {client.rate != null ? (
                           <span className={client.vsMedian != null && client.vsMedian < 0.75 ? "text-amber-200" : "text-[var(--text-secondary)]"}>
-                            {money(client.revenuePerHour)}
+                            {money(client.rate)}
                           </span>
                         ) : (
                           <span className="text-[var(--text-muted)]">—</span>
@@ -187,7 +241,7 @@ export function ClientsListClient({
                   ))}
                   {visible.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-sm text-[var(--text-secondary)]">
+                      <td colSpan={7} className="px-4 py-8 text-center text-sm text-[var(--text-secondary)]">
                         No clients match.
                       </td>
                     </tr>
@@ -199,5 +253,70 @@ export function ClientsListClient({
         )}
       </div>
     </main>
+  );
+}
+
+function Summary({
+  label,
+  value,
+  note,
+  tone,
+  href,
+  linkLabel,
+  onClick,
+}: {
+  label: string;
+  value: string;
+  note: string;
+  tone?: "risk" | "amber";
+  href?: string;
+  linkLabel?: string;
+  onClick?: () => void;
+}) {
+  const border =
+    tone === "risk" ? "border-cyan-300/30 bg-cyan-300/[0.05]" : tone === "amber" ? "border-amber-300/25 bg-amber-300/[0.05]" : "border-white/10 bg-white/[0.035]";
+  return (
+    <div className={`relative rounded-xl border px-4 py-3 ${border} ${onClick ? "transition-colors hover:border-white/25" : ""}`}>
+      <dt className="text-xs text-[var(--text-secondary)]">{label}</dt>
+      <dd className="mt-1 text-2xl font-semibold tabular-nums text-white">{value}</dd>
+      <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+        {note}
+        {href && linkLabel ? (
+          <>
+            {" · "}
+            <Link href={href} className="relative z-10 font-semibold text-cyan-200 hover:text-cyan-100">
+              {linkLabel}
+            </Link>
+          </>
+        ) : null}
+      </p>
+      {onClick ? (
+        <button type="button" onClick={onClick} className="absolute inset-0 min-h-0 rounded-xl" aria-label={`Show ${label.toLowerCase()} clients`} />
+      ) : null}
+    </div>
+  );
+}
+
+/** Six bars of tickets raised per month; the latest month is highlighted. */
+function Spark({ values }: { values: number[] }) {
+  if (values.length === 0 || values.every((value) => value === 0)) {
+    return <span className="text-xs text-[var(--text-muted)]">None</span>;
+  }
+  const max = Math.max(1, ...values);
+  const total = values.reduce((sum, value) => sum + value, 0);
+  return (
+    <span className="flex items-center gap-2" title={`${values.join(", ")} tickets a month`}>
+      <span className="flex h-6 items-end gap-0.5" aria-hidden>
+        {values.map((value, index) => (
+          <span
+            key={index}
+            className={`w-1.5 rounded-sm ${index === values.length - 1 ? "bg-[var(--accent)]" : "bg-white/25"}`}
+            style={{ height: `${Math.max(8, (value / max) * 100)}%` }}
+          />
+        ))}
+      </span>
+      <span className="text-xs tabular-nums text-[var(--text-secondary)]">{total}</span>
+      <span className="sr-only">tickets in six months</span>
+    </span>
   );
 }

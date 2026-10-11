@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { ReceiptsClient } from "@/app/(app)/receipts/receipts-client";
+import { applyManualValues, loadManualValues } from "@/lib/manual-client-values";
 import { getClaimedScanForUser } from "@/lib/psa/scan-session";
 import { userCanViewScanDetails } from "@/lib/scan-entitlement";
 import { createServerClient } from "@/lib/supabase/server";
@@ -30,7 +31,8 @@ export default async function ReceiptsPage({
   }
 
   const scan = await getClaimedScanForUser(user.id);
-  const results = scan?.results ?? null;
+  // Internal clients (your own company, test clients) never get a receipt.
+  const results = scan?.results ? applyManualValues(scan.results, await loadManualValues(supabase, user.id)) : null;
 
   return (
     <ReceiptsClient

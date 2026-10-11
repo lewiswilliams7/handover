@@ -9,7 +9,7 @@
  * Nothing is predicted. Each recommendation follows from signals shown
  * elsewhere in the product, and says which ones.
  */
-import type { ClientMargin, MarginGroup } from "@/lib/client-margin";
+import { workPerMonth, type ClientMargin, type MarginBasis, type MarginGroup } from "@/lib/client-margin";
 import { getFindingCopy } from "@/lib/psa/scan-finding-copy";
 import { isRiskFinding } from "@/lib/revenue/revenue-signals";
 
@@ -30,13 +30,14 @@ export type RenewalRow = {
   /** The first open risk signal's type, for linking straight to its Save Play. */
   topRiskType: string | null;
   marginGroup: MarginGroup | null;
-  revenuePerHour: number | null;
-  /** Share of your typical revenue per hour, e.g. 0.6. */
+  /** Revenue per hour or per ticket, depending on the margin basis. */
+  rate: number | null;
+  /** Share of your typical rate, e.g. 0.6. */
   vsMedian: number | null;
   /** Monthly value that would match your typical rate, for thin-margin clients. */
   repriceTarget: number | null;
-  /** Average hours a month logged for this client, when measured. */
-  hoursPerMonth: number | null;
+  /** Average hours or tickets a month for this client, matching the basis, when measured. */
+  workPerMonth: number | null;
   /** Why margin is missing, when it could not be measured. */
   marginUnmeasuredReason: string | null;
   move: RenewalMove;
@@ -51,7 +52,8 @@ export type RenewalRadar = {
   next90Count: number;
   /** Annual margin gap on thin-margin renewals: typical-rate price minus today's price. */
   repriceAnnualUplift: number;
-  medianRevenuePerHour: number | null;
+  medianRate: number | null;
+  basis: MarginBasis;
 };
 
 export const RENEWAL_MOVE_COPY: Record<RenewalMove, { title: string; body: string }> = {
@@ -65,7 +67,7 @@ export const RENEWAL_MOVE_COPY: Record<RenewalMove, { title: string; body: strin
   },
   reprice: {
     title: "Reprice at renewal",
-    body: "A steady client that takes far more time than they pay for. The renewal is your chance to put that right.",
+    body: "A steady client that creates far more work than they pay for. The renewal is your chance to put that right.",
   },
   expand: {
     title: "Renew early, look to expand",
@@ -143,13 +145,13 @@ export function buildRenewalRadar(input: {
       riskSignals,
       topRiskType: topRiskTypeByClient.get(clientId) ?? null,
       marginGroup: group,
-      revenuePerHour: margin?.revenuePerHour ?? null,
+      rate: margin?.rate ?? null,
       vsMedian: margin?.vsMedian ?? null,
       repriceTarget:
         thin && margin?.repriceMonthlyGap && margin.monthlyValue != null
           ? Math.round((margin.monthlyValue + margin.repriceMonthlyGap) / 10) * 10
           : null,
-      hoursPerMonth: margin?.group ? margin.hoursPerMonth : null,
+      workPerMonth: margin?.group ? workPerMonth(margin, input.margin?.basis ?? "hours") : null,
       marginUnmeasuredReason: margin?.group
         ? null
         : (margin?.unmeasuredReason ?? "No tickets closed in the last three months"),
@@ -170,6 +172,7 @@ export function buildRenewalRadar(input: {
       const margin = marginByClient.get(row.clientId);
       return sum + (row.repriceTarget != null && margin?.repriceMonthlyGap ? margin.repriceMonthlyGap * 12 : 0);
     }, 0),
-    medianRevenuePerHour: input.margin?.medianRevenuePerHour ?? null,
+    medianRate: input.margin?.medianRate ?? null,
+    basis: input.margin?.basis ?? "hours",
   };
 }

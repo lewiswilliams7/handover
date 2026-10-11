@@ -54,6 +54,13 @@ function parseReceipt(raw: unknown): ValueReceipt | null {
           : [];
       })
     : [];
+  const highlights = Array.isArray(r.highlights)
+    ? r.highlights.slice(0, 3).flatMap((h) => {
+        const item = h as Record<string, unknown>;
+        const summary = str(item?.summary, 120);
+        return summary ? [{ summary, note: str(item.note, 60) }] : [];
+      })
+    : [];
   return {
     clientId: Number(r.clientId) || 0,
     clientName,
@@ -63,6 +70,8 @@ function parseReceipt(raw: unknown): ValueReceipt | null {
     stats,
     summary,
     workTypes,
+    highlights,
+    recommendation: str(r.recommendation, 400),
     inProgress: Number(r.inProgress) || 0,
     sendable: true,
     unsendableReason: null,

@@ -25,6 +25,10 @@ export type ScanTicketInput = {
   requesterName?: string | null;
   requesterEmail?: string | null;
   ticketType?: string | null;
+  /** Ticket title, kept only to show recent and notable work per client. */
+  summary?: string | null;
+  /** Most specific category the PSA records (Halo category, ConnectWise sub-type). */
+  category?: string | null;
   slaDueDate?: string | null;
   /** Total hours logged against the ticket, when the PSA records it. */
   hoursLogged?: number | null;
@@ -42,43 +46,47 @@ const MINUTE_MS = 60_000;
 
 /**
  * Catch close and response stamps that cannot be true, so no figure is built
- * on them. The test is physical: a ticket cannot be closed sooner than the
- * time logged against it. That happens when tickets are bulk-imported as
- * closed, or logged after the work was done; in both cases the PSA's
- * creation-to-close time says nothing about how quickly the client was helped.
+ * on them.
  *
- * When the PSA also gives the date of the last action, and that date is a
- * believable close (after the logged work, within 90 days), it is used as the
- * close date instead.
+ * 1. Instant stamps. A response within a minute of the ticket being raised, or
+ *    a close within two minutes, is a ticket an engineer logged themselves
+ *    (a phone call written up afterwards) or one that was bulk-imported. It
+ *    says nothing about how quickly the client was helped, so it is left out
+ *    of response and resolution figures. The ticket still counts everywhere else.
+ * 2. Physical impossibility. A ticket cannot be closed sooner than the time
+ *    logged against it. When the PSA also gives the date of the last action,
+ *    and that date is a believable close (after the logged work, within 90
+ *    days), it is used as the close date instead.
  */
 export function repairTicketTimings(
   ticket: ScanTicketInput,
   lastActionIso?: string | null,
 ): ScanTicketInput {
   const entered = ticket.dateEntered ? Date.parse(ticket.dateEntered) : Number.NaN;
+  if (!Number.isFinite(entered)) return ticket;
   const closed = ticket.dateClosed ? Date.parse(ticket.dateClosed) : Number.NaN;
-  const hours = typeof ticket.hoursLogged === "number" && ticket.hoursLogged > 0 ? ticket.hoursLogged : 0;
-  if (!Number.isFinite(entered) || !Number.isFinite(closed) || hours <= 0) return ticket;
+  const responded = ticket.dateResponded ? Date.parse(ticket.dateResponded) : Number.NaN;
+  const responseInstant = Number.isFinite(responded) && responded - entered < MINUTE_MS;
+  let out: ScanTicketInput = responseInstant ? { ...ticket, responseReliable: false } : ticket;
+  if (!Number.isFinite(closed)) return out;
 
   const elapsedMs = closed - entered;
+  const hours = typeof ticket.hoursLogged === "number" && ticket.hoursLogged > 0 ? ticket.hoursLogged : 0;
   const loggedMs = hours * 3_600_000;
-  if (elapsedMs + 15 * MINUTE_MS >= loggedMs) return ticket;
-
-  const responded = ticket.dateResponded ? Date.parse(ticket.dateResponded) : Number.NaN;
-  const responseStampedAtCreation = Number.isFinite(responded) && responded - entered < MINUTE_MS;
-  const lastAction = lastActionIso ? Date.parse(lastActionIso) : Number.NaN;
-  const lastActionBelievable =
-    Number.isFinite(lastAction) &&
-    lastAction - entered + 15 * MINUTE_MS >= loggedMs &&
-    lastAction - entered <= 90 * 24 * 3_600_000;
-
-  return {
-    ...ticket,
-    ...(lastActionBelievable
-      ? { dateClosed: new Date(lastAction).toISOString(), resolutionReliable: true }
-      : { resolutionReliable: false }),
-    ...(responseStampedAtCreation ? { responseReliable: false } : {}),
-  };
+  const impossible = hours > 0 && elapsedMs + 15 * MINUTE_MS < loggedMs;
+  if (impossible) {
+    const lastAction = lastActionIso ? Date.parse(lastActionIso) : Number.NaN;
+    const lastActionBelievable =
+      Number.isFinite(lastAction) &&
+      lastAction - entered + 15 * MINUTE_MS >= loggedMs &&
+      lastAction - entered <= 90 * 24 * 3_600_000;
+    out = lastActionBelievable
+      ? { ...out, dateClosed: new Date(lastAction).toISOString(), resolutionReliable: true }
+      : { ...out, resolutionReliable: false };
+    return out;
+  }
+  if (elapsedMs < 2 * MINUTE_MS) out = { ...out, resolutionReliable: false };
+  return out;
 }
 
 export type ScanProjectInput = {

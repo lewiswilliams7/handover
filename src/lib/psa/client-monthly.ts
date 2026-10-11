@@ -13,6 +13,10 @@
  *   it closed.
  * - firstResponseHours: median for tickets entered in the month.
  * - resolutionHours: median entered-to-closed time for tickets closed in the month.
+ * - slaMet / slaMeasured: tickets closed in the month that had a fix-by target,
+ *   and how many of them closed on or before it.
+ * - notable: up to three tickets closed in the month worth naming to the client
+ *   (urgent first, then the most time logged).
  */
 import type { ScanTicketInput } from "@/lib/psa/scan-aggregate";
 
@@ -49,13 +53,72 @@ export type ClientMonthStats = {
   closedUndated?: number;
   /** Most common ticket types closed this month, most frequent first. */
   topTypes: Array<{ type: string; count: number }>;
+  /** Most common categories closed this month, most frequent first. */
+  topCategories?: Array<{ category: string; count: number }>;
+  /** Closed tickets this month with a fix-by target. */
+  slaMeasured?: number;
+  /** Of those, closed on or before the target. */
+  slaMet?: number;
+  /** Up to three tickets closed this month worth naming in a receipt. */
+  notable?: NotableTicket[];
+};
+
+export type NotableTicket = {
+  summary: string;
+  type: string | null;
+  hours: number | null;
+  urgent: boolean;
+  closedAt: string;
+};
+
+export type RecentTicket = {
+  id: number | null;
+  summary: string;
+  type: string | null;
+  category: string | null;
+  priority: string | null;
+  enteredAt: string | null;
+  closedAt: string | null;
+  open: boolean;
+  hours: number | null;
 };
 
 export type ClientMonthly = {
   clientId: number;
   /** Oldest month first. The last entry may be the current, partial month. */
   months: ClientMonthStats[];
+  /** The client's most recent tickets, newest first. */
+  recent?: RecentTicket[];
 };
+
+/** Recent tickets kept per client for its page. */
+const RECENT_TICKETS = 10;
+const SUMMARY_MAX = 90;
+
+/** Strip mail prefixes and shouting so a ticket title reads cleanly. */
+export function cleanTicketTitle(summary: string): string {
+  let text = summary.replace(/^\s*((re|fw|fwd|aw|tr)\s*:\s*)+/i, "").replace(/\s+/g, " ").trim();
+  if (text && text === text.toUpperCase() && /[A-Z]{3}/.test(text)) text = text.charAt(0) + text.slice(1).toLowerCase();
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function clip(text: string): string {
+  const clean = cleanTicketTitle(text);
+  return clean.length > SUMMARY_MAX ? `${clean.slice(0, SUMMARY_MAX - 1).trimEnd()}…` : clean;
+}
+
+/**
+ * PSA categories are often full paths ("Accounts & Access>Active Directory>Creation").
+ * Keep the two most specific parts, which read naturally to a client.
+ */
+export function shortCategory(raw: string | null | undefined): string | null {
+  const parts = (raw ?? "")
+    .split(/\s*(?:>|\/|\\|›|»)\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return null;
+  return parts.slice(-2).join(" › ");
+}
 
 export type ClientMonthlyResult = {
   version: 1;
@@ -151,6 +214,10 @@ export function buildClientMonthly(
     closedWithHours: number;
     closedUndated: number;
     types: Map<string, number>;
+    categories: Map<string, number>;
+    slaMeasured: number;
+    slaMet: number;
+    notable: Array<NotableTicket & { score: number }>;
   };
   const byClient = new Map<number, Map<string, Bucket>>();
   const ticketsByClient = new Map<number, ScanTicketInput[]>();
@@ -175,6 +242,10 @@ export function buildClientMonthly(
         closedWithHours: 0,
         closedUndated: 0,
         types: new Map(),
+        categories: new Map(),
+        slaMeasured: 0,
+        slaMet: 0,
+        notable: [],
       };
       months.set(key, b);
     }
@@ -226,6 +297,28 @@ export function buildClientMonthly(
         }
         const type = ticket.ticketType?.trim();
         if (type) b.types.set(type, (b.types.get(type) ?? 0) + 1);
+        const category = shortCategory(ticket.category);
+        if (category) b.categories.set(category, (b.categories.get(category) ?? 0) + 1);
+        const due = parseMs(ticket.slaDueDate);
+        if (due != null && ticket.resolutionReliable !== false) {
+          b.slaMeasured += 1;
+          if (closed <= due) b.slaMet += 1;
+        }
+        const summary = ticket.summary?.trim();
+        if (summary && !b.notable.some((item) => item.summary.toLowerCase() === clip(summary).toLowerCase())) {
+          const urgent = isUrgent(ticket.priority);
+          const logged = typeof hours === "number" && Number.isFinite(hours) && hours > 0 ? hours : null;
+          b.notable.push({
+            summary: clip(summary),
+            type: type ?? null,
+            hours: logged == null ? null : Math.round(logged * 10) / 10,
+            urgent,
+            closedAt: new Date(closed).toISOString(),
+            score: (urgent ? 1000 : 0) + (logged ?? 0),
+          });
+          b.notable.sort((x, y) => y.score - x.score || y.closedAt.localeCompare(x.closedAt));
+          if (b.notable.length > 3) b.notable.length = 3;
+        }
       }
     }
   }
@@ -233,8 +326,27 @@ export function buildClientMonthly(
   const clients: ClientMonthly[] = [];
   for (const [clientId, months] of byClient) {
     const clientTickets = ticketsByClient.get(clientId) ?? [];
+    const recent: RecentTicket[] = clientTickets
+      .filter((ticket) => ticket.summary?.trim() && ticket.dateEntered)
+      .sort((x, y) => (parseMs(y.dateEntered) ?? 0) - (parseMs(x.dateEntered) ?? 0))
+      .slice(0, RECENT_TICKETS)
+      .map((ticket) => ({
+        id: ticket.ticketId,
+        summary: clip(ticket.summary!),
+        type: ticket.ticketType?.trim() || null,
+        category: shortCategory(ticket.category),
+        priority: ticket.priority?.trim() || null,
+        enteredAt: ticket.dateEntered,
+        closedAt: ticket.dateClosed,
+        open: !ticket.dateClosed && ticket.statusOpen !== false,
+        hours:
+          typeof ticket.hoursLogged === "number" && ticket.hoursLogged > 0
+            ? Math.round(ticket.hoursLogged * 10) / 10
+            : null,
+      }));
     clients.push({
       clientId,
+      ...(recent.length > 0 ? { recent } : {}),
       months: keys.map((key) => {
         const b = months.get(key);
         const endMs = Math.min(monthEndMs(key), nowMs);
@@ -267,6 +379,15 @@ export function buildClientMonthly(
                 .slice(0, 3)
                 .map(([type, count]) => ({ type, count }))
             : [],
+          topCategories: b
+            ? [...b.categories.entries()]
+                .sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0]))
+                .slice(0, 5)
+                .map(([category, count]) => ({ category, count }))
+            : [],
+          slaMeasured: b?.slaMeasured ?? 0,
+          slaMet: b?.slaMet ?? 0,
+          notable: b ? b.notable.map(({ score: _score, ...rest }) => rest) : [],
         };
       }),
     });

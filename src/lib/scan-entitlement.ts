@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { churnReplayPreview, type ChurnReplayPreview } from "@/lib/psa/churn-replay";
+import { buildScanHighlights, type ScanHighlights } from "@/lib/scan-highlights";
 import { createServerClient } from "@/lib/supabase/server";
 import {
   scanFindingPreviewsForViewer,
@@ -53,14 +54,16 @@ export async function requireScanDetailsEntitlement(
 export function scanResultsForViewer(
   results: StoredScanResults | null,
   entitled: boolean,
-): StoredScanResults | Pick<
+): (StoredScanResults & { highlights?: ScanHighlights | null }) | (Pick<
   StoredScanResults,
   "portfolio" | "exposureAvailability" | "scanOutcome" | "suppressedMetricCount"
 > & {
   findingPreviews: ScanFindingPreview[];
   churnReplayPreview?: ChurnReplayPreview | null;
-} | null {
-  if (!results || entitled) return results;
+  highlights?: ScanHighlights | null;
+}) | null {
+  if (!results) return results;
+  if (entitled) return { ...results, highlights: buildScanHighlights(results, true) };
   return {
     portfolio: results.portfolio,
     exposureAvailability: results.exposureAvailability,
@@ -68,5 +71,6 @@ export function scanResultsForViewer(
     suppressedMetricCount: results.suppressedMetricCount,
     findingPreviews: scanFindingPreviewsForViewer(results),
     churnReplayPreview: churnReplayPreview(results.churnReplay),
+    highlights: buildScanHighlights(results, false),
   };
 }

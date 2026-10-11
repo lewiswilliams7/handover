@@ -1,11 +1,14 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, CalendarClock, CircleAlert, CircleCheck, Mail, ReceiptText, Wrench } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarClock, CircleAlert, CircleCheck, Mail, Moon, ReceiptText, Wrench } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 
 import { InfoTip } from "@/components/info-tip";
+import { rateUnit, workLabel, workPerMonth, type MarginBasis } from "@/lib/client-margin";
 import { getFindingCopy } from "@/lib/psa/scan-finding-copy";
 import type { ClientSummary } from "@/lib/server/client-portfolio";
+import { cleanTicketTitle } from "@/lib/psa/client-monthly";
 import { formatDuration } from "@/lib/value-receipt";
 
 type HistoryRow = {
@@ -33,15 +36,20 @@ function day(iso: string): string {
   });
 }
 
+/** Clients this quiet over six months get a "stay in touch" next step. */
+const QUIET_TICKETS_SIX_MONTHS = 6;
+
 export function ClientDetailClient({
   client,
   median,
+  basis,
   currentMonth,
   scannedAt,
   history,
 }: {
   client: ClientSummary;
   median: number | null;
+  basis: MarginBasis;
   currentMonth: string | null;
   scannedAt: string;
   history: HistoryRow[];
@@ -52,6 +60,19 @@ export function ClientDetailClient({
   const chart = complete.slice(-6);
   const max = Math.max(1, ...chart.map((m) => Math.max(m.opened, m.closed)));
   const lastMonth = complete.at(-1);
+  const raised6 = chart.reduce((sum, m) => sum + m.opened, 0);
+  const hours6 = Math.round(chart.reduce((sum, m) => sum + m.hours, 0) * 10) / 10;
+  const last3 = complete.slice(-3);
+  const slaMeasured = last3.reduce((sum, m) => sum + (m.slaMeasured ?? 0), 0);
+  const slaMet = last3.reduce((sum, m) => sum + (m.slaMet ?? 0), 0);
+  const slaClosed = last3.reduce((sum, m) => sum + m.closed, 0);
+  const slaPct = slaMeasured >= 5 && slaMeasured / Math.max(1, slaClosed) >= 0.5 ? Math.round((slaMet / slaMeasured) * 100) : null;
+  const lastResponse = [...complete].reverse().find((m) => m.firstResponseHours != null);
+  const lastResolve = [...complete].reverse().find((m) => m.resolutionHours != null);
+  const asks = topAsks(chart);
+  const quiet = raised6 <= QUIET_TICKETS_SIX_MONTHS;
+  const [showAllTickets, setShowAllTickets] = useState(false);
+  const recent = showAllTickets ? client.recent : client.recent.slice(0, 6);
 
   // The one thing to do next, in priority order.
   const next = risks[0]
@@ -70,13 +91,21 @@ export function ClientDetailClient({
           cta: "Send a Value Receipt",
           icon: <CalendarClock className="size-5 text-amber-200" aria-hidden />,
         }
-      : {
-          title: "Nothing needs you",
-          body: "No warning signs and no renewal soon. A good moment to show them what you do.",
-          href: `/receipts?client=${client.clientId}`,
-          cta: "Send a Value Receipt",
-          icon: <CircleCheck className="size-5 text-emerald-300" aria-hidden />,
-        };
+      : quiet
+        ? {
+            title: raised6 === 0 ? "No tickets in six months" : `Only ${raised6} ticket${raised6 === 1 ? "" : "s"} in six months`,
+            body: "Quiet doesn't always mean happy. Clients who rarely need you are the easiest to lose at renewal, because they forget what you do. Show them, or book a check-in.",
+            href: `/receipts?client=${client.clientId}`,
+            cta: "Send a Value Receipt",
+            icon: <Moon className="size-5 text-amber-200" aria-hidden />,
+          }
+        : {
+            title: "Nothing needs you",
+            body: "No warning signs and no renewal soon. A good moment to show them what you do.",
+            href: `/receipts?client=${client.clientId}`,
+            cta: "Send a Value Receipt",
+            icon: <CircleCheck className="size-5 text-emerald-300" aria-hidden />,
+          };
 
   return (
     <main className="min-h-screen px-4 pb-16 text-[var(--text-primary)] sm:px-6 lg:px-10">
@@ -135,6 +164,44 @@ export function ClientDetailClient({
           </span>
         </Link>
 
+        <dl className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Kpi
+            label="Tickets in six months"
+            value={String(raised6)}
+            note={raised6 > 0 ? `About ${Math.round((raised6 / Math.max(1, chart.length)) * 10) / 10} a month` : "Nothing raised"}
+          />
+          {hours6 > 0 ? (
+            <Kpi label="Time logged" value={`${hours6} hours`} note="On tickets closed in six months" />
+          ) : (
+            <Kpi label="Open right now" value={String(client.recent.filter((ticket) => ticket.open).length)} note="Of their recent tickets" />
+          )}
+          {slaPct != null ? (
+            <Kpi
+              label="Fixed on time"
+              value={`${slaPct}%`}
+              note={`${slaMet} of ${slaMeasured} with a target, last three months`}
+              tip="Tickets closed on or before the fix-by target your PSA set. Only shown when most tickets had a target."
+            />
+          ) : lastResponse?.firstResponseHours != null ? (
+            <Kpi
+              label="Typical first response"
+              value={formatDuration(lastResponse.firstResponseHours)}
+              note={monthName(lastResponse.month)}
+            />
+          ) : (
+            <Kpi label="Typical first response" value="Not measured" note="Too few timed tickets" muted />
+          )}
+          {lastResolve?.resolutionHours != null ? (
+            <Kpi
+              label="Typical time to resolve"
+              value={formatDuration(lastResolve.resolutionHours)}
+              note={monthName(lastResolve.month)}
+            />
+          ) : (
+            <Kpi label="Typical time to resolve" value="Not measured" note="Too few timed tickets" muted />
+          )}
+        </dl>
+
         <div className="mt-4 grid gap-4 lg:grid-cols-3">
           <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 lg:col-span-2" aria-labelledby="activity">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -149,8 +216,8 @@ export function ClientDetailClient({
                 {chart.map((m) => (
                   <div key={m.month} className="flex h-full flex-1 flex-col items-center justify-end">
                     <div className="flex h-full w-full items-end justify-center gap-1">
-                      <div className="w-1/2 max-w-5 rounded-t bg-white/20" style={{ height: `${Math.max(3, (m.opened / max) * 100)}%` }} title={`${m.opened} raised`} />
-                      <div className="w-1/2 max-w-5 rounded-t bg-[var(--accent)]" style={{ height: `${Math.max(3, (m.closed / max) * 100)}%` }} title={`${m.closed} resolved`} />
+                      <Bar value={m.opened} max={max} className="bg-white/20" label="raised" />
+                      <Bar value={m.closed} max={max} className="bg-[var(--accent)]" label="resolved" />
                     </div>
                     <span className="mt-1.5 text-[11px] text-[var(--text-muted)]">{MONTHS[Number(m.month.slice(5, 7)) - 1]}</span>
                   </div>
@@ -160,10 +227,9 @@ export function ClientDetailClient({
               <p className="mt-3 text-sm text-[var(--text-secondary)]">Not enough recent tickets to chart yet.</p>
             )}
             {lastMonth ? (
-              <dl className="mt-5 grid grid-cols-2 gap-3 border-t border-white/[0.06] pt-4 text-sm sm:grid-cols-4">
-                <Stat label="Resolved last month" value={String(lastMonth.closed)} />
-                {lastMonth.firstResponseHours != null ? <Stat label="Typical first response" value={formatDuration(lastMonth.firstResponseHours)} /> : null}
-                {lastMonth.resolutionHours != null ? <Stat label="Typical time to resolve" value={formatDuration(lastMonth.resolutionHours)} /> : null}
+              <dl className="mt-5 grid grid-cols-3 gap-3 border-t border-white/[0.06] pt-4 text-sm">
+                <Stat label={`Resolved in ${monthName(lastMonth.month)}`} value={String(lastMonth.closed)} />
+                <Stat label="Urgent" value={String(lastMonth.urgentClosed)} />
                 <Stat label="Open at month end" value={String(lastMonth.openAtEnd)} />
               </dl>
             ) : null}
@@ -173,18 +239,18 @@ export function ClientDetailClient({
             <h2 id="margin" className="flex items-center gap-1 text-lg font-semibold">
               Margin
               <InfoTip label="margin">
-                Monthly value divided by the hours your team logged for this client over the last three months,
-                compared with your typical client.
+                Monthly value divided by the {basis === "hours" ? "hours your team logged" : "tickets raised"} for this
+                client over the last three months, compared with your typical client.
               </InfoTip>
             </h2>
-            {client.margin?.revenuePerHour != null ? (
+            {client.margin?.rate != null ? (
               <>
                 <p className="mt-3 text-3xl font-semibold tracking-tight">
-                  {money(client.margin.revenuePerHour)}
-                  <span className="text-base font-medium text-[var(--text-muted)]"> per hour</span>
+                  {money(client.margin.rate)}
+                  <span className="text-base font-medium text-[var(--text-muted)]"> per {rateUnit(basis)}</span>
                 </p>
                 <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                  {client.margin.hoursPerMonth} hours a month
+                  {workLabel(workPerMonth(client.margin, basis), basis)} a month
                   {client.margin.vsMedian != null && median ? (
                     <span className={client.margin.vsMedian < 0.75 ? "text-amber-200" : ""}>
                       {" "}
@@ -194,15 +260,95 @@ export function ClientDetailClient({
                 </p>
                 {client.margin.repriceMonthlyGap ? (
                   <p className="mt-3 rounded-xl border border-amber-300/25 bg-amber-300/[0.06] p-3 text-sm text-amber-100">
-                    Takes far more time than it pays for: {money(client.margin.repriceMonthlyGap)} a month short of your typical rate.
+                    Creates far more work than it pays for: {money(client.margin.repriceMonthlyGap)} a month short of your typical rate.
                   </p>
                 ) : null}
+                <Link href="/margin" className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-cyan-200 hover:text-cyan-100">
+                  Compare with other clients <ArrowRight className="size-3.5" aria-hidden />
+                </Link>
               </>
             ) : (
               <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
                 Not measured{client.margin?.unmeasuredReason ? `: ${client.margin.unmeasuredReason.charAt(0).toLowerCase()}${client.margin.unmeasuredReason.slice(1)}` : ""}.
               </p>
             )}
+          </section>
+        </div>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-3">
+          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 lg:col-span-2" aria-labelledby="recent">
+            <h2 id="recent" className="text-lg font-semibold">Recent tickets</h2>
+            {client.recent.length > 0 ? (
+              <ul className="mt-3 divide-y divide-white/[0.06]">
+                {recent.map((ticket, index) => (
+                  <li key={`${ticket.id ?? "t"}-${index}`} className="flex items-start justify-between gap-4 py-2.5">
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium text-white">{cleanTicketTitle(ticket.summary)}</span>
+                      <span className="block truncate text-xs text-[var(--text-muted)]">
+                        {[ticket.enteredAt ? day(ticket.enteredAt) : null, ticket.category ?? ticket.type, ticket.priority]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-right text-xs">
+                      {ticket.open ? (
+                        <span className="rounded-full border border-amber-300/30 bg-amber-300/[0.08] px-2 py-0.5 font-medium text-amber-100">Open</span>
+                      ) : (
+                        <span className="text-[var(--text-secondary)]">{resolvedIn(ticket.enteredAt, ticket.closedAt)}</span>
+                      )}
+                      {ticket.hours ? <span className="mt-0.5 block text-[var(--text-muted)]">{ticket.hours}h logged</span> : null}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {client.recent.length > 6 ? (
+              <button
+                type="button"
+                onClick={() => setShowAllTickets((value) => !value)}
+                className="mt-2 min-h-0 text-sm font-semibold text-cyan-200 hover:text-cyan-100"
+              >
+                {showAllTickets ? "Show fewer" : `Show ${client.recent.length - 6} more`}
+              </button>
+            ) : null}
+            {client.recent.length === 0 ? (
+              <p className="mt-3 text-sm text-[var(--text-secondary)]">
+                {raised6 === 0 ? "No tickets in the last six months." : "Ticket titles appear after your next scan."}
+              </p>
+            ) : null}
+          </section>
+
+          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5" aria-labelledby="asks">
+            <h2 id="asks" className="flex items-center gap-1 text-lg font-semibold">
+              What they ask for
+              <InfoTip label="what they ask for" align="right">
+                The most common kinds of ticket over six months. Anything that keeps coming back is worth fixing at the
+                root, or worth raising with them as a project.
+              </InfoTip>
+            </h2>
+            {asks.length > 0 ? (
+              <ul className="mt-4 space-y-3">
+                {asks.map((ask) => (
+                  <li key={ask.label}>
+                    <div className="flex items-baseline justify-between gap-3 text-sm">
+                      <span className="min-w-0 truncate text-white">{ask.label}</span>
+                      <span className="shrink-0 tabular-nums text-[var(--text-muted)]">{ask.count}</span>
+                    </div>
+                    <div className="mt-1.5 h-1.5 rounded-full bg-white/[0.06]">
+                      <div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${Math.max(4, (ask.count / asks[0]!.count) * 100)}%` }} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm text-[var(--text-secondary)]">Not enough tickets to tell yet.</p>
+            )}
+            {asks[0] && asks[0].count >= 5 && asks[0].count / Math.max(1, raised6) >= 0.3 ? (
+              <p className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs leading-5 text-[var(--text-secondary)]">
+                {Math.round((asks[0].count / Math.max(1, raised6)) * 100)}% of their tickets are{" "}
+                <span className="text-white">{asks[0].label}</span>. Worth a conversation about fixing it for good.
+              </p>
+            ) : null}
           </section>
         </div>
 
@@ -293,6 +439,66 @@ export function ClientDetailClient({
         </p>
       </div>
     </main>
+  );
+}
+
+function monthName(month: string): string {
+  return `${MONTHS[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`;
+}
+
+function resolvedIn(enteredAt: string | null, closedAt: string | null): string {
+  if (!enteredAt || !closedAt) return "Resolved";
+  const hours = (Date.parse(closedAt) - Date.parse(enteredAt)) / 3_600_000;
+  if (!Number.isFinite(hours) || hours < 2 / 60) return "Resolved";
+  return `Resolved in ${formatDuration(hours)}`;
+}
+
+/** Categories when the PSA records them, otherwise ticket types, summed over the months shown. */
+function topAsks(months: ClientSummary["months"]): Array<{ label: string; count: number }> {
+  const categories = new Map<string, number>();
+  const types = new Map<string, number>();
+  for (const m of months) {
+    for (const row of m.topCategories ?? []) categories.set(row.category, (categories.get(row.category) ?? 0) + row.count);
+    for (const row of m.topTypes) types.set(row.type, (types.get(row.type) ?? 0) + row.count);
+  }
+  const source = categories.size > 0 ? categories : types;
+  return [...source.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 5)
+    .map(([label, count]) => ({ label, count }));
+}
+
+function Bar({ value, max, className, label }: { value: number; max: number; className: string; label: string }) {
+  return (
+    <div className="flex h-full w-1/2 max-w-6 flex-col items-center justify-end">
+      <span className="mb-1 text-[10px] tabular-nums text-[var(--text-muted)]">{value}</span>
+      <div className={`w-full rounded-t ${className}`} style={{ height: `${Math.max(3, (value / max) * 85)}%` }} title={`${value} ${label}`} />
+    </div>
+  );
+}
+
+function Kpi({
+  label,
+  value,
+  note,
+  tip,
+  muted,
+}: {
+  label: string;
+  value: string;
+  note?: string;
+  tip?: string;
+  muted?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.035] px-4 py-3">
+      <dt className="flex items-center gap-1 text-xs text-[var(--text-secondary)]">
+        {label}
+        {tip ? <InfoTip label={label.toLowerCase()}>{tip}</InfoTip> : null}
+      </dt>
+      <dd className={`mt-1 text-xl font-semibold ${muted ? "text-[var(--text-muted)]" : "text-white"}`}>{value}</dd>
+      {note ? <p className="mt-0.5 text-xs text-[var(--text-muted)]">{note}</p> : null}
+    </div>
   );
 }
 
