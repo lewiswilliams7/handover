@@ -6,6 +6,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { buildBookHealth, type BookHealth } from "@/lib/book-health";
 import { buildClientMargin } from "@/lib/client-margin";
 import { applyManualValues, loadManualValues } from "@/lib/manual-client-values";
 import { buildPsaReadiness, type PsaReadiness } from "@/lib/psa-readiness";
@@ -22,19 +23,14 @@ import {
   computeSavedRevenue,
   isRiskFinding,
 } from "@/lib/revenue/revenue-signals";
-import { getSavePlay } from "@/lib/save-plays";
-
-export type WeekMove = {
-  clientId: number;
-  clientName: string;
-  annualValue: number | null;
-  reason: string;
-  action: string;
-  href: string;
-  kind: "save" | "renewal";
-  /** For save moves: the finding behind it, so it can be marked handled from email. */
-  findingType?: string;
-};
+import {
+  buildWeekList,
+  WEEK_LIST_TOP,
+  type FeedbackRow,
+  type ItemState,
+  type ReceiptSendStats,
+  type WeekList,
+} from "@/lib/week-list";
 
 export type WeekChange = { clientName: string; label: string };
 
@@ -58,13 +54,82 @@ export type PortfolioSummary = {
   }>;
   savedRevenue: { annual: number; clients: number };
   marginGap: number;
-  moves: WeekMove[];
   newFlags: WeekChange[];
   clearedFlags: WeekChange[];
   readiness: PsaReadiness;
   trend: TrendPoint[];
   manualValueCount: number;
+  /** The ranked This week list. The Monday Brief sends the first five rows. */
+  list: WeekList;
+  /** Saved Revenue still waiting on its outcome check (acted on, not yet cleared). */
+  savedPending: number;
+  /** False when list state and feedback cannot be stored yet. */
+  listStored: boolean;
+  /** Null unless at least three of its four measures can be worked out. */
+  bookHealth: BookHealth | null;
 };
+
+/** Stored list state, feedback and receipt opens. Each read is tolerant of its table not existing yet. */
+export async function loadWeekInputs(admin: SupabaseClient, userId: string) {
+  const [states, feedback, keep, sends, lost] = await Promise.all([
+    admin.from("week_item_states").select("item_key,status,owner_name,snoozed_until,done_at").eq("user_id", userId).limit(2000),
+    admin
+      .from("signal_feedback")
+      .select("id,client_id,finding_type,verdict,reason,created_at,expires_at")
+      .eq("user_id", userId)
+      .is("undone_at", null)
+      .order("created_at", { ascending: false })
+      .limit(2000),
+    admin.from("signal_type_settings").select("finding_type").eq("user_id", userId),
+    admin
+      .from("value_receipt_sends")
+      .select("client_id,sent_at,opened_at")
+      .eq("user_id", userId)
+      .order("sent_at", { ascending: false })
+      .limit(3000),
+    admin.from("client_outcomes").select("client_id").eq("user_id", userId).eq("outcome", "lost").limit(2000),
+  ]);
+  const stateMap = new Map<string, ItemState>();
+  for (const row of states.data ?? []) {
+    stateMap.set(String(row.item_key), {
+      status: row.status,
+      owner: row.owner_name ?? null,
+      snoozedUntil: row.snoozed_until ?? null,
+      doneAt: row.done_at ?? null,
+    });
+  }
+  const feedbackRows: FeedbackRow[] = (feedback.data ?? []).map((row) => ({
+    id: String(row.id),
+    clientId: Number(row.client_id),
+    findingType: String(row.finding_type),
+    verdict: row.verdict,
+    reason: row.reason ?? null,
+    createdAt: String(row.created_at),
+    expiresAt: row.expires_at ?? null,
+  }));
+  // Opens: only the last three sends per client count, so an old open does not hide a quiet client.
+  const receiptStats = new Map<number, ReceiptSendStats>();
+  for (const row of sends.data ?? []) {
+    const clientId = Number(row.client_id);
+    const entry = receiptStats.get(clientId) ?? { sent: 0, opened: 0, lastSentAt: null, lastOpenedAt: null };
+    if (!entry.lastSentAt) entry.lastSentAt = String(row.sent_at);
+    if (row.opened_at && (!entry.lastOpenedAt || row.opened_at > entry.lastOpenedAt)) entry.lastOpenedAt = String(row.opened_at);
+    if (entry.sent < 3) {
+      entry.sent += 1;
+      if (row.opened_at) entry.opened += 1;
+    }
+    receiptStats.set(clientId, entry);
+  }
+  return {
+    states: stateMap,
+    feedback: feedbackRows,
+    keepTypes: new Set((keep.data ?? []).map((row) => String(row.finding_type))),
+    receiptStats,
+    recordedLost: new Set((lost.data ?? []).map((row) => Number(row.client_id))),
+    /** False when the learning tables are not there yet, so the UI can hide feedback. */
+    stored: !states.error && !feedback.error,
+  };
+}
 
 function clientName(results: StoredScanResults, clientId: number): string {
   const name = results.clientNames?.[String(clientId)]?.trim();
@@ -140,45 +205,23 @@ export async function loadPortfolioSummary(
     lostClientIds,
   );
 
-  // Moves: the most valuable at-risk clients first, then renewals inside 30 days.
-  const moves: WeekMove[] = [];
-  for (const entry of risk.clients) {
-    if (moves.length >= 3) break;
-    const first = (results.findings ?? []).find(
-      (finding) => finding.clientId === entry.clientId && isRiskFinding(finding.type),
-    );
-    if (!first) continue;
-    const play = getSavePlay(first.type);
-    moves.push({
-      clientId: entry.clientId,
-      clientName: clientName(results, entry.clientId),
-      annualValue: entry.annualValue,
-      reason: getFindingCopy(first.type).label,
-      action: play?.title ?? "Open the Save Play",
-      href: `/attention?finding=${entry.clientId}:${first.type}`,
-      kind: "save",
-      findingType: first.type,
-    });
-  }
-  for (const row of radar?.rows ?? []) {
-    if (moves.length >= 3) break;
-    if (row.daysLeft > 30 || moves.some((move) => move.clientId === row.clientId)) continue;
-    moves.push({
-      clientId: row.clientId,
-      clientName: row.clientName,
-      annualValue: row.annualValue,
-      reason: `Contract ends in ${row.daysLeft} day${row.daysLeft === 1 ? "" : "s"} · ${RENEWAL_MOVE_COPY[row.move].title.toLowerCase()}`,
-      action:
-        row.move === "reprice" || row.move === "fix"
-          ? "See the numbers for the renewal"
-          : "Send a Value Receipt before they renew",
-      href:
-        row.move === "reprice" || row.move === "fix"
-          ? `/renewals#client-${row.clientId}`
-          : `/receipts?client=${row.clientId}`,
-      kind: "renewal",
-    });
-  }
+  const weekInputs = await loadWeekInputs(admin, userId);
+  const list = buildWeekList({
+    results,
+    margin,
+    radar,
+    previousKeys: previous
+      ? new Set((previous.findings ?? []).map((finding) => `${finding.clientId}:${finding.type}`))
+      : null,
+    states: weekInputs.states,
+    feedback: weekInputs.feedback,
+    keepTypes: weekInputs.keepTypes,
+    receiptStats: weekInputs.receiptStats,
+    recordedLost: weekInputs.recordedLost,
+  });
+  const savedPending = (ledger ?? []).filter(
+    (row) => row.actioned === true && (row.outcome_status ?? "pending") === "pending",
+  ).length;
 
   const comparison =
     previousScan?.results
@@ -258,11 +301,22 @@ export async function loadPortfolioSummary(
       })),
     savedRevenue: { annual: saved.annualValue, clients: saved.clients },
     marginGap: margin?.repriceAnnualTotal ?? 0,
-    moves,
     newFlags,
     clearedFlags,
     readiness: buildPsaReadiness(results),
     trend,
     manualValueCount: results.manualValueClientIds?.length ?? 0,
+    list,
+    savedPending,
+    listStored: weekInputs.stored,
+    bookHealth: buildBookHealth({
+      clientValues: results.clientValues,
+      exclude: new Set([...lostClientIds, ...weekInputs.recordedLost]),
+      revenueAtRiskAnnual: risk.annualValue,
+      radar,
+      margin,
+    }),
   };
 }
+
+export { WEEK_LIST_TOP };

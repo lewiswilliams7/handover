@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, CalendarClock, CircleAlert, CircleCheck, Mail, M
 import Link from "next/link";
 import { useState } from "react";
 
+import { ClientOutcome } from "@/app/(app)/clients/[clientId]/client-outcome";
 import { InfoTip } from "@/components/info-tip";
 import { rateUnit, workLabel, workPerMonth, type MarginBasis } from "@/lib/client-margin";
 import { getFindingCopy } from "@/lib/psa/scan-finding-copy";
@@ -46,6 +47,9 @@ export function ClientDetailClient({
   currentMonth,
   scannedAt,
   history,
+  outcome,
+  outcomeStored,
+  receipts,
 }: {
   client: ClientSummary;
   median: number | null;
@@ -53,6 +57,10 @@ export function ClientDetailClient({
   currentMonth: string | null;
   scannedAt: string;
   history: HistoryRow[];
+  outcome: { outcome: "lost" | "downsized"; reason: string | null; occurredOn: string } | null;
+  outcomeStored: boolean;
+  /** The last receipts sent: when, whether the latest was opened, and how many in a row went unopened. */
+  receipts: { lastSentAt: string; lastOpened: boolean; unopenedRun: number } | null;
 }) {
   const risks = client.signals.filter((signal) => signal.kind === "risk");
   const housekeeping = client.signals.filter((signal) => signal.kind !== "risk");
@@ -406,6 +414,16 @@ export function ClientDetailClient({
             >
               <ReceiptText className="size-4" aria-hidden /> Value Receipt
             </Link>
+            {receipts ? (
+              <p className="mt-1 text-xs text-[var(--text-muted)]">
+                Last sent {day(receipts.lastSentAt)}
+                {receipts.lastOpened
+                  ? " · opened"
+                  : receipts.unopenedRun >= 3
+                    ? ` · the last ${receipts.unopenedRun} were not opened`
+                    : " · not opened yet"}
+              </p>
+            ) : null}
           </section>
         </div>
 
@@ -434,7 +452,15 @@ export function ClientDetailClient({
           </section>
         ) : null}
 
-        <p className="mt-6 text-xs text-[var(--text-muted)]">
+        <ClientOutcome
+          clientId={client.clientId}
+          clientName={client.name}
+          monthlyValue={client.monthlyValue ?? null}
+          initial={outcome}
+          stored={outcomeStored}
+        />
+
+        <p className="mt-3 text-xs text-[var(--text-muted)]">
           From your scan on {new Date(scannedAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}.
         </p>
       </div>

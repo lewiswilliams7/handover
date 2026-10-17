@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { WeekClient } from "@/app/(app)/week/week-client";
 import { loadPortfolioSummary } from "@/lib/server/portfolio-summary";
+import { loadTeamNames } from "@/lib/server/team-names";
 import { userCanViewScanDetails } from "@/lib/scan-entitlement";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { createServerClient } from "@/lib/supabase/server";
@@ -30,10 +31,12 @@ export default async function WeekPage() {
     redirect("/onboarding/results");
   }
 
-  const [summary, profile, brief] = await Promise.all([
-    loadPortfolioSummary(createServiceRoleClient(), user.id).catch(() => null),
+  const admin = createServiceRoleClient();
+  const [summary, profile, brief, team] = await Promise.all([
+    loadPortfolioSummary(admin, user.id).catch(() => null),
     supabase.from("profiles").select("first_name").eq("id", user.id).maybeSingle(),
     supabase.from("monday_brief_settings").select("enabled").eq("user_id", user.id).maybeSingle(),
+    loadTeamNames(admin, user.id).catch(() => [] as string[]),
   ]);
 
   return (
@@ -41,6 +44,8 @@ export default async function WeekPage() {
       summary={summary}
       firstName={capitalise(typeof profile.data?.first_name === "string" ? profile.data.first_name.trim() : "")}
       briefEnabled={brief.error ? null : (brief.data?.enabled ?? true)}
+      team={team}
+      stored={summary?.listStored ?? false}
     />
   );
 }

@@ -118,6 +118,12 @@ export type ChurnReplaySummary = {
    */
   retainedChecked: number;
   retainedFlagged: number;
+  /**
+   * Retained clients each kind of sign fired for, at the earliest checkpoint
+   * that fired. With the lost clients' signs, this gives a per-sign catch
+   * rate and false-alarm rate for the precision scorecard.
+   */
+  retainedFlaggedByType?: Record<string, number>;
 };
 
 export type ChurnReplayResult = {
@@ -408,7 +414,7 @@ function replayClientAt(
 
 function summarise(
   clients: ChurnReplayClient[],
-  control: { checked: number; flagged: number },
+  control: { checked: number; flagged: number; byType: Record<string, number> },
   detected: number,
 ): ChurnReplaySummary {
   const flagged = clients.filter((client) => client.outcome === "flagged");
@@ -436,6 +442,7 @@ function summarise(
     ),
     retainedChecked: control.checked,
     retainedFlagged: control.flagged,
+    retainedFlaggedByType: control.byType,
   };
 }
 
@@ -543,11 +550,17 @@ export function buildChurnReplay(input: BuildChurnReplayInput): ChurnReplayResul
     .map(([clientId]) => clientId);
   let controlChecked = 0;
   let controlFlagged = 0;
+  const controlByType: Record<string, number> = {};
   for (const clientId of controlIds) {
     const run = replayAcrossCheckpoints(clientId, nowMs, dataFor(clientId), input);
     if (!run.anyReplayable) continue;
     controlChecked += 1;
-    if (run.flaggedAt) controlFlagged += 1;
+    if (run.flaggedAt) {
+      controlFlagged += 1;
+      for (const type of new Set(run.flaggedAt.findings.map((finding) => finding.type))) {
+        controlByType[type] = (controlByType[type] ?? 0) + 1;
+      }
+    }
   }
 
   const outcomeRank: Record<ChurnReplayOutcome, number> = {
@@ -571,7 +584,7 @@ export function buildChurnReplay(input: BuildChurnReplayInput): ChurnReplayResul
     clients,
     summary: summarise(
       clients,
-      { checked: controlChecked, flagged: controlFlagged },
+      { checked: controlChecked, flagged: controlFlagged, byType: controlByType },
       allLost.length,
     ),
     sources: {

@@ -4,7 +4,6 @@ import {
   ArrowDownRight,
   ArrowRight,
   ArrowUpRight,
-  CalendarClock,
   Check,
   CircleAlert,
   CircleCheck,
@@ -15,6 +14,7 @@ import {
 import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
 
+import { WeekListView } from "@/app/(app)/week/week-list-view";
 import { InfoTip } from "@/components/info-tip";
 import type { ReadinessLevel } from "@/lib/psa-readiness";
 import type { PortfolioSummary, TrendPoint } from "@/lib/server/portfolio-summary";
@@ -24,7 +24,11 @@ type Props = {
   firstName: string;
   /** null when the setting cannot be stored yet. */
   briefEnabled: boolean | null;
+  team: string[];
+  stored: boolean;
 };
+
+const COUNT_WORDS = ["No", "One", "Two", "Three", "Four", "Five"];
 
 function money(value: number): string {
   return `£${Math.round(value).toLocaleString("en-GB")}`;
@@ -34,7 +38,7 @@ function shortDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
-export function WeekClient({ summary, firstName, briefEnabled }: Props) {
+export function WeekClient({ summary, firstName, briefEnabled, team, stored }: Props) {
   if (!summary) {
     return (
       <main className="min-h-screen px-4 pb-16 text-[var(--text-primary)] sm:px-6 lg:px-10">
@@ -62,12 +66,13 @@ export function WeekClient({ summary, firstName, briefEnabled }: Props) {
   }
 
   const s = summary;
+  const urgent = s.list.rows.filter((row) => !row.proactive).length;
   const headline =
-    s.moves.length === 0
-      ? "Nothing needs you urgently this week."
-      : s.moves.length === 1
-        ? "One thing needs you this week."
-        : `${s.moves.length === 2 ? "Two" : "Three"} things need you this week.`;
+    urgent === 0
+      ? "Nothing urgent this week. Here is what is worth doing."
+      : urgent <= 5
+        ? `${COUNT_WORDS[urgent]} thing${urgent === 1 ? " needs" : "s need"} you this week.`
+        : `${urgent} things need you this week. Start at the top.`;
 
   return (
     <main className="min-h-screen px-4 pb-16 text-[var(--text-primary)] sm:px-6 lg:px-10">
@@ -84,17 +89,14 @@ export function WeekClient({ summary, firstName, briefEnabled }: Props) {
               {new Date(s.scannedAt).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}
             </p>
           </div>
-          <Link
-            href="/attention"
-            className="text-sm font-semibold text-cyan-200 transition-colors hover:text-cyan-100"
-          >
-            Open Revenue at Risk →
-          </Link>
         </header>
 
         <HowItWorks />
 
-        <dl className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <WeekListView list={s.list} scanSessionId={s.scanSessionId} team={team} stored={stored} />
+
+        <h2 className="mt-10 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">Your book</h2>
+        <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Kpi
             label="Revenue at Risk"
             value={s.revenueAtRisk.annual > 0 ? money(s.revenueAtRisk.annual) : `${s.revenueAtRisk.clients}`}
@@ -132,7 +134,9 @@ export function WeekClient({ summary, firstName, briefEnabled }: Props) {
             note={
               s.savedRevenue.clients > 0
                 ? `${s.savedRevenue.clients} client${s.savedRevenue.clients === 1 ? "" : "s"} recovered after you acted`
-                : "Grows as flagged clients recover"
+                : s.savedPending > 0
+                  ? `${s.savedPending} handled, waiting on the next scans`
+                  : "Grows as flagged clients recover"
             }
             tone="good"
             href="/attention?tab=history"
@@ -159,93 +163,19 @@ export function WeekClient({ summary, firstName, briefEnabled }: Props) {
           )}
         </dl>
 
-        <div className="mt-8 grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
-          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 sm:p-6" aria-labelledby="moves">
-            <h2 id="moves" className="text-lg font-semibold">Your moves this week</h2>
-            {s.moves.length === 0 ? (
-              <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-                No client has changed and nothing renews in the next 30 days. A good week to send Value
-                Receipts to your biggest clients.
-              </p>
-            ) : (
-              <ol className="mt-4 space-y-3">
-                {s.moves.map((move, index) => (
-                  <li key={`${move.kind}-${move.clientId}`}>
-                    <Link
-                      href={move.href}
-                      className="group flex items-start gap-4 rounded-xl border border-white/[0.07] bg-white/[0.02] p-4 transition-colors hover:border-cyan-300/30 hover:bg-cyan-300/[0.04]"
-                    >
-                      <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[var(--accent)]/15 text-sm font-semibold text-cyan-100">
-                        {index + 1}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="flex flex-wrap items-baseline justify-between gap-x-3">
-                          <span className="font-semibold text-white">{move.clientName}</span>
-                          {move.annualValue != null && move.annualValue > 0 ? (
-                            <span className="text-sm text-[var(--text-secondary)]">{money(move.annualValue)} a year</span>
-                          ) : null}
-                        </span>
-                        <span className="mt-0.5 block text-sm text-[var(--text-secondary)]">{move.reason}</span>
-                        <span className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-cyan-200 group-hover:text-cyan-100">
-                          {move.action}
-                          <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden />
-                        </span>
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </section>
+        {s.bookHealth ? <BookHealthStrip health={s.bookHealth} /> : null}
 
-          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 sm:p-6" aria-labelledby="changes">
+        {s.newFlags.length > 0 || s.clearedFlags.length > 0 ? (
+          <section className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-5 sm:p-6" aria-labelledby="changes">
             <h2 id="changes" className="text-lg font-semibold">Since your last scan</h2>
-            {s.newFlags.length === 0 && s.clearedFlags.length === 0 ? (
-              <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-                Nothing new and nothing cleared. Changes appear here after each weekly scan.
-              </p>
-            ) : (
-              <div className="mt-4 space-y-4">
-                {s.newFlags.length > 0 ? (
-                  <ChangeList title={`${s.newFlags.length} new`} icon="new" items={s.newFlags} />
-                ) : null}
-                {s.clearedFlags.length > 0 ? (
-                  <ChangeList title={`${s.clearedFlags.length} cleared`} icon="cleared" items={s.clearedFlags} />
-                ) : null}
-              </div>
-            )}
-          </section>
-        </div>
-
-        {s.renewalsSoon.length > 0 ? (
-          <section className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-5 sm:p-6" aria-labelledby="renewals">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h2 id="renewals" className="flex items-center gap-2 text-lg font-semibold">
-                <CalendarClock className="size-4 text-[var(--accent)]" aria-hidden />
-                Renewing in the next 90 days
-              </h2>
-              <Link href="/renewals" className="text-sm font-semibold text-cyan-200 hover:text-cyan-100">
-                Renewal Radar →
-              </Link>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              {s.newFlags.length > 0 ? (
+                <ChangeList title={`${s.newFlags.length} new`} icon="new" items={s.newFlags} />
+              ) : null}
+              {s.clearedFlags.length > 0 ? (
+                <ChangeList title={`${s.clearedFlags.length} cleared`} icon="cleared" items={s.clearedFlags} />
+              ) : null}
             </div>
-            <ul className="mt-3 divide-y divide-white/[0.06]">
-              {s.renewalsSoon.map((row) => (
-                <li key={row.clientId} className="flex flex-wrap items-center justify-between gap-3 py-2.5 text-sm">
-                  <span className="min-w-0">
-                    <span className="font-medium text-white">{row.clientName}</span>
-                    <span className="text-[var(--text-muted)]"> · in {row.daysLeft} days</span>
-                  </span>
-                  <span className="flex items-center gap-3">
-                    {row.annualValue != null ? (
-                      <span className="text-[var(--text-secondary)]">{money(row.annualValue)} a year</span>
-                    ) : null}
-                    <span className="rounded-full border border-white/15 px-2 py-0.5 text-xs text-[var(--text-secondary)]">
-                      {row.moveTitle}
-                    </span>
-                  </span>
-                </li>
-              ))}
-            </ul>
           </section>
         ) : null}
 
@@ -254,6 +184,45 @@ export function WeekClient({ summary, firstName, briefEnabled }: Props) {
         <BriefToggle initial={briefEnabled} />
       </div>
     </main>
+  );
+}
+
+function BookHealthStrip({ health }: { health: NonNullable<PortfolioSummary["bookHealth"]> }) {
+  const [open, setOpen] = useState(false);
+  const tone = health.score >= 70 ? "text-emerald-300" : health.score >= 45 ? "text-amber-200" : "text-rose-300";
+  return (
+    <section className="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4" aria-labelledby="book-health">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        className="flex min-h-0 w-full flex-wrap items-center justify-between gap-3 text-left"
+      >
+        <span className="flex items-baseline gap-3">
+          <span id="book-health" className="text-sm text-[var(--text-secondary)]">Book health</span>
+          <span className={`text-2xl font-semibold tabular-nums ${tone}`}>{health.score}</span>
+          <span className="text-sm text-[var(--text-muted)]">out of 100</span>
+        </span>
+        <span className="text-xs font-semibold text-cyan-200">{open ? "Hide how it's worked out" : "How it's worked out"}</span>
+      </button>
+      {open ? (
+        <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+          {health.parts.map((part) => (
+            <li key={part.key} className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-3 py-2.5 text-sm">
+              <span className="flex items-baseline justify-between gap-2">
+                <span className="font-medium text-white">{part.label}</span>
+                <span className="tabular-nums text-[var(--text-secondary)]">{part.score}</span>
+              </span>
+              <span className="mt-0.5 block text-xs leading-5 text-[var(--text-muted)]">{part.detail}</span>
+            </li>
+          ))}
+          <li className="text-xs leading-5 text-[var(--text-muted)] sm:col-span-2">
+            The average of the measures your data supports. Higher is healthier. It moves as clients recover, renew and
+            get repriced, so it is worth watching week to week rather than on its own.
+          </li>
+        </ul>
+      ) : null}
+    </section>
   );
 }
 
@@ -483,8 +452,8 @@ function BriefToggle({ initial }: { initial: boolean | null }) {
         <div>
           <h2 className="text-base font-semibold">The Monday Brief</h2>
           <p className="mt-0.5 max-w-xl text-sm leading-6 text-[var(--text-secondary)]">
-            This page in your inbox every Monday morning, after the weekly scan: what is at risk, what
-            changed, what renews soon and your moves for the week.
+            The top five rows of this list in your inbox every Monday morning, after the weekly scan, with
+            what is at risk and what changed. Each row links straight to its action.
           </p>
         </div>
       </div>
@@ -518,8 +487,8 @@ const HOW_IT_WORKS_KEY = "handover:how-it-works-dismissed";
 
 const STEPS: Array<{ verb: string; body: string; href: string; link: string }> = [
   { verb: "Detect", body: "Every week Handover re-reads your PSA and checks each client against its own history.", href: "/attention", link: "Revenue at Risk" },
-  { verb: "Diagnose", body: "Clients that changed are ranked by what they pay you, with the evidence behind each one.", href: "/renewals", link: "Renewal Radar" },
-  { verb: "Act", body: "Each warning comes with a Save Play: the steps and an email to the client, ready to send.", href: "/attention", link: "Save Plays" },
+  { verb: "Rank", body: "Warning signs, renewals, thin margins and quiet clients land on this one list, most valuable first.", href: "/renewals", link: "Renewal Radar" },
+  { verb: "Act", body: "Every row has one action, often an email already written. Tell Handover what you thought and the list learns.", href: "/attention", link: "Save Plays" },
   { verb: "Prove", body: "Value Receipts show clients what you did, and Saved Revenue counts the clients you kept.", href: "/receipts", link: "Value Receipts" },
 ];
 

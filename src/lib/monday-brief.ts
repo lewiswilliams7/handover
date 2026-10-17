@@ -6,6 +6,16 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import type { PortfolioSummary } from "@/lib/server/portfolio-summary";
+import { WEEK_LIST_TOP, type WeekRow } from "@/lib/week-list";
+
+/** The rows the brief sends: the top of the This week list. */
+function briefRows(summary: PortfolioSummary): WeekRow[] {
+  return summary.list.rows.slice(0, WEEK_LIST_TOP);
+}
+
+function urgentCount(summary: PortfolioSummary): number {
+  return briefRows(summary).filter((row) => !row.proactive).length;
+}
 
 function money(value: number): string {
   return `£${Math.round(value).toLocaleString("en-GB")}`;
@@ -67,13 +77,13 @@ export function verifyBriefUnsubscribeToken(userId: string, token: string): bool
 }
 
 export function mondayBriefSubject(summary: PortfolioSummary): string {
-  if (summary.revenueAtRisk.annual > 0) {
-    return `Your Monday Brief: ${money(summary.revenueAtRisk.annual)} a year at risk, ${summary.moves.length} move${summary.moves.length === 1 ? "" : "s"} this week`;
+  const count = urgentCount(summary);
+  const things = `${count} thing${count === 1 ? "" : "s"} to do this week`;
+  if (summary.revenueAtRisk.annual > 0 && count > 0) {
+    return `Your Monday Brief: ${money(summary.revenueAtRisk.annual)} a year at risk, ${things}`;
   }
-  if (summary.moves.length > 0) {
-    return `Your Monday Brief: ${summary.moves.length} move${summary.moves.length === 1 ? "" : "s"} this week`;
-  }
-  return "Your Monday Brief: nothing needs you urgently this week";
+  if (count > 0) return `Your Monday Brief: ${things}`;
+  return "Your Monday Brief: nothing urgent this week";
 }
 
 export function mondayBriefEmail(
@@ -89,10 +99,12 @@ export function mondayBriefEmail(
         ? `up ${money(s.revenueAtRiskChange)} since last week`
         : `down ${money(Math.abs(s.revenueAtRiskChange))} since last week`;
   const greeting = opts.firstName ? `Morning ${opts.firstName},` : "Morning,";
+  const rows = briefRows(s);
+  const count = urgentCount(s);
   const intro =
-    s.moves.length === 0
-      ? "Nothing needs you urgently this week. Here is where things stand."
-      : `Here is your week. ${s.moves.length === 1 ? "One thing needs" : `${s.moves.length} things need`} you.`;
+    count === 0
+      ? "Nothing urgent this week. Here is what is worth doing while it is quiet."
+      : `Here is your week, most valuable first. ${count === 1 ? "One thing needs" : `${count} things need`} you.`;
 
   const kpis: Array<{ label: string; value: string; note: string }> = [
     {
@@ -113,10 +125,10 @@ export function mondayBriefEmail(
   ];
 
   const link = (path: string) => `${opts.appOrigin}${path}`;
-  const handledUrl = (move: PortfolioSummary["moves"][number]): string | null =>
-    opts.userId && move.kind === "save" && move.findingType
+  const handledUrl = (move: WeekRow): string | null =>
+    opts.userId && move.kind === "risk" && move.findingType && move.clientId != null
       ? link(
-          `/api/brief/action?u=${encodeURIComponent(opts.userId)}&s=${encodeURIComponent(s.scanSessionId)}&c=${move.clientId}&f=${encodeURIComponent(move.findingType)}&t=${briefActionToken(opts.userId, s.scanSessionId, move.clientId, move.findingType)}`,
+          `/api/brief/action?u=${encodeURIComponent(opts.userId)}&s=${encodeURIComponent(s.scanSessionId)}&c=${move.clientId}&f=${encodeURIComponent(move.findingType)}&t=${briefActionToken(opts.userId, s.scanSessionId, move.clientId!, move.findingType!)}`,
         )
       : null;
   const kpiCells = kpis
@@ -129,16 +141,18 @@ export function mondayBriefEmail(
     )
     .join('<td style="width:8px"></td>');
 
-  const moveRows = s.moves
+  const moveRows = rows
     .map(
       (move, index) => `<tr><td style="padding:12px 0;border-top:1px solid #e6ebf2">
         <div style="font-size:15px;font-weight:600;color:#0b1730">${index + 1}. ${esc(move.clientName)}${
           move.annualValue != null && move.annualValue > 0
-            ? ` <span style="font-weight:400;color:#5b6b82">· ${money(move.annualValue)} a year</span>`
+            ? ` <span style="font-weight:400;color:#5b6b82">· ${money(move.annualValue)} ${esc(move.valueNote ?? "a year")}</span>`
             : ""
         }</div>
-        <div style="font-size:14px;color:#3d4b61;margin-top:2px">${esc(move.reason)}</div>
-        <a href="${esc(link(move.href))}" style="display:inline-block;margin-top:6px;font-size:14px;font-weight:600;color:#0284c7;text-decoration:none">${esc(move.action)} →</a>${
+        <div style="font-size:14px;color:#3d4b61;margin-top:2px">${esc(move.why)}${
+          move.strength === "strong" ? ' <span style="color:#b45309;font-weight:600">· Strong sign</span>' : ""
+        }${move.renewsInDays != null && move.kind === "risk" ? ` · renews in ${move.renewsInDays} days` : ""}</div>
+        <a href="${esc(link(move.action.href))}" style="display:inline-block;margin-top:6px;font-size:14px;font-weight:600;color:#0284c7;text-decoration:none">${esc(move.action.label)} →</a>${
           handledUrl(move)
             ? `<a href="${esc(handledUrl(move)!)}" style="display:inline-block;margin:6px 0 0 16px;font-size:13px;color:#5b6b82;text-decoration:none">Already handled ✓</a>`
             : ""
@@ -152,16 +166,6 @@ export function mondayBriefEmail(
     ...s.clearedFlags.slice(0, 4).map((item) => `<li style="margin:2px 0">Cleared: <strong>${esc(item.clientName)}</strong> · ${esc(item.label)}</li>`),
   ].join("");
 
-  const renewalLines = s.renewalsSoon
-    .filter((row) => row.daysLeft <= 30)
-    .map(
-      (row) =>
-        `<li style="margin:2px 0"><strong>${esc(row.clientName)}</strong> in ${row.daysLeft} days${
-          row.annualValue != null ? ` · ${money(row.annualValue)} a year` : ""
-        } · ${esc(row.moveTitle)}</li>`,
-    )
-    .join("");
-
   const readinessGap = s.readiness.items.find((item) => item.level !== "ready" && item.fix);
 
   const html = `<!doctype html><html><body style="margin:0;background:#eef2f7;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
@@ -172,8 +176,8 @@ export function mondayBriefEmail(
     <tr><td style="padding-top:6px;font-size:15px;line-height:22px;color:#3d4b61">${esc(intro)}</td></tr>
     <tr><td style="padding-top:18px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>${kpiCells}</tr></table></td></tr>
     ${
-      s.moves.length > 0
-        ? `<tr><td style="padding-top:22px;font-size:16px;font-weight:700;color:#0b1730">Your moves this week</td></tr>
+      rows.length > 0
+        ? `<tr><td style="padding-top:22px;font-size:16px;font-weight:700;color:#0b1730">This week</td></tr>
     <tr><td><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${moveRows}</table></td></tr>`
         : ""
     }
@@ -181,12 +185,6 @@ export function mondayBriefEmail(
       changeLines
         ? `<tr><td style="padding-top:18px;font-size:16px;font-weight:700;color:#0b1730">Since last week</td></tr>
     <tr><td><ul style="margin:6px 0 0;padding-left:18px;font-size:14px;line-height:21px;color:#3d4b61">${changeLines}</ul></td></tr>`
-        : ""
-    }
-    ${
-      renewalLines
-        ? `<tr><td style="padding-top:18px;font-size:16px;font-weight:700;color:#0b1730">Renewing in the next 30 days</td></tr>
-    <tr><td><ul style="margin:6px 0 0;padding-left:18px;font-size:14px;line-height:21px;color:#3d4b61">${renewalLines}</ul></td></tr>`
         : ""
     }
     ${
@@ -207,12 +205,12 @@ export function mondayBriefEmail(
     "",
     ...kpis.map((kpi) => `${kpi.label}: ${kpi.value} (${kpi.note})`),
     "",
-    ...(s.moves.length > 0
+    ...(rows.length > 0
       ? [
-          "Your moves this week:",
-          ...s.moves.map(
+          "This week:",
+          ...rows.map(
             (move, index) =>
-              `${index + 1}. ${move.clientName}${move.annualValue ? ` (${money(move.annualValue)} a year)` : ""}: ${move.reason}. ${move.action}: ${link(move.href)}`,
+              `${index + 1}. ${move.clientName}${move.annualValue ? ` (${money(move.annualValue)} ${move.valueNote ?? "a year"})` : ""}: ${move.why}. ${move.action.label}: ${link(move.action.href)}`,
           ),
           "",
         ]

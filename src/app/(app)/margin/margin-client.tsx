@@ -371,10 +371,13 @@ function MarginRow({
     (group === "save" || group === "fix") && riskType
       ? { href: `/attention?finding=${row.clientId}:${encodeURIComponent(riskType)}`, label: "Open the Save Play" }
       : group === "reprice" && renewing
-        ? { href: `/renewals#client-${row.clientId}`, label: "Plan the renewal" }
+        ? { href: `/renewals?client=${row.clientId}#client-${row.clientId}`, label: "Plan the renewal" }
         : { href: `/clients/${row.clientId}`, label: "See the client" };
   return (
-    <li className="grid gap-3 px-4 py-4 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_11rem] sm:items-center sm:gap-5 sm:px-5">
+    <li
+      id={`client-${row.clientId}`}
+      className="grid scroll-mt-24 gap-3 px-4 py-4 target:bg-cyan-300/[0.06] sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_11rem] sm:items-center sm:gap-5 sm:px-5"
+    >
       <div className="min-w-0">
         <Link href={`/clients/${row.clientId}`} className="block truncate font-semibold text-white hover:text-[var(--accent)]">
           {row.clientName}

@@ -4,7 +4,11 @@ import { Resend } from "resend";
 import { buildHandoverResendFromHeader } from "@/lib/resend-from-header";
 import { requireScanDetailsEntitlement } from "@/lib/scan-entitlement";
 import { createServerClient } from "@/lib/supabase/server";
+import { getAppOrigin } from "@/lib/app-url";
+import { recordReceiptSend } from "@/lib/server/receipt-sends";
+import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { valueReceiptHtml, valueReceiptText, type ValueReceipt } from "@/lib/value-receipt";
+import { WORK_BUCKETS } from "@/lib/work-buckets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,6 +65,35 @@ function parseReceipt(raw: unknown): ValueReceipt | null {
         return summary ? [{ summary, note: str(item.note, 60) }] : [];
       })
     : [];
+  const bucketKeys = new Set(WORK_BUCKETS.map((bucket) => bucket.key));
+  const buckets = Array.isArray(r.buckets)
+    ? r.buckets.slice(0, 4).flatMap((b) => {
+        const item = b as Record<string, unknown>;
+        const meta = WORK_BUCKETS.find((bucket) => bucket.key === item?.key);
+        const pct = Number(item?.pct);
+        return meta && bucketKeys.has(meta.key) && Number.isFinite(pct) && pct >= 0 && pct <= 100
+          ? [{ ...meta, pct: Math.round(pct) }]
+          : [];
+      })
+    : [];
+  const plannedShare = Number(r.plannedShare);
+  const improvements = Array.isArray(r.improvements)
+    ? r.improvements.slice(0, 2).flatMap((i) => {
+        const item = i as Record<string, unknown>;
+        const label = str(item?.label, 120);
+        const before = Number(item?.before);
+        const after = Number(item?.after);
+        return label && Number.isFinite(before) && Number.isFinite(after) && before >= 0 && after >= 0
+          ? [{ label, before: Math.round(before), after: Math.round(after) }]
+          : [];
+      })
+    : [];
+  const lookingAhead = Array.isArray(r.lookingAhead)
+    ? r.lookingAhead.slice(0, 6).flatMap((line) => {
+        const value = str(line, 300);
+        return value && !/[\r\n]/.test(value) ? [value.trim()] : [];
+      })
+    : [];
   return {
     clientId: Number(r.clientId) || 0,
     clientName,
@@ -79,6 +112,10 @@ function parseReceipt(raw: unknown): ValueReceipt | null {
     dataWarnings: [],
     period: r.period === "quarter" ? "quarter" : "month",
     trend,
+    buckets,
+    plannedShare: buckets.length > 0 && Number.isFinite(plannedShare) && plannedShare >= 0 && plannedShare <= 100 ? Math.round(plannedShare) : null,
+    improvements,
+    lookingAhead: r.period === "quarter" ? lookingAhead : [],
   };
 }
 
@@ -114,6 +151,8 @@ export async function POST(request: Request) {
     [profile?.first_name, profile?.last_name].filter((part) => typeof part === "string" && part.trim()).join(" ") ||
     (typeof profile?.display_name === "string" ? profile.display_name : "");
   const text = valueReceiptText(receipt, { mspName, senderName });
+  const admin = createServiceRoleClient();
+  const sendId = await recordReceiptSend(admin, { userId: user.id, receipt, recipient: to });
 
   const { error } = await new Resend(process.env.RESEND_API_KEY).emails.send({
     from: buildHandoverResendFromHeader(profile),
@@ -126,8 +165,12 @@ export async function POST(request: Request) {
       senderName,
       accent: typeof profile?.brand_colour === "string" ? profile.brand_colour : null,
       logoUrl: typeof profile?.brand_logo_url === "string" ? profile.brand_logo_url : null,
+      pixelUrl: sendId ? `${getAppOrigin()}/api/r/${sendId}` : null,
     }),
   });
-  if (error) return NextResponse.json({ ok: false, error: "send_failed" }, { status: 502 });
+  if (error) {
+    if (sendId) await admin.from("value_receipt_sends").delete().eq("id", sendId);
+    return NextResponse.json({ ok: false, error: "send_failed" }, { status: 502 });
+  }
   return NextResponse.json({ ok: true });
 }

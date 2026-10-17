@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   title: "Renewal Radar | Handover",
 };
 
-export default async function RenewalsPage() {
+export default async function RenewalsPage({ searchParams }: { searchParams: Promise<{ client?: string }> }) {
   const supabase = await createServerClient();
   const {
     data: { user },
@@ -27,6 +27,8 @@ export default async function RenewalsPage() {
     redirect("/onboarding/results");
   }
 
+  const { client } = await searchParams;
+  const focusClientId = Number(client);
   const scan = await getClaimedScanForUser(user.id);
   // Values typed in by hand fill any client the PSA holds no value for.
   const results = scan?.results
@@ -60,6 +62,8 @@ export default async function RenewalsPage() {
       radar={radar}
       contractsReadable={results ? results.exposureAvailability !== "unavailable" || (results.renewals?.length ?? 0) > 0 : false}
       scannedAt={scan?.createdAt ?? null}
+      clientContacts={results?.clientContacts ?? {}}
+      focusClientId={Number.isSafeInteger(focusClientId) && focusClientId > 0 ? focusClientId : null}
     />
   );
 }

@@ -7,7 +7,14 @@
  * invented. Wording is plain, client-facing and never mentions Handover, the
  * scan, contract values or internal targets.
  */
-import { cleanTicketTitle as cleanTitle, type ClientMonthStats, type ClientMonthly, type NotableTicket } from "@/lib/psa/client-monthly";
+import {
+  cleanTicketTitle as cleanTitle,
+  shortCategory,
+  type ClientMonthStats,
+  type ClientMonthly,
+  type NotableTicket,
+} from "@/lib/psa/client-monthly";
+import { addWorkSplits, WORK_BUCKETS, type WorkBucket } from "@/lib/work-buckets";
 
 export type ReceiptStat = {
   key: string;
@@ -52,6 +59,17 @@ export type ValueReceipt = {
   period: "month" | "quarter";
   /** Requests resolved per month, up to and including this period (oldest first). */
   trend: Array<{ month: string; label: string; resolved: number; current: boolean }>;
+  /**
+   * The four kinds of value, as shares of the tickets that could be placed.
+   * Empty unless most tickets could be placed and the work spans two kinds.
+   */
+  buckets: Array<{ key: WorkBucket; label: string; blurb: string; pct: number }>;
+  /** Share of placed work that was planned rather than reactive, when buckets are shown. */
+  plannedShare: number | null;
+  /** Recurring requests that fell sharply against the period before. */
+  improvements: Array<{ label: string; before: number; after: number }>;
+  /** Quarterly receipts only: what we propose for next quarter. Editable before sending. */
+  lookingAhead: string[];
 };
 
 const MONTH_NAMES = [
@@ -151,6 +169,69 @@ function recommendationFor(stats: ClientMonthStats, noun: "month" | "quarter"): 
     return `${Math.round((stats.outOfHours / stats.opened) * 100)}% of requests came in outside office hours. If that reflects how your team works, it is worth talking about the cover you have in place.`;
   }
   return null;
+}
+
+/** Placed share of closed tickets needed before the value split is shown. */
+const BUCKETS_MIN_COVERAGE = 0.6;
+
+function bucketsFor(stats: ClientMonthStats): Pick<ValueReceipt, "buckets" | "plannedShare"> {
+  const work = stats.work;
+  if (!work || stats.closed < 5) return { buckets: [], plannedShare: null };
+  const placed = work.running + work.safe + work.forward + work.planned;
+  if (placed / stats.closed < BUCKETS_MIN_COVERAGE) return { buckets: [], plannedShare: null };
+  const buckets = WORK_BUCKETS.filter((bucket) => work[bucket.key] > 0).map((bucket) => ({
+    ...bucket,
+    pct: Math.round((work[bucket.key] / placed) * 100),
+  }));
+  if (buckets.length < 2) return { buckets: [], plannedShare: null };
+  return { buckets, plannedShare: Math.round((work.plannedWork / placed) * 100) };
+}
+
+/**
+ * Repeated requests that fell sharply: "Password resets: 3, down from 14".
+ * Only categories present in this period's list count, so a category that
+ * merely dropped out of the top five is never reported as fixed.
+ */
+function improvementsFor(stats: ClientMonthStats, previous: ClientMonthStats[], noun: "month" | "quarter"): ValueReceipt["improvements"] {
+  if (previous.length === 0) return [];
+  const current = new Map<string, number>();
+  for (const row of stats.topCategories ?? []) {
+    const label = shortCategory(row.category) ?? row.category;
+    current.set(label, (current.get(label) ?? 0) + row.count);
+  }
+  const listComplete = (stats.topCategories?.length ?? 0) < 5;
+  const before = new Map<string, number>();
+  for (const month of previous) {
+    for (const row of month.topCategories ?? []) {
+      const label = shortCategory(row.category) ?? row.category;
+      before.set(label, (before.get(label) ?? 0) + row.count / previous.length);
+    }
+  }
+  const minimum = noun === "quarter" ? 6 : 4;
+  return [...before.entries()]
+    .flatMap(([label, average]) => {
+      const now = current.get(label) ?? (listComplete ? 0 : null);
+      if (now == null || average < minimum || now > average * 0.4) return [];
+      return [{ label, before: Math.round(average), after: now }];
+    })
+    .sort((a, b) => b.before - b.after - (a.before - a.after))
+    .slice(0, 2);
+}
+
+function lookingAheadFor(stats: ClientMonthStats, recommendation: string | null, plannedShare: number | null): string[] {
+  const lines: string[] = [];
+  if (stats.openAtEnd > 0) {
+    lines.push(`Finish the ${plural(stats.openAtEnd, "request", "requests")} still open.`);
+  }
+  const top = stats.topCategories?.[0];
+  if (recommendation && top) {
+    lines.push(`Look at fixing “${top.category.replaceAll(" › ", " – ")}” at the root, so it stops coming back.`);
+  }
+  if (plannedShare != null && plannedShare < 30) {
+    lines.push("Agree two or three planned improvements, so less of our time goes on fixing things.");
+  }
+  lines.push("A short review call to agree your priorities for the quarter ahead.");
+  return lines;
 }
 
 /** On-time percentage below which the figure is left off the receipt and flagged to the MSP instead. */
@@ -301,6 +382,8 @@ export function buildValueReceipt(input: {
     summary.push(`Nothing was left outstanding at the end of the ${noun}.`);
   }
 
+  const split = bucketsFor(stats);
+  const recommendation = recommendationFor(stats, noun);
   return {
     clientId: client.clientId,
     clientName,
@@ -314,7 +397,7 @@ export function buildValueReceipt(input: {
       .map((ticket) => ({ summary: cleanTitle(ticket.summary), note: highlightNote(ticket) }))
       .filter((item, index, all) => all.findIndex((other) => other.summary.toLowerCase() === item.summary.toLowerCase()) === index)
       .slice(0, 3),
-    recommendation: recommendationFor(stats, noun),
+    recommendation,
     inProgress: stats.openAtEnd,
     sendable,
     unsendableReason,
@@ -329,6 +412,9 @@ export function buildValueReceipt(input: {
     ],
     period: noun,
     trend: receiptTrend(input.trendSource ?? { client, currentMonths: [month] }),
+    ...split,
+    improvements: improvementsFor(stats, previous, noun),
+    lookingAhead: noun === "quarter" ? lookingAheadFor(stats, recommendation, split.plannedShare) : [],
   };
 }
 
@@ -380,7 +466,11 @@ export function valueReceiptText(
     lines.push(`Some of what we worked on:`);
     for (const item of receipt.highlights) lines.push(`- ${item.summary}${item.note ? ` (${item.note})` : ""}`);
   }
-  if (receipt.workTypes.length > 0) {
+  if (receipt.buckets.length > 0) {
+    lines.push("");
+    lines.push(`Where our time went: ${receipt.buckets.map((bucket) => `${bucket.label} ${bucket.pct}%`).join(", ")}.`);
+    if (receipt.plannedShare != null) lines.push(`${receipt.plannedShare}% of it was planned work rather than fixing problems.`);
+  } else if (receipt.workTypes.length > 0) {
     lines.push("");
     lines.push(
       `Most of the work this ${receipt.period}: ${receipt.workTypes
@@ -392,9 +482,18 @@ export function valueReceiptText(
     lines.push("");
     lines.push(...receipt.summary);
   }
+  if (receipt.improvements.length > 0) {
+    lines.push("");
+    for (const item of receipt.improvements) lines.push(improvementLine(item, receipt.period));
+  }
   if (receipt.recommendation) {
     lines.push("");
     lines.push(`Worth knowing: ${receipt.recommendation}`);
+  }
+  if (receipt.lookingAhead.length > 0) {
+    lines.push("");
+    lines.push("For the quarter ahead, we suggest:");
+    for (const item of receipt.lookingAhead) lines.push(`- ${item}`);
   }
   lines.push("");
   lines.push("If anything here does not match your experience, or there is something you would like us to focus on next month, just reply to this email.");
@@ -406,6 +505,13 @@ export function valueReceiptText(
     subject: `Your ${receipt.periodLabel} service summary${opts.mspName.trim() ? ` from ${opts.mspName.trim()}` : ""}`,
     body: lines.join("\n"),
   };
+}
+
+export function improvementLine(item: { label: string; before: number; after: number }, period: "month" | "quarter"): string {
+  const label = item.label.replaceAll(" › ", " – ");
+  return period === "quarter"
+    ? `Fewer “${label}” requests: ${item.after} this quarter, down from ${item.before} last quarter.`
+    : `Fewer “${label}” requests: ${item.after} this month, down from about ${item.before} a month before.`;
 }
 
 function escapeHtml(value: string): string {
@@ -423,7 +529,7 @@ function escapeHtml(value: string): string {
  */
 export function valueReceiptHtml(
   receipt: ValueReceipt,
-  opts: { mspName: string; senderName: string; accent?: string | null; logoUrl?: string | null },
+  opts: { mspName: string; senderName: string; accent?: string | null; logoUrl?: string | null; pixelUrl?: string | null },
 ): string {
   const accent = opts.accent && /^#[0-9a-f]{6}$/i.test(opts.accent) ? opts.accent : "#0f1c3f";
   const msp = escapeHtml(opts.mspName.trim() || "Your IT partner");
@@ -464,8 +570,18 @@ export function valueReceiptHtml(
       : "";
 
   const totalTypes = receipt.workTypes.reduce((sum, type) => sum + type.count, 0);
+  const bar = (label: string, pct: number, sub?: string) => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;"><tr>
+            <td style="font:13px ${font};color:#334155;width:40%;">${escapeHtml(label)}${sub ? `<div style="font:11px ${font};color:#94a3b8;">${escapeHtml(sub)}</div>` : ""}</td>
+            <td style="width:45%;"><div style="background:#e2e8f0;border-radius:4px;height:8px;"><div style="width:${pct}%;background:${accent};height:8px;border-radius:4px;"></div></div></td>
+            <td style="font:600 13px ${font};color:#0f172a;text-align:right;width:15%;">${pct}%</td>
+          </tr></table>`;
   const types =
-    receipt.workTypes.length > 0
+    receipt.buckets.length > 0
+      ? `<tr><td style="padding:20px 32px 0;">
+      <div style="font:600 14px ${font};color:#0f172a;margin-bottom:10px;">Where our time went</div>
+      ${receipt.buckets.map((bucket) => bar(bucket.label, bucket.pct, bucket.blurb)).join("")}
+      ${receipt.plannedShare != null ? `<div style="font:12px ${font};color:#64748b;margin-top:4px;">${receipt.plannedShare}% of it was planned work rather than fixing problems.</div>` : ""}</td></tr>`
+      : receipt.workTypes.length > 0
       ? `<tr><td style="padding:20px 32px 0;">
       <div style="font:600 14px ${font};color:#0f172a;margin-bottom:10px;">Where the work went</div>
       ${receipt.workTypes
@@ -499,6 +615,20 @@ export function valueReceiptHtml(
       <div style="font:600 13px ${font};color:#0f172a;margin-bottom:4px;">Worth knowing</div>
       <div style="font:14px/1.55 ${font};color:#334155;">${escapeHtml(receipt.recommendation)}</div></div></td></tr>`
     : "";
+  const improvements =
+    receipt.improvements.length > 0
+      ? `<tr><td style="padding:20px 32px 0;">${receipt.improvements
+          .map(
+            (item) => `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;margin-bottom:8px;font:14px/1.5 ${font};color:#14532d;">✓ ${escapeHtml(improvementLine(item, receipt.period))}</div>`,
+          )
+          .join("")}</td></tr>`
+      : "";
+  const ahead =
+    receipt.lookingAhead.length > 0
+      ? `<tr><td style="padding:20px 32px 0;"><div style="font:600 14px ${font};color:#0f172a;margin-bottom:8px;">For the quarter ahead, we suggest</div><ol style="margin:0;padding-left:20px;">${receipt.lookingAhead
+          .map((line) => `<li style="margin:0 0 6px;font:14px/1.6 ${font};color:#334155;">${escapeHtml(line)}</li>`)
+          .join("")}</ol></td></tr>`
+      : "";
   const summary = receipt.summary
     .map((line) => `<li style="margin:0 0 6px;font:14px/1.6 ${font};color:#334155;">${escapeHtml(line)}</li>`)
     .join("");
@@ -521,7 +651,9 @@ export function valueReceiptHtml(
     ${highlights}
     ${types}
     ${summary ? `<tr><td style="padding:20px 32px 0;"><div style="font:600 14px ${font};color:#0f172a;margin-bottom:8px;">In summary</div><ul style="margin:0;padding-left:18px;">${summary}</ul></td></tr>` : ""}
+    ${improvements}
     ${recommendation}
+    ${ahead}
     <tr><td style="padding:22px 32px 28px;">
       <p style="margin:0 0 12px;font:14px/1.6 ${font};color:#475569;">If anything here does not match your experience, or there is something you would like us to focus on ${nextPeriod}, just reply to this email.</p>
       <p style="margin:0;font:14px/1.6 ${font};color:#0f172a;">Best regards,<br>${signature}${
@@ -529,7 +661,11 @@ export function valueReceiptHtml(
       }</p>
     </td></tr>
     <tr><td style="padding:12px 32px;background:#f8fafc;font:11px ${font};color:#94a3b8;">Prepared by ${msp} from the service records for ${escapeHtml(receipt.clientName)}.</td></tr>
-  </table>
+  </table>${
+    opts.pixelUrl && /^https?:\/\//.test(opts.pixelUrl)
+      ? `<img src="${escapeHtml(opts.pixelUrl)}" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0;">`
+      : ""
+  }
 </body></html>`;
 }
 
@@ -600,6 +736,7 @@ function mergeMonths(months: ClientMonthStats[], key: string): ClientMonthStats 
     slaMeasured: months.reduce((sum, m) => sum + (m.slaMeasured ?? 0), 0),
     slaMet: months.reduce((sum, m) => sum + (m.slaMet ?? 0), 0),
     notable,
+    work: addWorkSplits(months.map((m) => m.work)),
   };
 }
 

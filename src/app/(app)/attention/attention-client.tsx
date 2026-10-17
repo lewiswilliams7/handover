@@ -19,6 +19,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAppShell } from "@/components/app-shell";
 import { ChurnReplayPanel } from "@/components/churn-replay-panel";
 import { EvidenceChips } from "@/components/evidence-chips";
+import { normalRangeSentence } from "@/lib/week-list";
 import { SavePlayPanel } from "@/components/save-play-panel";
 import { HOUSEKEEPING_FINDING_TYPES, computeRevenueAtRisk } from "@/lib/revenue/revenue-signals";
 import type { ScanComparison } from "@/lib/psa/scan-comparison";
@@ -52,6 +53,8 @@ type Finding = {
   confidence: "high" | "degraded" | "failed";
   evidenceIds: ScanEvidenceRef[];
   changeStatus?: FindingChangeStatus;
+  strength: "strong" | "worth_a_look" | null;
+  normalRange: { low: number; high: number; unit: string } | null;
 };
 
 type InsufficientClient = {
@@ -148,6 +151,14 @@ function normaliseFinding(value: unknown): Finding | null {
     monthlyValue,
     confidence,
     evidenceIds: parseScanEvidence(value.evidenceIds),
+    strength: value.strength === "strong" || value.strength === "worth_a_look" ? value.strength : null,
+    normalRange:
+      isRecord(value.normalRange) &&
+      Number.isFinite(Number(value.normalRange.low)) &&
+      Number.isFinite(Number(value.normalRange.high)) &&
+      typeof value.normalRange.unit === "string"
+        ? { low: Number(value.normalRange.low), high: Number(value.normalRange.high), unit: value.normalRange.unit }
+        : null,
   };
 }
 
@@ -1355,8 +1366,17 @@ function FindingCard({
               {finding.changeStatus === "new" ? "New since last scan" : "Ongoing"}
             </p>
           ) : null}
-          <p className={`text-xs font-semibold uppercase tracking-[0.12em] ${isUrgent ? "text-red-200" : "text-amber-200"}`}>
+          <p className={`flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] ${isUrgent ? "text-red-200" : "text-amber-200"}`}>
             {copy.label}
+            {finding.strength === "strong" ? (
+              <span title="Well outside anything this client has done in an ordinary month." className="rounded-full border border-amber-300/40 bg-amber-300/10 px-2 py-0.5 text-[10px] normal-case tracking-normal text-amber-100">
+                Strong sign
+              </span>
+            ) : finding.strength === "worth_a_look" ? (
+              <span title="Outside this client's usual range, but not by much, or measured on a short history." className="rounded-full border border-white/15 px-2 py-0.5 text-[10px] normal-case tracking-normal text-[var(--text-muted)]">
+                Worth a look
+              </span>
+            ) : null}
           </p>
           <h3 className="mt-1 truncate text-lg font-semibold">
             <Link href={`/clients/${finding.clientId}`} className="hover:text-cyan-100 hover:underline underline-offset-4">
@@ -1393,6 +1413,9 @@ function FindingCard({
           </li>
         ))}
       </ul>
+      {normalRangeSentence(finding.normalRange) ? (
+        <p className="mt-2 text-xs text-[var(--text-muted)]">{normalRangeSentence(finding.normalRange)}</p>
+      ) : null}
       <EvidenceLinks finding={finding} results={results} />
       <SavePlayPanel
         findingType={finding.type}

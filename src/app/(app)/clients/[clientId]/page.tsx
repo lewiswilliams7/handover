@@ -35,6 +35,16 @@ export default async function ClientPage({ params }: { params: Promise<{ clientI
     .eq("client_id", clientId)
     .order("raised_at", { ascending: false })
     .limit(12);
+  const [outcome, sends] = await Promise.all([
+    supabase.from("client_outcomes").select("outcome,reason,occurred_on").eq("user_id", user.id).eq("client_id", clientId).maybeSingle(),
+    supabase
+      .from("value_receipt_sends")
+      .select("sent_at,opened_at")
+      .eq("user_id", user.id)
+      .eq("client_id", clientId)
+      .order("sent_at", { ascending: false })
+      .limit(3),
+  ]);
 
   return (
     <ClientDetailClient
@@ -43,6 +53,25 @@ export default async function ClientPage({ params }: { params: Promise<{ clientI
       basis={portfolio.basis}
       currentMonth={portfolio.currentMonth}
       scannedAt={portfolio.scannedAt}
+      outcome={
+        outcome.data
+          ? {
+              outcome: outcome.data.outcome === "downsized" ? "downsized" : "lost",
+              reason: typeof outcome.data.reason === "string" ? outcome.data.reason : null,
+              occurredOn: String(outcome.data.occurred_on),
+            }
+          : null
+      }
+      outcomeStored={!outcome.error}
+      receipts={
+        sends.error || !sends.data?.length
+          ? null
+          : {
+              lastSentAt: String(sends.data[0]!.sent_at),
+              lastOpened: Boolean(sends.data[0]!.opened_at),
+              unopenedRun: sends.data.findIndex((row) => row.opened_at) === -1 ? sends.data.length : sends.data.findIndex((row) => row.opened_at),
+            }
+      }
       history={(history ?? []).map((row) => ({
         findingType: String(row.finding_type),
         raisedAt: String(row.raised_at),

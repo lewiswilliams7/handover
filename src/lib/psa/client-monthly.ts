@@ -18,6 +18,7 @@
  * - notable: up to three tickets closed in the month worth naming to the client
  *   (urgent first, then the most time logged).
  */
+import { classifyWork, emptyWorkSplit, type WorkSplit } from "@/lib/work-buckets";
 import type { ScanTicketInput } from "@/lib/psa/scan-aggregate";
 
 const HOUR_MS = 3_600_000;
@@ -61,6 +62,8 @@ export type ClientMonthStats = {
   slaMet?: number;
   /** Up to three tickets closed this month worth naming in a receipt. */
   notable?: NotableTicket[];
+  /** Closed tickets placed in the four value buckets; unplaced tickets are not counted. */
+  work?: WorkSplit;
 };
 
 export type NotableTicket = {
@@ -215,6 +218,7 @@ export function buildClientMonthly(
     closedUndated: number;
     types: Map<string, number>;
     categories: Map<string, number>;
+    work: WorkSplit;
     slaMeasured: number;
     slaMet: number;
     notable: Array<NotableTicket & { score: number }>;
@@ -243,6 +247,7 @@ export function buildClientMonthly(
         closedUndated: 0,
         types: new Map(),
         categories: new Map(),
+        work: emptyWorkSplit(),
         slaMeasured: 0,
         slaMet: 0,
         notable: [],
@@ -299,6 +304,11 @@ export function buildClientMonthly(
         if (type) b.types.set(type, (b.types.get(type) ?? 0) + 1);
         const category = shortCategory(ticket.category);
         if (category) b.categories.set(category, (b.categories.get(category) ?? 0) + 1);
+        const placed = classifyWork({ category: ticket.category, type, summary: ticket.summary });
+        if (placed) {
+          b.work[placed.bucket] += 1;
+          if (placed.planned) b.work.plannedWork += 1;
+        }
         const due = parseMs(ticket.slaDueDate);
         if (due != null && ticket.resolutionReliable !== false) {
           b.slaMeasured += 1;
@@ -388,6 +398,7 @@ export function buildClientMonthly(
           slaMeasured: b?.slaMeasured ?? 0,
           slaMet: b?.slaMet ?? 0,
           notable: b ? b.notable.map(({ score: _score, ...rest }) => rest) : [],
+          work: b ? b.work : emptyWorkSplit(),
         };
       }),
     });

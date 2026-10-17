@@ -62,7 +62,18 @@ export type ScanFinding = {
   recencyAt?: string | null;
   /** Up to ten source records that support this finding. */
   evidenceIds?: ScanEvidenceRef[];
+  /**
+   * How far outside the client's own normal range the change is. Only set
+   * for checks that measure a spread (volume, contact, response, resolution):
+   * "strong" is well outside anything the client has done before, "worth_a_look"
+   * is outside the range but not by much, or measured on a short history.
+   */
+  strength?: FindingStrength;
+  /** The client's usual range for the measure in `drivers[0]`, from its baseline months. */
+  normalRange?: { low: number; high: number; unit: string };
 };
+
+export type FindingStrength = "strong" | "worth_a_look";
 
 export type InsufficientDataClient = {
   clientId: number;
@@ -542,6 +553,58 @@ function pushDriver(
 ): void {
   if (drivers.length >= 3) return;
   drivers.push({ fact, value: round1(value), baseline: round1(baseline), unit });
+}
+
+/**
+ * A client's normal monthly range from its baseline months. The spread is
+ * floored at Poisson noise (√mean), so a client that happened to raise exactly
+ * ten tickets every month is not flagged for raising seven. `z` is how many
+ * standard errors the recent average sits from the baseline average.
+ */
+function countRange(
+  baselineCounts: number[],
+  recentPerMonth: number,
+  recentMonths: number,
+): { low: number; high: number; z: number } | null {
+  if (baselineCounts.length < 3 || recentMonths <= 0) return null;
+  const mean = baselineCounts.reduce((sum, n) => sum + n, 0) / baselineCounts.length;
+  if (mean <= 0) return null;
+  const variance =
+    baselineCounts.reduce((sum, n) => sum + (n - mean) ** 2, 0) / Math.max(1, baselineCounts.length - 1);
+  const sd = Math.max(Math.sqrt(variance), Math.sqrt(mean));
+  const z = (recentPerMonth - mean) / (sd / Math.sqrt(recentMonths));
+  return { low: Math.max(0, mean - 2 * sd), high: mean + 2 * sd, z };
+}
+
+function countStrength(z: number, baselineMonths: number): FindingStrength {
+  return Math.abs(z) >= 3 && baselineMonths >= 6 ? "strong" : "worth_a_look";
+}
+
+/**
+ * The spread of a timing median across the client's baseline months (only
+ * months with enough measured tickets count). Null when fewer than three months
+ * could be measured: then there is no range to compare against.
+ */
+function timingRange(
+  baseline: string[],
+  medianFor: (months: string[]) => number | null,
+): { low: number; high: number } | null {
+  const medians = baseline.map((month) => medianFor([month])).filter((value): value is number => value != null);
+  if (medians.length < 3) return null;
+  return { low: Math.min(...medians), high: Math.max(...medians) };
+}
+
+function timingStrength(
+  recent: number,
+  baseline: number,
+  range: { low: number; high: number } | null,
+): FindingStrength | null {
+  if (!range) return "worth_a_look";
+  const up = recent > baseline;
+  // Inside what this client has already done in an ordinary month: not a change.
+  if (up ? recent <= range.high : recent >= range.low) return null;
+  const ratio = up ? recent / baseline : baseline / Math.max(recent, 0.01);
+  return ratio >= 2 ? "strong" : "worth_a_look";
 }
 
 function validTimestamp(value: string | null): number | null {
@@ -1372,6 +1435,9 @@ export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsRe
         measuredCoverage(ticketsInMonths(clientTickets, baseline), (ticket) => ticket.dateClosed != null && ticket.resolutionReliable !== false) >= 70 &&
         recentMedian >= baselineMedian * opts.resolutionTimeRatio
       ) {
+        const range = timingRange(baseline, (months) => medianResolutionForMonths(clientTickets, months));
+        const strength = timingStrength(recentMedian, baselineMedian, range);
+        if (strength) {
         const drivers: FindingDriver[] = [];
         pushDriver(
           drivers,
@@ -1387,7 +1453,10 @@ export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsRe
           monthlyValue,
           confidence: mappingConfidence(input.fieldMapping, "dateClosed"),
           magnitude: (recentMedian - baselineMedian) / baselineMedian,
+          strength,
+          ...(range ? { normalRange: { low: round1(range.low), high: round1(range.high), unit: "hours" } } : {}),
         });
+        }
       }
     }
 
@@ -1427,8 +1496,23 @@ export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsRe
 
     if (!dateEnteredFailed && baselinePerMonth > 0) {
       const volumeRatio = recentPerMonth / baselinePerMonth;
+      const volumeRange = countRange(
+        baseline.map((month) => agg.ticketsByMonth[month] ?? 0),
+        recentPerMonth,
+        recent.length,
+      );
+      // Outside the client's own spread, not just past a fixed ratio. Without
+      // enough months to measure a spread, the ratio alone decides, labelled
+      // as worth a look.
+      const volumeOutside = volumeRange == null || Math.abs(volumeRange.z) >= 2;
+      const volumeStrength: FindingStrength = volumeRange
+        ? countStrength(volumeRange.z, baseline.length)
+        : "worth_a_look";
+      const volumeNormal = volumeRange
+        ? { low: round1(volumeRange.low), high: round1(volumeRange.high), unit: "tickets_per_month" }
+        : null;
 
-      if (volumeRatio >= opts.volumeShiftRatio || volumeRatio <= 1 / opts.volumeShiftRatio) {
+      if (volumeOutside && (volumeRatio >= opts.volumeShiftRatio || volumeRatio <= 1 / opts.volumeShiftRatio)) {
         const drivers: FindingDriver[] = [];
         pushDriver(
           drivers,
@@ -1444,10 +1528,13 @@ export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsRe
           monthlyValue,
           confidence: mappingConfidence(input.fieldMapping, "dateEntered"),
           magnitude: Math.abs(recentPerMonth - baselinePerMonth) / baselinePerMonth,
+          strength: volumeStrength,
+          ...(volumeNormal ? { normalRange: volumeNormal } : {}),
         });
       }
 
       if (
+        volumeOutside &&
         recentPerMonth <= baselinePerMonth * opts.contactGapRatio &&
         baselinePerMonth >= 2
       ) {
@@ -1466,6 +1553,8 @@ export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsRe
           monthlyValue,
           confidence: mappingConfidence(input.fieldMapping, "dateEntered"),
           magnitude: baselinePerMonth - recentPerMonth,
+          strength: volumeStrength,
+          ...(volumeNormal ? { normalRange: volumeNormal } : {}),
         });
       }
     }
@@ -1486,6 +1575,9 @@ export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsRe
         (recentMedian >= baselineMedian * opts.responseDriftRatio ||
           recentMedian <= baselineMedian / opts.responseDriftRatio)
       ) {
+        const range = timingRange(baseline, (months) => responseMediansForMonths(clientTickets, months));
+        const strength = timingStrength(recentMedian, baselineMedian, range);
+        if (strength) {
         const drivers: FindingDriver[] = [];
         pushDriver(
           drivers,
@@ -1501,7 +1593,10 @@ export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsRe
           monthlyValue,
           confidence: mappingConfidence(input.fieldMapping, "dateResponded"),
           magnitude: Math.abs(recentMedian - baselineMedian) / baselineMedian,
+          strength,
+          ...(range ? { normalRange: { low: round1(range.low), high: round1(range.high), unit: "hours" } } : {}),
         });
+        }
       }
     }
 
@@ -1635,6 +1730,7 @@ export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsRe
           ? "high"
           : "degraded",
         magnitude: Math.max(...serviceFindings.map((finding) => finding.magnitude)),
+        strength: serviceFindings.some((finding) => finding.strength === "strong") ? "strong" : "worth_a_look",
       });
     }
   }
@@ -1712,6 +1808,9 @@ export function buildScanFindings(input: BuildScanFindingsInput): ScanFindingsRe
     if (aHasValue && bHasValue && a.monthlyValue !== b.monthlyValue) {
       return (b.monthlyValue ?? 0) - (a.monthlyValue ?? 0);
     }
+
+    const strengthRank = (finding: ScanFinding) => (finding.strength === "strong" ? 1 : 0);
+    if (strengthRank(b) !== strengthRank(a)) return strengthRank(b) - strengthRank(a);
 
     const severityDifference =
       FINDING_SEVERITY[b.type] - FINDING_SEVERITY[a.type];

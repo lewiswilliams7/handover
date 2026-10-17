@@ -3,8 +3,10 @@
 import { ArrowRight, CalendarClock } from "lucide-react";
 import Link from "next/link";
 
+import { RenewalAutopilot } from "@/app/(app)/renewals/renewal-autopilot";
 import { InfoTip } from "@/components/info-tip";
 import { rateUnit, workLabel, type MarginBasis } from "@/lib/client-margin";
+import type { ClientContact } from "@/lib/psa/scan-session";
 import { RENEWAL_MOVE_COPY, type RenewalMove, type RenewalRadar, type RenewalRow } from "@/lib/renewal-radar";
 
 type Props = {
@@ -12,6 +14,9 @@ type Props = {
   radar: RenewalRadar | null;
   contractsReadable: boolean;
   scannedAt: string | null;
+  clientContacts: Record<string, ClientContact[]>;
+  /** Client opened from a link (e.g. the This week list): its renewal plan starts open. */
+  focusClientId: number | null;
 };
 
 const BANDS: Array<{ title: string; max: number }> = [
@@ -42,7 +47,7 @@ function day(iso: string): string {
   });
 }
 
-export function RenewalsClient({ state, radar, contractsReadable, scannedAt }: Props) {
+export function RenewalsClient({ state, radar, contractsReadable, scannedAt, clientContacts, focusClientId }: Props) {
   return (
     <main className="min-h-screen px-4 pb-16 text-[var(--text-primary)] sm:px-6 lg:px-10">
       <div className="mx-auto max-w-6xl">
@@ -129,7 +134,14 @@ export function RenewalsClient({ state, radar, contractsReadable, scannedAt }: P
                   </h2>
                   <div className="mt-4 grid gap-3">
                     {rows.map((row) => (
-                      <RenewalCard key={row.clientId} row={row} median={radar.medianRate} basis={radar.basis} />
+                      <RenewalCard
+                        key={row.clientId}
+                        row={row}
+                        median={radar.medianRate}
+                        basis={radar.basis}
+                        contacts={clientContacts[String(row.clientId)] ?? null}
+                        focused={row.clientId === focusClientId}
+                      />
                     ))}
                   </div>
                 </section>
@@ -200,7 +212,19 @@ function Stat({
   );
 }
 
-function RenewalCard({ row, median, basis }: { row: RenewalRow; median: number | null; basis: MarginBasis }) {
+function RenewalCard({
+  row,
+  median,
+  basis,
+  contacts,
+  focused,
+}: {
+  row: RenewalRow;
+  median: number | null;
+  basis: MarginBasis;
+  contacts: ClientContact[] | null;
+  focused: boolean;
+}) {
   const copy = RENEWAL_MOVE_COPY[row.move];
   return (
     <article
@@ -288,6 +312,8 @@ function RenewalCard({ row, median, basis }: { row: RenewalRow; median: number |
         </dl>
       </div>
 
+      {row.daysLeft <= 90 ? <RenewalAutopilot row={row} contacts={contacts} defaultOpen={focused} /> : null}
+
       <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-white/[0.06] pt-3 text-sm">
         {row.topRiskType ? (
           <Link href={`/attention?finding=${row.clientId}:${row.topRiskType}`} className="inline-flex items-center gap-1 font-semibold text-cyan-200 hover:text-cyan-100">
@@ -298,7 +324,7 @@ function RenewalCard({ row, median, basis }: { row: RenewalRow; median: number |
           Send a Value Receipt <ArrowRight className="size-3.5" aria-hidden />
         </Link>
         {row.marginGroup ? (
-          <Link href="/margin" className="inline-flex items-center gap-1 text-[var(--text-secondary)] hover:text-white">
+          <Link href={`/margin#client-${row.clientId}`} className="inline-flex items-center gap-1 text-[var(--text-secondary)] hover:text-white">
             See margin detail
           </Link>
         ) : null}

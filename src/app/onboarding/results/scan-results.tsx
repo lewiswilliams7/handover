@@ -4,6 +4,7 @@ import { ArrowRight, LockKeyhole, RotateCcw } from "lucide-react";
 
 import { EvidenceChips } from "@/components/evidence-chips";
 import { HOUSEKEEPING_FINDING_TYPES } from "@/lib/revenue/revenue-signals";
+import { monthLabel } from "@/lib/value-receipt";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -322,8 +323,20 @@ function resultsHeadline(
   totalFindingCount: number,
   hasFindings: boolean,
 ): ResultsHeadline {
-  if (!hasFindings) return { amount: null, text: "Your delivery scan is complete." };
   const atRisk = scan.highlights?.atRisk;
+  const receipts = scan.highlights?.receipts;
+  // Lead with retention only when there is real money at risk across more than
+  // one client. Otherwise the stronger story for this MSP is proving value.
+  const retentionStory = Boolean(atRisk && atRisk.annualValue > 0 && atRisk.clients >= 2);
+  if (!retentionStory && receipts && receipts.resolved >= 20) {
+    return {
+      amount: `${receipts.resolved.toLocaleString("en-GB")} requests`,
+      text: `resolved for ${receipts.clients} client${receipts.clients === 1 ? "" : "s"} in ${monthLabel(receipts.month)}${
+        receipts.hours != null ? `, ${receipts.hours.toLocaleString("en-GB")} hours of work` : ""
+      }. Most of them will never know. Handover shows each one, every month.`,
+    };
+  }
+  if (!hasFindings) return { amount: null, text: "Your delivery scan is complete." };
   if (atRisk && atRisk.annualValue > 0) {
     return {
       amount: `${formatCurrency(atRisk.annualValue)} a year`,

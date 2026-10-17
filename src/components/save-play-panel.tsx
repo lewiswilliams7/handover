@@ -3,9 +3,8 @@
 import { Check, ChevronDown, Copy, Loader2, Mail, Send } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 
-import { useAppShell } from "@/components/app-shell";
 import { ContactSuggestions } from "@/components/contact-suggestions";
-import { buildClientEmailSignOffBlock } from "@/lib/client-email-signature";
+import { useEmailSignOff } from "@/components/use-email-sign-off";
 import type { ClientContact } from "@/lib/psa/scan-session";
 import { buildSavePlayEmail, getSavePlay, playHasEmail } from "@/lib/save-plays";
 
@@ -37,9 +36,10 @@ export function SavePlayPanel({ findingType, clientName, senderName, onComplete,
   const play = getSavePlay(findingType);
   const panelId = useId();
   const [open, setOpen] = useState(defaultOpen);
+  const signOff = useEmailSignOff();
   const initialEmail = useMemo(
-    () => (play ? buildSavePlayEmail(play, { clientName, senderName }) : null),
-    [play, clientName, senderName],
+    () => (play ? buildSavePlayEmail(play, { clientName, senderName, signOff }) : null),
+    [play, clientName, senderName, signOff],
   );
   const [to, setTo] = useState(contacts?.[0]?.email ?? "");
   const [subject, setSubject] = useState(initialEmail?.subject ?? "");

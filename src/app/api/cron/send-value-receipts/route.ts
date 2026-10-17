@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 
+import { getAppOrigin } from "@/lib/app-url";
 import { buildHandoverResendFromHeader } from "@/lib/resend-from-header";
+import { recordReceiptSend } from "@/lib/server/receipt-sends";
 import { recentMonthKeys } from "@/lib/psa/client-monthly";
 import { getClaimedScanForUser } from "@/lib/psa/scan-session";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
@@ -105,6 +107,7 @@ export async function GET(req: Request) {
         continue;
       }
       const text = valueReceiptText(receipt, { mspName, senderName });
+      const sendId = await recordReceiptSend(admin, { userId, receipt, recipient: row.email_to });
       try {
         await resend.emails.send({
           from: buildHandoverResendFromHeader(profile),
@@ -117,6 +120,7 @@ export async function GET(req: Request) {
             senderName,
             accent: typeof profile.brand_colour === "string" ? profile.brand_colour : null,
             logoUrl: typeof profile.brand_logo_url === "string" ? profile.brand_logo_url : null,
+            pixelUrl: sendId ? `${getAppOrigin()}/api/r/${sendId}` : null,
           }),
         });
         await admin
@@ -131,6 +135,7 @@ export async function GET(req: Request) {
         sent += 1;
       } catch (sendError) {
         console.error("[cron/send-value-receipts] send failed", row.id, sendError);
+        if (sendId) await admin.from("value_receipt_sends").delete().eq("id", sendId);
         await admin
           .from("value_receipt_schedules")
           .update({ last_error: "The email could not be sent. It will be retried tomorrow.", updated_at: new Date().toISOString() })

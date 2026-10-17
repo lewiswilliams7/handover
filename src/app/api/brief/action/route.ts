@@ -83,6 +83,21 @@ export async function POST(req: Request) {
       result.ok ? 200 : 409,
     );
   }
+  // Same record the This week list writes, so the row moves to Done and the answer counts towards learning.
+  const admin = createServiceRoleClient();
+  const now = new Date().toISOString();
+  await admin.from("signal_feedback").insert({
+    user_id: input.userId,
+    client_id: input.clientId,
+    finding_type: input.findingType,
+    scan_session_id: input.sessionId,
+    verdict: "handled",
+    note: "Marked handled from the Monday Brief",
+  });
+  await admin.from("week_item_states").upsert(
+    { user_id: input.userId, item_key: `risk:${input.clientId}`, client_id: input.clientId, status: "done", done_at: now, updated_at: now },
+    { onConflict: "user_id,item_key" },
+  );
   return page(
     "Marked as handled",
     "Thanks. Handover will check on the next weekly scan whether the warning cleared.",

@@ -15,6 +15,7 @@ import {
   monthLabel,
   receiptMonths,
   receiptQuarters,
+  improvementLine,
   valueReceiptText,
   type ValueReceipt,
 } from "@/lib/value-receipt";
@@ -131,12 +132,18 @@ export function ReceiptsClient({ monthly, clientNames, scannedAt, initialClientI
     : selectedMonth && months.includes(selectedMonth)
       ? selectedMonth
       : (months[0] ?? null);
-  const receipt =
+  const [aheadEdits, setAheadEdits] = useState<Record<string, string[]>>({});
+  const builtReceipt =
     selected && quarter
       ? buildQuarterReceipt({ client: selected.client, clientName: selected.name, quarter })
       : selected && month
         ? buildValueReceipt({ client: selected.client, clientName: selected.name, month })
         : null;
+  const aheadKey = selected && quarter ? `${selected.client.clientId}:${quarter.key}` : null;
+  const receipt =
+    builtReceipt && aheadKey && aheadEdits[aheadKey]
+      ? { ...builtReceipt, lookingAhead: aheadEdits[aheadKey]!.map((line) => line.trim()).filter(Boolean) }
+      : builtReceipt;
 
   return (
     <main className="min-h-screen px-4 pb-16 text-[var(--text-primary)] sm:px-6 lg:px-10">
@@ -258,7 +265,7 @@ export function ReceiptsClient({ monthly, clientNames, scannedAt, initialClientI
                           ))}
                         </optgroup>
                         {quarters.length > 0 ? (
-                          <optgroup label="Quarter (for QBRs)">
+                          <optgroup label="Quarter (for your quarterly review)">
                             {quarters.map((q) => (
                               <option key={q.key} value={q.key}>
                                 {q.label}
@@ -298,6 +305,13 @@ export function ReceiptsClient({ monthly, clientNames, scannedAt, initialClientI
                     onChanged={loadSchedules}
                     contacts={clientContacts[String(selected.client.clientId)] ?? null}
                   />
+                  {receipt.period === "quarter" && aheadKey ? (
+                    <LookingAheadEditor
+                      key={aheadKey}
+                      lines={aheadEdits[aheadKey] ?? builtReceipt?.lookingAhead ?? []}
+                      onChange={(lines) => setAheadEdits((all) => ({ ...all, [aheadKey]: lines }))}
+                    />
+                  ) : null}
                   <ReceiptPaper receipt={receipt} mspName={mspName} accent={accent} logoUrl={logoUrl} />
                 </>
               ) : (
@@ -311,6 +325,51 @@ export function ReceiptsClient({ monthly, clientNames, scannedAt, initialClientI
         )}
       </div>
     </main>
+  );
+}
+
+/** Quarterly receipts end with what you propose next. Edit it here before sending. */
+function LookingAheadEditor({ lines, onChange }: { lines: string[]; onChange: (lines: string[]) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[var(--text-secondary)]">
+          <span className="font-semibold text-white">For the quarter ahead</span> closes the receipt. Make it yours before
+          you send it.
+        </p>
+        <button type="button" onClick={() => setOpen((value) => !value)} className="min-h-0 text-xs font-semibold text-cyan-200 hover:text-cyan-100">
+          {open ? "Done" : "Edit"}
+        </button>
+      </div>
+      {open ? (
+        <div className="mt-3 space-y-2">
+          {lines.map((line, index) => (
+            <div key={index} className="flex items-center gap-2">
+              <input
+                value={line}
+                maxLength={300}
+                onChange={(event) => onChange(lines.map((value, i) => (i === index ? event.target.value : value)))}
+                className="min-w-0 flex-1 rounded-md border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-sm text-white focus:border-cyan-300/50 focus:outline-none"
+                aria-label={`Suggestion ${index + 1}`}
+              />
+              <button
+                type="button"
+                onClick={() => onChange(lines.filter((_, i) => i !== index))}
+                className="min-h-0 text-xs text-[var(--text-muted)] hover:text-white"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+          {lines.length < 6 ? (
+            <button type="button" onClick={() => onChange([...lines, ""])} className="min-h-0 text-xs font-semibold text-cyan-200 hover:text-cyan-100">
+              Add a line
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -418,7 +477,7 @@ export function ReceiptPaper({
         ) : null}
 
         <div
-          className={`mt-8 grid gap-8 ${receipt.trend.length >= 2 && receipt.workTypes.length > 0 ? "md:grid-cols-2" : ""}`}
+          className={`mt-8 grid gap-8 ${receipt.trend.length >= 2 && (receipt.buckets.length > 0 || receipt.workTypes.length > 0) ? "md:grid-cols-2" : ""}`}
         >
           {receipt.trend.length >= 2 ? (
             <section aria-label="Requests resolved, month by month">
@@ -443,7 +502,32 @@ export function ReceiptPaper({
             </section>
           ) : null}
 
-          {receipt.workTypes.length > 0 ? (
+          {receipt.buckets.length > 0 ? (
+            <section aria-label="Where our time went">
+              <h3 className="text-sm font-semibold text-slate-900">Where our time went</h3>
+              <ul className="mt-4 space-y-3">
+                {receipt.buckets.map((bucket) => (
+                  <li key={bucket.key}>
+                    <div className="flex items-baseline justify-between text-sm">
+                      <span className="text-slate-700">
+                        {bucket.label}
+                        <span className="block text-[11px] text-slate-400">{bucket.blurb}</span>
+                      </span>
+                      <span className="tabular-nums font-medium text-slate-600">{bucket.pct}%</span>
+                    </div>
+                    <div className="mt-1 h-2 rounded-full bg-slate-200">
+                      <div className="h-2 rounded-full" style={{ width: `${bucket.pct}%`, background: accent }} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {receipt.plannedShare != null ? (
+                <p className="mt-3 text-xs text-slate-500">
+                  {receipt.plannedShare}% of it was planned work rather than fixing problems.
+                </p>
+              ) : null}
+            </section>
+          ) : receipt.workTypes.length > 0 ? (
             <section aria-label="Where the work went">
               <h3 className="text-sm font-semibold text-slate-900">Where the work went</h3>
               <ul className="mt-4 space-y-3">
@@ -480,6 +564,17 @@ export function ReceiptPaper({
           </section>
         ) : null}
 
+        {receipt.improvements.length > 0 ? (
+          <ul className="mt-6 space-y-2">
+            {receipt.improvements.map((item) => (
+              <li key={item.label} className="flex gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[15px] leading-6 text-emerald-900">
+                <span aria-hidden>✓</span>
+                <span>{improvementLine(item, receipt.period)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
         {receipt.recommendation ? (
           <section
             className="mt-6 break-inside-avoid rounded-xl border border-slate-200 bg-slate-50 p-5"
@@ -487,6 +582,17 @@ export function ReceiptPaper({
           >
             <h3 className="text-sm font-semibold text-slate-900">Worth knowing</h3>
             <p className="mt-1.5 text-[15px] leading-7 text-slate-700">{receipt.recommendation}</p>
+          </section>
+        ) : null}
+
+        {receipt.lookingAhead.length > 0 ? (
+          <section className="mt-6 break-inside-avoid rounded-xl border border-slate-200 p-5">
+            <h3 className="text-sm font-semibold text-slate-900">For the quarter ahead, we suggest</h3>
+            <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-[15px] leading-7 text-slate-700">
+              {receipt.lookingAhead.map((line, index) => (
+                <li key={`${line}-${index}`}>{line}</li>
+              ))}
+            </ol>
           </section>
         ) : null}
 
