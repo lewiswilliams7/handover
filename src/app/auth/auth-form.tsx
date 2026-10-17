@@ -7,7 +7,6 @@ import { Eye, EyeOff, Loader2 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { authCallbackUrlWithNext } from "@/lib/auth-email-redirect";
@@ -123,8 +122,17 @@ function safeInternalPath(raw: string | undefined): string | null {
   return t;
 }
 
-const GOOGLE_LOGO_SRC =
-  "https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg";
+/** Inline so the button never shows a broken image or waits on a third-party request. */
+function GoogleLogo() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden className="shrink-0">
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+    </svg>
+  );
+}
 
 function GoogleAuthSection(props: {
   disabled: boolean;
@@ -151,8 +159,7 @@ function GoogleAuthSection(props: {
         onClick={() => void props.onContinueGoogle()}
         className="flex h-10 w-full items-center justify-center gap-3 rounded-[var(--radius)] border border-white/20 bg-[#121212] px-4 text-sm font-medium text-white shadow-sm transition hover:bg-[#1a1a1a] disabled:pointer-events-none disabled:opacity-50 dark:border-white/15 dark:bg-[#0c0c0c] dark:hover:bg-[#141414]"
       >
-        {/* eslint-disable-next-line @next/next/no-img-element -- external Google brand asset */}
-        <img src={GOOGLE_LOGO_SRC} alt="" width={18} height={18} className="shrink-0" />
+        <GoogleLogo />
         Continue with Google
       </button>
     </>
@@ -240,10 +247,7 @@ export function AuthForm({
   // Sign up
   const [signUpEmail, setSignUpEmail] = useState("");
   const [signUpPassword, setSignUpPassword] = useState("");
-  const [signUpConfirmPassword, setSignUpConfirmPassword] = useState("");
   const [showSignUpPassword, setShowSignUpPassword] = useState(false);
-  const [showSignUpConfirmPassword, setShowSignUpConfirmPassword] = useState(false);
-  const [termsAccepted, setTermsAccepted] = useState(false);
   const [isSigningUp, setIsSigningUp] = useState(false);
   const [signUpError, setSignUpError] = useState<string | null>(null);
   const [signUpSuccess, setSignUpSuccess] = useState(false);
@@ -283,7 +287,7 @@ export function AuthForm({
       const { data } = await supabase.auth.getSession();
       if (cancelled) return;
       if (data.session?.user) {
-        router.push(destinationAfterAuth);
+        router.push(safeInternalPath(returnTo) ? destinationAfterAuth : "/onboarding/connect");
         router.refresh();
       }
     };
@@ -297,7 +301,7 @@ export function AuthForm({
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [signUpSuccess, destinationAfterAuth, router]);
+  }, [signUpSuccess, destinationAfterAuth, returnTo, router]);
 
   const fieldClass = "flex flex-col gap-2";
   const labelClass = "text-[13px] font-medium text-[var(--text-secondary)]";
@@ -486,14 +490,6 @@ export function AuthForm({
       setSignUpError(`Password must be at least ${MIN_PASSWORD_LEN} characters.`);
       return;
     }
-    if (signUpPassword !== signUpConfirmPassword) {
-      setSignUpError("Passwords must match.");
-      return;
-    }
-    if (!termsAccepted) {
-      setSignUpError("Please accept the Terms of Service and Privacy Policy.");
-      return;
-    }
 
     const email = signUpEmail.trim();
     if (!email || isSigningUp) return;
@@ -507,7 +503,11 @@ export function AuthForm({
       email,
       password: signUpPassword,
       options: {
-        emailRedirectTo: authCallbackUrlWithNext(destinationAfterAuth),
+        // A new account has nothing to show until it has a scan, so it lands on
+        // the connect screen unless a page (pricing, say) asked for it back.
+        emailRedirectTo: authCallbackUrlWithNext(
+          safeInternalPath(returnTo) ? destinationAfterAuth : "/onboarding/connect",
+        ),
         data: referralCode ? { referral_code: referralCode } : undefined,
       },
     });
@@ -560,7 +560,7 @@ export function AuthForm({
   };
 
   return (
-    <div className="relative z-[1] mx-auto flex min-h-[calc(100dvh-56px)] w-full max-w-[440px] items-center px-4 py-8 sm:py-10 md:min-h-[calc(100vh-56px)]">
+    <div className="relative z-[1] mx-auto flex w-full max-w-[440px] items-start px-4 pb-8 pt-4 sm:pb-10 sm:pt-8">
       <div className="auth-card-shell w-full rounded-2xl border border-white/[0.10] bg-white/[0.05] p-4 backdrop-blur-xl sm:p-8 animate-in fade-in zoom-in-95 duration-200">
         {initialConfirmationExpired ? (
           <div className="space-y-4 text-[var(--text-primary)]">
@@ -1002,67 +1002,6 @@ export function AuthForm({
                   </div>
                 </div>
 
-                <div className={fieldClass}>
-                  <label htmlFor="su-confirm" className={labelClass}>
-                    Confirm password
-                  </label>
-                  <div className="relative">
-                    <Input
-                      id="su-confirm"
-                      type={showSignUpConfirmPassword ? "text" : "password"}
-                      autoComplete="new-password"
-                      placeholder="Re-enter password"
-                      value={signUpConfirmPassword}
-                      onChange={(e) => setSignUpConfirmPassword(e.target.value)}
-                      disabled={isSigningUp}
-                      required
-                      minLength={MIN_PASSWORD_LEN}
-                      className="auth-input-focus-glow h-10 rounded-[var(--radius)] border-[var(--border)] bg-[var(--bg-primary)] pr-10 transition-shadow duration-200"
-                    />
-                    <button
-                      type="button"
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                      onClick={() => setShowSignUpConfirmPassword((v) => !v)}
-                      aria-label={
-                        showSignUpConfirmPassword ? "Hide password" : "Show password"
-                      }
-                      tabIndex={-1}
-                    >
-                      {showSignUpConfirmPassword ? (
-                        <EyeOff className="size-4" aria-hidden />
-                      ) : (
-                        <Eye className="size-4" aria-hidden />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex gap-3 pt-1">
-                  <Checkbox
-                    id="terms-accept"
-                    checked={termsAccepted}
-                    onCheckedChange={(v) => setTermsAccepted(v === true)}
-                    disabled={isSigningUp}
-                    className="mt-0.5"
-                  />
-                  <label
-                    htmlFor="terms-accept"
-                    className="text-[13px] leading-snug text-[var(--text-secondary)]"
-                  >
-                    I agree to the{" "}
-                    <Link href="/terms" className="font-medium text-[var(--accent)] hover:underline">
-                      Terms of Service
-                    </Link>{" "}
-                    and{" "}
-                    <Link
-                      href="/privacy"
-                      className="font-medium text-[var(--accent)] hover:underline"
-                    >
-                      Privacy Policy
-                    </Link>
-                  </label>
-                </div>
-
                 {signUpError ? (
                   <p className="text-sm font-medium text-[var(--danger)]" role="alert">
                     {signUpError}
@@ -1076,9 +1015,7 @@ export function AuthForm({
                   disabled={
                     isSigningUp ||
                     !signUpEmail.trim() ||
-                    !signUpPassword ||
-                    !signUpConfirmPassword ||
-                    !termsAccepted
+                    !signUpPassword
                   }
                 >
                   {isSigningUp ? (
@@ -1090,6 +1027,17 @@ export function AuthForm({
                     "Create account →"
                   )}
                 </Button>
+                <p className="text-center text-[12px] leading-snug text-[var(--text-muted)]">
+                  By creating an account you agree to the{" "}
+                  <Link href="/terms" className="text-[var(--text-secondary)] underline-offset-2 hover:underline">
+                    Terms
+                  </Link>{" "}
+                  and{" "}
+                  <Link href="/privacy" className="text-[var(--text-secondary)] underline-offset-2 hover:underline">
+                    Privacy Policy
+                  </Link>
+                  .
+                </p>
               </form>
               <GoogleAuthSection
                 disabled={oauthBusy || isSigningUp}

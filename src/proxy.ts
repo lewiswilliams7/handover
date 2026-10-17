@@ -25,6 +25,9 @@ function isAllowedBeforeEmailVerification(pathname: string): boolean {
   return (
     pathname === "/api/auth/sign-in-hint" ||
     pathname === "/api/auth/scan-claim-redirect" ||
+    // Paying should never wait on an inbox. Stripe confirms its own email, and
+    // the app itself still asks for verification before it opens.
+    pathname === "/api/stripe/checkout" ||
     pathname.startsWith("/api/auth/email-verification/")
   );
 }

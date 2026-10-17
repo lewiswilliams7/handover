@@ -36,12 +36,21 @@ export function MarketingBackgroundLayer() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    let animationId: number;
+    // The orbs are soft gradients, so they are drawn at an eighth of the
+    // screen's resolution and stretched by CSS: it looks identical and costs a
+    // fraction of the paint, which keeps scrolling smooth. Drawn ~24 times a
+    // second rather than every frame, paused when the tab is hidden, and drawn
+    // once for people who prefer reduced motion.
+    const SCALE = 0.125;
+    const FRAME_MS = 42;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let animationId = 0;
     let time = 0;
+    let last = 0;
 
     const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      canvas.width = Math.max(1, Math.round(window.innerWidth * SCALE));
+      canvas.height = Math.max(1, Math.round(window.innerHeight * SCALE));
     };
 
     resize();
@@ -55,8 +64,7 @@ export function MarketingBackgroundLayer() {
       { x: 0.8, y: 0.25, vx: -0.0001, vy: 0.00016, size: 0.6, opacity: 0.16, color: "99, 102, 241" },
     ];
 
-    const draw = () => {
-      time += 1;
+    const paint = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = "#172035";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -75,15 +83,33 @@ export function MarketingBackgroundLayer() {
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       });
-
-      animationId = requestAnimationFrame(draw);
     };
 
-    draw();
+    const draw = (now: number) => {
+      animationId = requestAnimationFrame(draw);
+      if (document.hidden || now - last < FRAME_MS) return;
+      // Advance by elapsed time, so the drift speed matches the old 60fps loop.
+      time += last === 0 ? 1 : (now - last) / 16.67;
+      last = now;
+      paint();
+    };
+
+    if (reduceMotion) {
+      paint();
+    } else {
+      animationId = requestAnimationFrame(draw);
+    }
+
+    const onResize = () => {
+      resize();
+      if (reduceMotion) paint();
+    };
+    window.removeEventListener("resize", resize);
+    window.addEventListener("resize", onResize);
 
     return () => {
       cancelAnimationFrame(animationId);
-      window.removeEventListener("resize", resize);
+      window.removeEventListener("resize", onResize);
     };
   }, []);
 
@@ -92,7 +118,7 @@ export function MarketingBackgroundLayer() {
       ref={canvasRef}
       className="fixed inset-0 pointer-events-none"
       aria-hidden="true"
-      style={{ zIndex: -1, display: "block" }}
+      style={{ zIndex: -1, display: "block", width: "100vw", height: "100vh" }}
     />
   );
 }

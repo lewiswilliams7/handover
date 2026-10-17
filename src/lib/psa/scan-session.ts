@@ -594,17 +594,19 @@ export async function validateScanCredentials(
       typeof value.siteUrl !== "string" ||
       typeof value.companyId !== "string" ||
       typeof value.publicKey !== "string" ||
-      typeof value.privateKey !== "string" ||
-      typeof value.clientId !== "string"
+      typeof value.privateKey !== "string"
     ) {
       throw new ScanValidationError("connectwise_missing_fields");
     }
+    // The Client ID identifies the integration, not the MSP, so Handover's own
+    // registered ID is used when the MSP leaves it blank.
+    const suppliedClientId = typeof value.clientId === "string" ? value.clientId.trim() : "";
     const connection: ConnectWiseConnection = {
       siteUrl: normalizeConnectWiseSiteUrl(value.siteUrl),
       companyId: value.companyId.trim(),
       publicKey: value.publicKey.trim(),
       privateKey: value.privateKey.trim(),
-      clientId: value.clientId.trim(),
+      clientId: suppliedClientId || process.env.CONNECTWISE_CLIENT_ID?.trim() || "",
     };
     if (
       !connection.siteUrl ||

@@ -5,6 +5,9 @@ import { HALOPSA_REPORTING_WHATS_BUILT_IN_HTML } from "@/lib/blog-articles/halop
 import { HOW_MSPS_LOSE_CLIENTS_COMMUNICATION_HTML } from "@/lib/blog-articles/how-msps-lose-clients-communication-html";
 import { HOW_TO_WRITE_MSP_WEEKLY_CLIENT_REPORT_HTML } from "@/lib/blog-articles/how-to-write-msp-weekly-client-report-html";
 import { MSP_CLIENT_PORTAL_GUIDE_HTML } from "@/lib/blog-articles/msp-client-portal-guide-html";
+import { MSP_CLIENT_CHURN_WARNING_SIGNS_HTML } from "@/lib/blog-articles/msp-client-churn-warning-signs-html";
+import { MSP_PRICE_INCREASE_LETTER_HTML } from "@/lib/blog-articles/msp-price-increase-letter-html";
+import { MSP_REVENUE_AT_RISK_HTML } from "@/lib/blog-articles/msp-revenue-at-risk-html";
 import { MSP_QBR_AUTOMATION_HTML } from "@/lib/blog-articles/msp-qbr-automation-html";
 import { WHAT_MSPS_TOLD_US_ABOUT_CLIENT_REPORTING_HTML } from "@/lib/blog-articles/what-msps-told-us-about-client-reporting-html";
 import { WHAT_SHOULD_A_QBR_INCLUDE_MSP_TEMPLATE_HTML } from "@/lib/blog-articles/what-should-a-qbr-include-msp-template-html";
@@ -165,6 +168,9 @@ const sapN8nMspAutomation = `
 `.trim();
 
 export const ARTICLE_HTML: Record<string, string> = {
+  "msp-client-churn-warning-signs": MSP_CLIENT_CHURN_WARNING_SIGNS_HTML,
+  "how-to-calculate-msp-revenue-at-risk": MSP_REVENUE_AT_RISK_HTML,
+  "how-to-raise-prices-msp-clients": MSP_PRICE_INCREASE_LETTER_HTML,
   "handover-client-retention-platform": HANDOVER_CLIENT_RETENTION_PLATFORM_HTML,
   "how-msps-lose-clients-communication": HOW_MSPS_LOSE_CLIENTS_COMMUNICATION_HTML,
   "how-to-write-msp-weekly-client-report": HOW_TO_WRITE_MSP_WEEKLY_CLIENT_REPORT_HTML,

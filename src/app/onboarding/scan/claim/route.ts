@@ -116,6 +116,9 @@ export async function POST(request: Request) {
         created.user.id,
         email,
       );
+      // Sign them straight in, so the next click can be checkout rather than a
+      // sign-in form. The app itself still waits for the email link.
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       const response = NextResponse.json({
         ok: true,
         accountCreated: true,
@@ -123,6 +126,7 @@ export async function POST(request: Request) {
         createdAt: result.createdAt,
         requiresEmailVerification: true,
         emailVerificationSent: verification.ok,
+        signedIn: !signInError,
         status: result.status,
         syncStatus: result.syncStatus,
         connectionTransferred: result.connectionTransferred,

@@ -33,7 +33,7 @@ const instructions = {
       "In ConnectWise Manage, open System → Members → API Members and create a dedicated API member for Handover.",
       "Create a security role with Inquire (read) access to Service Desk → Service Tickets and Finance → Agreements. No Add, Edit, Delete, or execute permissions are needed.",
       "Assign the role to the API member, create its public/private API keys, and copy the company ID and site URL here.",
-      "Use the Client ID registered for your ConnectWise integration. Handover reads ticket dates and agreement billing values only.",
+      "Leave Client ID blank unless your ConnectWise admin gave you one. Handover reads ticket dates, time and agreement billing values only.",
     ],
   },
 } as const;
@@ -44,7 +44,6 @@ export function ScanConnectForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
-  const [emailCaptured, setEmailCaptured] = useState(false);
   const [resultsExpired, setResultsExpired] = useState(false);
   const [storedConnectionState, setStoredConnectionState] = useState<
     "checking" | "available" | "missing"
@@ -189,13 +188,14 @@ export function ScanConnectForm() {
 
         <div className="grid gap-8 lg:grid-cols-[0.85fr_1.15fr]">
           <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 sm:p-8">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">Step 1 of 3</p>
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
-              See what your PSA is telling you.
+            <ScanSteps current={0} />
+            <h1 className="mt-6 text-3xl font-semibold tracking-tight sm:text-4xl">
+              See which clients are slipping.
             </h1>
             <p className="mt-4 max-w-xl text-sm leading-7 text-white/60">
-              Connect a read-only application and we&apos;ll scan the last 12 months for delivery
-              patterns. You can review the anonymous result before creating an account.
+              Connect a read-only API key. In about a minute you&apos;ll see your Revenue at Risk, what renews
+              soon, your margin gap and a replay of last year&apos;s losses. You see the results before you
+              make an account.
             </p>
 
             <div className="mt-8 grid gap-3 sm:grid-cols-2">
@@ -272,45 +272,9 @@ export function ScanConnectForm() {
                   <p className="mt-3 text-sm leading-6 text-red-200" role="alert">{savedScanError}</p>
                 ) : null}
               </div>
-            ) : !emailCaptured ? (
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  if (email.trim()) setEmailCaptured(true);
-                }}
-                className="space-y-4"
-              >
-                <p className="text-sm leading-6 text-white/60">
-                  Start with your email. We&apos;ll use it only to hand the scan back to you after
-                  you set a password.
-                </p>
-                <label htmlFor="scan-email" className="block">
-                  <span className={labelClass}>Work email</span>
-                  <input
-                    id="scan-email"
-                    name="email"
-                    type="email"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    placeholder="you@company.com"
-                    autoComplete="email"
-                    required
-                    className={inputClass}
-                  />
-                </label>
-                <button
-                  type="submit"
-                  className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-cyan-300 px-4 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200"
-                >
-                  Continue to PSA connection <ArrowRight className="size-4" />
-                </button>
-              </form>
             ) : (
               <>
-                <p className="mb-4 text-sm text-white/50">
-                  Scan handoff email: <span className="text-white/80">{email}</span>
-                </p>
-                <ol className="mb-8 space-y-3 text-sm leading-6 text-white/60">
+                <ol className="mb-5 space-y-3 text-sm leading-6 text-white/60">
                   {copy.steps.map((step, index) => (
                     <li key={step} className="flex gap-3">
                       <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-white/10 text-xs text-cyan-200">
@@ -320,7 +284,23 @@ export function ScanConnectForm() {
                     </li>
                   ))}
                 </ol>
-              <form onSubmit={submit} className="space-y-4">
+                <ShareSteps psaName={psaType === "halo" ? "HaloPSA" : "ConnectWise"} title={copy.title} steps={copy.steps} />
+              <form onSubmit={submit} className="mt-6 space-y-4 border-t border-white/10 pt-6">
+              <label htmlFor="scan-email" className="block">
+                <span className={labelClass}>Work email</span>
+                <input
+                  id="scan-email"
+                  name="email"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="you@company.com"
+                  autoComplete="email"
+                  required
+                  className={inputClass}
+                />
+                <span className="mt-1.5 block text-xs text-white/40">So we can hand the results back to you. No marketing list.</span>
+              </label>
               {psaType === "halo" ? (
                 <HaloCredentialsFields
                   url={haloUrl}
@@ -340,7 +320,7 @@ export function ScanConnectForm() {
                   <Field label="Company ID" id="cw-company-id" value={companyId} onChange={setCompanyId} required />
                   <Field label="Public key" id="cw-public-key" value={publicKey} onChange={setPublicKey} required />
                   <Field label="Private key" id="cw-private-key" type="password" value={privateKey} onChange={setPrivateKey} autoComplete="new-password" required />
-                  <Field label="Client ID" id="cw-client-id" value={cwClientId} onChange={setCwClientId} required />
+                  <Field label="Client ID (optional)" id="cw-client-id" value={cwClientId} onChange={setCwClientId} placeholder="Leave blank to use Handover's" />
                 </>
               )}
 
@@ -357,7 +337,7 @@ export function ScanConnectForm() {
                 {busy ? "Validating connection…" : "Validate and start scan"}
                 {!busy ? <ArrowRight className="size-4" /> : null}
               </button>
-              <p className="text-center text-xs text-white/35">The scan usually takes 20–60 seconds.</p>
+              <p className="text-center text-xs text-white/35">The scan usually takes 20 to 60 seconds. Nothing in your PSA changes.</p>
               </form>
               </>
             )}
@@ -402,5 +382,70 @@ function Field({
         className={inputClass}
       />
     </label>
+  );
+}
+
+const SCAN_STEPS = ["Connect", "Scan", "Results"];
+
+/** Where you are in the free scan: connect, scan, results. */
+export function ScanSteps({ current }: { current: number }) {
+  return (
+    <ol className="flex items-center gap-2 text-xs font-medium" aria-label="Free scan steps">
+      {SCAN_STEPS.map((step, index) => (
+        <li key={step} className="flex items-center gap-2">
+          <span
+            className={`flex size-6 items-center justify-center rounded-full border text-[11px] ${
+              index < current
+                ? "border-emerald-300/50 bg-emerald-300/10 text-emerald-200"
+                : index === current
+                  ? "border-cyan-300/60 bg-cyan-300/15 text-cyan-100"
+                  : "border-white/15 text-white/35"
+            }`}
+            aria-current={index === current ? "step" : undefined}
+          >
+            {index < current ? <Check className="size-3" /> : index + 1}
+          </span>
+          <span className={index === current ? "text-white" : "text-white/40"}>{step}</span>
+          {index < SCAN_STEPS.length - 1 ? <span className="h-px w-6 bg-white/15" aria-hidden /> : null}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/**
+ * Most owners do not create API keys themselves. One click sends the exact
+ * steps to whoever does, or copies them.
+ */
+function ShareSteps({ psaName, title, steps }: { psaName: string; title: string; steps: readonly string[] }) {
+  const [copied, setCopied] = useState(false);
+  const body = `Hi,\n\nCould you set up a read-only ${psaName} API key for Handover? It only needs read access and takes about two minutes.\n\n${title}:\n${steps
+    .map((step, index) => `${index + 1}. ${step}`)
+    .join("\n")}\n\nWhen it's done, send me the details, or enter them yourself at https://gethandover.uk/onboarding/connect\n\nThanks`;
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm">
+      <span className="text-white/60">Not the one who manages {psaName}?</span>
+      <a
+        href={`mailto:?subject=${encodeURIComponent(`Read-only ${psaName} API key for Handover`)}&body=${encodeURIComponent(body)}`}
+        className="font-semibold text-cyan-200 hover:text-cyan-100"
+      >
+        Email these steps
+      </a>
+      <button
+        type="button"
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(body);
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 2000);
+          } catch {
+            setCopied(false);
+          }
+        }}
+        className="min-h-0 font-semibold text-white/70 hover:text-white"
+      >
+        {copied ? "Copied" : "Copy them"}
+      </button>
+    </div>
   );
 }

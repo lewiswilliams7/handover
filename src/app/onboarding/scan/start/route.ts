@@ -141,7 +141,7 @@ export async function POST(request: Request) {
           ? "HaloPSA rejected the connection. This looks like a hosted Halo instance, so a tenant is probably required. For handoveruk.trial.usehalo.com, enter handoveruk."
           : "HaloPSA rejected the connection. Check the tenant and API application credentials.",
         connectwise_missing_fields:
-          "Enter the ConnectWise site URL, company ID, public key, private key, and Client ID.",
+          "Enter the ConnectWise site URL, company ID, public key and private key. If your admin gave you a Client ID, add that too.",
         connectwise_auth_failed:
           "ConnectWise rejected these credentials. Check the site URL, API member keys, Client ID, and read permissions.",
         connection_validation_failed:

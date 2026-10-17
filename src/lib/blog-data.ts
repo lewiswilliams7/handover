@@ -35,6 +35,10 @@ export type BlogPostMeta = {
   toc?: readonly BlogTocItem[];
   /** When set, overrides word-count-based reading time (e.g. editorial target). */
   readMinutesOverride?: number;
+  /** Question-led FAQ shown under the article and emitted as FAQPage JSON-LD. */
+  faqs?: ReadonlyArray<{ q: string; a: string }>;
+  /** Show the "Run your free scan" panel under the article. */
+  scanCta?: boolean;
 };
 
 export const BLOG_FILTER_OPTIONS: { id: BlogFilterId; label: string }[] = [
@@ -46,6 +50,117 @@ export const BLOG_FILTER_OPTIONS: { id: BlogFilterId; label: string }[] = [
 ];
 
 export const BLOG_POSTS: BlogPostMeta[] = [
+  {
+    slug: "msp-client-churn-warning-signs",
+    routePath: "/blog/msp-client-churn-warning-signs",
+    title: "7 warning signs an MSP client is about to leave",
+    dateISO: "2026-10-17T08:00:00.000Z",
+    dateDisplay: "17 October 2026",
+    author: "Lewis Williams",
+    tags: ["MSP", "Guides", "HaloPSA", "ConnectWise"],
+    description:
+      "The seven signs a managed IT client is drifting away, where to find each one in HaloPSA or ConnectWise, and how to tell a real warning from a quiet month.",
+    kind: "dynamic",
+    scanCta: true,
+    toc: [
+      { id: "measure-against-normal", label: "Measure against each client's normal" },
+      { id: "tickets-dry-up", label: "1. Tickets dry up" },
+      { id: "response-slips", label: "2. First response times slip" },
+      { id: "backlog-grows", label: "3. The open backlog grows" },
+      { id: "champion-quiet", label: "4. The main contact goes quiet" },
+      { id: "out-of-hours", label: "5. More out-of-hours tickets" },
+      { id: "renewal-unprepared", label: "6. An unprepared renewal" },
+      { id: "thin-margin", label: "7. Costing more than they pay" },
+      { id: "what-to-do", label: "What to do when you spot one" },
+      { id: "automate", label: "Doing this every week" },
+    ],
+    faqs: [
+      {
+        q: "What is the earliest sign an MSP client might leave?",
+        a: "A busy client going quiet. When ticket volume falls well below that client's usual range for a few months, it often means they are fixing things themselves, using another provider, or have already decided to move.",
+      },
+      {
+        q: "How much history do you need to spot client churn?",
+        a: "About six months: three to learn what a normal month looks like for that client and three to compare against it. Contract end dates and accounts with no activity can be checked from day one.",
+      },
+      {
+        q: "Should I use the same threshold for every client?",
+        a: "No. Every client has its own rhythm, so compare each one with its own history. Four tickets a month is normal for some clients and a warning for others.",
+      },
+    ],
+  },
+  {
+    slug: "how-to-calculate-msp-revenue-at-risk",
+    routePath: "/blog/how-to-calculate-msp-revenue-at-risk",
+    title: "How to calculate revenue at risk for an MSP, with a worked example",
+    dateISO: "2026-10-16T08:00:00.000Z",
+    dateDisplay: "16 October 2026",
+    author: "Lewis Williams",
+    tags: ["MSP", "Guides"],
+    description:
+      "Revenue at risk is the annual recurring revenue held by clients showing warning signs. The formula, a worked example, and the mistakes that make the number misleading.",
+    kind: "dynamic",
+    scanCta: true,
+    toc: [
+      { id: "definition", label: "The definition" },
+      { id: "worked-example", label: "A worked example" },
+      { id: "what-counts", label: "What counts as a warning sign" },
+      { id: "clients-without-value", label: "Clients with no value recorded" },
+      { id: "track-it", label: "Track the trend" },
+      { id: "mistakes", label: "Common mistakes" },
+      { id: "automate", label: "Working it out automatically" },
+    ],
+    faqs: [
+      {
+        q: "What is revenue at risk for an MSP?",
+        a: "The total annual recurring revenue of clients who currently show at least one warning sign, such as falling ticket activity, slower responses or a growing backlog. Each client is counted once.",
+      },
+      {
+        q: "How do you calculate revenue at risk?",
+        a: "Take every client with an open warning sign, multiply its monthly recurring value by 12, and add them up. Leave out one-off project revenue and setup issues like missing timestamps.",
+      },
+      {
+        q: "Is revenue at risk a prediction that clients will leave?",
+        a: "No. It is the value of the accounts worth looking at this week. A warning sign is a reason to act, not proof a client is leaving.",
+      },
+    ],
+  },
+  {
+    slug: "how-to-raise-prices-msp-clients",
+    routePath: "/blog/how-to-raise-prices-msp-clients",
+    title: "How to raise prices with MSP clients at renewal, with a letter template",
+    dateISO: "2026-10-15T08:00:00.000Z",
+    dateDisplay: "15 October 2026",
+    author: "Lewis Williams",
+    tags: ["MSP", "Guides"],
+    description:
+      "Which clients to reprice, how much to ask for, when to say it, and a price rise letter you can adapt for your next MSP renewal.",
+    kind: "dynamic",
+    scanCta: true,
+    toc: [
+      { id: "who", label: "Who to reprice" },
+      { id: "how-much", label: "How much to ask for" },
+      { id: "when", label: "When to say it" },
+      { id: "what-not-to-say", label: "What not to say" },
+      { id: "template", label: "Letter template" },
+      { id: "if-they-push-back", label: "If they push back" },
+      { id: "automate", label: "Doing this every renewal" },
+    ],
+    faqs: [
+      {
+        q: "How much notice should an MSP give for a price increase?",
+        a: "Give written notice of new terms around 60 days before the renewal date, after a value conversation at about 90 days. That leaves the client time to adjust their budget.",
+      },
+      {
+        q: "How do I know which MSP clients are underpriced?",
+        a: "Divide each client's monthly fee by the hours logged against them and compare it with your typical rate across all clients. Clients well below that rate are the shortlist.",
+      },
+      {
+        q: "Should I tell a client they are unprofitable?",
+        a: "No. Never share internal margins. Explain the support they rely on, give the new and old fee clearly, and offer a scope review as the alternative.",
+      },
+    ],
+  },
   {
     slug: "handover-client-retention-platform",
     routePath: "/blog/handover-client-retention-platform",

@@ -8,9 +8,24 @@ import { HandoverLoopDiagram } from "@/components/marketing/handover-loop-diagra
 import { HomePricingFaq } from "@/components/marketing/home-pricing-faq";
 import { AppFrame, ReplayMock, WeekListMock } from "@/components/marketing/product-mocks";
 import { ProductTour } from "@/components/marketing/product-tour";
-import { TestimonialMarquee } from "@/components/testimonial-marquee";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
+
+/** Quotes that still describe the product as it is: about quality and fit, not report-writing time. */
+const QUOTES = [
+  {
+    text: "Strong initial implementation with real niche focus. The HaloPSA integration is the right approach and the output quality is genuinely impressive for an early stage product.",
+    who: "Blake H.",
+    org: "IBM",
+    logo: "/ibm.png",
+  },
+  {
+    text: "Really good product. The MSP space has needed something like this for a long time and Handover has nailed the positioning.",
+    who: "Delivery Lead",
+    org: "Computacenter",
+    logo: "/computacenter.png",
+  },
+];
 
 function Reveal({ children, delay = 0, className }: { children: React.ReactNode; delay?: number; className?: string }) {
   const reduce = useReducedMotion();
@@ -37,7 +52,7 @@ export function HomeLanding() {
           <div className="home-hero-drift-orb--b" />
         </div>
         <div className="home-hero-dot-overlay" aria-hidden />
-        <div className="relative z-10 mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.08fr)] lg:gap-14">
+        <div className="relative z-10 mx-auto grid max-w-[1400px] items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.12fr)] lg:gap-16 xl:gap-20">
           <div>
             <Reveal>
               <Link
@@ -50,7 +65,7 @@ export function HomeLanding() {
               </Link>
             </Reveal>
             <Reveal delay={0.06}>
-              <h1 className="mt-6 text-[2.6rem] font-semibold leading-[1.02] tracking-[-0.035em] text-white sm:text-6xl lg:text-[4.1rem]">
+              <h1 className="mt-6 text-[2.6rem] font-semibold leading-[1.02] tracking-[-0.035em] text-white sm:text-6xl lg:text-[4.1rem] 2xl:text-[4.6rem]">
                 Find the clients you&apos;re about to lose. While you can still keep them.
               </h1>
             </Reveal>
@@ -103,7 +118,7 @@ export function HomeLanding() {
           </Reveal>
         </div>
 
-        <div className="relative z-10 mx-auto mt-16 flex max-w-6xl flex-wrap items-center justify-center gap-x-8 gap-y-3 text-[12px] text-white/45">
+        <div className="relative z-10 mx-auto mt-16 flex max-w-[1400px] flex-wrap items-center justify-center gap-x-8 gap-y-3 text-[12px] text-white/45">
           <a
             href="https://www.g2.com/products/handover"
             target="_blank"
@@ -203,12 +218,43 @@ export function HomeLanding() {
         </div>
       </section>
 
-      {/* Social proof. */}
-      <section className="py-12 md:py-20" aria-labelledby="quotes-heading">
-        <h2 id="quotes-heading" className="mb-10 px-4 text-center text-3xl font-semibold tracking-[-0.025em] text-white">
-          What MSP delivery teams say
-        </h2>
-        <TestimonialMarquee />
+      {/* Proof: a real scan result first, then what people in the industry said. */}
+      <section className="px-4 py-12 sm:px-6 md:py-20 lg:px-8" aria-labelledby="proof-heading">
+        <div className="mx-auto max-w-6xl">
+          <h2 id="proof-heading" className="text-3xl font-semibold tracking-[-0.025em] text-white sm:text-[2.6rem] sm:leading-[1.1]">
+            What MSPs found, and what they said
+          </h2>
+          <div className="mt-10 grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,1fr)]">
+            <Link
+              href="/case-studies/five-months-on-halopsa"
+              className="group flex flex-col justify-between rounded-2xl border border-cyan-300/30 bg-cyan-300/[0.06] p-7 transition-colors hover:border-cyan-300/60"
+            >
+              <div>
+                <p className="text-6xl font-semibold tracking-tight text-white">~45</p>
+                <p className="mt-2 text-[15px] leading-7 text-white/75">
+                  warning signs on the first scan, for an MSP only five months into HaloPSA. You do not need years of
+                  history to start.
+                </p>
+              </div>
+              <span className="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-cyan-300">
+                Read the story
+                <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
+              </span>
+            </Link>
+            {QUOTES.map((quote) => (
+              <figure key={quote.who} className="flex flex-col justify-between rounded-2xl border border-white/10 bg-white/[0.03] p-7">
+                <blockquote className="text-[16px] leading-7 text-white/85">&ldquo;{quote.text}&rdquo;</blockquote>
+                <figcaption className="mt-6 flex items-center gap-3">
+                  <img src={quote.logo} alt="" className="h-6 w-auto rounded bg-white px-1 py-0.5 object-contain" />
+                  <span className="text-sm">
+                    <span className="block font-medium text-white">{quote.who}</span>
+                    <span className="block text-white/50">{quote.org}</span>
+                  </span>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        </div>
       </section>
 
       {/* Getting started: a real sequence, so it is numbered. */}
@@ -251,20 +297,6 @@ export function HomeLanding() {
               </li>
             ))}
           </ol>
-          <Link
-            href="/case-studies/five-months-on-halopsa"
-            className="group mt-6 flex flex-col gap-4 rounded-2xl border border-cyan-300/25 bg-cyan-300/[0.05] p-6 transition-colors hover:border-cyan-300/50 sm:flex-row sm:items-center sm:gap-6"
-          >
-            <span className="text-5xl font-semibold tracking-tight text-white">~45</span>
-            <span className="flex-1 text-[15px] leading-7 text-white/75">
-              warning signs on the first scan, for an MSP only five months into HaloPSA. You do not need years of
-              history to start.
-            </span>
-            <span className="inline-flex items-center gap-1 text-sm font-semibold text-cyan-300">
-              Read the story
-              <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
-            </span>
-          </Link>
         </div>
       </section>
 

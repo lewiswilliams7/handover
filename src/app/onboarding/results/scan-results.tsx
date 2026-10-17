@@ -19,6 +19,7 @@ import {
 } from "@/lib/psa/scan-finding-copy";
 import { type ScanEvidenceRef } from "@/lib/psa/scan-evidence";
 import { BOOK_DEMO_CALENDLY_URL } from "@/lib/book-demo";
+import { STRIPE_PRICE_IDS } from "@/lib/stripe-price-ids";
 import type { ChurnReplayPreview, ChurnReplayResult } from "@/lib/psa/churn-replay";
 import type { ScanHighlights } from "@/lib/scan-highlights";
 
@@ -68,6 +69,7 @@ type ClaimState = {
   accountCreated: boolean;
   requiresVerification: boolean;
   emailVerificationSent: boolean;
+  signedIn: boolean;
 };
 
 type ScanFindingView = {
@@ -253,34 +255,6 @@ function failureCopy(code: string | null) {
         title: "The scan did not complete.",
         body: "The connection was validated, but the PSA did not return enough data for a reliable result. Start another scan or use the walkthrough.",
       };
-  }
-}
-
-function scanInvitationCopy(scan: AnonymousScanStatus): string {
-  const counts = scan.findingsCount ?? {};
-  const primaryFinding = Object.entries(counts)
-    .filter(([, count]) => count > 0)
-    .sort(([, left], [, right]) => right - left)[0];
-  const accountCount = primaryFinding?.[1] ?? scan.clientsWithFindings ?? 0;
-  const findingSentence = primaryFinding
-    ? findingCountSentence(primaryFinding[0], primaryFinding[1])
-    : `We found ${accountCount} account${accountCount === 1 ? "" : "s"} with a measured change in the scanned data.`;
-  const invitation = `${findingSentence} Book fifteen minutes and I’ll walk you through which ones and what changed.`;
-  switch (scan.exposureAvailability) {
-    case "available_value":
-      return scan.exposureValue != null && scan.exposureValue > 0
-        ? `${findingSentence} This covers ${formatCurrency(scan.exposureValue)} of monthly recurring revenue. Book fifteen minutes and I’ll walk you through which ones and what changed.`
-        : invitation;
-    case "available_zero":
-      return `${invitation} No positive monthly contract value was recorded.`;
-    case "available_no_value":
-      return `${invitation} Contract records were available, but no usable monthly value was recorded.`;
-    case "unavailable":
-      return `${invitation} Contract data was not available, so no value estimate is included.`;
-    case "not_calculated":
-      return `${invitation} Contract value was not calculated for this scan.`;
-    default:
-      return invitation;
   }
 }
 
@@ -516,6 +490,7 @@ export function ScanResults() {
             accountCreated: claim.accountCreated === true,
             requiresVerification: claim.requiresEmailVerification === true,
             emailVerificationSent: claim.emailVerificationSent === true,
+            signedIn: true,
           });
           if (claim.results) {
             setScan(
@@ -651,6 +626,7 @@ export function ScanResults() {
         accountCreated?: boolean;
         requiresEmailVerification?: boolean;
         emailVerificationSent?: boolean;
+        signedIn?: boolean;
         results?: ScanResultsPayload | null;
       };
       if (!response.ok || !claim.ok) {
@@ -664,6 +640,7 @@ export function ScanResults() {
         accountCreated: claim.accountCreated === true,
         requiresVerification: claim.requiresEmailVerification === true,
         emailVerificationSent: claim.emailVerificationSent === true,
+        signedIn: claim.signedIn !== false,
       });
       if (claim.results) {
         setScan(
@@ -726,9 +703,13 @@ export function ScanResults() {
     return (
       <main className="min-h-screen bg-[#07111f] px-4 py-12 text-white">
         <div className="mx-auto max-w-xl rounded-3xl border border-white/10 bg-white/[0.04] p-8">
-          <h1 className="text-2xl font-semibold">Your saved results have expired.</h1>
+          <h1 className="text-2xl font-semibold">
+            {storedConnectionState === "missing" ? "Let's run your first scan." : "Your saved results have expired."}
+          </h1>
           <p className="mt-3 text-sm leading-6 text-white/60">
-            The result window has closed, but your saved PSA connection can be used to run a fresh scan.
+            {storedConnectionState === "missing"
+              ? "Connect HaloPSA or ConnectWise read-only. In about a minute you'll see which clients are slipping, what they are worth and what renews soon."
+              : "The result window has closed, but your saved PSA connection can be used to run a fresh scan."}
           </p>
           {storedConnectionState === "available" ? (
             <button
@@ -744,18 +725,20 @@ export function ScanResults() {
             <p className="mt-6 text-sm text-white/50">Checking for a saved PSA connection…</p>
           ) : (
             <a
-              href="/onboarding/connect?reason=results-expired"
-              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-cyan-300 px-4 py-3 text-sm font-semibold text-slate-950"
+              href="/onboarding/connect"
+              className="cta cta-primary mt-6"
             >
-              Connect your PSA <ArrowRight className="size-4" />
+              Connect your PSA <ArrowRight className="cta-arrow size-4" />
             </a>
           )}
           {newScanError ? (
             <p className="mt-3 text-sm leading-6 text-red-200" role="alert">{newScanError}</p>
           ) : null}
-          <a href="/onboarding/connect" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-cyan-200">
-            Connect a different PSA <ArrowRight className="size-4" />
-          </a>
+          {storedConnectionState !== "missing" ? (
+            <a href="/onboarding/connect" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-cyan-200">
+              Connect a different PSA <ArrowRight className="size-4" />
+            </a>
+          ) : null}
           {viewerEntitled ? (
             <a href="/onboarding/exit" className="mt-4 block text-sm text-white/50 hover:text-white/80">
               Skip for now
@@ -903,16 +886,20 @@ export function ScanResults() {
                 <>
                   <p className="font-semibold text-cyan-50">Account created. Your scan is saved.</p>
                   <p className="mt-1">
-                    {claimState.emailVerificationSent
-                      ? "We sent a verification email. Verify it before using the rest of Handover."
-                      : "Verify your email before using the rest of Handover."}
+                    {claimState.signedIn
+                      ? "You're signed in. Unlock the full results below, and click the link we emailed you when you have a moment to open the app."
+                      : claimState.emailVerificationSent
+                        ? "We sent a verification email. Click the link in it to open Handover."
+                        : "Verify your email to open Handover."}
                   </p>
-                  <Link
-                    href="/auth?tab=signin&returnTo=%2Fonboarding%2Fresults"
-                    className="mt-3 inline-flex font-semibold text-cyan-200 underline-offset-2 hover:underline"
-                  >
-                    Sign in later
-                  </Link>
+                  {!claimState.signedIn ? (
+                    <Link
+                      href="/auth?tab=signin&returnTo=%2Fonboarding%2Fresults"
+                      className="mt-3 inline-flex font-semibold text-cyan-200 underline-offset-2 hover:underline"
+                    >
+                      Sign in
+                    </Link>
+                  ) : null}
                 </>
               )
               : claimState.transferred
@@ -1056,31 +1043,7 @@ export function ScanResults() {
                 ))}
               </div>
             </div>
-            {claimState || scan.status === "claimed" ? (
-              <div className="mt-6 border-t border-white/10 pt-6 text-center">
-                <div className="mx-auto max-w-md">
-                  <LockKeyhole className="mx-auto size-7 text-cyan-200" />
-                  <h2 className="mt-3 text-xl font-semibold">Your scan is saved, but details are not included in this plan</h2>
-                  <p className="mt-2 text-sm leading-6 text-white/60">{scanInvitationCopy(scan)}</p>
-                  <div className="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-3">
-                    <a
-                      href={BOOK_DEMO_CALENDLY_URL}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-2 rounded-xl bg-cyan-300 px-5 py-3 text-sm font-semibold text-slate-950"
-                    >
-                      Book a walkthrough <ArrowRight className="size-4" />
-                    </a>
-                    <Link
-                      href="/pricing"
-                      className="inline-flex items-center gap-2 text-sm font-semibold text-cyan-200 underline-offset-2 hover:underline"
-                    >
-                      View pricing <ArrowRight className="size-4" />
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            ) : null}
+            {claimState || scan.status === "claimed" ? <UnlockPanel scan={scan} /> : null}
           </section>
         ) : !outcome && !failure ? (
           <section className="mt-8 rounded-3xl border border-emerald-200/20 bg-emerald-200/[0.05] p-6 sm:p-8">
@@ -1394,6 +1357,115 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
+/**
+ * After the scan is saved: the one step between these results and the full
+ * product. Checkout starts straight from here, no pricing page detour.
+ */
+function UnlockPanel({ scan }: { scan: AnonymousScanStatus }) {
+  const [period, setPeriod] = useState<"monthly" | "annual">("monthly");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const priceId = period === "annual" ? STRIPE_PRICE_IDS.handover.annual : STRIPE_PRICE_IDS.handover.monthly;
+  const atRisk = scan.highlights?.atRisk;
+
+  const checkout = async () => {
+    if (busy) return;
+    if (!priceId) {
+      window.location.href = "/pricing";
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ priceId }),
+      });
+      const data = (await response.json().catch(() => ({}))) as { url?: string; error?: string };
+      if (response.status === 401) {
+        window.location.href = `/auth?tab=signin&returnTo=${encodeURIComponent("/onboarding/results")}`;
+        return;
+      }
+      if (!response.ok || !data.url) {
+        setError(data.error ?? "Checkout could not start. Try again, or book a walkthrough.");
+        return;
+      }
+      window.location.assign(data.url);
+    } catch {
+      setError("Checkout could not be reached. Try again in a moment.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-6 rounded-2xl border border-cyan-300/30 bg-cyan-300/[0.06] p-6 sm:p-8">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:items-center">
+        <div>
+          <h2 className="text-2xl font-semibold tracking-tight text-white">
+            {atRisk && atRisk.clients > 0
+              ? `See which ${atRisk.clients === 1 ? "client it is" : `${atRisk.clients} clients they are`}, and what to do first.`
+              : "See every client by name, and what to do first."}
+          </h2>
+          <ul className="mt-4 space-y-2 text-sm text-white/70">
+            {[
+              "Client names, the change behind each warning and its normal range",
+              "Your ranked list for this week, with the emails already written",
+              "Value Receipts, renewal plans and margin for every client",
+              "A fresh scan every week, and the Monday Brief in your inbox",
+            ].map((item) => (
+              <li key={item} className="flex gap-2">
+                <span className="mt-2 size-1.5 shrink-0 rounded-full bg-cyan-300" aria-hidden />
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-[#07111f]/70 p-5">
+          <div className="flex rounded-lg border border-white/10 p-0.5 text-xs font-semibold" role="group" aria-label="Billing period">
+            {(["monthly", "annual"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={period === value}
+                onClick={() => setPeriod(value)}
+                className={`min-h-0 flex-1 rounded-md px-3 py-1.5 transition-colors ${period === value ? "bg-cyan-300 text-slate-950" : "text-white/60 hover:text-white"}`}
+              >
+                {value === "monthly" ? "Monthly" : "Annual, 2 months free"}
+              </button>
+            ))}
+          </div>
+          <p className="mt-4 text-3xl font-semibold tracking-tight text-white">
+            {period === "annual" ? "£4,990" : "£499"}
+            <span className="text-base font-medium text-white/50">{period === "annual" ? " a year" : " a month"}</span>
+          </p>
+          <p className="mt-1 text-xs text-white/50">Everything included. Unlimited users. Cancel any time.</p>
+          <button
+            type="button"
+            onClick={() => void checkout()}
+            disabled={busy}
+            className="cta cta-primary mt-4 w-full disabled:cursor-wait disabled:opacity-70"
+          >
+            {busy ? "Opening checkout…" : "Unlock Handover"}
+            {!busy ? <ArrowRight className="cta-arrow size-4" aria-hidden /> : null}
+          </button>
+          {error ? <p className="mt-2 text-xs text-amber-200" role="alert">{error}</p> : null}
+          <a
+            href={BOOK_DEMO_CALENDLY_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 block text-center text-sm font-semibold text-cyan-200 hover:text-cyan-100"
+          >
+            Rather talk it through first? Book a walkthrough
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PasswordClaimForm({
   password,
   busy,
@@ -1410,10 +1482,10 @@ function PasswordClaimForm({
   return (
     <section className="mt-8 rounded-3xl border border-cyan-300/20 bg-cyan-300/[0.06] p-6 sm:p-8">
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200/75">Keep your scan</p>
-      <h2 className="mt-3 text-2xl font-semibold">Set a password to claim these results</h2>
+      <h2 className="mt-3 text-2xl font-semibold">Choose a password to save these results</h2>
       <p className="mt-3 max-w-2xl text-sm leading-7 text-white/65">
-        Your email is already captured. Set a password to create your account and attach this scan
-        to it. We&apos;ll ask you to verify your email after the handoff.
+        That&apos;s your account made, using the email you scanned with. You can unlock the client names
+        straight after.
       </p>
       <form onSubmit={onSubmit} className="mt-5 flex max-w-md flex-col gap-3 sm:flex-row">
         <input
@@ -1431,19 +1503,12 @@ function PasswordClaimForm({
           disabled={busy || password.length < 8}
           className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-cyan-300 px-4 text-sm font-semibold text-slate-950 disabled:cursor-wait disabled:opacity-60"
         >
-          {busy ? "Creating account…" : "Claim results"} <ArrowRight className="size-4" />
+          {busy ? "Saving…" : "Save my results"} <ArrowRight className="size-4" />
         </button>
       </form>
       {error ? <p className="mt-3 text-sm text-red-200" role="alert">{error}</p> : null}
     </section>
   );
-}
-
-function formatMonthlyValue(value: number): string {
-  return `£${value.toLocaleString("en-GB", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })} monthly value`;
 }
 
 function formatPercent(value: number): string {

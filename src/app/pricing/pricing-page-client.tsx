@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { ArrowRight, Check, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { ProductTour } from "@/components/marketing/product-tour";
 import { BOOK_DEMO_CALENDLY_URL } from "@/lib/book-demo";
@@ -104,8 +104,10 @@ export function PricingPageClient() {
     setCheckoutError(null);
 
     if (!signedIn) {
-      const returnTo = `/pricing?billing=${billingPeriod}`;
-      router.push(`/auth?tab=signin&returnTo=${encodeURIComponent(returnTo)}`);
+      // New buyers make an account first; checkout then opens by itself when
+      // they come back here. Existing customers can switch to sign in.
+      const returnTo = `/pricing?billing=${billingPeriod}&buy=1`;
+      router.push(`/auth?tab=signup&returnTo=${encodeURIComponent(returnTo)}`);
       return;
     }
     if (!checkoutPriceId) {
@@ -136,6 +138,17 @@ export function PricingPageClient() {
       setCheckoutBusy(false);
     }
   };
+
+  // Back from creating an account with ?buy=1: open checkout without another click.
+  const autoBuyStarted = useRef(false);
+  useEffect(() => {
+    if (!authChecked || !signedIn || checkoutComplete || autoBuyStarted.current) return;
+    if (searchParams.get("buy") !== "1") return;
+    autoBuyStarted.current = true;
+    void buyNow();
+    // buyNow reads the latest state when it runs; this should fire once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authChecked, signedIn, checkoutComplete, searchParams]);
 
   return (
     <main className="marketing-aurora min-h-screen px-4 py-12 text-white sm:px-6 md:pb-20">

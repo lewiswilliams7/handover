@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { SignOutButton } from "@/app/onboarding/sign-out-button";
+import { ScanSteps } from "@/app/onboarding/connect/scan-connect-form";
 
 type ScanStatus = {
   status: "pending" | "syncing" | "complete" | "failed" | "claimed";
@@ -23,7 +24,7 @@ const stages = [
   { key: "connected", label: "Connection validated" },
   { key: "tickets", label: "Reading historical tickets" },
   { key: "contracts", label: "Reading contracts and agreements" },
-  { key: "complete", label: "Analysing delivery patterns" },
+  { key: "complete", label: "Checking every client against its own history" },
 ];
 
 function stageIndex(stage: string): number {
@@ -202,10 +203,10 @@ export function ScanProgress() {
           </div>
         ) : (
           <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 sm:p-10">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">Step 2 of 3</p>
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">We&apos;re reading your PSA.</h1>
+            <ScanSteps current={1} />
+            <h1 className="mt-6 text-3xl font-semibold tracking-tight sm:text-4xl">We&apos;re reading your PSA.</h1>
             <p className="mt-4 text-sm leading-7 text-white/60">
-              This usually takes 20–60 seconds. Keep this tab open while we read the data and calculate only metrics we can support.
+              This usually takes 20 to 60 seconds. Keep this tab open. Anything your data cannot support is left out rather than guessed.
             </p>
 
             <div className="mt-10 space-y-4">
@@ -227,7 +228,24 @@ export function ScanProgress() {
               })}
             </div>
 
-            <div className="mt-10 border-t border-white/10 pt-5 text-xs text-white/40">
+            <div className="mt-10 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+              <p className="text-sm font-semibold text-white">What you&apos;ll see in a moment</p>
+              <ul className="mt-3 grid gap-2 text-sm text-white/65 sm:grid-cols-2">
+                {[
+                  "Revenue at Risk: clients that changed, in pounds",
+                  "Contracts renewing in the next 90 days",
+                  "Clients that cost more to serve than they pay",
+                  "Churn Replay: would we have warned you about last year's losses?",
+                ].map((item) => (
+                  <li key={item} className="flex gap-2">
+                    <span className="mt-2 size-1.5 shrink-0 rounded-full bg-cyan-300" aria-hidden />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="mt-6 border-t border-white/10 pt-5 text-xs text-white/40">
               {scan?.progress.total
                 ? `Stage ${Math.min(scan.progress.completed + 1, scan.progress.total)} of ${scan.progress.total}`
                 : "Preparing secure scan"}

@@ -113,6 +113,19 @@ export default async function DynamicBlogArticlePage({ params }: PageProps) {
     keywords: post.tags,
   });
 
+  const faqJsonLd = post.faqs?.length
+    ? {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: post.faqs.map((item) => ({
+          "@type": "Question",
+          name: item.q,
+          acceptedAnswer: { "@type": "Answer", text: item.a },
+        })),
+      }
+    : null;
+  const showScanCta = post.scanCta || slug === "what-msps-told-us-about-client-reporting";
+
   return (
     <div
       className="animate-in fade-in duration-300"
@@ -122,6 +135,12 @@ export default async function DynamicBlogArticlePage({ params }: PageProps) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(articleJsonLd) }}
       />
+      {faqJsonLd ? (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+        />
+      ) : null}
       <div className="mx-auto w-full max-w-[1100px] px-6 py-12 md:px-8 md:py-20">
         <div
           className={cn(
@@ -180,13 +199,29 @@ export default async function DynamicBlogArticlePage({ params }: PageProps) {
                 dangerouslySetInnerHTML={{ __html: html }}
               />
 
-              {slug === "what-msps-told-us-about-client-reporting" ? (
+              {post.faqs?.length ? (
+                <section className="mt-12 border-t border-[var(--border)] pt-8" aria-labelledby="faq-heading">
+                  <h2 id="faq-heading" className="text-[20px] font-semibold text-[var(--text-primary)] sm:text-[24px]">
+                    Common questions
+                  </h2>
+                  <dl className="mt-5 divide-y divide-[var(--border)]">
+                    {post.faqs.map((item) => (
+                      <div key={item.q} className="py-4">
+                        <dt className="text-[16px] font-semibold text-[var(--text-primary)]">{item.q}</dt>
+                        <dd className="mt-1.5 text-[15px] leading-[1.75] text-[var(--text-secondary)]">{item.a}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
+              ) : null}
+
+              {showScanCta ? (
                 <div className="mt-12 rounded-xl border border-[rgba(56,189,248,0.2)] bg-[rgba(56,189,248,0.05)] p-6">
                   <h2 className="text-[24px] font-bold text-[var(--text-primary)]">
                     Run your free scan
                   </h2>
                   <p className="mt-2 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
-                    Connect HaloPSA or ConnectWise with a read-only key.
+                    See which of your clients are slipping, ranked by what they pay. Connect HaloPSA or ConnectWise with a read-only key.
                   </p>
                   <p className="mt-1 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
                     About a minute, no trial, no card.
@@ -194,7 +229,7 @@ export default async function DynamicBlogArticlePage({ params }: PageProps) {
                   <div className="mt-5">
                     <Link
                       href="/onboarding/connect"
-                      className="inline-flex items-center rounded-[var(--radius)] bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]"
+                      className="cta cta-primary"
                     >
                       Run your free scan
                     </Link>

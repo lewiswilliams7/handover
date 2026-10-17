@@ -88,8 +88,7 @@ export default async function AuthPage({ searchParams }: AuthPageProps) {
           </span>
         </Link>
         <p className="mt-3 max-w-[320px] text-center text-[15px] font-semibold leading-snug text-[var(--text-primary)]">
-          Stop writing reports.{" "}
-          <span className="text-gradient-brand">Start delivering.</span>
+          Find the clients you&apos;re about to lose.
         </p>
       </div>
       <AuthForm
@@ -104,7 +103,7 @@ export default async function AuthPage({ searchParams }: AuthPageProps) {
         trialPlan={trialPlan}
       />
       <p className="relative z-[1] pb-8 text-center text-[12px] text-[var(--text-muted)]">
-        Join MSP teams saving hours every week on reporting
+        Free, read-only scan of HaloPSA or ConnectWise. No card needed.
       </p>
     </div>
   );
