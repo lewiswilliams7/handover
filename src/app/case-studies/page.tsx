@@ -5,10 +5,12 @@ import { CardMouseSpotlight } from "@/components/card-mouse-spotlight";
 import { MarketingHeroAmbient } from "@/components/marketing-hero-ambient";
 import { MarketingPageLayout } from "@/components/marketing-page-layout";
 import { ScrollRevealItem } from "@/components/scroll-reveal-item";
+import { CASE_STUDIES } from "@/lib/marketing/case-studies";
 
 export const metadata: Metadata = {
   title: "Case studies | Handover",
-  description: "How MSP delivery teams use Handover to cut reporting time and keep clients updated.",
+  description: "What MSPs found when they pointed Handover at their PSA, and how delivery teams use it.",
+  alternates: { canonical: "https://gethandover.uk/case-studies" },
 };
 
 export default function CaseStudiesIndexPage() {
@@ -23,16 +25,33 @@ export default function CaseStudiesIndexPage() {
             Case studies
           </p>
           <h1 className="mt-3 text-4xl font-bold text-[var(--text-primary)] md:text-5xl">
-            Real teams, real <span className="text-gradient-brand">time saved</span>
+            What MSPs found in their own PSA
           </h1>
           <p className="mx-auto mt-4 max-w-xl text-[15px] leading-relaxed text-[var(--text-secondary)]">
-            Stories from MSP delivery teams who replaced manual reporting with Handover.
+            Short, factual stories from MSPs who ran Handover on their own data.
           </p>
         </div>
       </section>
 
       <section className="relative z-[1] border-t border-[var(--border)] bg-[var(--bg-secondary)] px-6 py-12 md:px-8 md:py-20">
         <div className="mx-auto grid w-full max-w-[900px] gap-6">
+          {CASE_STUDIES.map((study) => (
+            <Link
+              key={study.slug}
+              href={`/case-studies/${study.slug}`}
+              className="group grid items-center gap-6 rounded-2xl border border-cyan-300/25 bg-cyan-300/[0.04] p-8 no-underline transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-300/50 sm:grid-cols-[auto_1fr]"
+            >
+              <span className="text-5xl font-semibold tracking-tight text-white">
+                {study.headlineStat.value}
+                <span className="mt-1 block text-xs font-normal tracking-normal text-white/50">{study.headlineStat.label}</span>
+              </span>
+              <span>
+                <span className="block text-xl font-semibold text-white md:text-2xl">{study.title}</span>
+                <span className="mt-2 block text-[14px] text-white/60">{study.who}</span>
+                <span className="mt-4 inline-block text-[14px] font-medium text-cyan-300">Read the story</span>
+              </span>
+            </Link>
+          ))}
           <ScrollRevealItem index={0} className="block">
             <Link href="/case-studies/msp-weekly-reporting" className="block no-underline">
               <CardMouseSpotlight

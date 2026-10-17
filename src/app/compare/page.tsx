@@ -1,19 +1,32 @@
 import type { Metadata } from "next";
+import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 
 import { MarketingHeroAmbient } from "@/components/marketing-hero-ambient";
 import { MarketingPageLayout } from "@/components/marketing-page-layout";
 import { ScrollRevealItem } from "@/components/scroll-reveal-item";
 import { Button } from "@/components/ui/button";
+import { COMPARE_PAGES } from "@/lib/marketing/compare-pages";
 
 export const metadata: Metadata = {
-  title: "Compare - Handover vs manual reporting & generic AI",
+  title: "Compare Handover | PSA dashboards, spreadsheets, customer success tools and more",
   description:
-    "See how Handover stacks up against writing reports manually and using ChatGPT or Copilot: HaloPSA API, push-back, scheduling, Excel packs, and delivery health.",
+    "How Handover compares with PSA dashboards, client health spreadsheets and customer success platforms for keeping MSP clients, and with manual reporting and generic AI.",
   alternates: {
     canonical: "https://gethandover.uk/compare",
   },
 };
+
+const REPORTING_COMPARISONS = [
+  { href: "/compare/handover-vs-manual-reporting", label: "vs manual reporting" },
+  { href: "/compare/handover-vs-halopsa-reports", label: "vs HaloPSA reports" },
+  { href: "/compare/handover-vs-connectwise-reports", label: "vs ConnectWise reports" },
+  { href: "/compare/handover-vs-brightgauge", label: "vs BrightGauge" },
+  { href: "/compare/handover-vs-mspbots", label: "vs MSPbots" },
+  { href: "/compare/handover-vs-chatgpt", label: "vs ChatGPT" },
+  { href: "/compare/handover-vs-rewst", label: "vs Rewst" },
+  { href: "/compare/handover-vs-n8n", label: "vs n8n" },
+];
 
 const manualRows: [string, string, string][] = [
   ["Time per report", "20-30 minutes", "Under 60 seconds"],
@@ -50,10 +63,10 @@ export default function ComparePage() {
               Comparison
             </p>
             <h1 className="mt-4 text-3xl font-bold leading-tight tracking-tight text-[var(--text-primary)] md:text-5xl">
-              Why MSP teams choose Handover over manual reporting and generic AI
+              How Handover compares
             </h1>
             <p className="mx-auto mt-5 max-w-2xl text-lg text-[var(--text-secondary)]">
-              Compare what you&apos;re doing now vs what&apos;s possible with Handover
+              With the ways MSPs keep an eye on clients today, and with doing client reporting by hand.
             </p>
             <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
               <Link href="/onboarding/connect">
@@ -71,6 +84,45 @@ export default function ComparePage() {
               </Link>
             </div>
           </ScrollRevealItem>
+        </div>
+      </section>
+
+      <section className="border-t border-[var(--border)] px-6 py-14 md:px-8 md:py-16" aria-labelledby="retention-compare">
+        <div className="mx-auto max-w-[1100px]">
+          <h2 id="retention-compare" className="text-2xl font-semibold text-white md:text-3xl">
+            Keeping clients
+          </h2>
+          <ul className="mt-6 grid gap-4 md:grid-cols-3">
+            {COMPARE_PAGES.map((page) => (
+              <li key={page.slug}>
+                <Link
+                  href={`/compare/${page.slug}`}
+                  className="group flex h-full flex-col rounded-2xl border border-white/10 bg-white/[0.03] p-6 transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-300/40"
+                >
+                  <span className="text-sm text-white/50">Handover vs</span>
+                  <span className="mt-0.5 text-lg font-semibold capitalize text-white">{page.them}</span>
+                  <span className="mt-2 flex-1 text-sm leading-6 text-white/60">{page.summary}</span>
+                  <span className="mt-5 inline-flex items-center gap-1 text-sm font-semibold text-cyan-300">
+                    See the comparison
+                    <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <h2 className="mt-14 text-lg font-semibold text-white">Client reporting</h2>
+          <ul className="mt-3 flex flex-wrap gap-2">
+            {REPORTING_COMPARISONS.map((item) => (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  className="inline-flex rounded-full border border-white/12 px-3 py-1.5 text-[13px] text-white/75 transition-colors hover:border-cyan-300/50 hover:text-white"
+                >
+                  {item.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
         </div>
       </section>
 

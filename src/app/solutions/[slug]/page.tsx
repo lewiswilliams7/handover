@@ -3,21 +3,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BarChart3, LayoutTemplate, Plug } from "lucide-react";
 
+import { SOLUTION_TITLES as TITLES } from "@/lib/marketing/solution-slugs";
 import { MarketingRelatedPages } from "@/components/marketing-related-pages";
 import { MarketingPageLayout } from "@/components/marketing-page-layout";
 
-const TITLES: Record<string, string> = {
-  "project-managers": "For Project Managers",
-  "account-managers": "For Account Managers",
-  "service-desk-managers": "For Service Desk Managers",
-  "msp-directors": "For MSP Directors",
-  "weekly-client-reporting": "Weekly Client Reporting",
-  qbr: "Quarterly Business Reviews",
-  "project-delivery": "Project Delivery Updates",
-  "sla-reporting": "SLA & Performance Reporting",
-  halopsa: "HaloPSA Users",
-  connectwise: "ConnectWise Users",
-};
 
 type Props = {
   params: Promise<{ slug: string }>;

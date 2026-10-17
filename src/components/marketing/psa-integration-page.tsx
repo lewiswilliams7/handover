@@ -15,6 +15,8 @@ export type PsaPageConfig = {
   steps: string[];
   reads: Array<{ item: string; why: string }>;
   setupNote: string;
+  /** A short real story from an MSP on this PSA, when there is one. */
+  story?: { stat: string; text: string; href: string };
 };
 
 /**
@@ -61,6 +63,22 @@ export function PsaIntegrationPage({ config }: { config: PsaPageConfig }) {
           ))}
         </div>
       </section>
+
+      {config.story ? (
+        <section className="px-4 pt-10 sm:px-6 lg:px-8">
+          <Link
+            href={config.story.href}
+            className="group mx-auto flex max-w-6xl flex-col gap-4 rounded-2xl border border-cyan-300/25 bg-cyan-300/[0.05] p-6 transition-colors hover:border-cyan-300/50 sm:flex-row sm:items-center sm:gap-6"
+          >
+            <span className="text-5xl font-semibold tracking-tight text-white">{config.story.stat}</span>
+            <span className="flex-1 text-[15px] leading-7 text-white/75">{config.story.text}</span>
+            <span className="inline-flex items-center gap-1 text-sm font-semibold text-cyan-300">
+              Read the story
+              <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
+            </span>
+          </Link>
+        </section>
+      ) : null}
 
       <section className="px-4 py-16 sm:px-6 md:py-20 lg:px-8" aria-labelledby="what-heading">
         <div className="mx-auto max-w-6xl">

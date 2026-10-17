@@ -251,6 +251,20 @@ export function HomeLanding() {
               </li>
             ))}
           </ol>
+          <Link
+            href="/case-studies/five-months-on-halopsa"
+            className="group mt-6 flex flex-col gap-4 rounded-2xl border border-cyan-300/25 bg-cyan-300/[0.05] p-6 transition-colors hover:border-cyan-300/50 sm:flex-row sm:items-center sm:gap-6"
+          >
+            <span className="text-5xl font-semibold tracking-tight text-white">~45</span>
+            <span className="flex-1 text-[15px] leading-7 text-white/75">
+              warning signs on the first scan, for an MSP only five months into HaloPSA. You do not need years of
+              history to start.
+            </span>
+            <span className="inline-flex items-center gap-1 text-sm font-semibold text-cyan-300">
+              Read the story
+              <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
+            </span>
+          </Link>
         </div>
       </section>
 

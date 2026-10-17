@@ -9,6 +9,11 @@ export default function HaloPsaIntegrationPage() {
         marketplace: { label: "Listed on the HaloPSA Marketplace", href: "https://usehalo.com/integration/handover-integration/" },
         title: "Every HaloPSA client, checked every week.",
         body: "Connect HaloPSA with a read-only application. Handover measures each client against its own history, puts a pound value on the ones that changed, and gives you one list for the week.",
+        story: {
+          stat: "~45",
+          text: "warning signs on the first scan, for an MSP that moved to HaloPSA in April 2026. New to Halo is not too early.",
+          href: "/case-studies/five-months-on-halopsa",
+        },
         setupTitle: "Set it up in two minutes",
         steps: [
           "In HaloPSA, open Configuration, then Integrations, then Halo API, and create an application.",
