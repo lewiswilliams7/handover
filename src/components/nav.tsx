@@ -14,7 +14,6 @@ import {
   PoundSterling,
   Presentation,
   ReceiptText,
-  RefreshCw,
   Rewind,
   LifeBuoy,
   Scale,
@@ -49,44 +48,47 @@ const CLIENT_INTELLIGENCE_NAV: MegaNavItem[] = [
   {
     label: "Revenue at Risk™",
     href: "/features/revenue-at-risk",
-    description: "Every client that has changed, ranked by the revenue it holds.",
+    description: "Every client that has changed, in pounds.",
     Icon: PoundSterling,
-  },
-  {
-    label: "Churn Replay™",
-    href: "/features/churn-replay",
-    description: "See whether Handover would have warned you about clients you lost.",
-    Icon: Rewind,
-  },
-  {
-    label: "Save Plays™",
-    href: "/features/save-plays",
-    description: "The steps to take on every flag, with an email ready to send.",
-    Icon: LifeBuoy,
-  },
-  {
-    label: "Client Margin",
-    href: "/features/client-margin",
-    description: "Who pays for the work they create: who to save, fix or reprice.",
-    Icon: Scale,
-  },
-  {
-    label: "Renewal Radar",
-    href: "/features/renewal-radar",
-    description: "Every renewal in the next year, with the move to make.",
-    Icon: CalendarClock,
   },
   {
     label: "The Monday Brief",
     href: "/features/monday-brief",
-    description: "Your week by email every Monday, with top-client alerts.",
+    description: "Your ranked list for the week, in your inbox.",
     Icon: Mail,
+  },
+  {
+    label: "Churn Replay™",
+    href: "/features/churn-replay",
+    description: "Would Handover have warned you? Check last year.",
+    Icon: Rewind,
   },
   {
     label: "Client Intelligence™",
     href: "/features/client-intelligence",
-    description: "The signals behind every flag, against each client's own history.",
+    description: "Each client measured against its own normal.",
     Icon: Brain,
+  },
+];
+
+const ACT_NAV: MegaNavItem[] = [
+  {
+    label: "Save Plays™",
+    href: "/features/save-plays",
+    description: "The next step on every warning, email written.",
+    Icon: LifeBuoy,
+  },
+  {
+    label: "Renewal Radar",
+    href: "/features/renewal-radar",
+    description: "A plan for every renewal at 90, 60 and 30 days.",
+    Icon: CalendarClock,
+  },
+  {
+    label: "Client Margin",
+    href: "/features/client-margin",
+    description: "Who costs more to serve than they pay.",
+    Icon: Scale,
   },
 ];
 
@@ -94,32 +96,20 @@ const REPORTING_NAV: MegaNavItem[] = [
   {
     label: "Value Receipts™",
     href: "/features/value-receipts",
-    description: "A monthly one-page summary for each client's decision-maker.",
+    description: "A monthly one-pager for every decision-maker.",
     Icon: ReceiptText,
+  },
+  {
+    label: "Quarterly reviews",
+    href: "/solutions/qbr",
+    description: "A quarterly receipt with next quarter's plan.",
+    Icon: Presentation,
   },
   {
     label: "Service reviews",
     href: "/solutions/service-review",
-    description: "Structured service review packs from live PSA data.",
+    description: "Review packs built from live PSA data.",
     Icon: ClipboardCheck,
-  },
-  {
-    label: "QBR packs",
-    href: "/solutions/qbr",
-    description: "Complete quarterly business review exports in minutes.",
-    Icon: Presentation,
-  },
-  {
-    label: "Weekly client reporting",
-    href: "/solutions/weekly-client-reporting",
-    description: "Professional updates sent automatically every week.",
-    Icon: CalendarClock,
-  },
-  {
-    label: "Scheduled reports",
-    href: "/features/scheduled-reports",
-    description: "Set once. Runs on schedule. Optional approval before send.",
-    Icon: RefreshCw,
   },
 ];
 
@@ -295,7 +285,7 @@ export function Nav() {
   };
 
   const solutionsNavActive =
-    pathname.startsWith("/features/client-intelligence") ||
+    pathname.startsWith("/features") ||
     pathname.startsWith("/features/health-dashboard") ||
     pathname.startsWith("/solutions/client-intelligence") ||
     pathname.startsWith("/solutions/msp-directors") ||
@@ -388,13 +378,6 @@ export function Nav() {
             <>
               <div className="hidden items-center md:flex">
                 <div className="flex items-center gap-6 lg:gap-8">
-                  <Link
-                    href="/integrations"
-                    className="nav-site-link text-[var(--text-secondary)]"
-                    data-active={isNavLinkActive(pathname, "/integrations") ? "true" : undefined}
-                  >
-                    Integrations
-                  </Link>
                   <div className="relative" onMouseEnter={openSolutionsMenu} onMouseLeave={closeSolutionsMenuSoon}>
                     <button
                       type="button"
@@ -405,7 +388,7 @@ export function Nav() {
                       data-active={solutionsNavActive ? "true" : undefined}
                       aria-expanded={solutionsOpen}
                     >
-                      Solutions
+                      Product
                       <ChevronDown
                         className={cn(
                           "size-3.5 transition-transform duration-150 ease-in-out",
@@ -415,7 +398,7 @@ export function Nav() {
                     </button>
                     <div
                       className={cn(
-                        "absolute left-1/2 top-[calc(100%+10px)] z-[60] w-[min(680px,calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-xl border border-[var(--border)]/80 p-3 shadow-2xl backdrop-blur-xl transition-all duration-150 ease-in-out",
+                        "absolute left-1/2 top-[calc(100%+10px)] z-[60] w-[min(860px,calc(100vw-2rem))] -translate-x-[35%] overflow-hidden rounded-xl border border-[var(--border)]/80 p-3 shadow-2xl backdrop-blur-xl transition-all duration-150 ease-in-out",
                         solutionsOpen
                           ? "pointer-events-auto translate-y-0 opacity-100"
                           : "pointer-events-none -translate-y-1.5 opacity-0",
@@ -429,30 +412,48 @@ export function Nav() {
                             : "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.96) 100%)",
                       }}
                     >
-                      <div className="grid grid-cols-2 gap-x-3">
-                        <div>
-                          <p className="px-2.5 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6B7280] dark:text-slate-400">
-                            Revenue protection
-                          </p>
-                          <div className="space-y-1">
-                            {CLIENT_INTELLIGENCE_NAV.map((item) => (
-                              <MegaMenuItemDesktop key={item.href + item.label} item={item} />
-                            ))}
+                      <div className="grid grid-cols-3 gap-x-2">
+                        {[
+                          { title: "Find who is slipping", items: CLIENT_INTELLIGENCE_NAV },
+                          { title: "Act on it", items: ACT_NAV },
+                          { title: "Prove your value", items: REPORTING_NAV },
+                        ].map((group) => (
+                          <div key={group.title}>
+                            <p className="px-2.5 pb-1.5 pt-0.5 text-[12px] font-semibold text-[#6B7280] dark:text-slate-400">
+                              {group.title}
+                            </p>
+                            <div className="space-y-0.5">
+                              {group.items.map((item) => (
+                                <MegaMenuItemDesktop key={item.href + item.label} item={item} />
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                        <div>
-                          <p className="px-2.5 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6B7280] dark:text-slate-400">
-                            Proof for clients
-                          </p>
-                          <div className="space-y-1">
-                            {REPORTING_NAV.map((item) => (
-                              <MegaMenuItemDesktop key={item.href + item.label} item={item} />
-                            ))}
-                          </div>
-                        </div>
+                        ))}
+                      </div>
+                      <div className="mt-2 flex items-center justify-between gap-4 rounded-lg border border-[var(--border)]/70 bg-white/[0.03] px-3.5 py-2.5">
+                        <p className="text-[12.5px] text-[var(--text-secondary)]">
+                          See all of it on your own clients, in about a minute.
+                        </p>
+                        <Link href="/onboarding/connect" className="cta cta-primary cta-sm">
+                          Run your free scan
+                        </Link>
                       </div>
                     </div>
                   </div>
+                  <Link
+                    href="/integrations"
+                    className="nav-site-link text-[var(--text-secondary)]"
+                    data-active={isNavLinkActive(pathname, "/integrations") ? "true" : undefined}
+                  >
+                    Integrations
+                  </Link>
+                  <Link
+                    href="/solutions"
+                    className="nav-site-link text-[var(--text-secondary)]"
+                    data-active={pathname === "/solutions" || /^\/solutions\/(msp-directors|account-managers|service-desk-managers|project-managers)/.test(pathname) ? "true" : undefined}
+                  >
+                    Solutions
+                  </Link>
                   <Link
                     href="/pricing"
                     className="nav-site-link text-[var(--text-secondary)]"
@@ -480,10 +481,8 @@ export function Nav() {
                   >
                     Book a walkthrough
                   </Link>
-                  <Link href="/onboarding/connect">
-                    <Button className="h-8 whitespace-nowrap bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] hover:from-[var(--accent-hover)] hover:to-[var(--accent)] px-3.5 text-[13px] font-semibold text-white shadow-md shadow-[#0EA5E9]/20 transition-all duration-300 hover:scale-[1.02]">
-                      Run your free scan
-                    </Button>
+                  <Link href="/onboarding/connect" className="cta cta-primary cta-sm">
+                    Run your free scan
                   </Link>
                 </div>
               </div>
@@ -533,42 +532,35 @@ export function Nav() {
                           aria-expanded={mobileSolutionsOpen}
                           onClick={() => setMobileSolutionsOpen((v) => !v)}
                         >
-                          <span>Solutions</span>
+                          <span>Product</span>
                           <ChevronDown className={cn("size-4 transition-transform", mobileSolutionsOpen && "rotate-180")} />
                         </button>
                         {mobileSolutionsOpen ? (
                           <div className="space-y-3 border-t border-[var(--border)] px-3 pb-3 pt-2">
-                            <div>
-                              <p className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6B7280] dark:text-slate-400">
-                                Revenue protection
-                              </p>
-                              <div className="space-y-1">
-                                {CLIENT_INTELLIGENCE_NAV.map((item) => (
-                                  <MegaMenuItemMobile
-                                    key={item.href + item.label}
-                                    item={item}
-                                    onNavigate={() => setGuestMenuOpen(false)}
-                                  />
-                                ))}
+                            {[
+                              { title: "Find who is slipping", items: CLIENT_INTELLIGENCE_NAV },
+                              { title: "Act on it", items: ACT_NAV },
+                              { title: "Prove your value", items: REPORTING_NAV },
+                            ].map((group) => (
+                              <div key={group.title}>
+                                <p className="px-2.5 pb-1 text-[12px] font-semibold text-[#6B7280] dark:text-slate-400">{group.title}</p>
+                                <div className="space-y-1">
+                                  {group.items.map((item) => (
+                                    <MegaMenuItemMobile key={item.href + item.label} item={item} onNavigate={() => setGuestMenuOpen(false)} />
+                                  ))}
+                                </div>
                               </div>
-                            </div>
-                            <div>
-                              <p className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6B7280] dark:text-slate-400">
-                                Proof for clients
-                              </p>
-                              <div className="space-y-1">
-                                {REPORTING_NAV.map((item) => (
-                                  <MegaMenuItemMobile
-                                    key={item.href + item.label}
-                                    item={item}
-                                    onNavigate={() => setGuestMenuOpen(false)}
-                                  />
-                                ))}
-                              </div>
-                            </div>
+                            ))}
                           </div>
                         ) : null}
                       </div>
+                      <Link
+                        href="/solutions"
+                        className="nav-site-link rounded-[var(--radius)] px-3 py-3 text-[15px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]"
+                        onClick={() => setGuestMenuOpen(false)}
+                      >
+                        Solutions
+                      </Link>
                       <Link
                         href="/pricing"
                         className="nav-site-link rounded-[var(--radius)] px-3 py-3 text-[15px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]"

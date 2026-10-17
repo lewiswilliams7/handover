@@ -1,10 +1,12 @@
 "use client";
 
+import { motion } from "framer-motion";
+import { ArrowRight, Check, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Check, ArrowRight, Loader2 } from "lucide-react";
 
+import { ProductTour } from "@/components/marketing/product-tour";
 import { BOOK_DEMO_CALENDLY_URL } from "@/lib/book-demo";
 import { PRICING_FAQS as FAQS } from "@/lib/marketing-faqs";
 import { STRIPE_PRICE_IDS } from "@/lib/stripe-price-ids";
@@ -48,8 +50,8 @@ const STAGES: ReadonlyArray<{ verb: string; title: string; products: ReadonlyArr
 const ALSO_INCLUDED: ReadonlyArray<{ label: string; href?: string }> = [
   { label: "HaloPSA and ConnectWise Manage", href: "/integrations" },
   { label: "Unlimited users" },
-  { label: "QBR packs and service reviews", href: "/features/qbr-generator" },
-  { label: "PowerPoint, PDF and Excel export", href: "/features/exports" },
+  { label: "Quarterly and service reviews", href: "/solutions/qbr" },
+  { label: "PDF and Excel export", href: "/features/exports" },
   { label: "White-labelled client portal", href: "/features/white-label" },
   { label: "Notes pushed back to the PSA", href: "/features/psa-push" },
 ];
@@ -146,8 +148,8 @@ export function PricingPageClient() {
             Costs less than one lost client a year.
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-white/60 sm:text-lg">
-            Handover shows which clients are slipping and what they are worth, tells you what to do,
-            proves your value to the people who renew, and counts the revenue you keep.
+            One plan with every product and unlimited users. Run the free scan first, and buy once you have seen
+            your own numbers.
           </p>
         </section>
 
@@ -187,11 +189,18 @@ export function PricingPageClient() {
                   type="button"
                   onClick={() => setBillingPeriod(period)}
                   aria-pressed={billingPeriod === period}
-                  className={`min-h-0 flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
-                    billingPeriod === period ? "bg-cyan-300 text-slate-950" : "text-white/55 hover:text-white"
+                  className={`relative min-h-0 flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors ${
+                    billingPeriod === period ? "text-slate-950" : "text-white/55 hover:text-white"
                   }`}
                 >
-                  {period === "monthly" ? "Monthly" : "Annual · 2 months free"}
+                  {billingPeriod === period ? (
+                    <motion.span
+                      layoutId="billing-pill"
+                      className="absolute inset-0 rounded-lg bg-cyan-300"
+                      transition={{ type: "spring", stiffness: 500, damping: 36 }}
+                    />
+                  ) : null}
+                  <span className="relative">{period === "monthly" ? "Monthly" : "Annual, 2 months free"}</span>
                 </button>
               ))}
             </div>
@@ -201,17 +210,17 @@ export function PricingPageClient() {
                 type="button"
                 onClick={() => void buyNow()}
                 disabled={!authChecked || checkoutBusy}
-                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-cyan-300 px-5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200 disabled:cursor-wait disabled:opacity-60 sm:flex-1"
+                className="cta cta-primary h-12 w-full disabled:cursor-wait disabled:opacity-60 sm:flex-1"
               >
                 {checkoutBusy ? <Loader2 className="size-4 animate-spin" /> : null}
                 Buy now
-                {!checkoutBusy ? <ArrowRight className="size-4" /> : null}
+                {!checkoutBusy ? <ArrowRight className="cta-arrow size-4" /> : null}
               </button>
               <a
                 href={BOOK_DEMO_CALENDLY_URL}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-white/15 px-5 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/[0.05] sm:flex-1"
+                className="cta cta-secondary h-12 w-full sm:flex-1"
               >
                 Book a walkthrough
               </a>
@@ -251,35 +260,26 @@ export function PricingPageClient() {
 
         <section className="mt-20" aria-labelledby="included">
           <div className="mx-auto max-w-2xl text-center">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300">Everything included</p>
-            <h2 id="included" className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-              One loop, from the first warning to the renewal
+            <h2 id="included" className="text-3xl font-semibold tracking-tight sm:text-4xl">
+              What £499 gets you
             </h2>
-            <p className="mt-3 text-sm leading-6 text-white/55">
-              All of it runs on Handover Client Intelligence™: every client measured against its own history, every week.
+            <p className="mt-3 text-[15px] leading-7 text-white/60">
+              Every screen below, for every client, refreshed from your PSA every week.
             </p>
           </div>
-          <div className="mt-10 grid gap-5 lg:grid-cols-3">
-            {STAGES.map((stage, index) => (
-              <div key={stage.verb} className="rounded-3xl border border-white/10 bg-white/[0.03] p-6">
-                <p className="text-sm font-semibold text-cyan-300">
-                  {index + 1}. {stage.verb}
-                </p>
-                <h3 className="mt-1 text-lg font-semibold text-white">{stage.title}</h3>
-                <ul className="mt-5 space-y-4">
-                  {stage.products.map((product) => (
-                    <li key={product.name}>
-                      <Link href={product.href} className="group block">
-                        <span className="flex items-center gap-1.5 text-sm font-semibold text-white group-hover:text-cyan-200">
-                          {product.name}
-                          <ArrowRight className="size-3.5 text-white/30 transition-transform group-hover:translate-x-0.5 group-hover:text-cyan-200" aria-hidden />
-                        </span>
-                        <span className="mt-0.5 block text-[13px] leading-5 text-white/55">{product.body}</span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+          <div className="mt-12">
+            <ProductTour />
+          </div>
+          <div className="mt-12 flex flex-wrap justify-center gap-2">
+            {STAGES.flatMap((stage) => stage.products).map((product) => (
+              <Link
+                key={product.name}
+                href={product.href}
+                title={product.body}
+                className="rounded-full border border-white/12 bg-white/[0.03] px-3 py-1.5 text-[13px] text-white/75 transition-colors hover:border-cyan-300/50 hover:text-white"
+              >
+                {product.name}
+              </Link>
             ))}
           </div>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[13px] text-white/50">
@@ -332,10 +332,10 @@ export function PricingPageClient() {
           </p>
           <Link
             href="/onboarding/connect"
-            className="mt-6 inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-cyan-300 px-6 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-950/25 transition hover:bg-cyan-200 sm:w-auto"
+            className="cta cta-primary mt-6 w-full sm:w-auto"
           >
             Run your free scan
-            <ArrowRight className="ml-2 size-4" aria-hidden />
+            <ArrowRight className="cta-arrow size-4" aria-hidden />
           </Link>
           <p className="mt-3 text-xs text-white/45">No card, no trial.</p>
         </section>

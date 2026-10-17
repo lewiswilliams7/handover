@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { MarketingFooter } from "@/components/marketing-footer";
 import { MarketingHeroAmbient } from "@/components/marketing-hero-ambient";
 import { Nav as MarketingNav } from "@/components/nav";
 import { ScrollRevealItem } from "@/components/scroll-reveal-item";
@@ -485,7 +484,6 @@ export default function ClientIntelligencePage() {
           </div>
         </section>
 
-        <MarketingFooter />
       </div>
     </>
   );

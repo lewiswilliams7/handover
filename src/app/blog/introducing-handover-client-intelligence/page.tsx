@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { MarketingFooter } from "@/components/marketing-footer";
 import { Nav as MarketingNav } from "@/components/nav";
 
 export const metadata: Metadata = {
@@ -304,7 +303,6 @@ export default function ClientIntelligenceLaunchPost() {
           </div>
         </article>
 
-        <MarketingFooter />
       </div>
     </>
   );

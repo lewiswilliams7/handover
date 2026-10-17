@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 
-import { MarketingFooter } from "@/components/marketing-footer";
 import { MarketingHeroAmbient } from "@/components/marketing-hero-ambient";
 import { Nav as MarketingNav } from "@/components/nav";
 import { ReportingDemo } from "./reporting-demo";
@@ -113,7 +112,6 @@ export default function QbrAndReportingPage() {
           </div>
         </section>
       </main>
-      <MarketingFooter />
     </>
   );
 }

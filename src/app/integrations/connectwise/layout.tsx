@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 export const metadata: Metadata = {
-  title: "ConnectWise Manage integration | Handover",
+  title: "ConnectWise Manage Integration for Client Retention | Handover",
   description:
-    "Connect Handover to ConnectWise Manage - pull service tickets and projects, generate client outputs, and push notes back.",
+    "Connect ConnectWise Manage read-only and see which clients are slipping, what they are worth, and what to do this week. On the ConnectWise Marketplace.",
   alternates: {
     canonical: "https://gethandover.uk/integrations/connectwise",
   },

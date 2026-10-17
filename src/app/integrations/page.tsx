@@ -1,358 +1,164 @@
 import type { Metadata } from "next";
+import { ArrowRight, Check, Lock, ShieldCheck, Undo2 } from "lucide-react";
 import Link from "next/link";
 
-import { CardMouseSpotlight } from "@/components/card-mouse-spotlight";
-import PageTransition from "@/components/PageTransition";
-import { MarketingHeroAmbient } from "@/components/marketing-hero-ambient";
-import { ScrollRevealItem } from "@/components/scroll-reveal-item";
-import { Button } from "@/components/ui/button";
-
-function BadgeAvailable() {
-  return (
-    <span
-      className="rounded-full border px-2.5 py-0.5 text-[11px] font-medium"
-      style={{
-        background: "rgba(56,189,248,0.1)",
-        color: "#38bdf8",
-        borderColor: "rgba(56,189,248,0.2)",
-      }}
-    >
-      Available
-    </span>
-  );
-}
+import { ProductHero } from "@/components/marketing/product-hero";
+import { PsaFlowVisual } from "@/components/marketing/psa-flow-visual";
 
 export const metadata: Metadata = {
-  title: "HaloPSA & ConnectWise Integrations - Handover | MSP Reporting Tool",
+  title: "HaloPSA and ConnectWise Integrations | Handover",
   description:
-    "Connect your PSA - HaloPSA and ConnectWise supported natively. Generate reports, push back to tickets, and automate weekly updates.",
-  alternates: {
-    canonical: "https://gethandover.uk/integrations",
-  },
+    "Connect HaloPSA or ConnectWise Manage with a read-only API key. Handover reads tickets, time, contracts and billing to show which clients are slipping and what they are worth.",
+  alternates: { canonical: "https://gethandover.uk/integrations" },
 };
 
-function BadgeComingSoon({ pulse }: { pulse?: boolean }) {
-  return (
-    <span
-      className={`rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--text-muted)] ${pulse ? "badge-coming-soon-pulse" : ""}`}
-    >
-      Coming Soon
-    </span>
-  );
-}
+const PSAS = [
+  {
+    name: "HaloPSA",
+    logo: "/halopsa.png",
+    href: "/integrations/halopsa",
+    body: "Tickets, time, client contracts and recurring invoices. Listed on the HaloPSA Marketplace.",
+    status: "available" as const,
+  },
+  {
+    name: "ConnectWise Manage",
+    logo: "/connectwise.jpeg",
+    href: "/integrations/connectwise",
+    body: "Service tickets, time entries, agreements and additions. Listed on the ConnectWise Marketplace.",
+    status: "available" as const,
+  },
+  {
+    name: "Autotask PSA",
+    logo: "/autotask.svg",
+    href: "mailto:hello@gethandover.uk?subject=Autotask%20waitlist",
+    body: "In the works. Join the list and we will tell you the day it opens.",
+    status: "soon" as const,
+  },
+];
+
+const TRUST = [
+  { Icon: Lock, title: "Read-only", body: "Handover reads your PSA. Nothing in it changes unless you choose to push a note back." },
+  { Icon: ShieldCheck, title: "Encrypted keys", body: "API credentials are encrypted with AES-256 before they are stored, in the EU." },
+  { Icon: Undo2, title: "Disconnect any time", body: "Remove the key in your PSA and access stops at once. Nothing to uninstall." },
+];
 
 export default function IntegrationsPage() {
   return (
-    <PageTransition>
-    <div
-      className="animate-in fade-in duration-300"
-      style={{ minHeight: "100vh" }}
-    >
-      <section className="relative overflow-hidden bg-transparent px-6 py-10 md:px-8 md:py-14">
-        <MarketingHeroAmbient />
-        <div className="relative z-[1] mx-auto w-full max-w-[1100px]">
-        <div
-          className="relative z-[1] mb-4 animate-in fade-in slide-in-from-bottom-4 duration-300 rounded-[var(--radius-lg)] bg-white/[0.03] backdrop-blur-md border border-white/[0.07] px-8 py-10"
-          style={{ padding: "2.5rem 2rem" }}
-        >
-          <p
-            className="text-[11px] font-semibold uppercase text-[var(--accent)]"
-            style={{ letterSpacing: "0.1em" }}
-          >
-            Integrations
-          </p>
-          <h1 className="mt-2 text-[28px] font-bold text-white md:text-[32px]">
-            Connect your PSA - HaloPSA and ConnectWise supported natively
-          </h1>
-          <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-white/60">
-            Pull live ticket and project data directly into Handover with native HaloPSA and ConnectWise support.
-          </p>
-        </div>
+    <div className="min-h-screen">
+      <ProductHero
+        eyebrow="Integrations"
+        title="Connect your PSA. Read-only, in two minutes."
+        body="Handover works from the data your team already records. One API key from HaloPSA or ConnectWise, and every client is checked against its own history every week."
+        visual={<PsaFlowVisual />}
+      />
+
+      <section className="px-4 pb-16 sm:px-6 lg:px-8" aria-labelledby="psa-heading">
+        <div className="mx-auto max-w-6xl">
+          <h2 id="psa-heading" className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+            Supported PSAs
+          </h2>
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            {PSAS.map((psa) => {
+              const soon = psa.status === "soon";
+              const Wrapper = soon ? "a" : Link;
+              return (
+                <Wrapper
+                  key={psa.name}
+                  href={psa.href}
+                  className={`group relative flex flex-col rounded-2xl border p-6 transition-all duration-200 ${
+                    soon
+                      ? "border-white/[0.07] bg-white/[0.015] hover:border-white/15"
+                      : "border-white/10 bg-white/[0.03] hover:-translate-y-0.5 hover:border-cyan-300/40 hover:bg-white/[0.05]"
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <img
+                      src={psa.logo}
+                      alt=""
+                      className={`size-12 rounded-xl bg-white object-contain p-1.5 ${soon ? "opacity-60" : ""}`}
+                    />
+                    <span
+                      className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${
+                        soon ? "border-white/10 text-white/45" : "border-emerald-300/30 bg-emerald-300/10 text-emerald-200"
+                      }`}
+                    >
+                      {soon ? "Coming soon" : "Live"}
+                    </span>
+                  </div>
+                  <h3 className={`mt-5 text-lg font-semibold ${soon ? "text-white/70" : "text-white"}`}>{psa.name}</h3>
+                  <p className="mt-1.5 flex-1 text-sm leading-6 text-white/55">{psa.body}</p>
+                  <span className={`mt-5 inline-flex items-center gap-1 text-sm font-semibold ${soon ? "text-white/50" : "text-cyan-300"}`}>
+                    {soon ? "Join the waitlist" : "Setup guide and what we read"}
+                    <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
+                  </span>
+                </Wrapper>
+              );
+            })}
+          </div>
         </div>
       </section>
 
-      <section
-        className="relative z-[1] bg-transparent px-6 pb-12 pt-8 md:px-8 md:pb-16 md:pt-10"
-        style={{ borderTop: "1px solid var(--border)" }}
-      >
-        <div className="mx-auto w-full max-w-[1100px]">
-        <div className="mb-6">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
-            PSA integrations
-          </p>
+      <section className="px-4 pb-16 sm:px-6 lg:px-8" aria-labelledby="trust-heading">
+        <div className="mx-auto max-w-6xl rounded-[2rem] border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-transparent p-6 sm:p-10">
+          <h2 id="trust-heading" className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+            Your PSA stays yours
+          </h2>
+          <div className="mt-8 grid gap-6 md:grid-cols-3">
+            {TRUST.map(({ Icon, title, body }) => (
+              <div key={title}>
+                <Icon className="size-5 text-cyan-300" aria-hidden />
+                <h3 className="mt-3 font-semibold text-white">{title}</h3>
+                <p className="mt-1 text-sm leading-6 text-white/60">{body}</p>
+              </div>
+            ))}
+          </div>
+          <Link href="/security" className="mt-8 inline-flex items-center gap-1 text-sm font-semibold text-cyan-300 hover:text-cyan-200">
+            Read the security details <ArrowRight className="size-3.5" aria-hidden />
+          </Link>
         </div>
-        <div
-          className="grid gap-4"
-          style={{
-            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-          }}
-        >
-          <ScrollRevealItem disableAnimation index={0} className="min-w-0">
-          <div className="integration-card-glow">
-            <CardMouseSpotlight className="pro-card-content integration-card-glass group relative flex min-h-0 flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/70 p-6 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:border-[rgba(56,189,248,0.35)] hover:shadow-[0_4px_20px_rgba(56,189,248,0.08)]">
-              <div className="mb-4 flex items-start justify-between gap-3">
-                <img
-                  src="/halopsa.png"
-                  alt="HaloPSA"
-                  className="shrink-0"
-                  style={{
-                    width: "48px",
-                    height: "48px",
-                    objectFit: "contain",
-                    borderRadius: "8px",
-                  }}
-                />
-                <BadgeAvailable />
-              </div>
-              <h2 className="mb-1 text-[16px] font-semibold text-[var(--text-primary)]">HaloPSA</h2>
-              <p className="mb-5 min-h-[40px] text-[13px] leading-relaxed text-[var(--text-secondary)]">
-                Pull tickets and projects directly from HaloPSA with one-click import, generation, and push-back.
+      </section>
+
+      <section className="px-4 pb-20 sm:px-6 lg:px-8" aria-labelledby="also-heading">
+        <div className="mx-auto max-w-6xl">
+          <h2 id="also-heading" className="text-lg font-semibold text-white">
+            Also works with
+          </h2>
+          <ul className="mt-4 flex flex-wrap gap-2.5">
+            {[
+              { name: "Slack", logo: "/slack.png", href: "/integrations/slack", note: "Report alerts" },
+              { name: "Microsoft Teams", logo: "/teams.png", href: "/integrations/teams", note: "Report alerts" },
+              { name: "CSV and Excel", logo: "/excel.png", href: "/integrations/csv", note: "Import from any PSA" },
+            ].map((item) => (
+              <li key={item.name}>
+                <Link
+                  href={item.href}
+                  className="inline-flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-sm text-white transition-colors hover:border-white/25"
+                >
+                  <img src={item.logo} alt="" className="size-5 object-contain" />
+                  {item.name}
+                  <span className="text-xs text-white/45">{item.note}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-14 flex flex-col items-start justify-between gap-6 rounded-2xl border border-cyan-300/25 bg-cyan-300/[0.05] p-6 sm:flex-row sm:items-center sm:p-8">
+            <div>
+              <p className="text-xl font-semibold text-white">Ready when your API key is.</p>
+              <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-white/60">
+                {["Free scan", "No card", "Results in about a minute"].map((item) => (
+                  <span key={item} className="inline-flex items-center gap-1.5">
+                    <Check className="size-3.5 text-cyan-300" aria-hidden /> {item}
+                  </span>
+                ))}
               </p>
-              <Link href="/integrations/halopsa" className="mt-auto">
-                <Button className="h-11 w-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]">
-                  Explore HaloPSA integration →
-                </Button>
-              </Link>
-            </CardMouseSpotlight>
-          </div>
-          </ScrollRevealItem>
-
-          <ScrollRevealItem disableAnimation index={1} className="min-w-0">
-          <div className="integration-card-glow">
-            <CardMouseSpotlight className="pro-card-content integration-card-glass group relative flex min-h-0 flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/70 p-6 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:border-[rgba(56,189,248,0.35)] hover:shadow-[0_4px_20px_rgba(56,189,248,0.08)]">
-              <div className="mb-4 flex items-start justify-between gap-3">
-                <img
-                  src="/connectwise.jpeg"
-                  alt="ConnectWise"
-                  className="block shrink-0"
-                  style={{
-                    width: "48px",
-                    height: "48px",
-                    objectFit: "contain",
-                    borderRadius: "8px",
-                  }}
-                />
-                <BadgeAvailable />
-              </div>
-              <h2 className="mb-1 text-[16px] font-semibold text-[var(--text-primary)]">ConnectWise Manage</h2>
-              <p className="mb-5 min-h-[40px] text-[13px] leading-relaxed text-[var(--text-secondary)]">
-                Pull service tickets and projects from ConnectWise Manage. Generate outputs and push notes back
-                automatically.
-              </p>
-              <Link href="/integrations/connectwise" className="mt-auto">
-                <Button className="h-11 w-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]">
-                  Explore ConnectWise integration →
-                </Button>
-              </Link>
-            </CardMouseSpotlight>
-          </div>
-          </ScrollRevealItem>
-
-          <ScrollRevealItem disableAnimation index={2} className="min-w-0">
-          <CardMouseSpotlight className="integration-card-glass relative flex flex-col rounded-[var(--radius-lg)] border border-[var(--border)]/70 p-6 opacity-[0.65] transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:opacity-[0.78]">
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <img
-                src="/autotask.svg"
-                alt="Autotask PSA"
-                className="block shrink-0 rounded-[10px] bg-white object-contain p-1"
-                style={{
-                  width: "48px",
-                  height: "48px",
-                  objectFit: "contain",
-                }}
-              />
-              <BadgeComingSoon />
             </div>
-            <h2 className="mb-1 text-[16px] font-semibold text-[var(--text-primary)]">Autotask PSA</h2>
-            <p className="mb-5 min-h-[40px] text-[13px] leading-relaxed text-[var(--text-secondary)]">
-              Pull tickets from Autotask directly into Handover.
-            </p>
-            <a
-              href="mailto:hello@gethandover.uk?subject=Autotask%20waitlist"
-              className="inline-flex h-11 w-full items-center justify-center rounded-[var(--radius)] border border-[var(--border)] px-4 text-[13px] font-medium text-[var(--text-muted)] hover:bg-[var(--bg-secondary)]"
-            >
-              Join waitlist →
-            </a>
-          </CardMouseSpotlight>
-          </ScrollRevealItem>
-
-          <ScrollRevealItem disableAnimation index={3} className="min-w-0">
-          <div className="integration-card-glow">
-          <CardMouseSpotlight className="integration-card-glass group relative flex flex-col rounded-[var(--radius-lg)] border border-[var(--border)]/70 p-6 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:border-[rgba(56,189,248,0.35)] hover:shadow-[0_4px_20px_rgba(56,189,248,0.08)]">
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <img
-                src="/excel.png"
-                alt="Excel"
-                className="block shrink-0"
-                style={{
-                  width: "48px",
-                  height: "48px",
-                  objectFit: "contain",
-                  borderRadius: "8px",
-                }}
-              />
-              <BadgeAvailable />
-            </div>
-            <h2 className="mb-1 text-[16px] font-semibold text-[var(--text-primary)]">CSV / Excel import</h2>
-            <p className="mb-5 min-h-[40px] text-[13px] leading-relaxed text-[var(--text-secondary)]">
-              Export from any PSA as CSV and paste directly into Handover.
-            </p>
-            <Link href="/integrations/csv" className="mt-auto">
-              <Button variant="outline" className="h-11 w-full border-[var(--border)]">
-                View guide
-              </Button>
+            <Link href="/onboarding/connect" className="cta cta-primary">
+              Connect your PSA
+              <ArrowRight className="cta-arrow size-4" aria-hidden />
             </Link>
-          </CardMouseSpotlight>
-          </div>
-          </ScrollRevealItem>
-
-          <ScrollRevealItem disableAnimation index={4} className="min-w-0">
-          <CardMouseSpotlight className="integration-card-glass relative flex flex-col rounded-[var(--radius-lg)] border border-[var(--border)]/70 p-6 opacity-[0.65] transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:opacity-[0.78]">
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <img
-                src="/teams.png"
-                alt="Microsoft Teams"
-                className="block shrink-0"
-                style={{
-                  width: "48px",
-                  height: "48px",
-                  objectFit: "contain",
-                  borderRadius: "8px",
-                }}
-              />
-              <BadgeComingSoon />
-            </div>
-            <h2 className="mb-1 text-[16px] font-semibold text-[var(--text-primary)]">Microsoft Teams</h2>
-            <p className="mb-5 min-h-[40px] text-[13px] leading-relaxed text-[var(--text-secondary)]">
-              Run Handover directly inside Teams. Generate outputs without leaving your workflow.
-            </p>
-            <a
-              href="mailto:hello@gethandover.uk?subject=Teams%20waitlist"
-              className="inline-flex h-11 w-full items-center justify-center rounded-[var(--radius)] border border-[var(--border)] px-4 text-[13px] font-medium text-[var(--text-muted)] hover:bg-[var(--bg-secondary)]"
-            >
-              Join waitlist →
-            </a>
-          </CardMouseSpotlight>
-          </ScrollRevealItem>
-
-          <ScrollRevealItem disableAnimation index={5} className="min-w-0">
-          <CardMouseSpotlight className="integration-card-glass relative flex flex-col rounded-[var(--radius-lg)] border border-[var(--border)]/70 p-6 opacity-[0.65] transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:opacity-[0.78]">
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <img
-                src="/outlook.png"
-                alt="Outlook"
-                className="block shrink-0"
-                style={{
-                  width: "48px",
-                  height: "48px",
-                  objectFit: "contain",
-                  borderRadius: "8px",
-                }}
-              />
-              <BadgeComingSoon />
-            </div>
-            <h2 className="mb-1 text-[16px] font-semibold text-[var(--text-primary)]">Microsoft Outlook add-in</h2>
-            <p className="mb-5 min-h-[40px] text-[13px] leading-relaxed text-[var(--text-secondary)]">
-              Generate and insert client emails directly from your Outlook compose window.
-            </p>
-            <a
-              href="mailto:hello@gethandover.uk?subject=Outlook%20waitlist"
-              className="inline-flex h-11 w-full items-center justify-center rounded-[var(--radius)] border border-[var(--border)] px-4 text-[13px] font-medium text-[var(--text-muted)] hover:bg-[var(--bg-secondary)]"
-            >
-              Join waitlist →
-            </a>
-          </CardMouseSpotlight>
-          </ScrollRevealItem>
-        </div>
-        </div>
-      </section>
-
-      <section
-        className="relative z-[1] bg-transparent px-6 py-10 md:px-8 md:py-14"
-        style={{
-          borderTop: "1px solid color-mix(in srgb, var(--accent) 18%, var(--border))",
-          borderBottom: "1px solid var(--border)",
-        }}
-      >
-        <div className="mx-auto w-full max-w-[1100px]">
-          <div className="mb-6">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
-              Notifications
-            </p>
-            <h2 className="mt-1 text-2xl font-semibold text-[var(--text-primary)]">Keep your team informed automatically</h2>
-            <p className="mt-2 max-w-3xl text-[14px] leading-relaxed text-[var(--text-secondary)]">
-              Connect your team&apos;s communication tools to receive automatic alerts when reports are generated.
-            </p>
-          </div>
-          <div
-            className="grid gap-4"
-            style={{
-              gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-            }}
-          >
-            <ScrollRevealItem disableAnimation index={0} className="min-w-0">
-              <div className="integration-card-glow">
-                <CardMouseSpotlight className="pro-card-content integration-card-glass group relative flex min-h-0 flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/70 p-6 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:border-[rgba(56,189,248,0.35)] hover:shadow-[0_4px_20px_rgba(56,189,248,0.08)]">
-                  <div className="mb-4 flex items-start justify-between gap-3">
-                    <img
-                      src="/slack.png"
-                      alt="Slack"
-                      className="shrink-0"
-                      style={{
-                        width: "48px",
-                        height: "48px",
-                        objectFit: "contain",
-                        borderRadius: "8px",
-                      }}
-                    />
-                    <BadgeAvailable />
-                  </div>
-                  <h2 className="mb-1 text-[16px] font-semibold text-[var(--text-primary)]">Slack</h2>
-                  <p className="mb-5 min-h-[40px] text-[13px] leading-relaxed text-[var(--text-secondary)]">
-                    Post automatic report summary alerts to your chosen Slack channel.
-                  </p>
-                  <Link href="/integrations/slack" className="mt-auto">
-                    <Button variant="outline" className="h-11 w-full border-[var(--border)]">
-                      Learn more
-                    </Button>
-                  </Link>
-                </CardMouseSpotlight>
-              </div>
-            </ScrollRevealItem>
-
-            <ScrollRevealItem disableAnimation index={1} className="min-w-0">
-              <div className="integration-card-glow">
-                <CardMouseSpotlight className="pro-card-content integration-card-glass group relative flex min-h-0 flex-col rounded-[calc(var(--radius-lg)-2px)] border border-[var(--border)]/70 p-6 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:border-[rgba(56,189,248,0.35)] hover:shadow-[0_4px_20px_rgba(56,189,248,0.08)]">
-                  <div className="mb-4 flex items-start justify-between gap-3">
-                    <img
-                      src="/teams.png"
-                      alt="Microsoft Teams"
-                      className="shrink-0"
-                      style={{
-                        width: "48px",
-                        height: "48px",
-                        objectFit: "contain",
-                        borderRadius: "8px",
-                      }}
-                    />
-                    <BadgeAvailable />
-                  </div>
-                  <h2 className="mb-1 text-[16px] font-semibold text-[var(--text-primary)]">Microsoft Teams</h2>
-                  <p className="mb-5 min-h-[40px] text-[13px] leading-relaxed text-[var(--text-secondary)]">
-                    Send automatic report summary notifications to your chosen Teams channel.
-                  </p>
-                  <Link href="/integrations/teams" className="mt-auto">
-                    <Button variant="outline" className="h-11 w-full border-[var(--border)]">
-                      Learn more
-                    </Button>
-                  </Link>
-                </CardMouseSpotlight>
-              </div>
-            </ScrollRevealItem>
           </div>
         </div>
       </section>
     </div>
-    </PageTransition>
   );
 }

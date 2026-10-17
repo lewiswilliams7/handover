@@ -20,10 +20,11 @@ import {
 
 import PageTransition from "@/components/PageTransition";
 import { CardMouseSpotlight } from "@/components/card-mouse-spotlight";
-import { MarketingHeroAmbient } from "@/components/marketing-hero-ambient";
 import { ScrollRevealItem } from "@/components/scroll-reveal-item";
 import { TestimonialMarquee } from "@/components/testimonial-marquee";
 import { Button } from "@/components/ui/button";
+import { ProductHero } from "@/components/marketing/product-hero";
+import { AppFrame, WeekListMock } from "@/components/marketing/product-mocks";
 
 export const metadata: Metadata = {
   title: "Features - Handover | Protect MSP Recurring Revenue",
@@ -207,40 +208,16 @@ export default function FeaturesPage() {
           minHeight: "100vh",
         }}
       >
-        <section className="relative overflow-hidden bg-transparent px-6 py-12 md:px-8 md:py-20">
-          <MarketingHeroAmbient />
-          <div className="relative z-[1] mx-auto max-w-[1100px]">
-            <div className="max-w-3xl">
-              <h1 className="text-4xl font-bold leading-tight text-[var(--text-primary)] md:text-[52px]">
-                Keep the clients you already have.
-              </h1>
-              <p className="mt-5 max-w-2xl text-lg leading-8 text-[var(--text-secondary)]">
-                Handover connects to HaloPSA or ConnectWise and works in one loop: spot the clients
-                that are drifting, see what they are worth, show your value to the people who renew,
-                and count the revenue you keep.
-              </p>
-              <div className="mt-8 flex flex-wrap gap-3">
-                <Link href="/onboarding/connect">
-                  <Button
-                    size="lg"
-                    className="rounded-[var(--radius)] bg-[var(--accent)] px-8 text-white hover:bg-[var(--accent-hover)]"
-                  >
-                    Run your free scan
-                  </Button>
-                </Link>
-                <Link href="/pricing">
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    className="rounded-[var(--radius)] border-[var(--border)] px-8"
-                  >
-                    See pricing
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </section>
+        <ProductHero
+          title="Keep the clients you already have."
+          body="Handover connects to HaloPSA or ConnectWise and works in one loop: spot the clients that are drifting, see what they are worth, show your value to the people who renew, and count the revenue you keep."
+          secondary={{ href: "/pricing", label: "See pricing" }}
+          visual={
+            <AppFrame path="/week" label="The This week list in Handover">
+              <WeekListMock />
+            </AppFrame>
+          }
+        />
 
         <Section
           id="protect-heading"

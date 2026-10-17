@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { LifeBuoy, PoundSterling, Rewind } from "lucide-react";
 
-import { MarketingHeroAmbient } from "@/components/marketing-hero-ambient";
 import { MarketingRelatedPages } from "@/components/marketing-related-pages";
 import { MarketingPageLayout } from "@/components/marketing-page-layout";
+import { ProductHero } from "@/components/marketing/product-hero";
+import { AppFrame, BriefMock } from "@/components/marketing/product-mocks";
 
 export const metadata: Metadata = {
   title: "Handover for MSP Owners and Directors | Protect Recurring Revenue",
@@ -50,38 +51,13 @@ export default function SolutionsMspDirectorsPage() {
   return (
     <MarketingPageLayout>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <section className="marketing-page-hero relative overflow-hidden bg-transparent px-6 py-12 md:px-8 md:py-20">
-        <MarketingHeroAmbient />
-        <div className="relative z-[1] mx-auto w-full max-w-[1000px]">
-          <div className="rounded-[var(--radius-lg)] border border-[rgba(56,189,248,0.25)] bg-[rgba(15,23,42,0.65)] px-6 py-8 shadow-[0_20px_60px_-22px_rgba(56,189,248,0.35)] md:px-10 md:py-10">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#38bdf8]">
-              For MSP owners and directors
-            </p>
-            <h1 className="mt-2 text-3xl font-semibold leading-tight text-white md:text-5xl">
-              Your recurring revenue is only as safe as the clients you are not watching.
-            </h1>
-            <p className="mt-4 max-w-3xl text-[15px] leading-relaxed text-white/75">
-              Once you have more clients than you can personally keep an eye on, the ones that leave are rarely
-              the ones shouting. Handover reads your PSA and shows you which clients are slipping, what they are
-              worth, and what to do about it.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Link
-                href="/onboarding/connect"
-                className="inline-flex items-center rounded-[var(--radius)] bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]"
-              >
-                Run your free scan
-              </Link>
-              <Link
-                href="/demo"
-                className="inline-flex items-center rounded-[var(--radius)] border border-white/20 px-5 py-2.5 text-sm font-semibold text-white hover:bg-white/[0.06]"
-              >
-                Book a walkthrough
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
+      <ProductHero
+        eyebrow="For MSP owners and directors"
+        title="Your recurring revenue is only as safe as the clients you are not watching."
+        body="Once you have more clients than you can personally keep an eye on, the ones that leave are rarely the ones shouting. Handover reads your PSA and shows you which clients are slipping, what they are worth, and what to do about it."
+        primary={{ href: "/onboarding/connect", label: "Run your free scan" }}
+        visual={<AppFrame path="" label="The Monday Brief email"><BriefMock /></AppFrame>}
+      />
 
       <section className="px-6 py-10 md:px-8 md:py-14">
         <div className="mx-auto w-full max-w-[900px] space-y-10 text-[16px] leading-[1.8] text-[var(--text-secondary)]">

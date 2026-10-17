@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PoundSterling, ReceiptText, Scale } from "lucide-react";
 
-import { MarketingHeroAmbient } from "@/components/marketing-hero-ambient";
 import { MarketingPageLayout } from "@/components/marketing-page-layout";
 import { MarketingRelatedPages } from "@/components/marketing-related-pages";
+import { ProductHero } from "@/components/marketing/product-hero";
+import { AppFrame, RenewalMock } from "@/components/marketing/product-mocks";
 
 const PAGE_URL = "https://gethandover.uk/features/renewal-radar";
 
@@ -47,34 +48,13 @@ export default function RenewalRadarFeaturePage() {
   return (
     <MarketingPageLayout>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <section className="marketing-page-hero relative overflow-hidden bg-transparent px-6 py-12 md:px-8 md:py-20">
-        <MarketingHeroAmbient />
-        <div className="relative z-[1] mx-auto max-w-[1000px] rounded-[var(--radius-lg)] border border-[rgba(56,189,248,0.25)] bg-[rgba(15,23,42,0.68)] p-8">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#38bdf8]">Renewal Radar</p>
-          <h1 className="mt-3 text-3xl font-semibold text-white md:text-5xl">
-            Renewals decided at the last minute are decided on price.
-          </h1>
-          <p className="mt-4 max-w-2xl text-[16px] leading-relaxed text-white/70">
-            Renewal Radar lines up every contract ending in the next year with what your PSA already
-            says about that client: whether service has slipped, and whether they pay for the work they
-            create. You see what to do months before the conversation, not the week of it.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Link
-              href="/onboarding/connect"
-              className="inline-flex rounded-[var(--radius)] bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]"
-            >
-              Run your free scan
-            </Link>
-            <Link
-              href="/demo"
-              className="inline-flex rounded-[var(--radius)] border border-white/20 px-5 py-2.5 text-sm font-semibold text-white hover:bg-white/[0.06]"
-            >
-              Book a walkthrough
-            </Link>
-          </div>
-        </div>
-      </section>
+      <ProductHero
+        eyebrow="Renewal Radar"
+        title="Renewals decided at the last minute are decided on price."
+        body="Renewal Radar lines up every contract ending in the next year with what your PSA already says about that client: whether service has slipped, and whether they pay for the work they create. You see what to do months before the conversation, not the week of it."
+        primary={{ href: "/onboarding/connect", label: "Run your free scan" }}
+        visual={<AppFrame path="/renewals" label="Renewal Radar in Handover"><RenewalMock /></AppFrame>}
+      />
 
       <section className="px-6 pb-4 md:px-8" aria-labelledby="moves-heading">
         <div className="mx-auto max-w-[1000px]">

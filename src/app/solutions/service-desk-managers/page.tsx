@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Activity, BarChart3, CalendarClock } from "lucide-react";
 
-import { MarketingHeroAmbient } from "@/components/marketing-hero-ambient";
 import { MarketingRelatedPages } from "@/components/marketing-related-pages";
 import { MarketingPageLayout } from "@/components/marketing-page-layout";
+import { ProductHero } from "@/components/marketing/product-hero";
+import { AppFrame, RiskMock } from "@/components/marketing/product-mocks";
 
 export const metadata: Metadata = {
   title: "Handover for Service Desk Managers | Spot Service Slipping Before the Client Does",
@@ -27,32 +28,13 @@ export default function SolutionsServiceDeskManagersPage() {
   return (
     <MarketingPageLayout>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <section className="marketing-page-hero relative overflow-hidden bg-transparent px-6 py-12 md:px-8 md:py-20">
-        <MarketingHeroAmbient />
-        <div className="relative z-[1] mx-auto w-full max-w-[1000px]">
-          <div className="rounded-[var(--radius-lg)] border border-[rgba(56,189,248,0.25)] bg-[rgba(15,23,42,0.65)] px-6 py-8 shadow-[0_20px_60px_-22px_rgba(56,189,248,0.35)] md:px-10 md:py-10">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#38bdf8]">
-              Solutions · Service Desk Managers
-            </p>
-            <h1 className="mt-2 text-3xl font-semibold leading-tight text-white md:text-5xl">
-              Spot service slipping for a client before they do.
-            </h1>
-            <p className="mt-4 max-w-3xl text-[15px] leading-relaxed text-white/75">
-              Handover checks every client&apos;s response times, resolution times, backlog and ticket patterns
-              against their own history, and tells you which ones have changed. Then it turns the same data into
-              reporting your clients can read.
-            </p>
-            <div className="mt-6">
-              <Link
-                href="/onboarding/connect"
-                className="inline-flex items-center rounded-[var(--radius)] bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]"
-              >
-                Run your free scan
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
+      <ProductHero
+        eyebrow="For service desk managers"
+        title="Spot service slipping for a client before they do."
+        body="Handover checks every client's response times, resolution times, backlog and ticket patterns against their own history, and tells you which ones have changed. Then it turns the same data into reporting your clients can read."
+        primary={{ href: "/onboarding/connect", label: "Run your free scan" }}
+        visual={<AppFrame path="/attention" label="Solutions · Service Desk Managers in Handover"><RiskMock /></AppFrame>}
+      />
 
       <section className="px-6 py-10 md:px-8 md:py-14">
         <div className="mx-auto w-full max-w-[900px] space-y-10 text-[16px] leading-[1.8] text-[var(--text-secondary)]">

@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Activity, BarChart3, Brain } from "lucide-react";
 
-import { MarketingHeroAmbient } from "@/components/marketing-hero-ambient";
 import { MarketingRelatedPages } from "@/components/marketing-related-pages";
 import { MarketingPageLayout } from "@/components/marketing-page-layout";
+import { ProductHero } from "@/components/marketing/product-hero";
+import { AppFrame, WeekListMock } from "@/components/marketing/product-mocks";
 
 export const metadata: Metadata = {
   title: "Client Intelligence for MSPs | Account Health Monitoring | Handover",
@@ -25,36 +26,13 @@ export default function ClientIntelligenceFeaturePage() {
   return (
     <MarketingPageLayout>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <section className="marketing-page-hero relative overflow-hidden bg-transparent px-6 py-12 md:px-8 md:py-20">
-        <MarketingHeroAmbient />
-        <div className="relative z-[1] mx-auto max-w-[1000px] rounded-[var(--radius-lg)] border border-[rgba(56,189,248,0.25)] bg-[rgba(15,23,42,0.68)] p-8">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#38bdf8]">
-            Client Intelligence™
-          </p>
-          <h1 className="mt-3 text-3xl font-semibold text-white md:text-5xl">
-            Your entire client portfolio, watched automatically.
-          </h1>
-          <p className="mt-4 max-w-2xl text-[16px] leading-relaxed text-[var(--text-secondary)]">
-            Handover&apos;s Client Intelligence layer tracks account health, open risks, and communication
-            patterns across every client, without you lifting a finger. When something needs attention, you
-            hear about it before your client does.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Link
-              href="/onboarding/connect"
-              className="inline-flex rounded-[var(--radius)] bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]"
-            >
-                Run the free PSA scan
-            </Link>
-            <Link
-              href="/#demo"
-              className="inline-flex rounded-[var(--radius)] border border-white/20 px-5 py-2.5 text-sm font-semibold text-white hover:bg-white/[0.06]"
-            >
-              See it in action
-            </Link>
-          </div>
-        </div>
-      </section>
+      <ProductHero
+        eyebrow="Client Intelligence™"
+        title="Your entire client portfolio, watched automatically."
+        body="Handover's Client Intelligence layer tracks account health, open risks, and communication patterns across every client, without you lifting a finger. When something needs attention, you hear about it before your client does."
+        primary={{ href: "/onboarding/connect", label: "Run the free PSA scan" }}
+        visual={<AppFrame path="/week" label="Client Intelligence™ in Handover"><WeekListMock /></AppFrame>}
+      />
       <section className="px-6 py-12 md:px-8">
         <div className="mx-auto max-w-[900px] space-y-8 text-[16px] leading-[1.8] text-[var(--text-secondary)]">
           <h2 className="text-2xl font-semibold text-[var(--text-primary)]">What Client Intelligence Does</h2>

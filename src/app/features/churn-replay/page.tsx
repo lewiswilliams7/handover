@@ -3,10 +3,11 @@ import Link from "next/link";
 import { Brain, PoundSterling, Tag } from "lucide-react";
 
 import { ChurnReplayPanel } from "@/components/churn-replay-panel";
-import { MarketingHeroAmbient } from "@/components/marketing-hero-ambient";
 import { MarketingPageLayout } from "@/components/marketing-page-layout";
 import { MarketingRelatedPages } from "@/components/marketing-related-pages";
 import { CHURN_REPLAY_EXAMPLE } from "@/lib/marketing/churn-replay-example";
+import { ProductHero } from "@/components/marketing/product-hero";
+import { AppFrame, ReplayMock } from "@/components/marketing/product-mocks";
 
 const PAGE_URL = "https://gethandover.uk/features/churn-replay";
 
@@ -49,39 +50,13 @@ export default function ChurnReplayFeaturePage() {
   return (
     <MarketingPageLayout>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <section className="marketing-page-hero relative overflow-hidden bg-transparent px-6 py-12 md:px-8 md:py-20">
-        <MarketingHeroAmbient />
-        <div className="relative z-[1] mx-auto max-w-[1000px] rounded-[var(--radius-lg)] border border-[rgba(56,189,248,0.25)] bg-[rgba(15,23,42,0.68)] p-8">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#38bdf8]">
-            Churn Replay™
-          </p>
-          <h1 className="mt-3 text-3xl font-semibold text-white md:text-5xl">
-            Would you have seen it coming?
-          </h1>
-          <p className="mt-4 max-w-2xl text-[16px] leading-relaxed text-white/70">
-            Churn Replay rewinds your PSA to the months before each client left and re-runs
-            Handover&apos;s checks on what you knew at the time. It shows which losses were visible in
-            your own data, how early, and what they were worth.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Link
-              href="/onboarding/connect"
-              className="inline-flex rounded-[var(--radius)] bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent-hover)]"
-            >
-              Replay your lost clients free
-            </Link>
-            <Link
-              href="/demo"
-              className="inline-flex rounded-[var(--radius)] border border-white/20 px-5 py-2.5 text-sm font-semibold text-white hover:bg-white/[0.06]"
-            >
-              Book a walkthrough
-            </Link>
-          </div>
-          <p className="mt-4 text-sm text-white/50">
-            Runs as part of the free PSA scan. Read-only, no card, results in about a minute.
-          </p>
-        </div>
-      </section>
+      <ProductHero
+        eyebrow="Churn Replay™"
+        title="Would you have seen it coming?"
+        body="Churn Replay rewinds your PSA to the months before each client left and re-runs Handover's checks on what you knew at the time. It shows which losses were visible in your own data, how early, and what they were worth."
+        primary={{ href: "/onboarding/connect", label: "Replay your lost clients free" }}
+        visual={<AppFrame path="/attention?tab=replay" label="Churn Replay™ in Handover"><ReplayMock /></AppFrame>}
+      />
 
       <section className="px-6 pb-4 md:px-8" aria-labelledby="example-heading">
         <div className="mx-auto max-w-[1000px]">
